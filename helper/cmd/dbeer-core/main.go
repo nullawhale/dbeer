@@ -107,7 +107,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 		if command.Type == "hello" {
 			var response protocol.Response
 			if command.ProtocolVersion != protocol.Version {
-				response = protocol.ErrorResponse(command, "protocol", "Incompatible protocol version; version 2 is required.")
+				response = protocol.ErrorResponse(command, "protocol", "Incompatible protocol version; version 3 is required.")
 			} else if handshaken {
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {

@@ -31,7 +31,7 @@ enum ProfileTransferError: LocalizedError {
 /// Portable metadata only. UUIDs and password/private-key fields have no place
 /// in this format; decoding a preview never reads or writes Keychain.
 enum ProfileTransfer {
-    static let currentVersion = 1
+    static let currentVersion = 2
     static let maxFileBytes = 2 * 1_024 * 1_024
     static let maxProfiles = 1_000
 
@@ -49,6 +49,7 @@ enum ProfileTransfer {
         let user: String
         let sslMode: String
         let sslRootCert: String?
+        var policy: ExecutionPolicy?
 
         init(_ saved: SavedConnection) {
             name = saved.name
@@ -59,12 +60,13 @@ enum ProfileTransfer {
             user = saved.user
             sslMode = saved.sslMode
             sslRootCert = saved.sslRootCert
+            policy = saved.policy
         }
 
         func imported() -> ImportedProfile {
             ImportedProfile(profile: SavedConnection(id: UUID(), name: name, settings: ConnectionSettings(
                 host: host, port: port, database: database, user: user, password: "", sslMode: sslMode,
-                sslRootCert: sslRootCert, engine: engine)))
+                sslRootCert: sslRootCert, engine: engine, policy: policy ?? ExecutionPolicy())))
         }
     }
 
@@ -87,13 +89,19 @@ enum ProfileTransfer {
             }
             var uniqueKeys = UniqueJSONKeys(data)
             try uniqueKeys.validate()
-            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert"]
-            let required = permitted.subtracting(["sslRootCert"])
+            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy"]
+            let required = permitted.subtracting(["sslRootCert", "policy"])
             guard raw.allSatisfy({ Set($0.keys).isSubset(of: permitted) && required.isSubset(of: Set($0.keys)) }) else {
                 throw ProfileTransferError.invalid
             }
+            guard raw.allSatisfy({ record in
+                guard let policy = record["policy"] else { return true }
+                guard let fields = policy as? [String: Any] else { return false }
+                return Set(fields.keys) == ["environment", "readOnly"]
+            }) else { throw ProfileTransferError.invalid }
             let envelope = try JSONDecoder().decode(Envelope.self, from: data)
-            guard envelope.version == currentVersion else { throw ProfileTransferError.unsupportedVersion }
+            guard envelope.version == 1 || envelope.version == currentVersion else { throw ProfileTransferError.unsupportedVersion }
+            if envelope.version == currentVersion, envelope.profiles.contains(where: { $0.policy == nil }) { throw ProfileTransferError.invalid }
             try validate(envelope.profiles)
             return envelope.profiles.map { $0.imported() }
         } catch let error as ProfileTransferError { throw error }

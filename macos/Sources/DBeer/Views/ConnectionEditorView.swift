@@ -83,6 +83,16 @@ struct ConnectionEditorView: View {
                     }
                 }
                 Section("Security") {
+                    Picker("Environment", selection: Binding(get: { draft.policy.environment }, set: { draft.policy.environment = $0 })) {
+                        ForEach(ConnectionEnvironment.allCases) { environment in
+                            Text(environment.label).tag(environment)
+                        }
+                    }.frame(minHeight: 24).controlHover().connectionButtonFocus().accessibilityIdentifier("connectionEnvironment")
+                    Toggle("Readonly", isOn: Binding(get: { draft.policy.readOnly }, set: { draft.policy.readOnly = $0 }))
+                        .padding(.horizontal, 6)
+                        .frame(minHeight: 24).controlHover().accessibilityIdentifier("connectionReadOnly")
+                    Text("Readonly blocks evaluated writes and unknown SQL, and enables server read mode. Functions and database objects can hide side effects. Use restricted database privileges for strict protection.")
+                        .font(.caption).appSecondaryText()
                     Picker("TLS mode", selection: binding(\.sslMode)) {
                         ForEach(draft.engine.sslModes, id: \.self) { mode in
                             Text(mode).tag(mode)
@@ -141,7 +151,7 @@ struct ConnectionEditorView: View {
             }
             .padding(20)
         }
-        .frame(width: 520, height: 680)
+        .frame(width: 520, height: 780)
         .tint(AppPalette.accent)
         .focusEffectDisabled()
         .accessibilityElement(children: .contain)
@@ -229,6 +239,7 @@ struct ConnectionDraft {
     var password = ""
     var sslMode: String
     var sslRootCert: String
+    var policy: ExecutionPolicy
 
     init(connection: SavedConnection?) {
         name = connection?.name ?? ""
@@ -239,6 +250,7 @@ struct ConnectionDraft {
         user = connection?.user ?? engine.defaultUser
         sslMode = connection?.sslMode ?? "verify-full"
         sslRootCert = connection?.sslRootCert ?? ""
+        policy = connection?.policy ?? ExecutionPolicy()
     }
 
     mutating func selectEngine(_ next: DatabaseEngine) {
@@ -270,6 +282,6 @@ struct ConnectionDraft {
         let rootCert = sslRootCert.trimmingCharacters(in: .whitespacesAndNewlines)
         return ConnectionSettings(host: cleanedHost, port: portNumber, database: cleanedDatabase,
             user: cleanedUser, password: password, sslMode: sslMode,
-            sslRootCert: rootCert.isEmpty ? nil : rootCert, engine: engine)
+            sslRootCert: rootCert.isEmpty ? nil : rootCert, engine: engine, policy: policy)
     }
 }

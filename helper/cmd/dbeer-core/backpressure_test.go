@@ -82,7 +82,7 @@ func TestFullDataQueuesDoNotHideStopShutdownOrEOF(t *testing.T) {
 			// Stop reading completely. Sixteen starts plus sixteen metadata chunks
 			// exceed every shared output/routing window, and no credit is returned.
 			for index, id := range sessions {
-				encode(protocol.Command{Type: "execute", RequestID: fmt.Sprint("run-", index), SessionID: id, QueryID: fmt.Sprint("query-", index), SQL: "slow", Stream: true})
+				encode(protocol.Command{Type: "execute", RequestID: fmt.Sprint("run-", index), SessionID: id, QueryID: fmt.Sprint("query-", index), SQL: "SELECT 1", Stream: true})
 			}
 			for _, physical := range physicals[:2] {
 				select {

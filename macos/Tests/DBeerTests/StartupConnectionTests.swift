@@ -82,7 +82,7 @@ struct StartupConnectionTests {
         def send(message):
             print(json.dumps(message), flush=True)
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':2})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':3})
         command = read()
         assert command['type'] == 'connect'
         assert command['connection']['host'] == '127.0.0.1'
@@ -132,7 +132,7 @@ struct StartupConnectionTests {
         let client = BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
         import json, sys
         command = json.loads(sys.stdin.readline())
-        print(json.dumps({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':2}), flush=True)
+        print(json.dumps({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':3}), flush=True)
         command = json.loads(sys.stdin.readline())
         assert command['type'] == 'shutdown'
         print(json.dumps({'type':'shutdown.ack','requestId':command['requestId']}), flush=True)

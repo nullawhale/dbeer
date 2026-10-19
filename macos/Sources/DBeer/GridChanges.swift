@@ -56,6 +56,7 @@ final class GridDraft: ObservableObject {
     @Published var error: String?
     @Published var notice: String?
     @Published var preview: BackendMessage?
+    var policyReadOnly = false
     var applySessionID: String?
     var applyQueryID: String?
     var cancelRequested = false
@@ -80,6 +81,7 @@ final class GridDraft: ObservableObject {
     }
 
     var readOnlyReason: String? {
+        if policyReadOnly { return "Readonly is enabled for this connection." }
         if reference.kind != "table" { return "Views are read only." }
         if !metadata.contains(where: { (Int($0["primaryKey"] ?? "0") ?? 0) > 0 }) { return "This table has no primary key." }
         if editableColumns.isEmpty {

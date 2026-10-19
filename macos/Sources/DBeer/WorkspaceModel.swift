@@ -71,6 +71,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var password = ""
     @Published var sslMode = "verify-full"
     @Published var sslRootCert = ""
+    @Published var policy = ExecutionPolicy()
     @Published var sql = "SELECT 1 AS id, 'hello'::text AS name;"
 
     @Published private(set) var state: HelperState = .starting
@@ -195,7 +196,7 @@ final class WorkspaceModel: ObservableObject {
         }
         let settings = ConnectionSettings(host: host, port: portNumber, database: database,
             user: user, password: password, sslMode: sslMode,
-            sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine)
+            sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine, policy: policy)
         let connectingProfileId = savedConnections.first { $0.id == selectedConnectionId && $0.matches(settings) }?.id
         clearQueryFeedback()
         connectionState = .connecting
@@ -435,6 +436,7 @@ final class WorkspaceModel: ObservableObject {
         password = settings.password
         sslMode = settings.sslMode
         sslRootCert = settings.sslRootCert ?? ""
+        policy = settings.policy
     }
 
     private func finishConnectionMutation() {
@@ -465,14 +467,16 @@ final class WorkspaceModel: ObservableObject {
         return saved ? selectedConnectionId : existing?.id
     }
 
-    func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil) async {
+    func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil,
+             authorization: String? = nil) async {
         guard canRun, let sessionId, let helper else { return }
         let queryId = UUID().uuidString
         let generation = helperGeneration
-        let command: BackendCommand
+        var command: BackendCommand
         if let catalog { command = .catalog(sessionId: sessionId, queryId: queryId, request: catalog) }
         else if let export { command = .runToFile(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql, export: export) }
         else { command = .execute(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql) }
+        command.authorization = authorization
         clearQueryFeedback()
         latestQueryId = queryId
         activeQueryId = queryId

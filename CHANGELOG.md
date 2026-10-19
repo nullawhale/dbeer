@@ -7,6 +7,14 @@
 - Shared execution registry for the Query menu, buttons, and keyboard, respecting the active tab, focus, and modal windows. The default ⌘Return and ⇧⌘Return shortcuts are preserved; the SQL fragment to execute is highlighted inside the editor instead of a separate block. Highlighting and execution follow the cursor, including immediately after `;`.
 - Configurable Run, Run Script, Stop, and Run to File shortcuts: recording, persistence, conflict detection, protected system editing shortcuts, clearing, and restoring defaults.
 - Individual shortcut clear/reset actions use icons without button borders.
+- Profile environments: unset, dev, stag, and prod, with text and color context in profiles and confirmations.
+- Hidden the unset environment label in the connection list and removed environment labels from SQL tabs and the connection picker. The Readonly indicator now appears only beside the connection picker as RO, with a full tooltip and VoiceOver description.
+- Environment labels and the RO indicator use the same small, muted gray text to keep status information unobtrusive.
+- Shared helper policy for Execute, scripts, Run to File, and Apply. Destructive and unknown SQL requires confirmation; production confirms every write. Multi-statement runs show the entire batch before execution; Cancel sends no user SQL.
+- A separate readonly setting rejects writes and unknown operations in the helper, disables grid editing, and enables server-side read-only mode. Changing profile policy uses the existing session and transaction shutdown workflow.
+- Added small horizontal padding inside the Readonly toggle in the connection editor.
+- Protocol v3 binds approval to the exact operation, statement order, and session; cancellation, errors, reconnection, and content changes invalidate it.
+- Profile formats v1/v2 migrate to v3 while preserving UUIDs and backing up the original bytes. Profile transfer v2 retains environment and readonly settings, and legacy v1 imports remain supported; secrets are still excluded.
 
 ## 0.1.0
 

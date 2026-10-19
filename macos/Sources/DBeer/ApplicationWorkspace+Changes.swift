@@ -17,7 +17,7 @@ extension ApplicationWorkspace {
     @discardableResult func applyGrid(_ document: SQLDocument, forClosing: Bool = false) async -> Bool {
         guard canStartOperation(document, forClosing: forClosing), !document.isRunning,
               let grid = document.grid, grid.pendingCount > 0, !grid.isApplying,
-              !grid.outcomeUnknown else { return false }
+              !grid.outcomeUnknown, !grid.policyReadOnly else { return false }
         grid.isApplying = true
         grid.cancelRequested = false
         grid.error = nil
@@ -79,7 +79,7 @@ extension ApplicationWorkspace {
         }
         let boundSettings = ConnectionSettings(host: runtime.host, port: boundPort, database: runtime.database,
             user: runtime.user, password: "", sslMode: runtime.sslMode,
-            sslRootCert: runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert, engine: runtime.engine)
+            sslRootCert: runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert, engine: runtime.engine, policy: runtime.policy)
         func validateConnectionBinding() throws {
             guard document.profileID == profileID, document.runtime === runtime, document.grid === grid,
                   runtime.connectionState == .connected, runtime.sessionId == boundSessionID,
@@ -118,9 +118,33 @@ extension ApplicationWorkspace {
             guard canStartOperation(document, forClosing: forClosing), !grid.cancelRequested || !apply else {
                 throw ChangesClientError(message: "The changes operation was cancelled before execution.")
             }
-            let command: BackendCommand = apply
+            var command: BackendCommand = apply
                 ? .applyChanges(sessionId: sessionID, queryId: queryID, request: request)
                 : .previewChanges(sessionId: sessionID, queryId: queryID, request: request)
+            if apply {
+                let previewQueryID = UUID().uuidString
+                grid.applyQueryID = previewQueryID
+                let preview = try await client.request(.previewChanges(sessionId: sessionID, queryId: previewQueryID, request: request))
+                grid.applyQueryID = queryID
+                try validateConnectionBinding()
+                guard grid.request() == request, !grid.cancelRequested,
+                      canStartOperation(document, forClosing: forClosing) else {
+                    throw ChangesClientError(message: "The changes operation was cancelled or changed before confirmation.")
+                }
+                let generatedPreview = preview.catalogRecords.map { record in
+                    (record["sql"] ?? "") + "\nParameters: " + (record["parameters"] ?? "")
+                }.joined(separator: "\n\n")
+                guard let authorization = try await authorizeOperations([OperationRequest(type: "changes.apply", changes: request)],
+                    sessionID: sessionID, profile: profile, client: client, generatedPreview: generatedPreview) else {
+                    throw ChangesClientError(message: "Apply was cancelled before execution.")
+                }
+                try validateConnectionBinding()
+                guard grid.request() == request, !grid.cancelRequested,
+                      canStartOperation(document, forClosing: forClosing) else {
+                    throw ChangesClientError(message: "The changes or execution context changed after confirmation.")
+                }
+                command.authorization = authorization
+            }
             let reply = try await client.request(command)
             _ = try? await client.request(.disconnect(sessionId: sessionID))
             return reply

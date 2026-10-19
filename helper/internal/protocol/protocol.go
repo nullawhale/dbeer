@@ -11,19 +11,20 @@ import (
 	"unicode/utf8"
 )
 
-const Version = 2
+const Version = 3
 const MaxFrameBytes = 16 * 1024 * 1024
 const MaxIDBytes = 128
 
 type Connection struct {
-	Engine      string `json:"engine,omitempty"`
-	Host        string `json:"host"`
-	Port        int    `json:"port"`
-	Database    string `json:"database"`
-	User        string `json:"user"`
-	Password    string `json:"password"`
-	SSLMode     string `json:"sslMode"`
-	SSLRootCert string `json:"sslRootCert,omitempty"`
+	Engine      string           `json:"engine,omitempty"`
+	Host        string           `json:"host"`
+	Port        int              `json:"port"`
+	Database    string           `json:"database"`
+	User        string           `json:"user"`
+	Password    string           `json:"password"`
+	SSLMode     string           `json:"sslMode"`
+	SSLRootCert string           `json:"sslRootCert,omitempty"`
+	Policy      *ExecutionPolicy `json:"policy,omitempty"`
 }
 
 // Empty engines from an older saved profile retain PostgreSQL semantics. The
@@ -36,18 +37,20 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
-	Type            string          `json:"type"`
-	RequestID       string          `json:"requestId"`
-	ProtocolVersion int             `json:"protocolVersion,omitempty"`
-	Connection      *Connection     `json:"connection,omitempty"`
-	SessionID       string          `json:"sessionId,omitempty"`
-	QueryID         string          `json:"queryId,omitempty"`
-	SQL             string          `json:"sql,omitempty"`
-	Catalog         *CatalogRequest `json:"catalog,omitempty"`
-	Stream          bool            `json:"stream,omitempty"`
-	Export          *ExportRequest  `json:"export,omitempty"`
-	Sequence        int             `json:"sequence,omitempty"`
-	Changes         *ChangesRequest `json:"changes,omitempty"`
+	Type            string             `json:"type"`
+	RequestID       string             `json:"requestId"`
+	ProtocolVersion int                `json:"protocolVersion,omitempty"`
+	Connection      *Connection        `json:"connection,omitempty"`
+	SessionID       string             `json:"sessionId,omitempty"`
+	QueryID         string             `json:"queryId,omitempty"`
+	SQL             string             `json:"sql,omitempty"`
+	Catalog         *CatalogRequest    `json:"catalog,omitempty"`
+	Stream          bool               `json:"stream,omitempty"`
+	Export          *ExportRequest     `json:"export,omitempty"`
+	Sequence        int                `json:"sequence,omitempty"`
+	Changes         *ChangesRequest    `json:"changes,omitempty"`
+	Operations      []OperationRequest `json:"operations,omitempty"`
+	Authorization   string             `json:"authorization,omitempty"`
 }
 
 type ExportRequest struct {
@@ -206,7 +209,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Connection = &connection
-	case "execute", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply":
+	case "execute", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -230,6 +233,20 @@ func ParseCommand(frame []byte) (Command, error) {
 				return command, failure
 			}
 			command.Changes = &request
+		}
+		if command.Type == "execute" || command.Type == "changes.apply" {
+			allowed["authorization"] = true
+			if _, exists := fields["authorization"]; exists && (!stringField(fields, "authorization", &command.Authorization) || !ValidID(command.Authorization)) {
+				return command, failure
+			}
+		}
+		if command.Type == "operation.assess" {
+			allowed["operations"] = true
+			operations, ok := parseOperations(fields["operations"])
+			if !ok {
+				return command, failure
+			}
+			command.Operations = operations
 		}
 		if command.Type == "execute" {
 			allowed["sql"] = true
@@ -356,12 +373,24 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 	if _, exists := fields["engine"]; exists && !stringField(fields, "engine", &connection.Engine) {
 		return connection, false
 	}
+	if raw, exists := fields["policy"]; exists {
+		var policy ExecutionPolicy
+		if _, ok := changesObject(raw, "environment|readOnly", "environment", "readOnly"); !ok {
+			return connection, false
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || decoder.Decode(&policy) != nil || !policy.Valid() {
+			return connection, false
+		}
+		connection.Policy = &policy
+	}
 	if connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" {
 		return connection, false
 	}
 	for name := range fields {
 		switch name {
-		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert":
+		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy":
 		default:
 			return connection, false
 		}
@@ -486,6 +515,7 @@ type Response struct {
 	ExportPath        string
 	ExportFormat      string
 	ExportRowCount    int64
+	Assessment        *OperationAssessment
 }
 
 func (response Response) MarshalJSON() ([]byte, error) {
@@ -499,6 +529,8 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	switch response.Type {
 	case "hello.ack":
 		fields["protocolVersion"] = response.ProtocolVersion
+	case "operation.assessment":
+		fields["assessment"] = response.Assessment
 	case "connect.result":
 		fields["transactionStatus"] = response.TransactionStatus
 		fields["engine"] = response.Engine

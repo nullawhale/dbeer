@@ -102,7 +102,7 @@ struct SelectHoverTests {
         let screens: [(String, AnyView, Int)] = [
             ("workspace", AnyView(ApplicationWorkspaceView(workspace: workspace)), 2),
             ("filters", AnyView(TableBrowseControls(document: document, workspace: workspace)), 4),
-            ("connection", AnyView(ConnectionEditorView(model: workspace.library, connection: nil) {}), 2),
+            ("connection", AnyView(ConnectionEditorView(model: workspace.library, connection: nil) {}), 3),
         ]
         var usesNativePickers = false
         for (name, screen, nativeCount) in screens {

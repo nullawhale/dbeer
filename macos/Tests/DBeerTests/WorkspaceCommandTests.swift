@@ -335,7 +335,7 @@ struct WorkspaceCommandTests {
             .deletingLastPathComponent().deletingLastPathComponent()
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
             credentialStore: MemoryConnectionCredentialStore(), commandShortcuts: shortcuts,
-            closeDecision: { _ in .rollback }, helperFactory: {
+            closeDecision: { _ in .rollback }, executionDecision: { _ in true }, helperFactory: {
                 BackendClient(executableURL: repository.appendingPathComponent("build/DBeer.app/Contents/Helpers/dbeer-core"))
             })
         await workspace.start()

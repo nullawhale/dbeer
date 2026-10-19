@@ -28,7 +28,7 @@ struct ConnectionsSidebarIntegrationTests {
             reply = {'requestId': command['requestId']}
             kind = command['type']
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=2)
+                reply.update(type='hello.ack', protocolVersion=3)
             elif kind == 'connect':
                 if len(sys.argv) > 1:
                     deadline = time.monotonic() + 5

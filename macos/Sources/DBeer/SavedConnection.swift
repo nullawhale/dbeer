@@ -12,6 +12,7 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     var user: String
     var sslMode: String
     var sslRootCert: String?
+    var policy: ExecutionPolicy
 
     init(id: UUID = UUID(), name: String, settings: ConnectionSettings) {
         self.id = id
@@ -23,10 +24,11 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         user = settings.user
         sslMode = settings.sslMode
         sslRootCert = settings.sslRootCert
+        policy = settings.policy
     }
 
     fileprivate enum CodingKeys: String, CodingKey {
-        case id, name, engine, host, port, database, user, sslMode, sslRootCert
+        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy
     }
 
     init(from decoder: Decoder) throws {
@@ -40,21 +42,22 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         user = try values.decode(String.self, forKey: .user)
         sslMode = try values.decode(String.self, forKey: .sslMode)
         sslRootCert = try values.decodeIfPresent(String.self, forKey: .sslRootCert)
+        policy = try values.decodeIfPresent(ExecutionPolicy.self, forKey: .policy) ?? ExecutionPolicy()
     }
 
     func settings(password: String) -> ConnectionSettings {
         ConnectionSettings(host: host, port: port, database: database, user: user,
-            password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine)
+            password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine, policy: policy)
     }
 
     func matches(_ settings: ConnectionSettings) -> Bool {
         engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
-            user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert
+            user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert && policy == settings.policy
     }
 }
 
 struct SavedConnectionLibrary: Codable, Equatable, Sendable {
-    static let currentVersion = 2
+    static let currentVersion = 3
     private(set) var version: Int
     var connections: [SavedConnection]
     var selectedConnectionId: UUID?
@@ -70,18 +73,19 @@ struct SavedConnectionLibrary: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decodeIfPresent(Int.self, forKey: .version) ?? 1
-        guard version == 1 || version == Self.currentVersion else {
+        guard (1...Self.currentVersion).contains(version) else {
             throw ConnectionLibraryError.load
         }
         var records = try values.nestedUnkeyedContainer(forKey: .connections)
         connections = []
         while !records.isAtEnd {
             let record = try records.superDecoder()
-            if version == Self.currentVersion {
+            if version >= 2 {
                 // Missing engine is a migration rule only for old profiles;
                 // malformed v2 records must not silently change their adapter.
                 let header = try record.container(keyedBy: SavedConnection.CodingKeys.self)
                 _ = try header.decode(DatabaseEngine.self, forKey: .engine)
+                if version >= 3 { _ = try header.decode(ExecutionPolicy.self, forKey: .policy) }
             }
             connections.append(try SavedConnection(from: record))
         }
@@ -148,7 +152,7 @@ actor FileConnectionLibraryStore: ConnectionLibraryStore {
         do {
             let library = try decode(data)
             if library.version < SavedConnectionLibrary.currentVersion {
-                try backupLegacyFile()
+                try backupLegacyFile(version: library.version)
                 let migrated = SavedConnectionLibrary(connections: library.connections,
                     selectedConnectionId: library.selectedConnectionId)
                 try write(migrated)
@@ -162,7 +166,7 @@ actor FileConnectionLibraryStore: ConnectionLibraryStore {
         do {
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 let existing = try decode(Data(contentsOf: fileURL))
-                if existing.version < SavedConnectionLibrary.currentVersion { try backupLegacyFile() }
+                if existing.version < SavedConnectionLibrary.currentVersion { try backupLegacyFile(version: existing.version) }
             }
             try validate(library)
             try write(SavedConnectionLibrary(connections: library.connections,
@@ -187,10 +191,10 @@ actor FileConnectionLibraryStore: ConnectionLibraryStore {
 
     /// Preserve the exact old bytes before the first atomic v2 replacement.
     /// An existing backup is never overwritten by another migration attempt.
-    private func backupLegacyFile() throws {
-        var backup = fileURL.appendingPathExtension("v1.backup")
+    private func backupLegacyFile(version: Int) throws {
+        var backup = fileURL.appendingPathExtension("v\(version).backup")
         if FileManager.default.fileExists(atPath: backup.path) {
-            backup = fileURL.appendingPathExtension("v1-\(UUID().uuidString).backup")
+            backup = fileURL.appendingPathExtension("v\(version)-\(UUID().uuidString).backup")
         }
         try FileManager.default.copyItem(at: fileURL, to: backup)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)

@@ -75,7 +75,14 @@ struct ProfileCatalogRow: View {
     private var row: some View {
         HStack(spacing: 8) {
             DatabaseEngineIcon(engine: profile.engine)
-            Text(profile.name).lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(profile.name).lineLimit(1)
+                if profile.policy.environment != .unspecified {
+                    Text(profile.policy.environment.label)
+                        .font(.caption2.weight(.regular))
+                        .foregroundStyle(.tertiary)
+                }
+            }
             Spacer(minLength: 0)
             if isConnected {
                 Circle().fill(.green).frame(width: 6, height: 6)

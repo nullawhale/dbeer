@@ -1,7 +1,7 @@
 import Foundation
 
 enum BackendProtocol {
-    static let version = 2
+    static let version = 3
     static let maxFrameBytes = 16 * 1_024 * 1_024
 }
 
@@ -28,9 +28,11 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     var password: String
     var sslMode: String
     var sslRootCert: String?
+    var policy: ExecutionPolicy
 
     init(host: String, port: Int, database: String, user: String, password: String,
-         sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql) {
+         sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql,
+         policy: ExecutionPolicy = ExecutionPolicy()) {
         self.engine = engine
         self.host = host
         self.port = port
@@ -39,10 +41,11 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
         self.password = password
         self.sslMode = sslMode
         self.sslRootCert = sslRootCert
+        self.policy = policy
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, host, port, database, user, password, sslMode, sslRootCert
+        case engine, host, port, database, user, password, sslMode, sslRootCert, policy
     }
 
     init(from decoder: Decoder) throws {
@@ -55,6 +58,7 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
         password = try values.decode(String.self, forKey: .password)
         sslMode = try values.decode(String.self, forKey: .sslMode)
         sslRootCert = try values.decodeIfPresent(String.self, forKey: .sslRootCert)
+        policy = try values.decodeIfPresent(ExecutionPolicy.self, forKey: .policy) ?? ExecutionPolicy()
     }
 }
 
@@ -118,6 +122,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var export: ExportRequest?
     var sequence: Int?
     var changes: ChangesRequest?
+    var operations: [OperationRequest]?
+    var authorization: String?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -159,6 +165,11 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "shutdown", requestId: UUID().uuidString)
     }
 
+    static func assess(sessionId: String, operations: [OperationRequest]) -> Self {
+        Self(type: "operation.assess", requestId: UUID().uuidString, sessionId: sessionId,
+            queryId: UUID().uuidString, operations: operations)
+    }
+
     var terminalType: String? {
         switch type {
         case "hello": "hello.ack"
@@ -167,6 +178,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "cancel": "cancel.ack"
         case "disconnect": "disconnect.ack"
         case "shutdown": "shutdown.ack"
+        case "operation.assess": "operation.assessment"
         default: nil
         }
     }
@@ -250,6 +262,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var exportRowCount: Int64?
     var connected: Bool?
     var outcomeUnknown: Bool?
+    var assessment: OperationAssessment?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -258,6 +271,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
         case "query.started": valid = sessionId != nil && queryId != nil
         case "query.chunk":

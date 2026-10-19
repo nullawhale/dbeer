@@ -87,6 +87,7 @@ final class ApplicationWorkspace: ObservableObject {
     private let helperFactory: () -> BackendClient
     private let documentStore: any SQLDocumentStore
     private let closeDecision: @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision
+    let executionDecision: @MainActor (OperationConfirmation) async -> Bool
     private var autosave: Task<Void, Never>?
     private var draftsLoaded = false
     private var documentObservations: [UUID: [AnyCancellable]] = [:]
@@ -112,6 +113,7 @@ final class ApplicationWorkspace: ObservableObject {
          editorThemes: EditorThemeStore? = nil,
          appearance: AppAppearance? = nil,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
+         executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
          helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
         self.connectionStore = connectionStore
         self.credentialStore = credentialStore
@@ -122,6 +124,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.editorThemes = themes
         self.appearance = appearance ?? AppAppearance(editorThemes: themes)
         self.closeDecision = closeDecision
+        self.executionDecision = executionDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
@@ -286,6 +289,8 @@ final class ApplicationWorkspace: ObservableObject {
                          isScript: Bool = false, sourceSQL: String? = nil) async {
         guard canStartOperation(document), !document.isRunning, let profileID = document.profileID else { return }
         guard document.table != nil || !statements.isEmpty else { return }
+        guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
+        let boundText = document.text
         let previousGrid = document.table == nil ? nil : document.grid
         previousGrid?.isReloading = true
         document.isRunning = true
@@ -300,7 +305,11 @@ final class ApplicationWorkspace: ObservableObject {
         }
         do {
             let client = try await ensureHelper()
-            guard documents.contains(where: { $0.id == document.id }) else { return }
+            guard canStartOperation(document), !document.stopRequested, document.text == boundText,
+                  document.profileID == profileID,
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile else {
+                throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
+            }
             if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
             guard documents.contains(where: { $0.id == document.id }),
                   services[profileID]?.connectionState == .connected else { return }
@@ -311,6 +320,10 @@ final class ApplicationWorkspace: ObservableObject {
                 await runtime.connectSavedConnection(profileID)
             }
             guard let runtime = document.runtime else { return }
+            guard !document.stopRequested, document.text == boundText, document.profileID == profileID,
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile else {
+                throw ExecutionPolicyError(message: "The SQL or connection context changed while connecting. Review it and run again.")
+            }
             guard runtime.connectionState == .connected else {
                 document.localError = runtime.errorMessage ?? runtime.connectionsError ?? "The working session could not be opened."
                 for index in document.executions.indices { document.executions[index].status = "Not executed" }
@@ -333,14 +346,39 @@ final class ApplicationWorkspace: ObservableObject {
                     sort: document.tableSort, filters: document.tableFilters))
                 if runtime.queryFailure == nil, let result = runtime.result {
                     document.tableColumns = metadata
-                    document.attachGrid(GridDraft(reference: table, result: result, metadata: metadata))
+                    let grid = GridDraft(reference: table, result: result, metadata: metadata)
+                    grid.policyReadOnly = runtime.policy.readOnly
+                    document.attachGrid(grid)
                 }
             } else {
+                guard let sessionID = runtime.sessionId else { return }
+                guard runtime.activeConnectionId == profileID, runtime.policy == profile.policy,
+                      runtime.engine == profile.engine, runtime.host == profile.host,
+                      Int(runtime.port) == profile.port, runtime.database == profile.database,
+                      runtime.user == profile.user, runtime.sslMode == profile.sslMode,
+                      (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
+                    throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before executing SQL.")
+                }
+                let operations = statements.map { OperationRequest(type: "execute", sql: $0.sql, export: export) }
+                guard let authorization = try await authorizeOperations(operations, sessionID: sessionID,
+                    profile: profile, client: client, isScript: isScript || statements.count > 1,
+                    sourceSQL: isScript || statements.count > 1 ? (sourceSQL ?? statements.map(\.sql).joined(separator: ";\n")) : nil),
+                    canStartOperation(document), !document.stopRequested,
+                    document.profileID == profileID, document.runtime === runtime,
+                    runtime.sessionId == sessionID, runtime.policy == profile.policy,
+                    library.savedConnections.first(where: { $0.id == profileID }) == profile,
+                    document.text == boundText else {
+                    _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
+                    for index in document.executions.indices { document.executions[index].status = "Not executed" }
+                    return
+                }
                 for (index, statement) in statements.enumerated() {
-                    guard !document.stopRequested else { break }
+                    guard !document.stopRequested, document.text == boundText,
+                          document.profileID == profileID, runtime.sessionId == sessionID,
+                          library.savedConnections.first(where: { $0.id == profileID }) == profile else { break }
                     document.selectedExecution = index
                     document.executions[index].status = "Running"
-                    await runtime.run(sql: statement.sql, export: export)
+                    await runtime.run(sql: statement.sql, export: export, authorization: authorization)
                     document.executions[index].result = runtime.result
                     document.executions[index].failure = runtime.queryFailure
                     document.executions[index].status = runtime.queryFailure?.title ?? (runtime.result == nil ? "Failed" : "Completed")
@@ -356,8 +394,14 @@ final class ApplicationWorkspace: ObservableObject {
                 for index in document.executions.indices where document.executions[index].status == "Pending" {
                     document.executions[index].status = "Skipped"
                 }
+                _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
             }
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            document.localError = error.localizedDescription
+            for index in document.executions.indices where document.executions[index].status == "Pending" {
+                document.executions[index].status = "Not executed"
+            }
+        }
     }
 
     func stop(_ document: SQLDocument) async {

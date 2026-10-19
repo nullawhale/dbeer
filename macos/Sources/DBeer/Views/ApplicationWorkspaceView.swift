@@ -292,6 +292,14 @@ private struct SQLDocumentPane: View {
                     }
                 }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(maxWidth: 220)
                     .disabled(document.runtime?.sessionId != nil || document.isRunning)
+                if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
+                   (document.runtime?.policy ?? profile.policy).readOnly {
+                    Text("RO")
+                        .font(.caption2.weight(.regular)).foregroundStyle(.tertiary)
+                        .help("Readonly")
+                        .accessibilityLabel("Readonly")
+                        .accessibilityIdentifier("documentReadOnly")
+                }
                 Spacer()
                 Button("Stop") { commands.perform(.stop) }.controlHover()
                     .disabled(!commands.canPerform(.stop))

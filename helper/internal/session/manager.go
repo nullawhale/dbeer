@@ -243,12 +243,22 @@ type owner struct {
 	stopOnce           sync.Once
 	externalDisconnect *protocol.Command
 	stopRequested      bool
+	authMu             sync.Mutex
+	grant              *operationGrant
 }
 
 // Control is deliberately separate from ordinary routing and result queues.
 // The input reader validates handshake/IDs before calling it. Its effects never
 // wait for stdout or for an outstanding stream credit.
 func (manager *Manager) Control(command protocol.Command) *protocol.Response {
+	if command.Type == "cancel" || command.Type == "disconnect" {
+		manager.controlMu.RLock()
+		owner := manager.owners[command.SessionID]
+		manager.controlMu.RUnlock()
+		if owner != nil {
+			owner.invalidateGrant()
+		}
+	}
 	if command.Type == "shutdown" {
 		manager.shutdownOnce.Do(func() {
 			manager.controlMu.Lock()
@@ -372,6 +382,10 @@ func (owner *owner) run(connectCommand protocol.Command) {
 	}()
 	connection := *connectCommand.Connection
 	engine := connection.DatabaseEngine()
+	policy := protocol.ExecutionPolicy{Environment: "unspecified"}
+	if connection.Policy != nil {
+		policy = *connection.Policy
+	}
 	pending := connectCommand
 	result := make(chan operation, 1)
 	ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
@@ -383,6 +397,14 @@ func (owner *owner) run(connectCommand protocol.Command) {
 		}
 		tx := ""
 		if physical != nil && err == nil {
+			if policy.ReadOnly {
+				readOnly, ok := physical.(adapter.ReadOnlySession)
+				if !ok {
+					err = errors.New("adapter has no readonly mode")
+				} else {
+					err = readOnly.SetReadOnly(ctx, true)
+				}
+			}
 			tx = physical.TransactionStatus()
 		}
 		result <- operation{session: physical, txStatus: tx, err: err}
@@ -464,6 +486,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			} else {
 				response := completed.response
+				if response.Type == "error" {
+					owner.invalidateGrant()
+				}
 				// Correlation belongs to the owner rather than a driver. A driver
 				// cannot accidentally finish another execution or another session.
 				response.RequestID, response.SessionID, response.QueryID = pending.RequestID, owner.id, pending.QueryID
@@ -476,10 +501,19 @@ func (owner *owner) run(connectCommand protocol.Command) {
 		case command := <-commands:
 			var response protocol.Response
 			switch command.Type {
+			case "operation.assess":
+				if active != nil || len(outgoing) != 0 {
+					response = protocol.ErrorResponse(command, "busy", "Another operation is in progress in this session.")
+				} else {
+					response = owner.assess(command, engine, policy)
+				}
 			case "execute", "catalog", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = protocol.ErrorResponse(command, "busy", "Another operation is in progress in this session.")
+				} else if !owner.authorize(command, engine, policy) {
+					owner.manager.forgetPending(command)
+					response = protocol.ErrorResponse(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
 				} else {
 					ctx, cancel = context.WithTimeout(context.Background(), owner.manager.timeout)
 					pending = command

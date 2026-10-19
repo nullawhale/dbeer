@@ -33,7 +33,7 @@ struct ApplicationWorkspaceTests {
         let settings = try postgresSettings()
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
             credentialStore: MemoryConnectionCredentialStore(), closeDecision: { _ in .rollback },
-            helperFactory: { BackendClient(executableURL: executable) })
+            executionDecision: { _ in true }, helperFactory: { BackendClient(executableURL: executable) })
         await workspace.start()
         try #require(await workspace.library.saveConnection(name: "Primary", settings: settings))
         let profileID = try #require(workspace.library.selectedConnectionId)
@@ -98,7 +98,7 @@ struct ApplicationWorkspaceTests {
     func postgresAndMySQLRunInTheSameHelper() async throws {
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
             credentialStore: MemoryConnectionCredentialStore(), closeDecision: { _ in .rollback },
-            helperFactory: { BackendClient(executableURL: executable) })
+            executionDecision: { _ in true }, helperFactory: { BackendClient(executableURL: executable) })
         await workspace.start()
         try #require(await workspace.library.saveConnection(name: "PostgreSQL", settings: postgresSettings()))
         let pgID = try #require(workspace.library.selectedConnectionId)
@@ -134,7 +134,7 @@ struct ApplicationWorkspaceTests {
     @Test(.enabled(if: !(ProcessInfo.processInfo.environment["DBEER_TEST_DSN"] ?? "").isEmpty))
     func objectTreeStructureQuotedSelectAndSeparateDataSession() async throws {
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
-            credentialStore: MemoryConnectionCredentialStore(), helperFactory: { BackendClient(executableURL: executable) })
+            credentialStore: MemoryConnectionCredentialStore(), executionDecision: { _ in true }, helperFactory: { BackendClient(executableURL: executable) })
         await workspace.start()
         try #require(await workspace.library.saveConnection(name: "Catalog", settings: postgresSettings()))
         let profileID = try #require(workspace.library.selectedConnectionId)
@@ -194,7 +194,7 @@ struct ApplicationWorkspaceTests {
         let credentials = MemoryConnectionCredentialStore()
         let drafts = MemorySQLDocumentStore()
         let workspace = ApplicationWorkspace(connectionStore: connections, credentialStore: credentials,
-            documentStore: drafts, helperFactory: { BackendClient(executableURL: executable) })
+            documentStore: drafts, executionDecision: { _ in true }, helperFactory: { BackendClient(executableURL: executable) })
         await workspace.start()
         try #require(await workspace.library.saveConnection(name: "Script", settings: postgresSettings()))
         let profile = try #require(workspace.library.selectedConnectionId)
@@ -234,7 +234,7 @@ struct ApplicationWorkspaceTests {
         let id = document.id
         await workspace.shutdown()
         let restored = ApplicationWorkspace(connectionStore: connections, credentialStore: credentials,
-            documentStore: drafts, helperFactory: { BackendClient(executableURL: executable) })
+            documentStore: drafts, executionDecision: { _ in true }, helperFactory: { BackendClient(executableURL: executable) })
         await restored.start()
         let restoredDocument = try #require(restored.documents.first { $0.id == id })
         #expect(restoredDocument.text == "SELECT 'restore must not execute this';")

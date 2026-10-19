@@ -1,4 +1,4 @@
-{"type":"hello.ack","requestId":"hello-1","protocolVersion":2}
+{"type":"hello.ack","requestId":"hello-1","protocolVersion":3}
 {"type":"connect.result","requestId":"connect-1","sessionId":"session-1","transactionStatus":"idle","engine":"postgresql","capabilities":["execute","cancel","transactions"]}
 {"type":"query.started","requestId":"execute-1","sessionId":"session-1","queryId":"query-1"}
 {"type":"query.result","requestId":"execute-1","sessionId":"session-1","queryId":"query-1","durationMs":1.25,"columns":[{"index":0,"name":"x","typeOid":25,"engine":"postgresql","nativeType":"text"},{"index":1,"name":"x","typeOid":25,"engine":"postgresql","nativeType":"text"},{"index":2,"name":"precise","typeOid":1700,"engine":"postgresql","nativeType":"numeric"}],"rows":[[null,"","9007199254740993.123456789"],["NULL","κόσμος 🌍\nline",null]],"commandTag":"SELECT 2","rowCount":2,"displayedRowCount":2,"truncated":false,"transactionStatus":"idle"}
@@ -8,3 +8,4 @@
 {"type":"disconnect.ack","requestId":"disconnect-1","sessionId":"session-1"}
 {"type":"shutdown.ack","requestId":"shutdown-1"}
 {"type":"error","requestId":"execute-error","sessionId":"session-1","queryId":"query-error","category":"sql","message":"Fixture SQL error.","sqlState":"42601","errorPosition":27,"transactionStatus":"failedTransaction","connected":true,"outcomeUnknown":false}
+{"type":"operation.assessment","requestId":"assess-1","sessionId":"session-1","queryId":"assessment-1","assessment":{"decision":"confirm","policy":{"environment":"production","readOnly":false},"operations":[{"kind":"read","statements":[{"start":0,"end":8,"kind":"read","reason":"Read query."}]},{"kind":"destructive","statements":[{"start":0,"end":16,"kind":"destructive","reason":"Deletes rows."}]}],"authorization":"confirmation-1"}}
