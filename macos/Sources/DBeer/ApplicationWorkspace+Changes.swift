@@ -2,6 +2,7 @@ import Foundation
 
 extension ApplicationWorkspace {
     func previewGrid(_ document: SQLDocument) async {
+        document.grid?.commitEditing?()
         guard canStartOperation(document), !document.isRunning,
               let grid = document.grid, grid.pendingCount > 0, !grid.isApplying, !grid.isPreviewing else { return }
         let request = grid.request()
@@ -15,6 +16,7 @@ extension ApplicationWorkspace {
     }
 
     @discardableResult func applyGrid(_ document: SQLDocument, forClosing: Bool = false) async -> Bool {
+        document.grid?.commitEditing?()
         guard canStartOperation(document, forClosing: forClosing), !document.isRunning,
               let grid = document.grid, grid.pendingCount > 0, !grid.isApplying,
               !grid.outcomeUnknown, !grid.policyReadOnly else { return false }
@@ -54,6 +56,7 @@ extension ApplicationWorkspace {
     }
 
     func discardGrid(_ document: SQLDocument) async {
+        document.grid?.commitEditing?()
         guard canStartOperation(document), !document.isRunning,
               let grid = document.grid, !grid.isApplying else { return }
         let unknown = grid.outcomeUnknown

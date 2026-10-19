@@ -193,6 +193,7 @@ final class ApplicationWorkspace: ObservableObject {
         guard !isClosing, !documents.contains(where: { $0.profileID == id && closingDocuments.contains($0.id) }),
               disconnectingProfiles.insert(id).inserted else { return false }
         let grids = documents.filter { $0.profileID == id }.compactMap(\.grid)
+        for grid in grids { grid.commitEditing?() }
         for grid in grids { grid.isClosing = true }
         defer {
             disconnectingProfiles.remove(id)
@@ -218,6 +219,7 @@ final class ApplicationWorkspace: ObservableObject {
     func closeDocument(_ document: SQLDocument) async {
         guard canStartOperation(document), closingDocuments.insert(document.id).inserted else { return }
         let grid = document.grid
+        grid?.commitEditing?()
         grid?.isClosing = true
         defer {
             closingDocuments.remove(document.id)
@@ -245,6 +247,7 @@ final class ApplicationWorkspace: ObservableObject {
     func run(_ document: SQLDocument, sql: String? = nil) async {
         guard canStartOperation(document) else { return }
         if document.table != nil {
+            document.grid?.commitEditing?()
             guard !isClosing, document.grid?.isApplying != true else { return }
             if let grid = document.grid, grid.outcomeUnknown {
                 guard await closeDecision(.unknownApply(document.title)) == .discard else { return }
@@ -434,6 +437,7 @@ final class ApplicationWorkspace: ObservableObject {
         guard closingDocuments.isDisjoint(with: ids) else { return }
         closingDocuments.formUnion(ids)
         let grids = affected.compactMap(\.grid)
+        for grid in grids { grid.commitEditing?() }
         for grid in grids { grid.isClosing = true }
         defer {
             closingDocuments.subtract(ids)
@@ -446,14 +450,15 @@ final class ApplicationWorkspace: ObservableObject {
 
     func prepareToClose(_ scope: WorkspaceCloseScope) async -> Bool {
         guard !isClosing else { return false }
-        isClosing = true
-        defer { isClosing = false }
         let affected: [SQLDocument]
         switch scope {
         case .document(let id): affected = documents.filter { $0.id == id }
         case .profile(let id): affected = documents.filter { $0.profileID == id }
         case .application: affected = documents
         }
+        for document in affected { document.grid?.commitEditing?() }
+        isClosing = true
+        defer { isClosing = false }
         let gridLocks = affected.compactMap(\.grid).map { ($0, $0.isClosing) }
         for (grid, _) in gridLocks { grid.isClosing = true }
         defer { for (grid, wasClosing) in gridLocks { grid.isClosing = wasClosing } }

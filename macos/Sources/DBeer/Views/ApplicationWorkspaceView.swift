@@ -349,7 +349,6 @@ private struct SQLDocumentPane: View {
                     }.frame(minHeight: 180, maxHeight: .infinity)
                 }
             } else {
-                TableBrowseControls(document: document, workspace: workspace)
                 result.frame(maxHeight: .infinity)
             }
             Divider()
@@ -431,23 +430,25 @@ private struct SQLDocumentPane: View {
                     Label("\(failure.title): \(failure.message)", systemImage: "exclamationmark.circle")
                         .font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(10)
                 }
-                HStack {
-                    Text(result.commandTag ?? "Results").font(.headline)
-                    if let sets = result.resultSets, sets.count > 1 {
-                        Picker("Result Set", selection: resultSetIndex.projectedValue) {
-                            ForEach(sets.indices, id: \.self) { index in
-                                Text("\(index + 1) · \(sets[index].commandTag)").tag(index)
-                            }
-                        }.controlHover().frame(maxWidth: 240)
-                    }
-                    Spacer()
-                    Menu("Export Loaded") {
-                        Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
-                        Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
-                    }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true)
-                    Text("\(result.displayedRowCount ?? 0) rows shown")
-                    if let duration = result.durationMs { Text(String(format: "%.1f ms", duration)) }
-                }.font(.callout).padding(12)
+                if document.table == nil {
+                    HStack {
+                        Text(result.commandTag ?? "Results").font(.headline)
+                        if let sets = result.resultSets, sets.count > 1 {
+                            Picker("Result Set", selection: resultSetIndex.projectedValue) {
+                                ForEach(sets.indices, id: \.self) { index in
+                                    Text("\(index + 1) · \(sets[index].commandTag)").tag(index)
+                                }
+                            }.controlHover().frame(maxWidth: 240)
+                        }
+                        Spacer()
+                        Menu("Export Loaded") {
+                            Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
+                            Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
+                        }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true)
+                        Text("\(result.displayedRowCount ?? 0) rows shown")
+                        if let duration = result.durationMs { Text(String(format: "%.1f ms", duration)) }
+                    }.font(.callout).padding(12)
+                }
                 if let path = result.exportPath {
                     Text("Saved \(result.exportRowCount ?? 0) rows to \(path)")
                         .font(.caption).appSecondaryText().textSelection(.enabled).padding(8)
@@ -459,7 +460,7 @@ private struct SQLDocumentPane: View {
                 Divider()
                 if let columns = result.columns, !columns.isEmpty {
                     if document.table != nil, let grid = document.grid {
-                        DataGridView(document: document, workspace: workspace, grid: grid).id(ObjectIdentifier(grid))
+                        DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
                         Text("Query results are read only. Open a table from Connections to edit its data.")
                             .font(.caption).appSecondaryText().padding(8)

@@ -5,37 +5,31 @@ struct DataGridView: View {
     @ObservedObject var document: SQLDocument
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject var grid: GridDraft
+    let result: BackendMessage?
     private var editing = SwiftUI.State<GridCellEdit?>(initialValue: nil)
     private var showingColumns = SwiftUI.State(initialValue: false)
+    private var showingFilters = SwiftUI.State(initialValue: false)
+    private var showingRowDetails = SwiftUI.State(initialValue: false)
+    private var inlineDraftChanged = SwiftUI.State(initialValue: false)
 
-    init(document: SQLDocument, workspace: ApplicationWorkspace, grid: GridDraft) {
+    init(document: SQLDocument, workspace: ApplicationWorkspace, grid: GridDraft, result: BackendMessage? = nil) {
         self.document = document
         self.workspace = workspace
         self.grid = grid
+        self.result = result
+    }
+
+    private var canNavigate: Bool { TableBrowseNavigation.isEnabled(document: document, workspace: workspace) && !inlineDraftChanged.wrappedValue }
+    private var canEdit: Bool { grid.canEdit && !document.isRunning && !workspace.isClosing }
+    private var canPreview: Bool {
+        (grid.pendingCount > 0 || inlineDraftChanged.wrappedValue) && !grid.isApplying && !grid.isPreviewing && !document.isRunning &&
+            !grid.isReloading && !grid.isClosing && !workspace.isClosing && !grid.outcomeUnknown
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button("Insert Row") { grid.insert() }.controlHover().disabled(!grid.canEdit)
-                Button("Delete Selected") { grid.deleteSelected() }.controlHover().disabled(!grid.canEdit || grid.selectedRows.isEmpty)
-                Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
-                    .popover(isPresented: showingColumns.projectedValue) { columnDetails }
-                Spacer()
-                Text("\(grid.pendingCount) pending").font(.caption).appSecondaryText()
-                Button("Preview SQL") { Task { await workspace.previewGrid(document) } }.controlHover()
-                    .disabled(grid.pendingCount == 0 || grid.isApplying || grid.isPreviewing || document.isRunning || grid.isClosing || workspace.isClosing)
-                Button("Discard") { Task { await workspace.discardGrid(document) } }.controlHover()
-                    .disabled(grid.pendingCount == 0 || grid.isApplying || document.isRunning || grid.isClosing || workspace.isClosing)
-                Button("Apply") { Task { await workspace.applyGrid(document) } }.controlHover()
-                    .buttonStyle(.borderedProminent)
-                    .disabled(grid.pendingCount == 0 || !grid.canEdit)
-            }.font(.callout).padding(10)
             if let reason = grid.readOnlyReason {
                 Text("Read only: \(reason)").font(.caption).appSecondaryText().padding(8)
-            } else {
-                Text("Double-click a cell to edit. Changes stay local until Apply. Use Columns for types and read-only reasons.")
-                    .font(.caption).appSecondaryText().padding(.bottom, 8)
             }
             if grid.isApplying { ProgressView("Applying changes…").controlSize(.small).padding(8) }
             if grid.outcomeUnknown {
@@ -46,28 +40,156 @@ struct DataGridView: View {
             }
             if let error = grid.error { Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(8) }
             if let notice = grid.notice { Text(notice).appSecondaryText().padding(8) }
+            HSplitView {
+                table.frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
+                if showingRowDetails.wrappedValue {
+                    GridRowDetailsView(grid: grid, canEdit: canEdit, edit: openEditor,
+                        close: { showingRowDetails.wrappedValue = false })
+                        .frame(minWidth: 240, idealWidth: 280, maxWidth: 380)
+                }
+            }
             Divider()
-            ResultTableView(columns: grid.columns, rows: grid.displayedRows,
-                editableColumns: grid.canEdit ? grid.editableColumns : [], modifiedCells: grid.modifiedCells,
-                deletedRows: grid.deletedRows, valueKinds: grid.rows.map { $0.values.map(\.kind) },
-                selectedRows: grid.selectedRows,
-                onEditCell: grid.canEdit ? { cell in
-                    if let value = grid.value(row: cell.row, column: cell.column) {
-                        editing.wrappedValue = GridCellEdit(cell: cell, value: value, column: grid.columns[cell.column])
-                    }
-                } : nil,
-                onSelectedRows: { selected in if grid.selectedRows != selected { grid.selectedRows = selected } },
-                onDeleteRows: grid.canEdit ? { grid.deleteSelected() } : nil)
+            navigationToolbar
+            Divider()
+            changesToolbar
         }
+        .onDisappear { grid.commitEditing?() }
         .sheet(item: editing.projectedValue) { edit in
             GridCellEditor(edit: edit) { value in
-                grid.set(value, row: edit.cell.row, column: edit.cell.column)
+                // Resolve the stable row identity: inserted/deleted rows may change ordinals.
+                if let row = grid.rows.firstIndex(where: { $0.id == edit.rowID }) {
+                    grid.set(value, row: row, column: edit.cell.column)
+                }
                 editing.wrappedValue = nil
             } cancel: { editing.wrappedValue = nil }
         }
         .sheet(isPresented: Binding(get: { grid.preview != nil }, set: { if !$0 { grid.preview = nil } })) {
             GridSQLPreviewView(result: grid.preview) { grid.preview = nil }
         }
+    }
+
+    private var table: some View {
+        let presentation = grid.presentation
+        var view = ResultTableView(columns: grid.columns, rows: presentation.rows)
+        view.editableColumns = canEdit ? grid.editableColumns : []
+        view.modifiedCells = presentation.modifiedCells
+        view.deletedRows = presentation.deletedRows
+        view.valueKinds = presentation.valueKinds
+        view.selectedRows = grid.selectedRows
+        view.onInlineDraftChanged = { inlineDraftChanged.wrappedValue = $0 }
+        view.dataIdentity = presentation
+        view.onCoordinatorReady = { [weak grid] coordinator in
+            grid?.commitEditing = { [weak coordinator] in coordinator?.finishInlineEdit() }
+        }
+        if canEdit {
+            view.onEditCell = openEditor
+            view.onCommitCell = { cell, text in
+                grid.set(ChangeValue(kind: "text", value: text), row: cell.row, column: cell.column)
+            }
+            view.onDeleteRows = { finishEditing(); grid.deleteSelected() }
+            view.onSetCellValue = { cell, value in grid.set(value, row: cell.row, column: cell.column) }
+            let policies = grid.columns.indices.map { GridColumnEditing(column: grid.columns[$0], metadata: grid.metadata[$0]) }
+            view.canSetNullColumns = IndexSet(policies.indices.filter { policies[$0].allowsNull })
+            view.canSetDefaultColumns = IndexSet(policies.indices.filter { policies[$0].allowsDefault })
+            view.canSetEmptyColumns = IndexSet(policies.indices.filter { policies[$0].allowsEmptyString })
+        }
+        view.onSelectedRows = { selected in if grid.selectedRows != selected { grid.selectedRows = selected } }
+        view.onToggleRowDetails = { showingRowDetails.wrappedValue.toggle() }
+        view.sortColumn = document.tableSort.first?.column
+        view.sortAscending = document.tableSort.first?.direction != "desc"
+        if canNavigate {
+            view.onSortColumn = { index in
+                TableBrowseNavigation.sort(column: grid.columns[index].name, document: document, workspace: workspace)
+            }
+        }
+        view.documentID = document.id
+        return view
+    }
+
+    private var navigationToolbar: some View {
+        HStack(spacing: 6) {
+            Button("Insert Row") { finishEditing(); grid.insert() }.controlHover().disabled(!canEdit)
+                .accessibilityIdentifier("gridInsertRow")
+            Button("Delete Selected") { finishEditing(); grid.deleteSelected() }.controlHover()
+                .disabled(!canEdit || grid.selectedRows.isEmpty).accessibilityIdentifier("gridDeleteRows")
+            Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
+                .accessibilityIdentifier("gridColumns")
+                .popover(isPresented: showingColumns.projectedValue) { columnDetails }
+            Button {
+                showingFilters.wrappedValue.toggle()
+            } label: {
+                Label(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))",
+                    systemImage: "line.3.horizontal.decrease")
+            }.controlHover().disabled(!canNavigate).accessibilityIdentifier("gridFilter")
+                .popover(isPresented: showingFilters.projectedValue) {
+                    TableBrowseControls(document: document, workspace: workspace)
+                }
+            ControlIconButton(systemName: "sidebar.right") { showingRowDetails.wrappedValue.toggle() }
+                .help("Show row details (Space)").accessibilityLabel("Row Details")
+                .accessibilityIdentifier("gridRowDetails")
+            Spacer(minLength: 4)
+            ControlIconButton(systemName: "chevron.left") {
+                guard canNavigate, document.page > 0 else { return }
+                document.page -= 1
+                Task { await workspace.run(document) }
+            }.disabled(!canNavigate || document.page == 0)
+                .help("Previous page").accessibilityLabel("Previous page").accessibilityIdentifier("tablePreviousPage")
+            Text("Page \(document.page + 1)").font(.caption).monospacedDigit().fixedSize()
+                .help("200 rows per page").accessibilityIdentifier("tablePage")
+            ControlIconButton(systemName: "chevron.right") {
+                guard canNavigate, grid.rows.count >= 200 else { return }
+                document.page += 1
+                Task { await workspace.run(document) }
+            }.disabled(!canNavigate || grid.rows.count < 200)
+                .help("Next page").accessibilityLabel("Next page").accessibilityIdentifier("tableNextPage")
+        }
+        .font(.callout).controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)
+        .accessibilityElement(children: .contain).accessibilityIdentifier("gridNavigationToolbar")
+    }
+
+    private var changesToolbar: some View {
+        HStack(spacing: 6) {
+            Text("\(grid.selectedRows.count) of \(grid.rows.count) selected")
+                .font(.caption).monospacedDigit().fixedSize().appSecondaryText()
+                .accessibilityIdentifier("gridSelectionSummary")
+            Menu("Export") {
+                if let result {
+                    Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
+                    Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
+                }
+            }.fixedSize().controlHover().help("Export loaded rows")
+                .disabled(result == nil || grid.pendingCount > 0 || inlineDraftChanged.wrappedValue || grid.isApplying || grid.outcomeUnknown || document.isRunning)
+                .accessibilityIdentifier("gridExport")
+            Spacer(minLength: 4)
+            if grid.pendingCount > 0 {
+                Text("\(grid.pendingCount) pending").font(.caption).monospacedDigit().fixedSize().appSecondaryText()
+            } else if inlineDraftChanged.wrappedValue {
+                Text("Editing").font(.caption).appSecondaryText()
+            } else if let duration = result?.durationMs {
+                Text(String(format: "%.1f ms", duration)).font(.caption).fixedSize().appSecondaryText()
+            }
+            if canPreview {
+                Button("Preview SQL") { finishEditing(); Task { await workspace.previewGrid(document) } }.controlHover()
+                    .accessibilityIdentifier("gridPreviewSQL")
+            }
+            Button("Discard") { finishEditing(); Task { await workspace.discardGrid(document) } }.controlHover()
+                .disabled((grid.pendingCount == 0 && !inlineDraftChanged.wrappedValue) || grid.isApplying || grid.isReloading || document.isRunning || grid.isClosing || workspace.isClosing)
+                .accessibilityIdentifier("gridDiscard")
+            Button("Apply") { finishEditing(); Task { await workspace.applyGrid(document) } }.controlHover()
+                .buttonStyle(.borderedProminent).disabled((grid.pendingCount == 0 && !inlineDraftChanged.wrappedValue) || !canEdit)
+                .accessibilityIdentifier("gridApply")
+        }
+        .font(.callout).controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)
+        .accessibilityElement(children: .contain).accessibilityIdentifier("gridChangesToolbar")
+    }
+
+    private func finishEditing() { grid.commitEditing?() }
+
+    private func openEditor(_ cell: ResultGridCell) {
+        guard canEdit, grid.rows.indices.contains(cell.row), grid.columns.indices.contains(cell.column),
+              let value = grid.value(row: cell.row, column: cell.column) else { return }
+        editing.wrappedValue = GridCellEdit(cell: cell, rowID: grid.rows[cell.row].id,
+            value: value, column: grid.columns[cell.column], metadata: grid.metadata[cell.column])
     }
 
     private var columnDetails: some View {
@@ -108,8 +230,10 @@ struct DataGridView: View {
 private struct GridCellEdit: Identifiable {
     let id = UUID()
     let cell: ResultGridCell
+    let rowID: UUID
     let value: ChangeValue
     let column: ResultColumn
+    let metadata: [String: String]
 }
 
 private struct GridCellEditor: View {
@@ -129,33 +253,42 @@ private struct GridCellEditor: View {
         text = SwiftUI.State(initialValue: edit.value.value ?? "")
     }
 
+    private var policy: GridColumnEditing { GridColumnEditing(column: edit.column, metadata: edit.metadata) }
+    private var choices: [ControlSegmentPicker<String>.Choice] {
+        var result: [ControlSegmentPicker<String>.Choice] = [.init("Value", value: "value")]
+        if policy.allowsNull { result.append(.init("NULL", value: "null")) }
+        if policy.allowsDefault { result.append(.init("DEFAULT", value: "default")) }
+        return result
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Edit \(edit.column.name)").font(.title2)
-            Text("Row \(edit.cell.row + 1) · \(edit.column.nativeType)").font(.caption).appSecondaryText()
-            ControlSegmentPicker("Value", selection: kind.projectedValue, choices: [
-                .init("Value", value: "value"),
-                .init("NULL", value: "null"),
-                .init("DEFAULT", value: "default"),
-            ])
+            Text("Row \(edit.cell.row + 1) · \(policy.nativeType)").font(.caption).appSecondaryText()
+            ControlSegmentPicker("Value", selection: kind.projectedValue, choices: choices)
             if kind.wrappedValue == "value" {
-                TextEditor(text: text.projectedValue).font(.system(.body, design: .monospaced)).frame(minHeight: 150)
-                    .focused($isTextFocused)
-                    .focusEffectDisabled()
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 4)
-                            .stroke(isTextFocused ? AppPalette.accent : AppPalette.border,
-                                lineWidth: isTextFocused ? 2 : 1)
-                            .allowsHitTesting(false)
-                    }
-                HStack {
-                    Button("Empty Value") { text.wrappedValue = "" }.controlHover()
-                    Text(edit.column.encoding == "base64" ? "Enter binary data as Base64." : "An empty value is an empty string, distinct from NULL and DEFAULT.")
-                        .font(.caption).appSecondaryText()
+                if policy.usesMultilineEditor(for: edit.value) {
+                    TextEditor(text: text.projectedValue).font(.system(.body, design: .monospaced)).frame(minHeight: 150)
+                        .focused($isTextFocused).focusEffectDisabled()
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4)
+                                .stroke(isTextFocused ? AppPalette.accent : AppPalette.border,
+                                    lineWidth: isTextFocused ? 2 : 1).allowsHitTesting(false)
+                        }
+                } else {
+                    TextField("Value", text: text.projectedValue).textFieldStyle(.roundedBorder)
+                        .font(.system(.body, design: .monospaced)).focused($isTextFocused)
                 }
+                if policy.allowsEmptyString {
+                    HStack {
+                        Button("Empty String") { text.wrappedValue = "" }.controlHover()
+                        Text("An empty string is distinct from NULL and DEFAULT.").font(.caption).appSecondaryText()
+                    }
+                }
+                if policy.isBinary { Text("Enter binary data as Base64.").font(.caption).appSecondaryText() }
             } else {
                 Text(kind.wrappedValue == "null" ? "Store SQL NULL." : "Let the server use this column's default value.")
-                    .appSecondaryText().frame(minHeight: 100)
+                    .appSecondaryText().frame(minHeight: 60)
             }
             if let error = error.wrappedValue { Text(error).foregroundStyle(.orange) }
             HStack {
@@ -163,15 +296,15 @@ private struct GridCellEditor: View {
                 Spacer()
                 Button("Stage Change") {
                     if kind.wrappedValue != "value" { save(ChangeValue(kind: kind.wrappedValue)); return }
-                    if edit.column.encoding == "base64", Data(base64Encoded: text.wrappedValue) == nil {
+                    if policy.isBinary, Data(base64Encoded: text.wrappedValue) == nil {
                         error.wrappedValue = "Enter valid Base64 for a binary value."
                         return
                     }
-                    save(ChangeValue(kind: edit.column.encoding == "base64" ? "binary" : "text", value: text.wrappedValue))
+                    save(ChangeValue(kind: policy.isBinary ? "binary" : "text", value: text.wrappedValue))
                 }.controlHover().buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .accessibilityIdentifier("stageGridCellChange")
             }
-        }.padding(20).frame(width: 620)
+        }.padding(20).frame(width: policy.usesMultilineEditor(for: edit.value) ? 620 : 440)
             .tint(AppPalette.accent).focusEffectDisabled()
     }
 }

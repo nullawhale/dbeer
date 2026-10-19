@@ -26,6 +26,7 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
     weak var copyCoordinator: ResultTableView.Coordinator?
     private(set) var cellSelection: ResultGridSelection?
     private(set) var contextCell: ResultGridCell?
+    private(set) var selectsWholeRows = false
     private var nativeBackground: NSColor?
 
     override init(frame frameRect: NSRect) {
@@ -56,6 +57,7 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
 
     func clearCellSelection() {
         cellSelection = nil
+        selectsWholeRows = false
         contextCell = nil
         deselectAll(nil)
         invalidateCellSelection()
@@ -70,14 +72,27 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
     }
 
     func setRowsExternally(_ rows: IndexSet) {
-        guard let first = rows.first, let last = rows.last, numberOfColumns > 0 else { clearCellSelection(); return }
-        select(ResultGridCell(row: first, column: 0), extending: false, wholeRow: true)
-        if last != first { select(ResultGridCell(row: last, column: numberOfColumns - 1), extending: true, wholeRow: true) }
+        let validRows = rows.intersection(IndexSet(integersIn: 0..<numberOfRows))
+        let apply = {
+            self.contextCell = nil
+            self.selectsWholeRows = true
+            if let first = validRows.first, let last = validRows.last, self.numberOfColumns > 0 {
+                self.cellSelection = ResultGridSelection(anchor: ResultGridCell(row: first, column: 0),
+                    focus: ResultGridCell(row: last, column: self.numberOfColumns - 1))
+            } else { self.cellSelection = nil }
+            // A sparse external selection must stay sparse, and must never
+            // publish the intermediate first-row selection back to SwiftUI.
+            self.selectRowIndexes(validRows, byExtendingSelection: false)
+            self.invalidateCellSelection()
+        }
+        if let copyCoordinator { copyCoordinator.synchronizeSelection(apply) }
+        else { apply() }
     }
 
     private func select(_ cell: ResultGridCell, extending: Bool, wholeRow: Bool = false) {
         guard (0..<numberOfRows).contains(cell.row), (0..<numberOfColumns).contains(cell.column) else { return }
         let anchor = extending ? cellSelection?.anchor ?? cell : cell
+        selectsWholeRows = wholeRow
         cellSelection = ResultGridSelection(
             anchor: wholeRow ? ResultGridCell(row: anchor.row, column: 0) : anchor,
             focus: wholeRow ? ResultGridCell(row: cell.row, column: numberOfColumns - 1) : cell)
@@ -87,6 +102,10 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
         scrollRowToVisible(cell.row)
         scrollColumnToVisible(cell.column)
         invalidateCellSelection()
+    }
+
+    fileprivate func selectCellForEditing(_ cell: ResultGridCell) {
+        select(cell, extending: false)
     }
 
     private func invalidateCellSelection() {
@@ -108,9 +127,22 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
     override func mouseDown(with event: NSEvent) {
         guard let cell = cell(at: event) else { super.mouseDown(with: event); return }
         contextCell = nil
+        copyCoordinator?.finishInlineEdit()
         window?.makeFirstResponder(self)
-        select(cell, extending: event.modifierFlags.contains(.shift), wholeRow: event.modifierFlags.contains(.option))
-        if event.clickCount == 2 { copyCoordinator?.editCell(cell) }
+        if event.modifierFlags.contains(.command) {
+            var rows = selectedRowIndexes
+            if rows.contains(cell.row) { rows.remove(cell.row) } else { rows.insert(cell.row) }
+            let focusRow = rows.contains(cell.row) ? cell.row : (rows.last ?? cell.row)
+            cellSelection = rows.isEmpty ? nil : ResultGridSelection(
+                anchor: ResultGridCell(row: rows.first ?? cell.row, column: 0),
+                focus: ResultGridCell(row: focusRow, column: numberOfColumns - 1))
+            selectsWholeRows = true
+            selectRowIndexes(rows, byExtendingSelection: false)
+            invalidateCellSelection()
+        } else {
+            select(cell, extending: event.modifierFlags.contains(.shift), wholeRow: event.modifierFlags.contains(.option))
+        }
+        if event.clickCount == 2 { copyCoordinator?.beginInlineEdit(cell) }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -146,8 +178,18 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
             return
         }
         let focus = cellSelection?.focus ?? ResultGridCell(row: max(0, selectedRow), column: 0)
+        if [36, 76].contains(event.keyCode) {
+            if event.modifierFlags.contains(.shift) { copyCoordinator?.editCell(focus) }
+            else { copyCoordinator?.beginInlineEdit(focus) }
+            return
+        }
         if event.keyCode == 49, event.modifierFlags.contains(.shift) {
             select(focus, extending: false, wholeRow: true)
+            return
+        }
+        if event.keyCode == 49, event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+           let toggle = copyCoordinator?.onToggleRowDetails {
+            toggle()
             return
         }
         var row = focus.row
@@ -166,7 +208,7 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         contextCell = cell(at: event)
-        if let cell = contextCell, !(cellSelection?.rowRange.contains(cell.row) == true &&
+        if let cell = contextCell, !(selectedRowIndexes.contains(cell.row) &&
                                       cellSelection?.columnRange.contains(cell.column) == true) {
             select(cell, extending: false)
         }
@@ -189,6 +231,18 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
             edit.target = copyCoordinator
             edit.isEnabled = contextCell.map(copyCoordinator.canEditCell) ?? false
             menu.addItem(edit)
+            if copyCoordinator.onSetCellValue != nil {
+                for (title, action, allowed) in [
+                    ("Set NULL", #selector(ResultTableView.Coordinator.setContextNull(_:)), copyCoordinator.canSetNullColumns),
+                    ("Set DEFAULT", #selector(ResultTableView.Coordinator.setContextDefault(_:)), copyCoordinator.canSetDefaultColumns),
+                    ("Set Empty String", #selector(ResultTableView.Coordinator.setContextEmpty(_:)), copyCoordinator.canSetEmptyColumns),
+                ] {
+                    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                    item.target = copyCoordinator
+                    item.isEnabled = contextCell.map { copyCoordinator.canEditCell($0) && allowed.contains($0.column) } ?? false
+                    menu.addItem(item)
+                }
+            }
             let delete = NSMenuItem(title: "Delete Selected Rows", action: #selector(ResultTableView.Coordinator.deleteContextRows(_:)), keyEquivalent: "")
             delete.target = copyCoordinator
             delete.isEnabled = !selectedRowIndexes.isEmpty
@@ -215,7 +269,20 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
 
     fileprivate func drawCellSelection(in clipRect: NSRect, from view: NSView) {
         guard cellSelection != nil else { return }
-        let selectionRect = view.convert(selectedCellRect, from: self)
+        if selectsWholeRows {
+            let visibleRows = rows(in: convert(clipRect, from: view))
+            guard visibleRows.location != NSNotFound else { return }
+            let clippedRows = IndexSet(integersIn: visibleRows.location..<(visibleRows.location + visibleRows.length))
+            for row in selectedRowIndexes.intersection(clippedRows) {
+                let rowRect = frameOfCell(atColumn: 0, row: row)
+                    .union(frameOfCell(atColumn: numberOfColumns - 1, row: row))
+                drawSelectionRect(rowRect, in: clipRect, from: view)
+            }
+        } else { drawSelectionRect(selectedCellRect, in: clipRect, from: view) }
+    }
+
+    private func drawSelectionRect(_ rect: NSRect, in clipRect: NSRect, from view: NSView) {
+        let selectionRect = view.convert(rect, from: self)
         guard selectionRect.intersects(clipRect) else { return }
         let accent = AppPalette.nsColor(.accent)
         let fill = AppPalette.isCustom ? AppPalette.nsColor(.selection) : accent.withAlphaComponent(0.22)
@@ -293,13 +360,25 @@ struct ResultTableView: NSViewRepresentable {
     let rows: [[String?]]
     var pasteboard: NSPasteboard = .general
     var editableColumns: IndexSet = []
+    var canSetNullColumns: IndexSet = []
+    var canSetDefaultColumns: IndexSet = []
+    var canSetEmptyColumns: IndexSet = []
     var modifiedCells: Set<ResultGridCell> = []
     var deletedRows: IndexSet = []
     var valueKinds: [[String]]?
     var selectedRows: IndexSet?
+    var dataIdentity: AnyObject?
     var onEditCell: ((ResultGridCell) -> Void)?
+    var onCommitCell: ((ResultGridCell, String) -> Void)?
+    var onInlineDraftChanged: ((Bool) -> Void)?
+    var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
     var onSelectedRows: ((IndexSet) -> Void)?
     var onDeleteRows: (() -> Void)?
+    var onToggleRowDetails: (() -> Void)?
+    var sortColumn: String?
+    var sortAscending = true
+    var onSortColumn: ((Int) -> Void)?
+    var onCoordinatorReady: ((Coordinator) -> Void)?
     var documentID: UUID?
 
     func makeCoordinator() -> Coordinator { Coordinator(pasteboard: pasteboard) }
@@ -316,20 +395,31 @@ struct ResultTableView: NSViewRepresentable {
 
     private func update(_ scrollView: NSScrollView, coordinator: Coordinator) {
         coordinator.editableColumns = editableColumns
+        coordinator.canSetNullColumns = canSetNullColumns
+        coordinator.canSetDefaultColumns = canSetDefaultColumns
+        coordinator.canSetEmptyColumns = canSetEmptyColumns
         coordinator.modifiedCells = modifiedCells
         coordinator.deletedRows = deletedRows
         coordinator.valueKinds = valueKinds
         coordinator.onEditCell = onEditCell
+        coordinator.onCommitCell = onCommitCell
+        coordinator.onInlineDraftChanged = onInlineDraftChanged
+        coordinator.onSetCellValue = onSetCellValue
         coordinator.onSelectedRows = onSelectedRows
         coordinator.onDeleteRows = onDeleteRows
-        coordinator.update(columns: columns, rows: rows, in: scrollView)
+        coordinator.onToggleRowDetails = onToggleRowDetails
+        coordinator.onSortColumn = onSortColumn
+        coordinator.sortColumn = sortColumn
+        coordinator.sortAscending = sortAscending
+        coordinator.update(columns: columns, rows: rows, dataIdentity: dataIdentity, in: scrollView)
         (scrollView.documentView as? ResultGridTableView)?.appCommandDocumentID = documentID
         if let selectedRows, let table = scrollView.documentView as? ResultGridTableView,
            table.selectedRowIndexes != selectedRows { table.setRowsExternally(selectedRows) }
+        onCoordinatorReady?(coordinator)
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
         private var columns: [ResultColumn] = []
         private var rows: [[String?]] = []
         private var columnOrdinals: [NSUserInterfaceItemIdentifier: Int] = [:]
@@ -337,19 +427,41 @@ struct ResultTableView: NSViewRepresentable {
         private let pasteboard: NSPasteboard
         private weak var table: ResultGridTableView?
         var editableColumns: IndexSet = []
+        var canSetNullColumns: IndexSet = []
+        var canSetDefaultColumns: IndexSet = []
+        var canSetEmptyColumns: IndexSet = []
         var modifiedCells: Set<ResultGridCell> = []
         var deletedRows: IndexSet = []
         var valueKinds: [[String]]?
         var onEditCell: ((ResultGridCell) -> Void)?
+        var onCommitCell: ((ResultGridCell, String) -> Void)?
+        var onInlineDraftChanged: ((Bool) -> Void)?
+        var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
         var onSelectedRows: ((IndexSet) -> Void)?
         var onDeleteRows: (() -> Void)?
+        var onToggleRowDetails: (() -> Void)?
+        var sortColumn: String?
+        var sortAscending = true
+        var onSortColumn: ((Int) -> Void)?
         private var previousSelection: IndexSet = []
-        var supportsEditing: Bool { onEditCell != nil }
+        private var isSynchronizingSelection = false
+        private var previousDataIdentity: AnyObject?
+        private var renderedModifiedCells: Set<ResultGridCell> = []
+        private var renderedDeletedRows: IndexSet = []
+        private var renderedValueKinds: [[String]]?
+        private var inlineEditor: NSTextField?
+        private var editingCell: ResultGridCell?
+        private var originalInlineValue = ""
+        private var originalInlineIsSpecial = false
+        private var inlineTextChanged = false
+        private var inlineDraftIsDirty = false
+        var supportsEditing: Bool { onEditCell != nil || onCommitCell != nil }
 
         init(pasteboard: NSPasteboard = .general) { self.pasteboard = pasteboard }
 
         func makeScrollView() -> NSScrollView {
             let tableView = ResultGridTableView(frame: .zero)
+            tableView.style = .plain
             tableView.focusRingType = .none
             tableView.copyCoordinator = self
             table = tableView
@@ -380,41 +492,98 @@ struct ResultTableView: NSViewRepresentable {
             return scrollView
         }
 
-        func update(columns: [ResultColumn], rows: [[String?]], in scrollView: NSScrollView) {
+        func update(columns: [ResultColumn], rows: [[String?]], dataIdentity: AnyObject? = nil, in scrollView: NSScrollView) {
             guard let tableView = scrollView.documentView as? ResultGridTableView else { return }
             let schemaChanged = self.columns != columns
+            let rowsChanged = dataIdentity.map { previousDataIdentity !== $0 } ?? (self.rows != rows)
+            let presentationChanged = renderedModifiedCells != modifiedCells || renderedDeletedRows != deletedRows ||
+                (dataIdentity == nil && renderedValueKinds != valueKinds)
             self.columns = columns
             self.rows = rows
+            previousDataIdentity = dataIdentity
+            renderedModifiedCells = modifiedCells
+            renderedDeletedRows = deletedRows
+            renderedValueKinds = valueKinds
 
-            if schemaChanged {
-                tableView.clearCellSelection()
-                for column in tableView.tableColumns { tableView.removeTableColumn(column) }
-                columnOrdinals = [:]
-                for (ordinal, column) in columns.enumerated() {
-                    // Names can repeat in SQL results; ordinal identifiers keep every column distinct.
-                    let identifier = NSUserInterfaceItemIdentifier("result-column-\(ordinal)")
-                    let tableColumn = NSTableColumn(identifier: identifier)
-                    tableColumn.title = column.name
-                    var typeDescription = column.engine.displayName
-                    if !column.nativeType.isEmpty { typeDescription += " \(column.nativeType)" }
-                    if column.engine == .postgresql, column.typeOid != 0 { typeDescription += " (OID \(column.typeOid))" }
-                    if column.encoding == "base64" { typeDescription += " · binary as Base64" }
-                    tableColumn.headerToolTip = "\(column.name) — \(typeDescription)"
-                    tableColumn.isEditable = false
-                    tableColumn.minWidth = 70
-                    tableColumn.maxWidth = 2_000
-                    tableColumn.width = max(140, min(320, tableColumn.headerCell.cellSize.width + 24))
-                    tableColumn.resizingMask = .userResizingMask
-                    tableView.addTableColumn(tableColumn)
-                    columnOrdinals[identifier] = ordinal
+            synchronizeSelection {
+                if schemaChanged {
+                    finishInlineEdit(cancel: true)
+                    tableView.clearCellSelection()
+                    for column in tableView.tableColumns { tableView.removeTableColumn(column) }
+                    columnOrdinals = [:]
+                    for (ordinal, column) in columns.enumerated() {
+                        // Names can repeat in SQL results; ordinal identifiers keep every column distinct.
+                        let identifier = NSUserInterfaceItemIdentifier("result-column-\(ordinal)")
+                        let tableColumn = NSTableColumn(identifier: identifier)
+                        tableColumn.title = column.name
+                        var typeDescription = column.engine.displayName
+                        if !column.nativeType.isEmpty { typeDescription += " \(column.nativeType)" }
+                        if column.engine == .postgresql, column.typeOid != 0 { typeDescription += " (OID \(column.typeOid))" }
+                        if column.encoding == "base64" { typeDescription += " · binary as Base64" }
+                        tableColumn.headerToolTip = "\(column.name) — \(typeDescription)"
+                        tableColumn.isEditable = false
+                        tableColumn.minWidth = 70
+                        tableColumn.maxWidth = 2_000
+                        tableColumn.width = max(140, min(320, tableColumn.headerCell.cellSize.width + 24))
+                        tableColumn.resizingMask = .userResizingMask
+                        tableView.addTableColumn(tableColumn)
+                        columnOrdinals[identifier] = ordinal
+                    }
                 }
-            }
 
-            tableView.reloadData()
-            tableView.clampCellSelection()
+                if schemaChanged || rowsChanged {
+                    finishInlineEdit(cancel: true)
+                    let selectedRows = tableView.selectedRowIndexes
+                    tableView.reloadData()
+                    if !schemaChanged {
+                        tableView.selectRowIndexes(selectedRows.intersection(IndexSet(integersIn: 0..<rows.count)),
+                            byExtendingSelection: false)
+                    }
+                } else if presentationChanged {
+                    refreshVisibleCells(in: tableView)
+                }
+                tableView.applyApplicationPalette()
+                tableView.clampCellSelection()
+            }
+            updateSortIndicators(in: tableView)
             // Keep the document at its natural width so wide results scroll horizontally.
             tableView.frame.size.width = max(scrollView.contentSize.width,
                 tableView.tableColumns.reduce(0) { $0 + $1.width + tableView.intercellSpacing.width })
+        }
+
+        func synchronizeSelection(_ changes: () -> Void) {
+            let wasSynchronizing = isSynchronizingSelection
+            isSynchronizingSelection = true
+            defer {
+                previousSelection = table?.selectedRowIndexes ?? []
+                isSynchronizingSelection = wasSynchronizing
+            }
+            changes()
+        }
+
+        private func updateSortIndicators(in table: NSTableView) {
+            var descriptors: [NSSortDescriptor] = []
+            for (index, column) in table.tableColumns.enumerated() {
+                column.sortDescriptorPrototype = onSortColumn == nil ? nil :
+                    NSSortDescriptor(key: column.identifier.rawValue, ascending: true)
+                if columns[index].name == sortColumn {
+                    descriptors = [NSSortDescriptor(key: column.identifier.rawValue, ascending: sortAscending)]
+                }
+            }
+            // Descriptors only drive native header indicators. Rows are always
+            // sorted by the database through the parent callback.
+            if table.sortDescriptors != descriptors { table.sortDescriptors = descriptors }
+            table.headerView?.needsDisplay = true
+        }
+
+        func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+            // Header clicks are handled below; model updates do not start queries.
+        }
+
+        func tableView(_ tableView: NSTableView, didClick tableColumn: NSTableColumn) {
+            guard let index = columnOrdinals[tableColumn.identifier] else { return }
+            finishInlineEdit()
+            onSortColumn?(index)
         }
 
         @objc func copyCell(_ sender: Any?) {
@@ -423,18 +592,143 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         func canEditCell(_ cell: ResultGridCell) -> Bool {
-            editableColumns.contains(cell.column) && !deletedRows.contains(cell.row) && rows.indices.contains(cell.row)
+            editableColumns.contains(cell.column) && !deletedRows.contains(cell.row) && rows.indices.contains(cell.row) &&
+                columns.indices.contains(cell.column) && rows[cell.row].indices.contains(cell.column)
         }
 
         func editCell(_ cell: ResultGridCell) { if canEditCell(cell) { onEditCell?(cell) } }
+
+        func beginInlineEdit(_ cell: ResultGridCell) {
+            finishInlineEdit()
+            guard canEditCell(cell) else { return }
+            let value = rows[cell.row][cell.column]
+            let column = columns[cell.column]
+            guard onCommitCell != nil, column.encoding != "base64", column.typeOid != 17,
+                  !(value?.contains("\n") ?? false), (value?.count ?? 0) <= 512,
+                  let table, let window = table.window else { editCell(cell); return }
+            table.scrollRowToVisible(cell.row)
+            table.scrollColumnToVisible(cell.column)
+            let field = NSTextField(frame: table.frameOfCell(atColumn: cell.column, row: cell.row).insetBy(dx: 1, dy: 0))
+            field.identifier = NSUserInterfaceItemIdentifier("inlineGridCellEditor")
+            field.setAccessibilityIdentifier("inlineGridCellEditor")
+            field.setAccessibilityLabel("Edit \(column.name), row \(cell.row + 1)")
+            field.isEditable = true
+            field.isSelectable = true
+            field.usesSingleLineMode = true
+            field.font = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+            field.focusRingType = .none
+            field.isBezeled = true
+            field.bezelStyle = .squareBezel
+            field.backgroundColor = AppPalette.isCustom ? AppPalette.nsColor(.control) : .textBackgroundColor
+            field.textColor = AppPalette.isCustom ? AppPalette.nsColor(.text) : .textColor
+            field.stringValue = value ?? ""
+            field.placeholderString = isDefault(cell) ? "DEFAULT" : (value == nil ? "NULL" : nil)
+            originalInlineValue = field.stringValue
+            originalInlineIsSpecial = value == nil || isDefault(cell)
+            inlineTextChanged = false
+            editingCell = cell
+            inlineEditor = field
+            table.addSubview(field)
+            if window.makeFirstResponder(field) { field.currentEditor()?.selectAll(nil) }
+            field.delegate = self
+            refreshInlineEditorColors()
+        }
+
+        func finishInlineEdit(cancel: Bool = false, restoreFocus: Bool = true) {
+            guard let field = inlineEditor, let cell = editingCell else { return }
+            let value = field.currentEditor()?.string ?? field.stringValue
+            let changed = inlineValueChanged(value)
+            // Clear state before changing first responder or publishing a draft
+            // edit: both operations can synchronously re-enter this coordinator.
+            inlineEditor = nil
+            editingCell = nil
+            setInlineDraftChanged(false)
+            field.delegate = nil
+            if restoreFocus { field.window?.makeFirstResponder(table) }
+            field.removeFromSuperview()
+            if !cancel, changed, canEditCell(cell) { onCommitCell?(cell, value) }
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            if let field = notification.object as? NSTextField, field === inlineEditor {
+                inlineTextChanged = true
+                setInlineDraftChanged(inlineValueChanged(field.currentEditor()?.string ?? field.stringValue))
+            }
+        }
+
+        private func inlineValueChanged(_ value: String) -> Bool {
+            value != originalInlineValue || (originalInlineIsSpecial && inlineTextChanged)
+        }
+
+        private func setInlineDraftChanged(_ changed: Bool) {
+            guard inlineDraftIsDirty != changed else { return }
+            inlineDraftIsDirty = changed
+            onInlineDraftChanged?(changed)
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            if notification.object as? NSTextField === inlineEditor { finishInlineEdit(restoreFocus: false) }
+        }
+
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard control === inlineEditor else { return false }
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                finishInlineEdit(cancel: true)
+                return true
+            }
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                finishInlineEdit()
+                return true
+            }
+            if commandSelector == #selector(NSResponder.insertTab(_:)) || commandSelector == #selector(NSResponder.insertBacktab(_:)) {
+                let cell = editingCell
+                let backwards = commandSelector == #selector(NSResponder.insertBacktab(_:))
+                finishInlineEdit()
+                if let cell, let table, !columns.isEmpty {
+                    let step = backwards ? -1 : 1
+                    var ordinal = cell.row * columns.count + cell.column + step
+                    while ordinal >= 0, ordinal < rows.count * columns.count {
+                        let next = ResultGridCell(row: ordinal / columns.count, column: ordinal % columns.count)
+                        if canEditCell(next) {
+                            table.selectCellForEditing(next)
+                            beginInlineEdit(next)
+                            break
+                        }
+                        ordinal += step
+                    }
+                }
+                return true
+            }
+            return false
+        }
+
+        private func isDefault(_ cell: ResultGridCell) -> Bool {
+            guard let valueKinds, valueKinds.indices.contains(cell.row), valueKinds[cell.row].indices.contains(cell.column) else { return false }
+            return valueKinds[cell.row][cell.column] == "default"
+        }
         @objc func editContextCell(_ sender: Any?) {
             if let cell = table?.contextCell ?? table?.cellSelection?.focus { editCell(cell) }
+        }
+        @objc func setContextNull(_ sender: Any?) {
+            setContextValue(ChangeValue(kind: "null", value: nil), allowed: canSetNullColumns)
+        }
+        @objc func setContextDefault(_ sender: Any?) {
+            setContextValue(ChangeValue(kind: "default", value: nil), allowed: canSetDefaultColumns)
+        }
+        @objc func setContextEmpty(_ sender: Any?) {
+            setContextValue(ChangeValue(kind: "text", value: ""), allowed: canSetEmptyColumns)
+        }
+        private func setContextValue(_ value: ChangeValue, allowed: IndexSet) {
+            guard let cell = table?.contextCell ?? table?.cellSelection?.focus,
+                  canEditCell(cell), allowed.contains(cell.column) else { return }
+            finishInlineEdit(cancel: true)
+            onSetCellValue?(cell, value)
         }
         func deleteSelectedRows() { onDeleteRows?() }
         @objc func deleteContextRows(_ sender: Any?) { deleteSelectedRows() }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
-            guard let table, previousSelection != table.selectedRowIndexes else { return }
+            guard !isSynchronizingSelection, let table, previousSelection != table.selectedRowIndexes else { return }
             previousSelection = table.selectedRowIndexes
             onSelectedRows?(previousSelection)
         }
@@ -446,7 +740,8 @@ struct ResultTableView: NSViewRepresentable {
 
         @objc func copyRange(_ sender: Any?) {
             guard let selection = table?.cellSelection else { copyRows(sender); return }
-            copy(rowIndices: Array(selection.rowRange), columnIndices: Array(selection.columnRange))
+            copy(rowIndices: table?.selectsWholeRows == true ? Array(table?.selectedRowIndexes ?? []) : Array(selection.rowRange),
+                columnIndices: Array(selection.columnRange))
         }
 
         private func copy(rowIndices: [Int], columnIndices: [Int]) {
@@ -525,9 +820,10 @@ struct ResultTableView: NSViewRepresentable {
                 ?? makeCell()
             guard let field = cell.textField as? ResultTextField else { return cell }
             let value = rows[row][ordinal]
+            let defaultValue = isDefault(ResultGridCell(row: row, column: ordinal))
             let font = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
-            field.stringValue = value ?? "NULL"
-            field.font = value == nil ? NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) : font
+            field.stringValue = defaultValue ? "DEFAULT" : (value ?? "NULL")
+            field.font = value == nil || defaultValue ? NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) : font
             field.textColor = textColor(for: ResultGridCell(row: row, column: ordinal), in: tableView as? ResultGridTableView)
             cell.wantsLayer = true
             let modified = modifiedCells.contains(ResultGridCell(row: row, column: ordinal))
@@ -538,7 +834,7 @@ struct ResultTableView: NSViewRepresentable {
                         .foregroundColor: textColor(for: ResultGridCell(row: row, column: ordinal), in: tableView as? ResultGridTableView),
                         .strikethroughStyle: NSUnderlineStyle.single.rawValue])
             }
-            let accessibleValue = value.map { $0.isEmpty ? "Empty string" : $0 } ?? "SQL NULL"
+            let accessibleValue = defaultValue ? "SQL DEFAULT" : (value.map { $0.isEmpty ? "Empty string" : $0 } ?? "SQL NULL")
             field.toolTip = accessibleValue
             cell.toolTip = accessibleValue
             field.setAccessibilityLabel("\(columns[ordinal].name), row \(row + 1)")
@@ -555,6 +851,31 @@ struct ResultTableView: NSViewRepresentable {
                     if field.textColor != color { field.textColor = color }
                 }
             }
+            refreshInlineEditorColors()
+        }
+
+        private func refreshInlineEditorColors() {
+            guard let field = inlineEditor else { return }
+            let foreground = AppPalette.isCustom ? AppPalette.nsColor(.text) : NSColor.textColor
+            let background = AppPalette.isCustom ? AppPalette.nsColor(.control) : NSColor.textBackgroundColor
+            field.textColor = foreground
+            field.backgroundColor = background
+            if let editor = field.currentEditor() as? NSTextView {
+                editor.textColor = foreground
+                editor.backgroundColor = background
+                editor.insertionPointColor = AppPalette.isCustom ? AppPalette.nsColor(.accent) : .controlAccentColor
+                editor.selectedTextAttributes = [
+                    .foregroundColor: AppPalette.isCustom ? AppPalette.nsColor(.selectionText) : NSColor.selectedTextColor,
+                    .backgroundColor: AppPalette.isCustom ? AppPalette.nsColor(.selection) : NSColor.selectedTextBackgroundColor,
+                ]
+            }
+        }
+
+        private func refreshVisibleCells(in table: ResultGridTableView) {
+            let rows = table.rows(in: table.visibleRect)
+            guard rows.location != NSNotFound, rows.length > 0, !columns.isEmpty else { return }
+            table.reloadData(forRowIndexes: IndexSet(integersIn: rows.location..<(rows.location + rows.length)),
+                columnIndexes: IndexSet(integersIn: columns.indices))
         }
 
         private func textColor(for cell: ResultGridCell, in table: ResultGridTableView?) -> NSColor {

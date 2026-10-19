@@ -41,12 +41,52 @@ struct GridRow: Identifiable {
     var isInserted: Bool { original == nil }
 }
 
+/// The immutable table content is shared across selection and focus updates.
+/// Its identity changes only after the underlying draft rows change.
+final class GridPresentation {
+    let rows: [[String?]]
+    let valueKinds: [[String]]
+    let deletedRows: IndexSet
+    let modifiedCells: Set<ResultGridCell>
+    let pendingCount: Int
+
+    init(rows source: [GridRow], columnCount: Int) {
+        var rows: [[String?]] = []
+        var valueKinds: [[String]] = []
+        var deletedRows = IndexSet()
+        var modifiedCells = Set<ResultGridCell>()
+        var pendingCount = 0
+        rows.reserveCapacity(source.count)
+        valueKinds.reserveCapacity(source.count)
+        for (index, row) in source.enumerated() {
+            rows.append(row.values.map { value in
+                value.kind == "null" ? nil : (value.kind == "default" ? "<DEFAULT>" : value.value ?? "")
+            })
+            valueKinds.append(row.values.map(\.kind))
+            if row.isDeleted { deletedRows.insert(index) }
+            if row.isInserted || row.isDeleted || !row.assignments.isEmpty { pendingCount += 1 }
+            if row.isInserted {
+                for column in 0..<columnCount { modifiedCells.insert(ResultGridCell(row: index, column: column)) }
+            } else {
+                for column in row.assignments.keys { modifiedCells.insert(ResultGridCell(row: index, column: column)) }
+            }
+        }
+        self.rows = rows
+        self.valueKinds = valueKinds
+        self.deletedRows = deletedRows
+        self.modifiedCells = modifiedCells
+        self.pendingCount = pendingCount
+    }
+}
+
 @MainActor
 final class GridDraft: ObservableObject {
     let reference: TableReference
     let columns: [ResultColumn]
     let metadata: [[String: String]]
-    @Published var rows: [GridRow]
+    @Published var rows: [GridRow] {
+        didSet { cachedPresentation = nil }
+    }
     @Published var selectedRows: IndexSet = []
     @Published var isApplying = false
     @Published var isPreviewing = false
@@ -60,6 +100,9 @@ final class GridDraft: ObservableObject {
     var applySessionID: String?
     var applyQueryID: String?
     var cancelRequested = false
+    // The native grid installs a weak coordinator callback for in-progress cell edits.
+    var commitEditing: (() -> Void)?
+    private var cachedPresentation: GridPresentation?
 
     init(reference: TableReference, result: BackendMessage, metadata: [[String: String]]) {
         self.reference = reference
@@ -92,16 +135,17 @@ final class GridDraft: ObservableObject {
     }
 
     var canEdit: Bool { readOnlyReason == nil && !isApplying && !isReloading && !isClosing && !outcomeUnknown }
-    var pendingCount: Int { rows.filter { $0.isInserted || $0.isDeleted || !$0.assignments.isEmpty }.count }
-    var displayedRows: [[String?]] {
-        rows.map { row in row.values.map { value in value.kind == "null" ? nil : (value.kind == "default" ? "<DEFAULT>" : value.value ?? "") } }
+    var presentation: GridPresentation {
+        if let cachedPresentation { return cachedPresentation }
+        let presentation = GridPresentation(rows: rows, columnCount: columns.count)
+        cachedPresentation = presentation
+        return presentation
     }
-    var deletedRows: IndexSet { IndexSet(rows.indices.filter { rows[$0].isDeleted }) }
-    var modifiedCells: Set<ResultGridCell> {
-        Set(rows.indices.flatMap { row in
-            (rows[row].isInserted ? Array(columns.indices) : Array(rows[row].assignments.keys)).map { ResultGridCell(row: row, column: $0) }
-        })
-    }
+    var pendingCount: Int { presentation.pendingCount }
+    var displayedRows: [[String?]] { presentation.rows }
+    var valueKinds: [[String]] { presentation.valueKinds }
+    var deletedRows: IndexSet { presentation.deletedRows }
+    var modifiedCells: Set<ResultGridCell> { presentation.modifiedCells }
 
     func value(row: Int, column: Int) -> ChangeValue? {
         guard rows.indices.contains(row), rows[row].values.indices.contains(column) else { return nil }
