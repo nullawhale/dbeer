@@ -141,5 +141,62 @@ struct ApplicationThemeSurfaceTests {
         try expectColor(sheet.backgroundColor, nativeWindow, in: sheet.effectiveAppearance)
     }
 
-
+    @Test func editorCompletionChildWindowRetainsItsIndependentLightPaletteInsideDarkApplication() async throws {
+        let domain = "dev.dbeer.completion-surface-tests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: domain))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(domain, isDirectory: true)
+        let app = NSApplication.shared
+        let originalAppearance = app.appearance
+        let originalIcon = app.applicationIconImage
+        let store = EditorThemeStore(defaults: defaults, directory: directory)
+        let appearance = AppAppearance(defaults: defaults, editorThemes: store)
+        appearance.chooseSelection("solarized-dark")
+        appearance.start()
+        defer {
+            appearance.chooseSelection("system")
+            app.appearance = originalAppearance
+            app.applicationIconImage = originalIcon
+            defaults.removePersistentDomain(forName: domain)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let theme = try #require(store.themes.first { $0.id == "vscode-light-plus" })
+        let editor = SQLTextView(frame: NSRect(x: 0, y: 0, width: 560, height: 300))
+        editor.string = "SELECT us"
+        editor.applyTheme(theme)
+        let scroll = NSScrollView(frame: editor.frame)
+        scroll.documentView = editor
+        let window = NSWindow(contentRect: editor.frame, styleMask: [.titled, .closable],
+            backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
+        app.activate(ignoringOtherApps: true)
+        defer { window.close() }
+        try await settle(scroll, window: window)
+        try #require(window.makeFirstResponder(editor))
+        editor.setSelectedRange(NSRange(location: editor.string.utf16.count, length: 0))
+        let popup = SQLCompletionPopup()
+        defer { popup.hide() }
+        popup.show(items: [SQLCompletionItem(label: "users", detail: "Table", replacement: "users",
+            replacementRange: NSRange(location: 7, length: 2))], for: editor, accept: {})
+        let panel = try #require(window.childWindows?.first)
+        let content = try #require(panel.contentView)
+        let table = try #require(descendants(content, of: NSTableView.self).first)
+        let panelBackground = panel.backgroundColor
+        let tableBackground = table.backgroundColor
+        let selectionStyle = table.selectionHighlightStyle
+        let selectedRow = table.selectedRow
+        #expect(panel is AppThemeIndependentWindow)
+        for id in ["solarized-dark", "jetbrains-darcula", "solarized-light"] {
+            appearance.chooseSelection(id)
+            NativeButtonFocusPolicy().apply(to: panel)
+            AppThemeSurface.apply(in: panel)
+            #expect(panel.appearance?.bestMatch(from: [.aqua, .darkAqua]) == .aqua)
+            #expect(table.selectedRow == selectedRow)
+            #expect(table.selectionHighlightStyle == selectionStyle)
+            #expect(popup.selectedItem?.label == "users")
+            try expectColor(panel.backgroundColor, panelBackground, in: panel.effectiveAppearance)
+            try expectColor(table.backgroundColor, tableBackground, in: panel.effectiveAppearance)
+        }
+    }
 }

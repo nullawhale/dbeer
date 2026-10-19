@@ -5,3 +5,4 @@
 {"type":"disconnect","requestId":"disconnect-1","sessionId":"session-1"}
 {"type":"shutdown","requestId":"shutdown-1"}
 {"type":"operation.assess","requestId":"assess-1","sessionId":"session-1","queryId":"assessment-1","operations":[{"type":"execute","sql":"SELECT 1;"},{"type":"execute","sql":"DELETE FROM demo;"}]}
+{"type":"catalog","requestId":"completion-1","sessionId":"session-1","queryId":"completion-query-1","catalog":{"kind":"completion","page":1},"stream":true}

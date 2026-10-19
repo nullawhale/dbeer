@@ -330,6 +330,17 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 func catalogQuery(request protocol.CatalogRequest) (string, []any) {
 	args := []any{request.Schema, request.Object}
 	switch request.Kind {
+	case "completion":
+		return `WITH objects AS (
+SELECT TABLE_NAME AS name, IF(TABLE_TYPE='VIEW','view','table') AS kind, TABLE_SCHEMA AS ` + "`schema`" + ` FROM information_schema.TABLES
+UNION ALL SELECT ROUTINE_NAME, 'function', ROUTINE_SCHEMA FROM information_schema.ROUTINES WHERE ROUTINE_TYPE='FUNCTION'
+), page AS (
+SELECT * FROM objects WHERE (?<>'' AND ` + "`schema`" + `=?) OR (?='' AND ` + "`schema`" + ` NOT IN ('information_schema','mysql','performance_schema','sys'))
+ORDER BY ` + "`schema`" + `,name,kind LIMIT 200 OFFSET ?
+)
+SELECT name,kind,` + "`schema`" + `,COALESCE((SELECT JSON_ARRAYAGG(c.COLUMN_NAME) FROM information_schema.COLUMNS c
+ WHERE c.TABLE_SCHEMA=page.` + "`schema`" + ` AND c.TABLE_NAME=page.name AND page.kind IN ('table','view')),JSON_ARRAY()) AS columns
+FROM page ORDER BY ` + "`schema`" + `,name,kind`, []any{request.Schema, request.Schema, request.Schema, request.Page * 200}
 	case "search":
 		return `SELECT name,kind,` + "`schema`" + `,name AS identity FROM (
 SELECT TABLE_NAME AS name,IF(TABLE_TYPE='VIEW','view','table') AS kind,TABLE_SCHEMA AS ` + "`schema`" + ` FROM information_schema.TABLES

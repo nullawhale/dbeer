@@ -2,8 +2,9 @@ package postgres
 
 import (
 	"context"
-	"dbeer/helper/internal/adapter"
+	"fmt"
 
+	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
 	"github.com/jackc/pgx/v5"
 )
@@ -48,7 +49,7 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 }
 
 func catalogAccess(ctx context.Context, conn *pgx.Conn, command protocol.Command, request protocol.CatalogRequest) *protocol.Response {
-	if request.Kind == "schemas" || request.Kind == "search" {
+	if request.Kind == "schemas" || request.Kind == "search" || request.Kind == "completion" {
 		return nil
 	}
 	checks := []struct {
@@ -103,6 +104,27 @@ func catalogSQL(request protocol.CatalogRequest) (string, [][]byte, string) {
 	}
 	objectParams := params(request.Schema, request.Object)
 	switch request.Kind {
+	case "completion":
+		// Load names in batches, without inspecting table data or generating
+		// one metadata request per relation. System schemas remain available
+		// through explicit catalog browsing or a schema-scoped request.
+		return `WITH objects AS (
+SELECT c.relname::text AS name, CASE WHEN c.relkind IN ('v','m') THEN 'view' ELSE 'table' END AS kind,
+ n.nspname::text AS schema, c.oid AS relation
+FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+WHERE c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + `
+UNION ALL
+SELECT DISTINCT p.proname::text, 'function', n.nspname::text, 0::oid
+FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+WHERE p.prokind IN ('f','a','w') AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
+), page AS (
+SELECT * FROM objects WHERE ($1::text<>'' AND schema=$1::text) OR ($1::text='' AND schema NOT IN ('pg_catalog','information_schema')
+ AND schema NOT LIKE 'pg_toast%' AND schema NOT LIKE 'pg_temp_%')
+ORDER BY schema,name,kind LIMIT 200 OFFSET ($2::int * 200)
+)
+SELECT name,kind,schema,COALESCE((SELECT json_agg(a.attname::text ORDER BY a.attnum)
+ FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'[]'::json)::text AS columns
+FROM page ORDER BY schema,name,kind`, params(request.Schema, fmt.Sprint(request.Page)), ""
 	case "schemas":
 		return `SELECT nspname::text AS name, 'schema'::text AS kind FROM pg_catalog.pg_namespace
 WHERE nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp_%' AND has_schema_privilege(oid, 'USAGE') ORDER BY name`, nil, ""

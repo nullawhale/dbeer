@@ -34,8 +34,26 @@ func TestSharedCommandFixtures(t *testing.T) {
 		}
 		count++
 	}
-	if count != 7 {
+	if count != 8 {
 		t.Fatalf("expected one fixture per command, got %d", count)
+	}
+}
+
+func TestCompletionCatalogRequestValidation(t *testing.T) {
+	for _, request := range []CatalogRequest{{Kind: "completion"}, {Kind: "completion", Schema: `quoted' schema`, Page: 1}} {
+		if !request.Valid() {
+			t.Fatal("valid metadata batch rejected")
+		}
+	}
+	for _, request := range []CatalogRequest{
+		{Kind: "completion", Page: -1}, {Kind: "completion", Object: "table"},
+		{Kind: "completion", Search: "prefix"}, {Kind: "completion", ObjectKind: "table"},
+		{Kind: "completion", Sort: []CatalogSort{{Column: "name", Direction: "asc"}}},
+		{Kind: "schemas", Page: 1}, {Kind: "objects", Schema: "public", ObjectKind: "table", Page: 1},
+	} {
+		if request.Valid() {
+			t.Fatal("invalid metadata batch accepted")
+		}
 	}
 }
 

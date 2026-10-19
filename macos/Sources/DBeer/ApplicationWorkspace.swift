@@ -66,6 +66,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private(set) var isStarting = false
     @Published private(set) var catalogRoots: [UUID: [CatalogNode]] = [:]
     @Published private(set) var catalogErrors: [UUID: String] = [:]
+    @Published private var completionCatalog = SQLCompletionCatalog()
     @Published var inspection: CatalogInspection?
     @Published var catalogSearch = ""
     @Published private(set) var catalogSearchResults: [UUID: [CatalogNode]] = [:]
@@ -99,6 +100,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var disconnectingProfiles: Set<UUID> = []
     private var closingDocuments: Set<UUID> = []
     private var catalogRequests: [UUID: (id: UUID, task: Task<BackendMessage, Error>)] = [:]
+    private var completionLoads: [UUID: (id: UUID, task: Task<Void, Never>)] = [:]
     private var shutdownTask: Task<Void, Never>?
     private var started = false
     private var observations: [UUID: AnyCancellable] = [:]
@@ -178,7 +180,10 @@ final class ApplicationWorkspace: ObservableObject {
             await service.start(sharedHelper: client)
             await service.connectSavedConnection(id)
             if service.connectionState != .connected { error = service.errorMessage ?? service.connectionsError }
-            else { error = nil }
+            else {
+                error = nil
+                Task { @MainActor [weak self] in await self?.loadCompletionCatalog(id) }
+            }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -194,12 +199,14 @@ final class ApplicationWorkspace: ObservableObject {
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.profile(id)) else { return false }
+        completionLoads.removeValue(forKey: id)?.task.cancel()
         if let connecting = profileConnections[id] { await connecting.value }
         let sessions = documents.filter { $0.profileID == id }.compactMap(\.runtime)
         for session in sessions { await session.shutdown() }
         if let service = services.removeValue(forKey: id) { await service.shutdown() }
         observations[id] = nil
         catalogRoots[id] = nil
+        completionCatalog.remove(profileID: id)
         catalogErrors[id] = nil
         for document in documents where document.profileID == id {
             document.runtime = nil
@@ -712,7 +719,50 @@ final class ApplicationWorkspace: ObservableObject {
                 (node.kind == .object || node.kind == .detail || node.kind == .schema ? [node.name] : []) + collect(node.children ?? [])
             }
         }
-        return Array(Set(collect(catalogRoots[profileID] ?? []))).sorted()
+        let metadata = completionCatalog.context(profileID: profileID).catalog.flatMap {
+            [$0.schema, $0.name] + $0.columns
+        }
+        return Array(Set(collect(catalogRoots[profileID] ?? []) + metadata).subtracting([""])).sorted()
+    }
+
+    func completionContext(profileID: UUID?) -> SQLCompletionContext {
+        completionCatalog.context(profileID: profileID)
+    }
+
+    /// Uses only the existing service session. Typing and restoring documents
+    /// must never initiate a database connection or use a tab's transaction.
+    func loadCompletionCatalog(_ profileID: UUID, refresh: Bool = false) async {
+        guard shutdownTask == nil, !isClosing, !disconnectingProfiles.contains(profileID),
+              let service = services[profileID], service.connectionState == .connected,
+              let sessionID = service.sessionId else { return }
+        if let loading = completionLoads[profileID] {
+            if refresh { loading.task.cancel() }
+            else { await loading.task.value; return }
+        }
+        let loadID = UUID()
+        let task = Task { @MainActor in
+            do {
+                var records: [[String: String]] = []
+                for page in 0..<50 {
+                    try Task.checkCancellation()
+                    let reply = try await self.catalog(CatalogRequest(kind: "completion", page: page),
+                        profileID: profileID, connectedSessionID: sessionID)
+                    guard reply.truncated != true else { return }
+                    let batch = reply.catalogRecords
+                    records += batch
+                    if batch.count < 200 { break }
+                }
+                try Task.checkCancellation()
+                guard self.services[profileID]?.sessionId == sessionID else { return }
+                self.completionCatalog.record(records, request: CatalogRequest(kind: "completion"), profileID: profileID)
+            } catch {
+                // Completion metadata is optional; failures leave the editor
+                // usable and preserve names already loaded by catalog browsing.
+            }
+        }
+        completionLoads[profileID] = (loadID, task)
+        await task.value
+        if completionLoads[profileID]?.id == loadID { completionLoads[profileID] = nil }
     }
 
     private func scheduleSave() {
@@ -740,6 +790,7 @@ final class ApplicationWorkspace: ObservableObject {
                 return CatalogNode(profileID: profileID, name: name, kind: .schema, schema: name)
             }
             catalogErrors[profileID] = nil
+            if refresh { await loadCompletionCatalog(profileID, refresh: true) }
         } catch { catalogErrors[profileID] = error.localizedDescription }
     }
 
@@ -860,9 +911,19 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
-    private func catalog(_ request: CatalogRequest, profileID: UUID) async throws -> BackendMessage {
-        let client = try await ensureHelper()
-        await connectProfile(profileID)
+    private func catalog(_ request: CatalogRequest, profileID: UUID, connectedSessionID: String? = nil) async throws -> BackendMessage {
+        let client: BackendClient
+        if let connectedSessionID {
+            guard shutdownTask == nil, !helperFailed, !disconnectingProfiles.contains(profileID),
+                  services[profileID]?.sessionId == connectedSessionID,
+                  services[profileID]?.connectionState == .connected, let helper else {
+                throw CatalogFailure(message: "The profile was disconnected while loading completion metadata.")
+            }
+            client = helper
+        } else {
+            client = try await ensureHelper()
+            await connectProfile(profileID)
+        }
         guard let sessionID = services[profileID]?.sessionId else {
             throw CatalogFailure(message: services[profileID]?.errorMessage ?? "Connect to this profile before browsing objects.")
         }
@@ -875,9 +936,14 @@ final class ApplicationWorkspace: ObservableObject {
         }
         catalogRequests[profileID] = (requestID, task)
         defer { if catalogRequests[profileID]?.id == requestID { catalogRequests[profileID] = nil } }
-        let reply = try await task.value
+        let reply = try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: { task.cancel() }
         guard services[profileID]?.sessionId == sessionID else {
             throw CatalogFailure(message: "The profile was disconnected while loading this branch.")
+        }
+        if request.kind != "completion" {
+            completionCatalog.record(reply.catalogRecords, request: request, profileID: profileID)
         }
         return reply
     }
@@ -891,6 +957,8 @@ final class ApplicationWorkspace: ObservableObject {
         if let shutdownTask { await shutdownTask.value; return }
         let task = Task { @MainActor in
             await self.flushDocuments()
+            for load in self.completionLoads.values { load.task.cancel() }
+            await self.editorState.languageService.shutdown()
             if let start = self.helperStart { _ = try? await start.value }
             if let helper = self.helper { _ = await helper.shutdown() }
             await self.library.shutdown()

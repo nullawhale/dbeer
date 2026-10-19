@@ -63,6 +63,7 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
 }
 
 struct CatalogRequest: Codable, Sendable, Equatable {
+    /// `completion` returns 200 objects per page with JSON column-name arrays.
     var kind: String
     var schema: String?
     var object: String?

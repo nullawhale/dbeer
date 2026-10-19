@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -64,6 +65,30 @@ func TestMySQLCatalogRealObjectsAndStableBrowse(t *testing.T) {
 	response := catalogRequest(t, session, protocol.CatalogRequest{Kind: "schemas"})
 	if catalogRow(response, schema) == nil {
 		t.Fatal("accessible schema missing")
+	}
+	response = catalogRequest(t, session, protocol.CatalogRequest{Kind: "completion", Schema: schema})
+	completionRow := catalogRow(response, table)
+	var completionColumns []string
+	if len(completionRow) != 4 || completionRow[3] == nil || json.Unmarshal([]byte(*completionRow[3]), &completionColumns) != nil || len(completionColumns) != 6 {
+		t.Fatal("completion snapshot lost table columns")
+	}
+	for _, name := range []string{"id", "part", "parent_id", "label", "computed", "doc"} {
+		found := false
+		for _, column := range completionColumns {
+			found = found || column == name
+		}
+		if !found {
+			t.Fatal("completion snapshot lost a column")
+		}
+	}
+	if catalogRow(response, view) == nil || catalogRow(response, function) == nil || catalogRow(response, trigger) != nil {
+		t.Fatal("completion snapshot has incorrect object kinds")
+	}
+	if empty := catalogRequest(t, session, protocol.CatalogRequest{Kind: "completion", Schema: schema, Page: 100}); len(empty.Rows) != 0 {
+		t.Fatal("completion page repeated objects")
+	}
+	if empty := catalogRequest(t, session, protocol.CatalogRequest{Kind: "completion", Schema: "' OR 1=1 --"}); len(empty.Rows) != 0 {
+		t.Fatal("completion schema was interpreted as SQL")
 	}
 	for _, item := range []struct{ kind, name string }{{"table", table}, {"view", view}, {"procedure", procedure}, {"function", function}, {"trigger", trigger}} {
 		response = catalogRequest(t, session, protocol.CatalogRequest{Kind: "objects", Schema: schema, ObjectKind: item.kind})

@@ -338,6 +338,8 @@ private struct SQLDocumentPane: View {
                         onCommandEvent: { event, selection in
                             commands.handleKeyEvent(event, documentID: document.id, selection: selection)
                         }, completions: workspace.completions(profileID: document.profileID),
+                        languageService: workspace.editorState.languageService,
+                        completionContext: workspace.completionContext(profileID: document.profileID),
                         errorPosition: document.errorPosition,
                         editorTheme: effectiveEditorTheme)
                         .frame(minHeight: 160, idealHeight: 240)

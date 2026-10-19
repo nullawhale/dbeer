@@ -14,6 +14,7 @@ import (
 	"dbeer/helper/internal/postgres"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/session"
+	"dbeer/helper/internal/sqllsp"
 )
 
 type writeResult struct {
@@ -258,7 +259,11 @@ func runWithFactory(input io.Reader, output io.Writer, opener adapter.OpenFunc) 
 }
 
 func main() {
-	if err := run(os.Stdin, os.Stdout); err != nil {
+	runner := run
+	if len(os.Args) == 2 && os.Args[1] == "--language-server" {
+		runner = sqllsp.Run
+	}
+	if err := runner(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

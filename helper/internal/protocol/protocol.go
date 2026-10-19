@@ -92,7 +92,7 @@ func (request CatalogRequest) Valid() bool {
 	if request.Page < 0 || request.Page > 1000000 || len(request.Sort) > 32 || len(request.Filters) > 32 {
 		return false
 	}
-	if request.Kind != "browse" && (request.Page != 0 || len(request.Sort) != 0 || len(request.Filters) != 0) {
+	if request.Kind != "browse" && (len(request.Sort) != 0 || len(request.Filters) != 0 || request.Page != 0 && request.Kind != "completion") {
 		return false
 	}
 	for _, sort := range request.Sort {
@@ -131,6 +131,8 @@ func (request CatalogRequest) Valid() bool {
 	}
 	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger"
 	switch request.Kind {
+	case "completion":
+		return request.Object == "" && objectKind == "" && request.Identity == ""
 	case "search":
 		return request.Search != "" && request.Object == "" && objectKind == "" && request.Identity == ""
 	case "schemas":

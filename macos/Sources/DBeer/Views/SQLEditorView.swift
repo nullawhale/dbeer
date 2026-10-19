@@ -5,6 +5,7 @@ import SwiftUI
 /// including while SwiftUI unmounts that document's editor.
 @MainActor
 final class SQLEditorState {
+    let languageService = SQLLanguageService()
     fileprivate var editors: [UUID: SQLTextView] = [:]
     fileprivate var scrollOrigins: [UUID: NSPoint] = [:]
 
@@ -13,6 +14,8 @@ final class SQLEditorState {
     }
 
     func removeDocument(_ documentID: UUID) {
+        languageService.close(documentID: documentID)
+        editors[documentID]?.dismissCompletion?()
         editors[documentID] = nil
         scrollOrigins[documentID] = nil
     }
@@ -28,6 +31,8 @@ struct SQLEditorView: NSViewRepresentable {
     var onRunSelection: ((NSRange) -> Void)?
     var onCommandEvent: ((NSEvent, NSRange) -> Bool)?
     var completions: [String] = []
+    var languageService: SQLLanguageService?
+    var completionContext: SQLCompletionContext = .empty
     /// A zero-based UTF-16 offset in the document, matching NSTextView ranges.
     var errorPosition: Int?
     /// A resolved scheme is independent from the surrounding window appearance.
@@ -45,12 +50,16 @@ struct SQLEditorView: NSViewRepresentable {
         update(scrollView, coordinator: context.coordinator)
     }
 
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: Coordinator) {
+        coordinator.detach(from: scrollView)
+    }
+
     private func update(_ scrollView: NSScrollView, coordinator: Coordinator) {
         coordinator.update(text: $text, isEditable: isEditable, in: scrollView,
             editorState: editorState, documentID: documentID, engine: engine,
             selectionChanged: selectionChanged, onRunSelection: onRunSelection, onCommandEvent: onCommandEvent,
             completions: completions, errorPosition: errorPosition,
-            editorTheme: editorTheme)
+            languageService: languageService, completionContext: completionContext, editorTheme: editorTheme)
     }
 
     @MainActor
@@ -71,13 +80,61 @@ struct SQLEditorView: NSViewRepresentable {
         private var parsedResult: SQLParseResult?
         private var lastScrolledError: Int?
         private var isUpdating = false
+        private var languageService: SQLLanguageService?
+        private var diagnosticsObserver: UUID?
+        private var completionContext: SQLCompletionContext = .empty
+        private var completionTask: Task<Void, Never>?
+        private var completionGeneration = 0
+        private let completionPopup = SQLCompletionPopup()
+        private var completionSnapshot: CompletionSnapshot?
         private var editorTheme: EditorTheme?
         private var tokenStyles: [[String]: EditorThemeTokenStyle] = [:]
 
+        private struct CompletionSnapshot: Equatable {
+            let documentID: UUID
+            let text: String
+            let selection: NSRange
+            let engine: DatabaseEngine
+            let context: SQLCompletionContext
+        }
+
+        var visibleCompletionLabels: [String] { completionPopup.items.map(\.label) }
+        var selectedCompletionIndex: Int? { completionPopup.selectedIndex }
+
+        deinit {
+            completionTask?.cancel()
+            let service = languageService
+            let observer = diagnosticsObserver
+            let popup = completionPopup
+            Task { @MainActor in
+                popup.hide()
+                if let observer { service?.removeDiagnosticsObserver(observer) }
+            }
+        }
+
         init(text: Binding<String>) { self.text = text }
 
+        func detach(from scrollView: NSScrollView) {
+            if let activeDocumentID { activeState?.scrollOrigins[activeDocumentID] = scrollView.contentView.bounds.origin }
+            dismissCompletions()
+            if let diagnosticsObserver { languageService?.removeDiagnosticsObserver(diagnosticsObserver) }
+            diagnosticsObserver = nil
+            languageService = nil
+            if let editor = scrollView.documentView as? SQLTextView {
+                editor.delegate = nil
+                editor.requestCompletion = nil
+                editor.dismissCompletion = nil
+                editor.viewportChanged = nil
+                editor.completionKey = nil
+                editor.runSelection = nil
+                editor.commandEvent = nil
+            }
+            activeState = nil
+            activeDocumentID = nil
+        }
+
         func makeScrollView() -> NSScrollView {
-            let scrollView = NSScrollView(frame: .zero)
+            let scrollView = SQLScrollView(frame: .zero)
             scrollView.hasVerticalScroller = true
             scrollView.autohidesScrollers = true
             scrollView.drawsBackground = false
@@ -151,12 +208,26 @@ struct SQLEditorView: NSViewRepresentable {
                     engine: DatabaseEngine = .postgresql, selectionChanged: ((NSRange) -> Void)? = nil,
                     onRunSelection: ((NSRange) -> Void)? = nil, onCommandEvent: ((NSEvent, NSRange) -> Bool)? = nil,
                     completions: [String] = [], errorPosition: Int? = nil,
+                    languageService: SQLLanguageService? = nil, completionContext: SQLCompletionContext = .empty,
                     editorTheme: EditorTheme? = nil) {
+            if self.languageService !== languageService {
+                dismissCompletions()
+                if let diagnosticsObserver { self.languageService?.removeDiagnosticsObserver(diagnosticsObserver) }
+                self.languageService = languageService
+                diagnosticsObserver = languageService?.addDiagnosticsObserver { [weak self] documentID, _ in
+                    guard let self, self.activeDocumentID == documentID,
+                          let editor = self.activeState?.editors[documentID] else { return }
+                    self.highlight(editor)
+                }
+            }
+            if self.engine != engine || self.completionContext != completionContext { dismissCompletions() }
+            self.completionContext = completionContext
             self.text = text
             self.engine = engine
             self.selectionChanged = selectionChanged
             self.onRunSelection = onRunSelection
             self.onCommandEvent = onCommandEvent
+            if self.completionCandidates != completions { dismissCompletions() }
             self.completionCandidates = completions
             self.errorPosition = errorPosition
             if self.editorTheme != editorTheme { tokenStyles.removeAll(keepingCapacity: true) }
@@ -167,6 +238,7 @@ struct SQLEditorView: NSViewRepresentable {
             defer { isUpdating = false }
             if activeState !== state || activeDocumentID != id {
                 if let oldID = activeDocumentID { activeState?.scrollOrigins[oldID] = scrollView.contentView.bounds.origin }
+                dismissCompletions()
                 let hadFocus = scrollView.window?.firstResponder === scrollView.documentView
                 let next = editor(in: state, documentID: id)
                 scrollView.documentView = next
@@ -185,7 +257,26 @@ struct SQLEditorView: NSViewRepresentable {
             scrollView.appearance = textView.appearance
             scrollView.backgroundColor = textView.backgroundColor
             scrollView.verticalRulerView?.appearance = textView.appearance
+            completionPopup.applyTheme(editorTheme, appearance: textView.effectiveAppearance)
             textView.appCommandDocumentID = documentID
+            textView.requestCompletion = { [weak self, weak textView] in
+                guard let textView else { return }
+                self?.requestCompletion(in: textView, explicit: true)
+            }
+            textView.dismissCompletion = { [weak self] in self?.dismissCompletions() }
+            textView.viewportChanged = { [weak self, weak textView] in
+                guard let self, let textView, !self.completionPopup.items.isEmpty else { return }
+                guard self.completionSnapshot == self.snapshot(for: textView),
+                      textView.currentLineHighlightRect?.intersects(textView.visibleRect) == true else {
+                    self.dismissCompletions()
+                    return
+                }
+                self.completionPopup.reposition(for: textView)
+            }
+            textView.completionKey = { [weak self, weak textView] event in
+                guard let textView else { return false }
+                return self?.handleCompletionKey(event, in: textView) ?? false
+            }
             textView.delegate = self
             if onRunSelection != nil {
                 textView.runSelection = { [weak self] in self?.onRunSelection?($0) }
@@ -193,9 +284,11 @@ struct SQLEditorView: NSViewRepresentable {
             textView.commandEvent = onCommandEvent.map { _ in { [weak self] event, selection in
                 self?.onCommandEvent?(event, selection) ?? false
             } }
+            if !isEditable { dismissCompletions() }
             textView.isEditable = isEditable
             textView.isSelectable = true
             if textView.string != text.wrappedValue {
+                dismissCompletions()
                 let selection = textView.selectedRanges
                 textView.string = text.wrappedValue
                 let length = textView.string.utf16.count
@@ -205,6 +298,7 @@ struct SQLEditorView: NSViewRepresentable {
                     return NSValue(range: NSRange(location: location, length: min(range.length, length - location)))
                 }
             }
+            languageService?.update(documentID: id, text: textView.string, engine: engine, context: completionContext)
             highlight(textView)
             (scrollView.verticalRulerView as? SQLLineNumberRuler)?.updateLines()
             if let errorPosition, errorPosition != lastScrolledError {
@@ -228,12 +322,14 @@ struct SQLEditorView: NSViewRepresentable {
             let full = NSRange(location: 0, length: textView.string.utf16.count)
             let parsed = parse(textView.string)
             highlightExecutionFragment(textView)
+            let languageDiagnostics = activeDocumentID.flatMap { languageService?.diagnostics(documentID: $0) } ?? []
             if let editor = textView as? SQLTextView {
                 guard editor.syntaxText != textView.string || editor.syntaxEngine != engine ||
-                        editor.syntaxErrorPosition != errorPosition ||
+                        editor.syntaxDiagnostics != languageDiagnostics || editor.syntaxErrorPosition != errorPosition ||
                         editor.syntaxTheme != editorTheme else { return }
                 editor.syntaxText = textView.string
                 editor.syntaxEngine = engine
+                editor.syntaxDiagnostics = languageDiagnostics
                 editor.syntaxErrorPosition = errorPosition
                 editor.syntaxTheme = editorTheme
             }
@@ -276,8 +372,8 @@ struct SQLEditorView: NSViewRepresentable {
                     }
                 }
             }
-            textView.toolTip = parsed.diagnostics.map(\.message).joined(separator: "\n")
-            var ranges = parsed.diagnostics.map(\.range)
+            textView.toolTip = (parsed.diagnostics.map(\.message) + languageDiagnostics.map(\.message)).joined(separator: "\n")
+            var ranges = parsed.diagnostics.map(\.range) + languageDiagnostics.map(\.range)
             if let errorPosition, full.length > 0 {
                 ranges.append(NSRange(location: min(max(0, errorPosition), full.length - 1), length: 1))
             }
@@ -362,17 +458,151 @@ struct SQLEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !isUpdating, let textView = notification.object as? NSTextView, isActiveEditor(textView) else { return }
             text.wrappedValue = textView.string
+            if let activeDocumentID {
+                languageService?.update(documentID: activeDocumentID, text: textView.string,
+                    engine: engine, context: completionContext)
+            }
             highlight(textView)
             selectionChanged?(textView.selectedRange())
             (textView.enclosingScrollView?.verticalRulerView as? SQLLineNumberRuler)?.updateLines()
+            if let textView = textView as? SQLTextView { requestCompletion(in: textView, explicit: false) }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !isUpdating, let textView = notification.object as? NSTextView, isActiveEditor(textView) else { return }
+            if completionSnapshot != snapshot(for: textView) { dismissCompletions() }
             textView.needsDisplay = true
             highlightExecutionFragment(textView)
             (textView.enclosingScrollView?.verticalRulerView as? SQLLineNumberRuler)?.needsDisplay = true
             selectionChanged?(textView.selectedRange())
+        }
+
+        private func snapshot(for textView: NSTextView) -> CompletionSnapshot? {
+            guard isActiveEditor(textView), let activeDocumentID else { return nil }
+            return CompletionSnapshot(documentID: activeDocumentID, text: textView.string,
+                selection: textView.selectedRange(), engine: engine, context: completionContext)
+        }
+
+        private func dismissCompletions() {
+            completionGeneration += 1
+            completionTask?.cancel()
+            completionTask = nil
+            completionSnapshot = nil
+            completionPopup.hide()
+        }
+
+        private func requestCompletion(in textView: SQLTextView, explicit: Bool) {
+            dismissCompletions()
+            guard textView.isEditable, !textView.hasMarkedText(),
+                  textView.window?.firstResponder === textView, textView.window?.isKeyWindow == true,
+                  let snapshot = snapshot(for: textView), snapshot.selection.length == 0,
+                  !suppressesCompletion(text: snapshot.text, offset: snapshot.selection.location) else { return }
+            let source = snapshot.text as NSString
+            let offset = snapshot.selection.location
+            let input = completionInput(text: snapshot.text, offset: offset)
+            guard explicit || !input.prefix.isEmpty || (offset > 0 && source.character(at: offset - 1) == 46) else { return }
+            let fallback = localCompletions(prefix: input.prefix, quoted: input.quoted).map {
+                SQLCompletionItem(label: $0, replacement: $0, replacementRange: input.range)
+            }
+            let generation = completionGeneration
+            // A duplicate selection notification during native layout must not
+            // invalidate a request for this exact insertion point.
+            completionSnapshot = snapshot
+            if explicit { showCompletions(fallback, snapshot: snapshot, in: textView) }
+            completionTask = Task { @MainActor [weak self, weak textView] in
+                if !explicit {
+                    do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
+                }
+                guard let self, let textView, !Task.isCancelled,
+                      generation == self.completionGeneration, self.snapshot(for: textView) == snapshot else { return }
+                if !explicit { self.showCompletions(fallback, snapshot: snapshot, in: textView) }
+                guard let service = self.languageService else { return }
+                let values = await service.completion(documentID: snapshot.documentID, offset: offset)
+                guard !Task.isCancelled, generation == self.completionGeneration,
+                      self.snapshot(for: textView) == snapshot else { return }
+                if !values.isEmpty { self.showCompletions(values, snapshot: snapshot, in: textView) }
+                else if service.isAvailable { self.dismissCompletions() }
+            }
+        }
+
+        private func completionInput(text: String, offset: Int) -> (range: NSRange, prefix: String, quoted: Bool) {
+            let source = text as NSString
+            if let token = parse(text).tokens.first(where: {
+                ($0.kind == .identifier || $0.kind == .keyword) &&
+                    offset >= $0.range.location && offset <= NSMaxRange($0.range)
+            }) {
+                var prefix = source.substring(with: NSRange(location: token.range.location, length: offset - token.range.location))
+                let first = source.character(at: token.range.location)
+                let quoted = first == 34 || first == 96
+                if quoted {
+                    let quote = first == 34 ? "\"" : "`"
+                    if prefix.hasPrefix(quote) { prefix.removeFirst() }
+                    if prefix.hasSuffix(quote) { prefix.removeLast() }
+                    prefix = prefix.replacingOccurrences(of: quote + quote, with: quote)
+                }
+                return (token.range, prefix, quoted)
+            }
+            return (NSRange(location: offset, length: 0), "", false)
+        }
+
+        private func suppressesCompletion(text: String, offset: Int) -> Bool {
+            let parsed = parse(text)
+            let source = text as NSString
+            return parsed.tokens.contains { token in
+                guard token.kind == .comment || token.kind == .string,
+                      offset > token.range.location, offset <= NSMaxRange(token.range) else { return false }
+                if offset < NSMaxRange(token.range) { return true }
+                let value = source.substring(with: token.range)
+                if token.kind == .comment { return !value.hasPrefix("/*") || !value.hasSuffix("*/") }
+                return parsed.diagnostics.contains { $0.range == token.range && $0.message.hasPrefix("Unterminated") }
+            }
+        }
+
+        private func showCompletions(_ values: [SQLCompletionItem], snapshot: CompletionSnapshot, in textView: SQLTextView) {
+            guard textView.isEditable, self.snapshot(for: textView) == snapshot, textView.window?.firstResponder === textView,
+                  textView.window?.isKeyWindow == true,
+                  textView.currentLineHighlightRect?.intersects(textView.visibleRect) == true else { return }
+            let length = snapshot.text.utf16.count
+            let valid = Array(values.filter {
+                $0.replacementRange.location != NSNotFound && $0.replacementRange.location <= length &&
+                    $0.replacementRange.length <= length - $0.replacementRange.location
+            }.prefix(100))
+            guard !valid.isEmpty else { return }
+            completionSnapshot = snapshot
+            completionPopup.show(items: valid, for: textView) { [weak self, weak textView] in
+                guard let textView else { return }
+                self?.acceptCompletion(in: textView)
+            }
+        }
+
+        private func handleCompletionKey(_ event: NSEvent, in textView: SQLTextView) -> Bool {
+            guard isActiveEditor(textView) else { return false }
+            if event.keyCode == 53, completionTask != nil || !completionPopup.items.isEmpty {
+                dismissCompletions()
+                return true
+            }
+            guard !completionPopup.items.isEmpty else { return false }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags.isEmpty || flags == .numericPad || flags == [.numericPad, .function] || flags == .function else { return false }
+            switch event.keyCode {
+            case 125: completionPopup.moveSelection(by: 1)
+            case 126: completionPopup.moveSelection(by: -1)
+            case 36, 48, 76: acceptCompletion(in: textView)
+            case 53: dismissCompletions()
+            default: return false
+            }
+            return true
+        }
+
+        private func acceptCompletion(in textView: SQLTextView) {
+            guard let expected = completionSnapshot, snapshot(for: textView) == expected,
+                  let item = completionPopup.selectedItem else { dismissCompletions(); return }
+            dismissCompletions()
+            // NSTextView owns replacement, selection and a single native undo operation.
+            textView.breakUndoCoalescing()
+            textView.insertText(item.replacement, replacementRange: item.replacementRange)
+            textView.breakUndoCoalescing()
+            dismissCompletions()
         }
 
         func textView(_ textView: NSTextView, completions words: [String], forPartialWordRange charRange: NSRange,
@@ -404,6 +634,14 @@ struct SQLEditorView: NSViewRepresentable {
     }
 }
 
+@MainActor
+private final class SQLScrollView: NSScrollView {
+    override func scrollWheel(with event: NSEvent) {
+        (documentView as? SQLTextView)?.dismissCompletion?()
+        super.scrollWheel(with: event)
+    }
+}
+
 enum SQLSyntaxPalette {
     static let keyword = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
@@ -430,11 +668,16 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     var syntaxEngine: DatabaseEngine?
     var syntaxTheme: EditorTheme?
     var syntaxErrorPosition: Int?
+    var syntaxDiagnostics: [SQLLanguageDiagnostic] = []
     var executionHighlightText: String?
     var executionHighlightTheme: EditorTheme?
     var executionHighlightRange: NSRange?
     var runSelection: ((NSRange) -> Void)?
     var commandEvent: ((NSEvent, NSRange) -> Bool)?
+    var requestCompletion: (() -> Void)?
+    var dismissCompletion: (() -> Void)?
+    var viewportChanged: (() -> Void)?
+    var completionKey: ((NSEvent) -> Bool)?
     var appCommandFocus: AppCommandFocus { .sqlEditor }
     var appCommandDocumentID: UUID?
     override var undoManager: UndoManager? { documentUndo }
@@ -482,6 +725,7 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     }
 
     override func keyDown(with event: NSEvent) {
+        if completionKey?(event) == true { return }
         if commandEvent?(event, selectedRange()) == true { return }
         if commandEvent == nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 36, let runSelection {
@@ -490,6 +734,24 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
         }
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control, event.keyCode == 49 { complete(nil); return }
         super.keyDown(with: event)
+    }
+
+    override func complete(_ sender: Any?) { requestCompletion?() }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        if let window {
+            NotificationCenter.default.addObserver(self, selector: #selector(windowResignedKey),
+                name: NSWindow.didResignKeyNotification, object: window)
+        } else { dismissCompletion?() }
+    }
+
+    @objc private func windowResignedKey() { dismissCompletion?() }
+
+    override func resignFirstResponder() -> Bool {
+        dismissCompletion?()
+        return super.resignFirstResponder()
     }
 
     var currentLineHighlightRect: NSRect? {
@@ -530,9 +792,11 @@ final class SQLLineNumberRuler: NSRulerView {
     private var starts: [Int] = [0]
     private var indexedText: String?
     private(set) var lastDrawnLineCount = 0
+    private var previousScrollOrigin: NSPoint
 
     init(scrollView: NSScrollView, textView: NSTextView) {
         editor = textView
+        previousScrollOrigin = scrollView.contentView.bounds.origin
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         canDrawConcurrently = false
         clientView = textView
@@ -545,7 +809,16 @@ final class SQLLineNumberRuler: NSRulerView {
 
     required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    @objc private func scrolled() { needsDisplay = true }
+    @objc private func scrolled() {
+        let origin = scrollView?.contentView.bounds.origin ?? .zero
+        if previousScrollOrigin != origin {
+            previousScrollOrigin = origin
+            if let event = NSApp.currentEvent, event.type == .leftMouseDragged || event.type == .scrollWheel {
+                (editor as? SQLTextView)?.dismissCompletion?()
+            } else { (editor as? SQLTextView)?.viewportChanged?() }
+        }
+        needsDisplay = true
+    }
 
     func updateLines() {
         guard let editor else { return }

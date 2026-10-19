@@ -2,6 +2,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -98,6 +99,22 @@ func TestPostgresCatalogObjectsDefinitionsAndQuotedBrowse(t *testing.T) {
 	service, sqlSession, data := h.connect(), h.connect(), h.connect()
 	response := h.catalog(service, protocol.CatalogRequest{Kind: "schemas"})
 	catalogFind(t, response, schema)
+	response = h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: schema})
+	row := catalogFind(t, response, object)
+	var completionColumns []string
+	if json.Unmarshal([]byte(catalogText(t, response, row, "columns")), &completionColumns) != nil || strings.Join(completionColumns, ",") != "tenant,id,marker,nullable,doubled" {
+		t.Fatal("completion snapshot lost column names or their order")
+	}
+	catalogFind(t, response, "fixture_view")
+	catalogFind(t, response, "overloaded")
+	// Pagination must retain deterministic ordering and keep identifiers in
+	// parameters, even when a schema name resembles SQL.
+	if empty := h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: schema, Page: 1}); len(empty.Rows) != 0 {
+		t.Fatal("completion page repeated objects")
+	}
+	if empty := h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: "' OR 1=1 --"}); len(empty.Rows) != 0 {
+		t.Fatal("completion schema was interpreted as SQL")
+	}
 	for _, kind := range []string{"table", "view", "function", "procedure", "trigger"} {
 		response := h.catalog(service, protocol.CatalogRequest{Kind: "objects", Schema: schema, ObjectKind: kind})
 		if response.Type != "query.result" || len(response.Rows) == 0 {
@@ -162,6 +179,10 @@ func TestPostgresCatalogObjectsDefinitionsAndQuotedBrowse(t *testing.T) {
 	// the service session and all other connections usable.
 	exec("CREATE ROLE " + pgx.Identifier{role}.Sanitize())
 	h.query(service, "SET ROLE "+pgx.Identifier{role}.Sanitize(), "idle")
+	response = h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: schema})
+	if response.Type != "query.result" || len(response.Rows) != 0 {
+		t.Fatal("completion disclosed inaccessible objects")
+	}
 	response = h.catalog(service, protocol.CatalogRequest{Kind: "columns", Schema: schema, Object: object})
 	if response.Type != "error" || response.SQLState != "42501" || !response.Connected || response.Message != "Catalog information is unavailable or access was denied." {
 		t.Fatal("an inaccessible metadata branch was silently presented as empty")
