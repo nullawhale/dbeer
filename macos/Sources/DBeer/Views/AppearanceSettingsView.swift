@@ -32,7 +32,10 @@ struct AppearanceSettingsView: View {
                             Text(theme.name).tag(theme.id)
                         }
                     }
-                    .pickerStyle(.menu).controlHover()
+                    .pickerStyle(.menu)
+                    // Grouped forms size the row to its text; leave room for
+                    // the taller native popup before laying out its hover.
+                    .frame(minHeight: 24).controlHover()
                     .accessibilityLabel("Application theme")
                     .accessibilityIdentifier("appearanceTheme")
                 }
@@ -49,7 +52,8 @@ struct AppearanceSettingsView: View {
                         Text(theme.name).tag(theme.id)
                     }
                 }
-                .pickerStyle(.menu).controlHover()
+                .pickerStyle(.menu)
+                .frame(minHeight: 24).controlHover()
                 .accessibilityLabel("Editor color scheme")
                 .accessibilityIdentifier("editorColorScheme")
                 HStack(spacing: 8) {

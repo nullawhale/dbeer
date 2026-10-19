@@ -2,6 +2,7 @@
 
 ## Next release — unreleased
 
+- Fixed clipped hover feedback on the application theme and editor color scheme pickers in Settings.
 - Table browsing: inline editing of simple values, a Space-key inspector for the selected row, and sorting by column headers. Pagination, Columns, filters, and row actions moved to the bottom; selection, export, and applying changes share a bottom bar. Preview SQL appears only when a preview is available.
 - Fixed freezes during mouse and keyboard multiple selection: selection changes no longer reload data, and noncontiguous selected rows are preserved. Editors respect column types and distinguish empty strings, NULL, and DEFAULT.
 - All data tables and the SQL completion table use a style without outer horizontal padding or rounded rows.
