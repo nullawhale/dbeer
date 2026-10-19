@@ -59,7 +59,7 @@ struct CatalogRowHoverTests {
         let regions = descendants(outline, of: CatalogRowFeedbackView.self).filter { $0.row === row }
         #expect(regions.count == 1)
         let region = try #require(regions.first)
-        #expect(region.superview === outline)
+        #expect(region.superview === row)
         #expect(region.row === row)
         #expect(!region.usesNativeAlignment)
         #expect(region.nativeControl == nil)
@@ -214,5 +214,44 @@ struct CatalogRowHoverTests {
         #expect(replacement !== first)
         #expect(!replacement.isHovered)
         #expect(descendants(row, of: CatalogRowFeedbackView.self).count == 1)
+    }
+
+    @Test func changingTableDocumentHeightDoesNotStretchRowFeedback() async throws {
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore())
+        let root = CatalogNode(profileID: UUID(), name: "public", kind: .schema, schema: "public")
+        root.children = []
+        let window = window(for: List {
+            CatalogBranchView(node: root, workspace: workspace)
+        }.listStyle(.sidebar), width: 340)
+        defer { window.close() }
+        try await settle(window, policy: NativeButtonFocusPolicy())
+        let content = try #require(window.contentView)
+        let table = try #require(descendants(content, of: NSOutlineView.self).first)
+        let row = try #require(table.rowView(atRow: 0, makeIfNecessary: true))
+        let feedback = try #require(CatalogRowHoverAnchor.feedback(containing: row))
+        feedback.isHovered = true
+        let originalFrame = feedback.frame
+        try #require(originalFrame.width > 300)
+        try #require(originalFrame.height > 0)
+        let originalSize = table.frame.size
+
+        // Outline expansion animates the document height independently of the
+        // row. Check before another focus-policy/layout pass can repair it.
+        for delta in [CGFloat(40), 100, 150, 0] {
+            table.setFrameSize(NSSize(width: originalSize.width, height: originalSize.height + delta))
+            #expect(feedback.frame == originalFrame)
+            #expect(feedback.isHovered)
+        }
+
+        // AppKit moves and hides rows while composing disclosure snapshots.
+        // Feedback must follow immediately, without a focus-policy refresh.
+        let beforeMove = feedback.convert(feedback.feedbackRect, to: table)
+        row.setFrameOrigin(NSPoint(x: row.frame.minX, y: row.frame.minY + 24))
+        let afterMove = feedback.convert(feedback.feedbackRect, to: table)
+        #expect(abs(afterMove.minY - beforeMove.minY - 24) < 0.5)
+        row.isHidden = true
+        #expect(feedback.isHiddenOrHasHiddenAncestor)
+        await workspace.shutdown()
     }
 }

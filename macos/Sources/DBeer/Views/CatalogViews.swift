@@ -84,10 +84,14 @@ struct ProfileCatalogRow: View {
                 }
             }
             Spacer(minLength: 0)
-            if isConnected {
-                Circle().fill(.green).frame(width: 6, height: 6)
+            ZStack {
+                if isConnected {
+                    Circle().fill(.green).frame(width: 6, height: 6)
+                } else if isExpanding.wrappedValue {
+                    ProgressView().controlSize(.mini)
+                }
             }
-            if isExpanding.wrappedValue { ProgressView().controlSize(.mini) }
+            .frame(width: 16, height: 16)
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { setExpanded(true) }

@@ -12,6 +12,12 @@ extension FocusedValues {
     }
 }
 
+private enum WorkspaceChrome {
+    // Paired rows on either side of the split share their divider positions.
+    static let headerHeight: CGFloat = 36
+    static let toolbarHeight: CGFloat = 40
+}
+
 struct ApplicationWorkspaceView: View {
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var appearance: AppAppearance
@@ -29,6 +35,7 @@ struct ApplicationWorkspaceView: View {
             sidebar
             VStack(spacing: 0) {
                 documentBar
+                Divider()
                 if let error = workspace.error {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange).font(.callout).textSelection(.enabled)
@@ -131,7 +138,9 @@ struct ApplicationWorkspaceView: View {
                 .help("New Connection")
                 .accessibilityLabel("New Connection")
                 .accessibilityIdentifier("newConnection")
-            }.padding(12)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: WorkspaceChrome.headerHeight)
             Divider()
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -152,7 +161,7 @@ struct ApplicationWorkspaceView: View {
             }
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
-            .frame(minHeight: 38)
+            .frame(height: WorkspaceChrome.toolbarHeight)
             .background(AppPalette.isCustom ? AppPalette.panel : Color.primary.opacity(0.025))
             .task(id: workspace.catalogSearch) {
                 do { try await Task.sleep(for: .milliseconds(300)) }
@@ -205,9 +214,8 @@ struct ApplicationWorkspaceView: View {
                 .accessibilityIdentifier("newSQLTab")
         }
         .padding(ControlHoverAppearance.gap)
-        .frame(height: 32)
-        .background(.primary.opacity(0.025))
-        .overlay(alignment: .bottom) { Divider() }
+        .frame(height: WorkspaceChrome.headerHeight)
+        .background(AppPalette.isCustom ? AppPalette.panel : Color.primary.opacity(0.025))
     }
 }
 
@@ -328,7 +336,9 @@ private struct SQLDocumentPane: View {
                     .disabled(!commands.canPerform(.runCurrent))
                     .help(commandHelp(.runCurrent))
                     .accessibilityIdentifier("runQuery")
-            }.padding(12)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: WorkspaceChrome.toolbarHeight)
             Divider()
             if document.table == nil {
                 VSplitView {
