@@ -351,7 +351,8 @@ private struct SQLDocumentPane: View {
                         languageService: workspace.editorState.languageService,
                         completionContext: workspace.completionContext(profileID: document.profileID),
                         errorPosition: document.errorPosition,
-                        editorTheme: effectiveEditorTheme)
+                        editorTheme: effectiveEditorTheme,
+                        successfulExecutionRanges: document.successfulExecutionRanges)
                         .frame(minHeight: 160, idealHeight: 240)
                     VStack(spacing: 0) {
                         executionBar

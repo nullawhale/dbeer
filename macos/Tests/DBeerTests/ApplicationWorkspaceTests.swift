@@ -212,6 +212,7 @@ struct ApplicationWorkspaceTests {
         #expect(document.executions[2].result?.rows?.first?.first == "1")
         #expect(document.executions[3].failure?.sqlState == "42703")
         #expect(document.executions[4].status == "Skipped")
+        #expect(document.successfulExecutionRanges == document.executions.prefix(3).map(\.range))
         #expect(document.errorPosition != nil)
         #expect(workspace.history.count == 4)
         await workspace.run(document, sql: "SELECT count(*) FROM dbeer_script")
@@ -223,6 +224,7 @@ struct ApplicationWorkspaceTests {
         await script.value
         #expect(document.executions[0].failure?.category == "cancelled")
         #expect(document.executions[1].status == "Skipped")
+        #expect(document.successfulExecutionRanges.isEmpty)
         workspace.historyEnabled = false
         let recorded = workspace.history.count
         await workspace.run(document, sql: "SELECT count(*) FROM dbeer_script")

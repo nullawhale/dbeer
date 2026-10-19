@@ -37,6 +37,7 @@ struct SQLEditorView: NSViewRepresentable {
     var errorPosition: Int?
     /// A resolved scheme is independent from the surrounding window appearance.
     var editorTheme: EditorTheme? = nil
+    var successfulExecutionRanges: [NSRange] = []
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
@@ -59,7 +60,8 @@ struct SQLEditorView: NSViewRepresentable {
             editorState: editorState, documentID: documentID, engine: engine,
             selectionChanged: selectionChanged, onRunSelection: onRunSelection, onCommandEvent: onCommandEvent,
             completions: completions, errorPosition: errorPosition,
-            languageService: languageService, completionContext: completionContext, editorTheme: editorTheme)
+            languageService: languageService, completionContext: completionContext, editorTheme: editorTheme,
+            successfulExecutionRanges: successfulExecutionRanges)
     }
 
     @MainActor
@@ -209,7 +211,7 @@ struct SQLEditorView: NSViewRepresentable {
                     onRunSelection: ((NSRange) -> Void)? = nil, onCommandEvent: ((NSEvent, NSRange) -> Bool)? = nil,
                     completions: [String] = [], errorPosition: Int? = nil,
                     languageService: SQLLanguageService? = nil, completionContext: SQLCompletionContext = .empty,
-                    editorTheme: EditorTheme? = nil) {
+                    editorTheme: EditorTheme? = nil, successfulExecutionRanges: [NSRange] = []) {
             if self.languageService !== languageService {
                 dismissCompletions()
                 if let diagnosticsObserver { self.languageService?.removeDiagnosticsObserver(diagnosticsObserver) }
@@ -299,6 +301,12 @@ struct SQLEditorView: NSViewRepresentable {
                 }
             }
             languageService?.update(documentID: id, text: textView.string, engine: engine, context: completionContext)
+            let sourceLength = textView.string.utf16.count
+            textView.successfulExecutionLocations = Set(successfulExecutionRanges.compactMap { range in
+                range.location >= 0 && range.location < sourceLength && range.length > 0 &&
+                    range.length <= sourceLength - range.location
+                    ? range.location : nil
+            })
             highlight(textView)
             (scrollView.verticalRulerView as? SQLLineNumberRuler)?.updateLines()
             if let errorPosition, errorPosition != lastScrolledError {
@@ -457,6 +465,7 @@ struct SQLEditorView: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard !isUpdating, let textView = notification.object as? NSTextView, isActiveEditor(textView) else { return }
+            (textView as? SQLTextView)?.successfulExecutionLocations = []
             text.wrappedValue = textView.string
             if let activeDocumentID {
                 languageService?.update(documentID: activeDocumentID, text: textView.string,
@@ -672,6 +681,13 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     var executionHighlightText: String?
     var executionHighlightTheme: EditorTheme?
     var executionHighlightRange: NSRange?
+    var successfulExecutionLocations: Set<Int> = [] {
+        didSet {
+            if successfulExecutionLocations != oldValue {
+                (enclosingScrollView?.verticalRulerView as? SQLLineNumberRuler)?.updateLines()
+            }
+        }
+    }
     var runSelection: ((NSRange) -> Void)?
     var commandEvent: ((NSEvent, NSRange) -> Bool)?
     var requestCompletion: (() -> Void)?
@@ -792,6 +808,7 @@ final class SQLLineNumberRuler: NSRulerView {
     private var starts: [Int] = [0]
     private var indexedText: String?
     private(set) var lastDrawnLineCount = 0
+    private(set) var successfulLines: Set<Int> = []
     private var previousScrollOrigin: NSPoint
 
     init(scrollView: NSScrollView, textView: NSTextView) {
@@ -830,7 +847,12 @@ final class SQLLineNumberRuler: NSRulerView {
                 starts.append(index + 1)
             }
         }
-        ruleThickness = max(40, CGFloat(String(starts.count).count * 9 + 16))
+        successfulLines = Set(((editor as? SQLTextView)?.successfulExecutionLocations ?? []).map { lineIndex(at: $0) })
+        // Reserve the status column even before a run, so success never moves
+        // the text or changes wrapping in a long document.
+        ruleThickness = max(40, CGFloat(String(starts.count).count * 9 + 24))
+        toolTip = successfulLines.isEmpty ? nil : "Successfully executed lines: " +
+            successfulLines.sorted().map { String($0 + 1) }.joined(separator: ", ")
         needsDisplay = true
     }
 
@@ -868,6 +890,18 @@ final class SQLLineNumberRuler: NSRulerView {
             let number = "\(line + 1)" as NSString
             let width = number.size(withAttributes: lineAttributes).width
             number.draw(at: NSPoint(x: ruleThickness - width - 10, y: origin.y + 1), withAttributes: lineAttributes)
+            if successfulLines.contains(line) {
+                NSColor.systemGreen.setStroke()
+                let check = NSBezierPath()
+                check.lineWidth = 1.8
+                check.lineCapStyle = .round
+                check.lineJoinStyle = .round
+                let y = origin.y + max(0, (font.ascender - font.descender - 8) / 2) + 1
+                check.move(to: NSPoint(x: 5, y: y + 4))
+                check.line(to: NSPoint(x: 8, y: y + 7))
+                check.line(to: NSPoint(x: 13, y: y + 1))
+                check.stroke()
+            }
             if isCurrent {
                 (theme?.color("editorLineNumber.activeForeground", default: editor.textColor ?? .labelColor)
                     ?? NSColor(AppPalette.accent).withAlphaComponent(0.7)).setFill()

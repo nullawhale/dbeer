@@ -354,8 +354,10 @@ struct WorkspaceCommandTests {
         await menu.value
         #expect(document.executions.map(\.sql) == ["SELECT 20 AS value"])
         #expect(document.runtime?.result?.rows == [["20"]])
+        #expect(document.successfulExecutionRanges == [(document.text as NSString).range(of: "SELECT 20 AS value")])
         try await Task.sleep(for: .milliseconds(40))
         let ruler = try #require((editor.enclosingScrollView?.verticalRulerView as? SQLLineNumberRuler))
+        #expect(ruler.successfulLines == [1])
         try await Task.sleep(for: .milliseconds(40))
         let beforeButton = workspace.history.count
         try press("runQuery", in: content)
@@ -386,6 +388,7 @@ struct WorkspaceCommandTests {
         #expect(workspace.history.count == beforeScript + 3)
         #expect(document.executions.map(\.sql) == ["SELECT 10 AS value", "SELECT 20 AS value", "SELECT 30 AS value"])
         #expect(document.runtime?.result?.rows == [["30"]])
+        #expect(document.successfulExecutionRanges == document.executions.map(\.range))
         await workspace.shutdown()
     }
 }

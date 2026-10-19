@@ -9,8 +9,14 @@ import UniformTypeIdentifiers
 final class SQLDocument: ObservableObject, Identifiable {
     let id: UUID
     @Published var title: String
-    @Published var text: String
-    @Published var profileID: UUID?
+    @Published var text: String {
+        didSet { if text != oldValue { clearExecutionSuccess() } }
+    }
+    @Published var profileID: UUID? {
+        didSet { if profileID != oldValue { clearExecutionSuccess() } }
+    }
+    @Published private(set) var successfulExecutionRanges: [NSRange] = []
+    private(set) var executionRevision: UInt64 = 0
     @Published var runtime: WorkspaceModel?
     @Published var isRunning = false
     @Published var selection = NSRange(location: 0, length: 0)
@@ -39,6 +45,20 @@ final class SQLDocument: ObservableObject, Identifiable {
     func attach(_ model: WorkspaceModel) {
         runtime = model
         runtimeObservation = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+
+    func clearExecutionSuccess() {
+        executionRevision &+= 1
+        if !successfulExecutionRanges.isEmpty { successfulExecutionRanges = [] }
+    }
+
+    func recordExecutionSuccess(_ statement: SQLStatement, revision: UInt64) {
+        let source = text as NSString
+        let range = statement.range
+        guard revision == executionRevision, range.location >= 0, range.location <= source.length,
+              range.length > 0, range.length <= source.length - range.location,
+              source.substring(with: range) == statement.sql else { return }
+        successfulExecutionRanges.append(range)
     }
 
     func attachGrid(_ draft: GridDraft?) {
@@ -288,6 +308,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func runResolved(_ document: SQLDocument, fragment: SQLExecutionFragment, script: Bool = false) async {
         if let diagnostic = fragment.diagnostic {
+            document.clearExecutionSuccess()
             document.localError = diagnostic.message
             document.errorPosition = diagnostic.range.location
             return
@@ -301,6 +322,8 @@ final class ApplicationWorkspace: ObservableObject {
         guard document.table != nil || !statements.isEmpty else { return }
         guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
         let boundText = document.text
+        document.clearExecutionSuccess()
+        let executionRevision = document.executionRevision
         let previousGrid = document.table == nil ? nil : document.grid
         previousGrid?.isReloading = true
         document.isRunning = true
@@ -393,6 +416,9 @@ final class ApplicationWorkspace: ObservableObject {
                     document.executions[index].failure = runtime.queryFailure
                     document.executions[index].status = runtime.queryFailure?.title ?? (runtime.result == nil ? "Failed" : "Completed")
                     if runtime.queryFailure?.outcomeUnknown == true { document.executions[index].status = "Unknown outcome" }
+                    if runtime.queryFailure == nil, let result = runtime.result, result.outcomeUnknown != true {
+                        document.recordExecutionSuccess(statement, revision: executionRevision)
+                    }
                     recordHistory(document: document, sql: statement.sql, outcome: document.executions[index].status)
                     if let position = runtime.queryErrorPosition {
                         let scalars = statement.sql.unicodeScalars
