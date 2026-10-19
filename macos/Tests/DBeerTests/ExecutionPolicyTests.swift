@@ -40,6 +40,9 @@ struct ExecutionPolicyTests {
                     sid = 'session-' + str(len(policies))
                     policies[sid] = c['connection']['policy']
                     r.update(type='connect.result', sessionId=sid, engine='postgresql', capabilities=['execute','catalog','transactions'], transactionStatus='idle')
+                elif kind == 'catalog' and c['catalog']['kind'] == 'completion':
+                    print(json.dumps({'type':'query.started','requestId':c['requestId'],'sessionId':c['sessionId'],'queryId':c['queryId']}),flush=True)
+                    r.update(type='query.result',sessionId=c['sessionId'],queryId=c['queryId'],transactionStatus='idle',durationMs=1,columns=[],rows=[],commandTag='SELECT 0',rowCount=0,displayedRowCount=0,truncated=False)
                 elif kind == 'operation.assess':
                     ops = [{'kind':'destructive' if 'DELETE' in op.get('sql','') else 'write' if op['type']=='changes.apply' else 'read','statements':[]} for op in c['operations']]
                     assessment = {'decision':sys.argv[2],'policy':policies[c['sessionId']],'operations':ops}
@@ -212,12 +215,15 @@ struct ExecutionPolicyTests {
         fixture.decision = "allow"
         var confirmations: [OperationConfirmation] = []
         let (workspace, document) = try await setup(fixture) { confirmations.append($0); return false }
+        defer { Task { await workspace.shutdown() } }
         document.text = "SELECT 1; INSERT INTO demo VALUES(1);"
         document.selection = NSRange(location: 0, length: document.text.utf16.count)
         await workspace.run(document)
-        #expect(confirmations.count == 1 && confirmations[0].isScript)
-        #expect(confirmations[0].sourceSQL == document.text)
-        #expect(confirmations[0].operations.count == 2)
+        #expect(confirmations.count == 1)
+        let confirmation = try #require(confirmations.first)
+        #expect(confirmation.isScript)
+        #expect(confirmation.sourceSQL == document.text)
+        #expect(confirmation.operations.count == 2)
         #expect(fixture.commands.isEmpty)
         await workspace.shutdown()
     }
