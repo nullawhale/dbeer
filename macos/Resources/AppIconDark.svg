@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>DBeer dark application icon</title>
+  <desc>The DBeer amber database and cream foam on a transparent background.</desc>
+  <defs>
+    <linearGradient id="beer" x1="24" y1="8" x2="24" y2="45" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e6ac43"/>
+      <stop offset="1" stop-color="#ba7f20"/>
+    </linearGradient>
+  </defs>
+  <!-- The same database-and-foam mark used by the DBeer landing page. -->
+  <g transform="translate(80 80) scale(18)" stroke="#0d241c" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5">
+    <path d="M9 15c0-4 7-7 15-7s15 3 15 7v23c0 4-7 7-15 7s-15-3-15-7V15Z" fill="url(#beer)"/>
+    <path d="M9 23c0 4 7 7 15 7s15-3 15-7M9 32c0 4 7 7 15 7s15-3 15-7M9 15c0 4 7 7 15 7s15-3 15-7"/>
+    <path d="M9 17c-4-1-6-4-5-7 1-3 3-4 6-4 0-3 3-5 6-5s5 1 6 4c2-2 4-2 6-1 2 0 3 2 4 4 3-1 6 0 7 3 3 0 5 2 5 5s-3 5-6 4l-5-1c-3 3-8 3-11 0-4 2-8 2-11-1l-2-1Z" fill="#ddd8c9"/>
+    <path d="M29 21v4c0 2 1 3 3 3s3-1 3-3v-5" fill="#ddd8c9" stroke-width="2"/>
+  </g>
+</svg>

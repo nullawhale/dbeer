@@ -1,0 +1,73 @@
+# DBeer
+
+DBeer is a native SQL client for macOS 14+ on Apple Silicon, built with
+SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
+
+## Repository map
+
+- `macos/Sources/DBeer/`: application state, native UI, persistence and helper client.
+- `macos/Tests/DBeerTests/`: Swift Testing suites, including native AppKit tests.
+- `macos/AcceptanceTests/`: XCTest UI acceptance for installed application archives.
+- `helper/`: Go helper, database adapters and framed protocol transport.
+- `protocol/fixtures/`: shared Swift/Go protocol and export fixtures.
+- `assets/`: database logo sources; SwiftPM resources link to these files.
+- `macos/Resources/`: app icons and accent colors, including checked-in `Assets.car`.
+- `scripts/`: supported build, test, screenshot and release entry points.
+- `docs/`: ignored local research, plans and verification reports. Keep the
+  tracked project self-contained; builds and releases must not depend on it.
+
+## Working conventions
+
+- Keep changes focused and follow the surrounding Swift and Go conventions.
+  Use Swift 6 concurrency and respect main-actor isolation for AppKit/SwiftUI.
+- Keep database-specific SQL and capabilities in the Go adapters. When changing
+  the protocol, update both implementations and the shared fixtures together.
+- Preserve independent SQL-tab sessions, transaction state, cancellation,
+  streaming backpressure and explicit handling of uncertain commit outcomes.
+- Preserve the distinction between SQL NULL, empty strings, text `NULL`, DEFAULT,
+  exact numeric strings and binary values in editing, transport and exports.
+- Store passwords in Keychain. Profile transfer must exclude secrets and private
+  keys. Never log credentials, connection strings, SQL text or query results.
+- Keep restored documents disconnected until the user explicitly connects or
+  executes a query. Database edits require the existing preview/apply workflow.
+- Match native focus, keyboard navigation, hover behavior and light/dark themes
+  when changing controls. Reuse the existing shared control components.
+- Keep build products, caches, local databases and test artifacts in ignored
+  `build/`. Do not commit signing material or local connection settings.
+- Keep user-facing project documentation in English, following `README.md` and
+  `INSTALL.md`. Update `CHANGELOG.md` when release behavior changes.
+- Do not add Cyrillic characters, including in test fixtures or commit messages.
+
+## Build and verification
+
+- Build the signed app: `./scripts/build-app.sh`.
+  Use `CONFIGURATION=debug` for a debug build. Output: `build/DBeer.app`.
+- Run Go race and native Swift tests: `./scripts/test.sh`. This builds the app
+  and isolates test credentials in a temporary Keychain. Use this runner for
+  AppKit tests; a plain `swift test` can exit before the suite completes.
+- Run helper-only tests: `./scripts/test-go.sh` (also supported on Linux).
+- Run isolated database integration: `./scripts/test-postgres.sh`,
+  `./scripts/test-mysql.sh` and `./scripts/test-tls.sh` (Docker required).
+- Run both databases with the native suite:
+  `./scripts/test-postgres.sh ./scripts/test-mysql.sh ./scripts/test.sh --require-postgres`.
+- Installed-archive acceptance: `./scripts/test-install-update.sh`; this needs
+  full Xcode, Docker and the expected release archives. Read
+  `macos/AcceptanceTests/README.md` before running it.
+- Use the Go version in `helper/go.mod` and Swift 6 with Swift Testing.
+  Normal builds need Command Line Tools; full Xcode is only required for
+  XCTest UI acceptance and regenerating the accent color catalog.
+- After changing icons run `./scripts/build-icon.sh`. After changing accent
+  colors run `./scripts/compile-accent-colors.sh` and commit both the source
+  catalog and regenerated `Assets.car`.
+- Run checks appropriate to the change and report skipped database/UI coverage
+  accurately. Do not claim a passing suite without its completed-run summary.
+
+## Release conventions
+
+- `VERSION` and `BUILD_NUMBER` are the shared sources of release metadata.
+  Do not renumber existing release archives or overwrite them.
+- App and helper builds use the owner's persistent Apple Development identity.
+  Do not replace it with ad hoc signing or change system trust settings.
+  Temporary signing identities are restricted to disposable hosted CI.
+- `./scripts/package-release.sh` creates a local ZIP and SHA256 with
+  `CHANGELOG.md` and `INSTALL.md`; it does not publish a release.

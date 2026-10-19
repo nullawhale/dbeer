@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go-race:
+    name: Go race / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - run: ./scripts/test-go.sh
+
+  postgres:
+    name: PostgreSQL ${{ matrix.postgres }} / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres: ['16', '17', '18']
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: dbeer
+          POSTGRES_PASSWORD: dbeer_ci_only
+          POSTGRES_DB: dbeer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dbeer -d dbeer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DBEER_TEST_DSN: postgres://dbeer:dbeer_ci_only@localhost:5432/dbeer?sslmode=disable
+      DBEER_REQUIRE_POSTGRES: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - run: ./scripts/test-go.sh --require-postgres
+      - name: Verify real TLS
+        run: ./scripts/test-tls.sh
+        env:
+          DBEER_TEST_POSTGRES_IMAGE: postgres:${{ matrix.postgres }}
+
+  mysql:
+    name: MySQL ${{ matrix.mysql }} and TLS / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ['8.0', '8.4']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - name: Run required MySQL integration and TLS tests
+        run: ./scripts/test-mysql.sh
+        env:
+          DBEER_TEST_MYSQL_IMAGE: mysql:${{ matrix.mysql }}
+
+  macos:
+    name: Swift, native UI, Keychain and app / macOS arm64
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - name: Verify Apple Silicon and toolchain
+        run: |
+          test "$(uname -m)" = arm64
+          swift --version
+      - name: Build app and run fixtures, native tests and isolated Keychain
+        run: ./scripts/with-test-keychain.sh --ci-signing ./scripts/test.sh

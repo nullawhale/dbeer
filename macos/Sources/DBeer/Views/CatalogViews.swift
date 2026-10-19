@@ -1,0 +1,203 @@
+import AppKit
+import SwiftUI
+
+struct ProfileCatalogRow: View {
+    let profile: SavedConnection
+    @ObservedObject var workspace: ApplicationWorkspace
+    let edit: () -> Void
+    let delete: () -> Void
+    private var expanded = SwiftUI.State(initialValue: false)
+    private var isExpanding = SwiftUI.State(initialValue: false)
+    private var expansionError = SwiftUI.State<String?>(initialValue: nil)
+
+    init(profile: SavedConnection, workspace: ApplicationWorkspace, edit: @escaping () -> Void, delete: @escaping () -> Void) {
+        self.profile = profile
+        self.workspace = workspace
+        self.edit = edit
+        self.delete = delete
+    }
+
+    private var isConnected: Bool { workspace.services[profile.id]?.connectionState == .connected }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: Binding(get: { expanded.wrappedValue }, set: setExpanded)) {
+            catalog
+        } label: {
+            row.padding(.leading, 8)
+        }
+        .onChange(of: isConnected) { _, value in
+            if !value { expanded.wrappedValue = false }
+        }
+        .alert("Connection Failed", isPresented: Binding(get: { expansionError.wrappedValue != nil },
+            set: { if !$0 { expansionError.wrappedValue = nil } })) {
+            Button("OK", role: .cancel) { expansionError.wrappedValue = nil }
+        } message: {
+            Text(expansionError.wrappedValue ?? "The connection could not be opened.")
+        }
+        .accessibilityIdentifier("profile-\(profile.id.uuidString)")
+    }
+
+    private func setExpanded(_ value: Bool) {
+        guard value else { expanded.wrappedValue = false; return }
+        guard !isExpanding.wrappedValue else { return }
+        isExpanding.wrappedValue = true
+        Task { @MainActor in
+            defer { isExpanding.wrappedValue = false }
+            await workspace.connectProfile(profile.id)
+            guard isConnected else {
+                expansionError.wrappedValue = workspace.error ?? "The connection could not be opened."
+                return
+            }
+            expanded.wrappedValue = true
+            await workspace.loadSchemas(profile.id)
+        }
+    }
+
+    private var catalog: some View {
+        Group {
+            if !workspace.catalogSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if workspace.services[profile.id]?.connectionState != .connected {
+                    Text("Connect to search this profile.").font(.caption).foregroundStyle(.secondary)
+                } else if let results = workspace.catalogSearchResults[profile.id] {
+                    if results.isEmpty { Text("No matching objects").font(.caption).foregroundStyle(.secondary) }
+                    ForEach(results) { node in CatalogBranchView(node: node, workspace: workspace, showSchema: true) }
+                } else { ProgressView().controlSize(.small) }
+            } else if let roots = workspace.catalogRoots[profile.id] {
+                ForEach(roots) { node in CatalogBranchView(node: node, workspace: workspace) }
+            } else if workspace.catalogErrors[profile.id] == nil { ProgressView().controlSize(.small) }
+            if let error = workspace.catalogErrors[profile.id] {
+                Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                Button("Retry") { Task { await workspace.loadSchemas(profile.id, refresh: true) } }.controlHover()
+            }
+        }
+    }
+
+    private var row: some View {
+        HStack(spacing: 8) {
+            DatabaseEngineIcon(engine: profile.engine)
+            Text(profile.name).lineLimit(1)
+            Spacer(minLength: 0)
+            if isConnected {
+                Circle().fill(.green).frame(width: 6, height: 6)
+            }
+            if isExpanding.wrappedValue { ProgressView().controlSize(.mini) }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) { setExpanded(true) }
+        .onTapGesture { Task { await workspace.library.selectConnection(profile.id) } }
+        .catalogRowHover()
+        .contextMenu {
+            if isConnected {
+                Button("Disconnect") { Task { await workspace.disconnectProfile(profile.id) } }
+            } else {
+                Button("Connect") { Task { await workspace.connectProfile(profile.id) } }
+                    .disabled(workspace.services[profile.id]?.connectionState == .connecting)
+            }
+            Button("New SQL Tab") { workspace.newDocument(profileID: profile.id) }
+            Button("Refresh") { Task { await workspace.loadSchemas(profile.id, refresh: true) } }
+            Divider()
+            Button("Export Connection…") { workspace.exportProfiles([profile]) }
+            Button("Edit Connection…", action: edit)
+            Button("Delete Connection…", role: .destructive, action: delete)
+        }
+        .help("\(profile.user)@\(profile.host):\(profile.port)/\(profile.database)")
+    }
+}
+
+struct CatalogBranchView: View {
+    @ObservedObject var node: CatalogNode
+    @ObservedObject var workspace: ApplicationWorkspace
+    var showSchema = false
+
+    var body: some View {
+        Group {
+            if node.isExpandable {
+                DisclosureGroup(isExpanded: $node.isExpanded) {
+                    if node.isLoading { ProgressView().controlSize(.mini) }
+                    if let error = node.error {
+                        Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                        Button("Retry") { Task { await workspace.expand(node, refresh: true) } }.controlHover()
+                    }
+                    if let children = node.children {
+                        ForEach(children) { child in
+                            AnyView(CatalogBranchView(node: child, workspace: workspace))
+                        }
+                        if children.isEmpty { Text("No objects").font(.caption).foregroundStyle(.secondary) }
+                    }
+                } label: { row }
+                .onChange(of: node.isExpanded) { _, value in
+                    if value { Task { await workspace.expand(node) } }
+                }
+            } else { row }
+        }
+        .contextMenu {
+            if node.kind == .object {
+                Button("Structure and Definition…") { Task { await workspace.inspect(node) } }
+                if ["table", "view"].contains(node.objectKind) {
+                    Button("Open Data") { Task { await workspace.openData(node) } }
+                    Button("Generate SELECT") {
+                        Task {
+                            if let sql = await workspace.generatedSelect(node) {
+                                workspace.newDocument(profileID: node.profileID, text: sql)
+                            }
+                        }
+                    }
+                }
+                Button("Copy Name") { Task { await workspace.copyName(node) } }
+            }
+            if node.isExpandable { Button("Refresh") { Task { await workspace.expand(node, refresh: true) } } }
+        }
+    }
+
+    private var row: some View {
+        HStack(spacing: 6) {
+            Image(systemName: node.symbol).foregroundStyle(.secondary)
+            Text(node.name).lineLimit(1)
+            if showSchema { Text(node.schema).font(.caption2).foregroundStyle(.secondary) }
+        }
+        .font(.callout)
+        .padding(.leading, 8)
+        .contentShape(Rectangle())
+        .catalogRowHover()
+        .help(node.detail ?? node.name)
+        .onTapGesture(count: 2) {
+            if node.kind == .object {
+                if ["table", "view"].contains(node.objectKind) { Task { await workspace.openData(node) } }
+                else { Task { await workspace.inspect(node) } }
+            }
+        }
+    }
+}
+
+struct CatalogInspectionView: View {
+    let inspection: CatalogInspection
+    let close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(inspection.title).font(.title2)
+                Spacer()
+                Button("Done", action: close).controlHover().keyboardShortcut(.cancelAction)
+            }.padding(.horizontal, 20).padding(.top, 20)
+            if inspection.isLoading { ProgressView().padding(.horizontal, 20) }
+            if let error = inspection.error {
+                Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(.horizontal, 20)
+            }
+            if let result = inspection.structure {
+                Text("Columns").font(.headline).padding(.horizontal, 20)
+                ResultTableView(columns: result.columns ?? [], rows: result.rows ?? []).frame(minHeight: 180)
+            }
+            if let definition = inspection.definition {
+                Text("Definition").font(.headline).padding(.horizontal, 20)
+                ScrollView([.vertical, .horizontal]) {
+                    Text(definition).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(20)
+                }.frame(minHeight: 180)
+            }
+        }
+        .frame(minWidth: 760, minHeight: 500)
+        .tint(AppPalette.accent)
+        .focusEffectDisabled()
+    }
+}

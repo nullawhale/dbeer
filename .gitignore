@@ -1,0 +1,40 @@
+.DS_Store
+build/
+macos/.build/
+macos/.swiftpm/
+*.xcuserstate
+
+# Local settings, credentials, databases and signing material.
+.env
+.env.*
+!.env.example
+.local/
+.aws/
+.ssh/
+secrets/
+*.local
+*.key
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+*.keychain
+*.keychain-db
+connections.json
+workspace.json
+*.sqlite
+*.sqlite3
+*.db
+*.log
+*.zip
+*.dmg
+
+# Editor and tool caches.
+.idea/
+.vscode/
+.cache/
+coverage.out
+
+# Local research, plans and verification reports.
+/docs/
