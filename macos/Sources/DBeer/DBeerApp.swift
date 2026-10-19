@@ -10,7 +10,8 @@ struct DBeerApp: App {
             Group {
                 if let workspace = appDelegate.workspace {
                     ApplicationWorkspaceView(workspace: workspace)
-                } else { WorkspaceView(model: appDelegate.model) }
+                } else { WorkspaceView(model: appDelegate.model, editorThemes: appDelegate.editorThemes,
+                    appearance: appDelegate.appearance) }
             }
                 .frame(minWidth: 900, minHeight: 620)
                 .task { await appDelegate.start() }
@@ -25,7 +26,8 @@ struct DBeerApp: App {
         }
 
         Settings {
-            AppearanceSettingsView(appearance: appDelegate.appearance)
+            AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
+                .applicationTheme(appearance: appDelegate.appearance)
         }
     }
 }
@@ -95,7 +97,8 @@ private struct WorkspaceCommands: Commands {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let appearance = AppAppearance()
+    let appearance: AppAppearance
+    let editorThemes: EditorThemeStore
     let buttonFocusPolicy = NativeButtonFocusPolicy()
     let model: WorkspaceModel
     let workspace: ApplicationWorkspace?
@@ -113,6 +116,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
          terminationReply: (@MainActor (Bool) -> Void)? = nil) {
         self.model = model
         self.workspace = workspace
+        self.editorThemes = workspace?.editorThemes ?? EditorThemeStore()
+        self.appearance = workspace?.appearance ?? AppAppearance(editorThemes: self.editorThemes)
         self.terminationReply = terminationReply
         super.init()
     }

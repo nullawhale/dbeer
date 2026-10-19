@@ -24,6 +24,33 @@ final class ResultGridTableView: NSTableView {
     weak var copyCoordinator: ResultTableView.Coordinator?
     private(set) var cellSelection: ResultGridSelection?
     private(set) var contextCell: ResultGridCell?
+    private var nativeBackground: NSColor?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        NotificationCenter.default.addObserver(self, selector: #selector(applicationPaletteChanged),
+            name: .applicationPaletteDidChange, object: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    /// Changing application colors never reloads result data or its selection.
+    func applyApplicationPalette() {
+        if nativeBackground == nil { nativeBackground = backgroundColor }
+        let background = AppPalette.isCustom ? AppPalette.nsColor(.panel) : (nativeBackground ?? .controlBackgroundColor)
+        if backgroundColor != background { backgroundColor = background }
+        let grid = AppPalette.isCustom ? AppPalette.nsColor(.border) : NSColor.separatorColor
+        if gridColor != grid { gridColor = grid }
+        let alternating = !AppPalette.isCustom
+        if usesAlternatingRowBackgroundColors != alternating { usesAlternatingRowBackgroundColors = alternating }
+        copyCoordinator?.refreshVisibleTextColors(in: self)
+    }
+
+    @objc private func applicationPaletteChanged() {
+        applyApplicationPalette()
+        headerView?.needsDisplay = true
+        invalidateCellSelection()
+    }
 
     func clearCellSelection() {
         cellSelection = nil
@@ -65,6 +92,7 @@ final class ResultGridTableView: NSTableView {
         // A horizontal move leaves the native row selection unchanged. Its
         // row view must still repaint the cell range and clear the old border.
         enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
+        copyCoordinator?.refreshVisibleTextColors(in: self)
     }
 
     private func cell(at event: NSEvent) -> ResultGridCell? {
@@ -187,8 +215,9 @@ final class ResultGridTableView: NSTableView {
         guard cellSelection != nil else { return }
         let selectionRect = view.convert(selectedCellRect, from: self)
         guard selectionRect.intersects(clipRect) else { return }
-        let accent = NSColor(AppPalette.accent)
-        accent.withAlphaComponent(0.22).setFill()
+        let accent = AppPalette.nsColor(.accent)
+        let fill = AppPalette.isCustom ? AppPalette.nsColor(.selection) : accent.withAlphaComponent(0.22)
+        fill.setFill()
         selectionRect.intersection(clipRect).fill()
         accent.setStroke()
         let border = NSBezierPath(rect: selectionRect.insetBy(dx: 0.5, dy: 0.5))
@@ -201,10 +230,49 @@ private final class ResultGridRowView: NSTableRowView {
     weak var grid: ResultGridTableView?
 
     override func drawBackground(in dirtyRect: NSRect) {
-        super.drawBackground(in: dirtyRect)
+        if AppPalette.isCustom {
+            AppPalette.nsColor(.panel).setFill()
+            dirtyRect.fill()
+        } else {
+            super.drawBackground(in: dirtyRect)
+        }
         // Native alternating row backgrounds cover the table's background.
         // Paint the selection after that background, beneath the cell labels.
         grid?.drawCellSelection(in: dirtyRect, from: self)
+    }
+}
+
+private final class ResultGridHeaderView: NSTableHeaderView {
+    override func draw(_ dirtyRect: NSRect) {
+        guard AppPalette.isCustom, let tableView else { super.draw(dirtyRect); return }
+        AppPalette.nsColor(.control).setFill()
+        dirtyRect.fill()
+        for (index, column) in tableView.tableColumns.enumerated() {
+            let rect = headerRect(ofColumn: index)
+            guard rect.intersects(dirtyRect) else { continue }
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byTruncatingTail
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: AppPalette.nsColor(.secondaryText),
+                .paragraphStyle: paragraph,
+            ]
+            let title = column.title as NSString
+            let height = title.size(withAttributes: attributes).height
+            let sorted = !tableView.sortDescriptors.isEmpty && tableView.sortDescriptors.first?.key == column.identifier.rawValue
+            title.draw(in: NSRect(x: rect.minX + 6, y: rect.midY - height / 2,
+                width: max(0, rect.width - (sorted ? 28 : 12)), height: height), withAttributes: attributes)
+            if sorted {
+                let ascending = tableView.sortDescriptors.first?.ascending == true
+                let indicator = (ascending ? "▴" : "▾") as NSString
+                indicator.draw(in: NSRect(x: rect.maxX - 18, y: rect.midY - height / 2,
+                    width: 12, height: height), withAttributes: attributes)
+            }
+            AppPalette.nsColor(.border).setFill()
+            NSRect(x: rect.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
+        }
+        AppPalette.nsColor(.border).setFill()
+        NSRect(x: dirtyRect.minX, y: bounds.maxY - 1, width: dirtyRect.width, height: 1).fill()
     }
 }
 
@@ -291,6 +359,8 @@ struct ResultTableView: NSViewRepresentable {
             tableView.usesAlternatingRowBackgroundColors = true
             tableView.gridStyleMask = [.solidHorizontalGridLineMask, .solidVerticalGridLineMask]
             tableView.gridColor = .separatorColor
+            tableView.headerView = ResultGridHeaderView(frame: tableView.headerView?.frame ??
+                NSRect(x: 0, y: 0, width: 0, height: 23))
             tableView.intercellSpacing = NSSize(width: 8, height: 2)
             tableView.rowHeight = 24
             tableView.setAccessibilityLabel("Query results")
@@ -302,6 +372,7 @@ struct ResultTableView: NSViewRepresentable {
             scrollView.borderType = .noBorder
             scrollView.focusRingType = .none
             scrollView.documentView = tableView
+            tableView.applyApplicationPalette()
             return scrollView
         }
 
@@ -453,13 +524,15 @@ struct ResultTableView: NSViewRepresentable {
             let font = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
             field.stringValue = value ?? "NULL"
             field.font = value == nil ? NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) : font
-            field.textColor = value == nil ? .secondaryLabelColor : .labelColor
+            field.textColor = textColor(for: ResultGridCell(row: row, column: ordinal), in: tableView as? ResultGridTableView)
             cell.wantsLayer = true
             let modified = modifiedCells.contains(ResultGridCell(row: row, column: ordinal))
             cell.layer?.backgroundColor = modified ? NSColor.systemOrange.withAlphaComponent(0.15).cgColor : nil
             if deletedRows.contains(row) {
                 field.attributedStringValue = NSAttributedString(string: field.stringValue,
-                    attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor, .strikethroughStyle: NSUnderlineStyle.single.rawValue])
+                    attributes: [.font: font,
+                        .foregroundColor: textColor(for: ResultGridCell(row: row, column: ordinal), in: tableView as? ResultGridTableView),
+                        .strikethroughStyle: NSUnderlineStyle.single.rawValue])
             }
             let accessibleValue = value.map { $0.isEmpty ? "Empty string" : $0 } ?? "SQL NULL"
             field.toolTip = accessibleValue
@@ -467,6 +540,28 @@ struct ResultTableView: NSViewRepresentable {
             field.setAccessibilityLabel("\(columns[ordinal].name), row \(row + 1)")
             field.resultAccessibilityValue = accessibleValue
             return cell
+        }
+
+        fileprivate func refreshVisibleTextColors(in table: ResultGridTableView) {
+            table.enumerateAvailableRowViews { _, row in
+                for column in self.columns.indices {
+                    guard let cell = table.view(atColumn: column, row: row, makeIfNecessary: false) as? NSTableCellView,
+                          let field = cell.textField else { continue }
+                    let color = self.textColor(for: ResultGridCell(row: row, column: column), in: table)
+                    if field.textColor != color { field.textColor = color }
+                }
+            }
+        }
+
+        private func textColor(for cell: ResultGridCell, in table: ResultGridTableView?) -> NSColor {
+            let secondary = deletedRows.contains(cell.row) ||
+                (rows.indices.contains(cell.row) && rows[cell.row].indices.contains(cell.column) && rows[cell.row][cell.column] == nil)
+            guard AppPalette.isCustom else { return secondary ? .secondaryLabelColor : .labelColor }
+            if let selection = table?.cellSelection, table?.selectedRowIndexes.contains(cell.row) == true,
+               selection.columnRange.contains(cell.column) {
+                return AppPalette.nsColor(.selectionText)
+            }
+            return AppPalette.nsColor(secondary ? .secondaryText : .text)
         }
 
         private func makeCell() -> NSTableCellView {

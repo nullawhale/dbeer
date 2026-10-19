@@ -57,9 +57,9 @@ struct ProfileCatalogRow: View {
         Group {
             if !workspace.catalogSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if workspace.services[profile.id]?.connectionState != .connected {
-                    Text("Connect to search this profile.").font(.caption).foregroundStyle(.secondary)
+                    Text("Connect to search this profile.").font(.caption).appSecondaryText()
                 } else if let results = workspace.catalogSearchResults[profile.id] {
-                    if results.isEmpty { Text("No matching objects").font(.caption).foregroundStyle(.secondary) }
+                    if results.isEmpty { Text("No matching objects").font(.caption).appSecondaryText() }
                     ForEach(results) { node in CatalogBranchView(node: node, workspace: workspace, showSchema: true) }
                 } else { ProgressView().controlSize(.small) }
             } else if let roots = workspace.catalogRoots[profile.id] {
@@ -122,7 +122,7 @@ struct CatalogBranchView: View {
                         ForEach(children) { child in
                             AnyView(CatalogBranchView(node: child, workspace: workspace))
                         }
-                        if children.isEmpty { Text("No objects").font(.caption).foregroundStyle(.secondary) }
+                        if children.isEmpty { Text("No objects").font(.caption).appSecondaryText() }
                     }
                 } label: { row }
                 .onChange(of: node.isExpanded) { _, value in
@@ -151,9 +151,9 @@ struct CatalogBranchView: View {
 
     private var row: some View {
         HStack(spacing: 6) {
-            Image(systemName: node.symbol).foregroundStyle(.secondary)
+            Image(systemName: node.symbol).appSecondaryText()
             Text(node.name).lineLimit(1)
-            if showSchema { Text(node.schema).font(.caption2).foregroundStyle(.secondary) }
+            if showSchema { Text(node.schema).font(.caption2).appSecondaryText() }
         }
         .font(.callout)
         .padding(.leading, 8)

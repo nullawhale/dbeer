@@ -14,12 +14,14 @@ extension FocusedValues {
 
 struct ApplicationWorkspaceView: View {
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var appearance: AppAppearance
     @Environment(\.colorScheme) private var colorScheme
     private var editing = SwiftUI.State<SavedConnection?>(initialValue: nil)
     private var deletion = SwiftUI.State<SavedConnection?>(initialValue: nil)
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
+        self.appearance = workspace.appearance
     }
 
     var body: some View {
@@ -38,7 +40,7 @@ struct ApplicationWorkspaceView: View {
                         .id(document.id)
                 } else {
                     VStack(spacing: 12) {
-                        Image(systemName: "doc.text").font(.largeTitle).foregroundStyle(.secondary)
+                        Image(systemName: "doc.text").font(.largeTitle).appSecondaryText()
                             .accessibilityHidden(true)
                         Button("New SQL Tab") { workspace.newDocument() }.controlHover()
                     }
@@ -48,6 +50,7 @@ struct ApplicationWorkspaceView: View {
             .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(AppPalette.background).tint(AppPalette.accent)
+        .applicationTheme(appearance: appearance)
         .focusEffectDisabled()
         .focusedSceneValue(\.focusCatalogSearch, focusCatalogSearch)
         .background(WorkspaceWindowCloseGuard(workspace: workspace).frame(width: 0, height: 0))
@@ -70,16 +73,20 @@ struct ApplicationWorkspaceView: View {
                 workspace.library.isConnectionEditorPresented = false
                 editing.wrappedValue = nil
             }
+            .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.inspection) { inspection in
             CatalogInspectionView(inspection: inspection) { workspace.inspection = nil }
+                .applicationTheme(appearance: appearance)
         }
         .sheet(isPresented: $workspace.isHistoryPresented) {
             SQLHistoryView(workspace: workspace)
+                .applicationTheme(appearance: appearance)
         }
         .sheet(isPresented: Binding(get: { workspace.importPreview != nil },
             set: { if !$0 { workspace.importPreview = nil } })) {
             ProfileImportView(workspace: workspace)
+                .applicationTheme(appearance: appearance)
         }
         .alert("Delete Connection?", isPresented: Binding(get: { deletion.wrappedValue != nil },
             set: { if !$0 { deletion.wrappedValue = nil } })) {
@@ -128,7 +135,7 @@ struct ApplicationWorkspaceView: View {
             Divider()
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .appSecondaryText()
                     .accessibilityHidden(true)
                 TextField("Search object names", text: $workspace.catalogSearch)
                     .textFieldStyle(.plain)
@@ -144,8 +151,9 @@ struct ApplicationWorkspaceView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 38)
-            .background(.primary.opacity(0.025))
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 38)
+            .background(AppPalette.isCustom ? AppPalette.panel : Color.primary.opacity(0.025))
             .task(id: workspace.catalogSearch) {
                 do { try await Task.sleep(for: .milliseconds(300)) }
                 catch { return }
@@ -165,7 +173,7 @@ struct ApplicationWorkspaceView: View {
             }
         }
         .frame(minWidth: 210, idealWidth: 260, maxWidth: 340)
-        .background(AppPalette.background)
+        .background(AppPalette.isCustom ? AppPalette.sidebar : AppPalette.background)
     }
 
     private func profileRow(_ profile: SavedConnection) -> some View {
@@ -260,11 +268,16 @@ struct DocumentTab: View {
 private struct SQLDocumentPane: View {
     @ObservedObject var document: SQLDocument
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var editorThemes: EditorThemeStore
+    @ObservedObject private var appearance: AppAppearance
+    @Environment(\.colorScheme) private var colorScheme
     private var resultSetIndex = SwiftUI.State(initialValue: 0)
 
     init(document: SQLDocument, workspace: ApplicationWorkspace) {
         self.document = document
         self.workspace = workspace
+        self.editorThemes = workspace.editorThemes
+        self.appearance = workspace.appearance
     }
 
     var body: some View {
@@ -308,8 +321,9 @@ private struct SQLDocumentPane: View {
                             document.selection = selection
                             Task { await workspace.run(document) }
                         }, completions: workspace.completions(profileID: document.profileID),
-                        errorPosition: document.errorPosition)
-                        .padding(12).frame(minHeight: 160, idealHeight: 240)
+                        errorPosition: document.errorPosition,
+                        editorTheme: effectiveEditorTheme)
+                        .frame(minHeight: 160, idealHeight: 240)
                     VStack(spacing: 0) {
                         executionBar
                         result
@@ -324,10 +338,16 @@ private struct SQLDocumentPane: View {
                 Text(document.runtime?.transactionLabel ?? "No session")
                 Spacer()
                 Text(document.runtime?.connectionSummary ?? "Session opens on first Run")
-            }.font(.caption).foregroundStyle(.secondary).padding(8)
+            }.font(.caption).appSecondaryText().padding(8)
         }
         .onChange(of: document.selectedExecution) { _, _ in resultSetIndex.wrappedValue = 0 }
         .onChange(of: document.isRunning) { _, value in if value { resultSetIndex.wrappedValue = 0 } }
+    }
+
+    private var effectiveEditorTheme: EditorTheme {
+        if editorThemes.selectedThemeID == EditorThemeStore.automaticID,
+           let theme = appearance.selectedColorTheme { return theme }
+        return editorThemes.effectiveTheme(isDark: colorScheme == .dark)
     }
 
     private var displayedExecution: SQLExecution? {
@@ -378,7 +398,7 @@ private struct SQLDocumentPane: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label(failure.title, systemImage: "exclamationmark.circle").font(.headline)
                 Text(failure.message).textSelection(.enabled)
-                if let sqlState = failure.sqlState { Text("SQLSTATE \(sqlState)").foregroundStyle(.secondary) }
+                if let sqlState = failure.sqlState { Text("SQLSTATE \(sqlState)").appSecondaryText() }
                 if failure.outcomeUnknown { Text("The SQL outcome is unknown. Check the database before repeating this command.").foregroundStyle(.orange) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(20)
         } else if let result = displayedResult {
@@ -406,7 +426,7 @@ private struct SQLDocumentPane: View {
                 }.font(.callout).padding(12)
                 if let path = result.exportPath {
                     Text("Saved \(result.exportRowCount ?? 0) rows to \(path)")
-                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled).padding(8)
+                        .font(.caption).appSecondaryText().textSelection(.enabled).padding(8)
                 }
                 if result.truncated == true || result.displayNotice != nil {
                     Text(result.displayNotice ?? "Result truncated at 1000 rows or 8 MiB.")
@@ -418,7 +438,7 @@ private struct SQLDocumentPane: View {
                         DataGridView(document: document, workspace: workspace, grid: grid).id(ObjectIdentifier(grid))
                     } else {
                         Text("Query results are read only. Open a table from Connections to edit its data.")
-                            .font(.caption).foregroundStyle(.secondary).padding(8)
+                            .font(.caption).appSecondaryText().padding(8)
                         ResultTableView(columns: columns, rows: result.rows ?? [])
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }
@@ -429,7 +449,7 @@ private struct SQLDocumentPane: View {
             Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Text("Run SQL to see its result").foregroundStyle(.secondary)
+            Text("Run SQL to see its result").appSecondaryText()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

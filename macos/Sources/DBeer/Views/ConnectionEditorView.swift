@@ -70,7 +70,7 @@ struct ConnectionEditorView: View {
                             ProgressView().controlSize(.small)
                             Text("Reading saved password…")
                         }
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).appSecondaryText()
                     } else if passwordLoadFailedState.wrappedValue {
                         Button("Retry Reading Saved Password") {
                             passwordLoadAttemptState.wrappedValue = UUID()
@@ -79,7 +79,7 @@ struct ConnectionEditorView: View {
                         .accessibilityIdentifier("retryConnectionPassword")
                     } else {
                         Label("Passwords are saved in macOS Keychain", systemImage: "key")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).appSecondaryText()
                     }
                 }
                 Section("Security") {
@@ -98,15 +98,16 @@ struct ConnectionEditorView: View {
                         .accessibilityIdentifier("trustedCAFile")
                     if draft.sslMode == "disable" {
                         Text("TLS is disabled. Use this mode for a local test database.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).appSecondaryText()
                     }
                 }
                 if connection?.id == model.activeConnectionId, connection != nil {
                     Text("Changes apply the next time you connect.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).appSecondaryText()
                 }
             }
             .formStyle(.grouped)
+            .appFormSurface()
             .disabled(isBusy)
 
             if let error = validationState.wrappedValue ?? model.connectionsError {

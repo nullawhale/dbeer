@@ -3,12 +3,170 @@ import SwiftUI
 import Testing
 @testable import DBeer
 
+@Suite(.serialized)
 @MainActor
 struct SQLEditorTests {
     @MainActor
     private final class TextStorage {
         var text = ""
         var binding: Binding<String> { Binding(get: { self.text }, set: { self.text = $0 }) }
+    }
+
+    private func window(containing scroll: NSScrollView) async throws -> NSWindow {
+        let application = NSApplication.shared
+        application.setActivationPolicy(.accessory)
+        let window = NSWindow(contentRect: NSRect(x: 80, y: 100, width: 820, height: 440),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = scroll
+        window.makeKeyAndOrderFront(nil)
+        application.activate(ignoringOtherApps: true)
+        for _ in 0..<20 where !window.isKeyWindow {
+            try await Task.sleep(for: .milliseconds(25))
+            window.makeKey()
+        }
+        try #require(window.isKeyWindow)
+        try #require(window.makeFirstResponder(scroll.documentView))
+        return window
+    }
+
+    private func key(_ code: UInt16, characters: String = "", modifiers: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers,
+            timestamp: 0, windowNumber: 0, context: nil, characters: characters,
+            charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+    }
+
+    private func saveQA(_ view: NSView, name: String) throws {
+        guard let directory = ProcessInfo.processInfo.environment["DBEER_QA_OUTPUT_DIR"] else { return }
+        let destination = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        view.layoutSubtreeIfNeeded()
+        view.displayIfNeeded()
+        let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        let png = try #require(bitmap.representation(using: .png, properties: [:]))
+        try png.write(to: destination.appendingPathComponent(name + ".png"))
+    }
+
+    private func importedTheme(dark: Bool) throws -> EditorTheme {
+        let json: [String: Any] = [
+            "name": dark ? "QA Midnight" : "QA Paper", "type": dark ? "dark" : "light",
+            "colors": [
+                "editor.background": dark ? "#112233" : "#F4F5F6",
+                "editor.foreground": dark ? "#E8E9EA" : "#17202A",
+                "editorCursor.foreground": dark ? "#FFE199" : "#563A00",
+                "editor.selectionBackground": dark ? "#37506A" : "#C6DCEF",
+                "editor.selectionForeground": dark ? "#FFFFFF" : "#102030",
+                "editor.lineHighlightBackground": dark ? "#192D40" : "#E5ECF2",
+                "editorGutter.background": dark ? "#0C1926" : "#E9EEF2",
+                "editorLineNumber.foreground": dark ? "#8094A8" : "#526A80",
+                "editorLineNumber.activeForeground": dark ? "#FFFFFF" : "#112233",
+                "editorError.foreground": dark ? "#FF8191" : "#A80024",
+                "editorSuggestWidget.background": dark ? "#182B3E" : "#FFFFFF",
+                "editorSuggestWidget.foreground": dark ? "#EEEEEE" : "#152535",
+                "editorSuggestWidget.selectedBackground": dark ? "#355677" : "#C6DCEF",
+                "editorSuggestWidget.selectedForeground": dark ? "#FFFFFF" : "#102030",
+                "editorSuggestWidget.border": dark ? "#58738C" : "#667788"
+            ],
+            "tokenColors": [
+                ["scope": "keyword", "settings": ["foreground": dark ? "#F3A8E2" : "#7B235E", "fontStyle": "bold italic"]],
+                ["scope": "string", "settings": ["foreground": dark ? "#BBE6AA" : "#28551E"]],
+                ["scope": "constant.numeric", "settings": ["foreground": dark ? "#AACFFF" : "#214C84"]],
+                ["scope": "comment", "settings": ["foreground": dark ? "#9DB2C6" : "#526A80", "fontStyle": "italic"]],
+                ["scope": "variable", "settings": ["foreground": dark ? "#E8E9EA" : "#17202A"]]
+            ]
+        ]
+        return try EditorThemeParser.parse(data: JSONSerialization.data(withJSONObject: json), id: dark ? "qa-dark" : "qa-light")
+    }
+
+    @Test func cachedTabsReceiveLatestSchemeAndRetainIndependentNativeState() throws {
+        let light = try importedTheme(dark: false)
+        let dark = try importedTheme(dark: true)
+        let first = TextStorage()
+        let second = TextStorage()
+        first.text = "SELECT 'IPA', 5.5 FROM beers;\n-- inventory"
+        second.text = "SELECT 2;"
+        let state = SQLEditorState()
+        let firstID = UUID()
+        let secondID = UUID()
+        let coordinator = SQLEditorView.Coordinator(text: first.binding)
+        let scroll = coordinator.makeScrollView()
+        coordinator.update(text: first.binding, isEditable: true, in: scroll,
+            editorState: state, documentID: firstID, editorTheme: light)
+        let firstEditor = try #require(scroll.documentView as? SQLTextView)
+        firstEditor.setSelectedRange(NSRange(location: 7, length: 5))
+        firstEditor.insertText("'Lager'", replacementRange: firstEditor.selectedRange())
+        let selection = NSRange(location: 0, length: 6)
+        firstEditor.setSelectedRange(selection)
+        coordinator.update(text: second.binding, isEditable: true, in: scroll,
+            editorState: state, documentID: secondID, editorTheme: dark)
+        let secondEditor = try #require(scroll.documentView as? SQLTextView)
+        #expect(secondEditor !== firstEditor)
+        #expect(secondEditor.backgroundColor == dark.colors["editor.background"]?.nsColor)
+        coordinator.update(text: first.binding, isEditable: true, in: scroll,
+            editorState: state, documentID: firstID, editorTheme: dark)
+        #expect(scroll.documentView === firstEditor)
+        #expect(firstEditor.selectedRange() == selection)
+        #expect(firstEditor.backgroundColor == dark.colors["editor.background"]?.nsColor)
+        let keywordColor = firstEditor.layoutManager?.temporaryAttribute(.foregroundColor, atCharacterIndex: 0, effectiveRange: nil) as? NSColor
+        #expect(keywordColor == dark.style(for: ["source.sql", "keyword.other.sql"]).foreground?.nsColor)
+        #expect(firstEditor.undoManager?.canUndo == true)
+        firstEditor.undoManager?.undo()
+        #expect(first.text == "SELECT 'IPA', 5.5 FROM beers;\n-- inventory")
+        #expect(second.text == "SELECT 2;")
+        coordinator.update(text: first.binding, isEditable: true, in: scroll,
+            editorState: state, documentID: firstID)
+        #expect(firstEditor.appearance == nil)
+        #expect(scroll.appearance == nil)
+        #expect(firstEditor.layoutManager?.temporaryAttribute(.foregroundColor, atCharacterIndex: 0, effectiveRange: nil) as? NSColor == SQLSyntaxPalette.keyword)
+    }
+
+    @Test func sparseSchemesInheritTheirForegroundAndClearPreviousTokenStyles() async throws {
+        let rich = try EditorThemeParser.parse(data: Data(#"""
+        {"type":"dark","colors":{"editor.background":"#112233","editor.foreground":"#EEEEEE"},
+         "tokenColors":[{"scope":"string","settings":{"foreground":"#BBE6AA","background":"#21412E","fontStyle":"bold italic underline strikethrough"}}]}
+        """#.utf8))
+        let sparse = try EditorThemeParser.parse(data: Data(#"""
+        {"type":"light","colors":{"editor.background":"#EEEEEE","editor.foreground":"#222222"}}
+        """#.utf8))
+        let storage = TextStorage()
+        storage.text = "SELECT 'IPA'; -- inventory\nSELECT us"
+        let coordinator = SQLEditorView.Coordinator(text: storage.binding)
+        let scroll = coordinator.makeScrollView()
+        coordinator.update(text: storage.binding, isEditable: true, in: scroll,
+            completions: ["users"], editorTheme: rich)
+        let editor = try #require(scroll.documentView as? SQLTextView)
+        let window = try await window(containing: scroll)
+        defer { window.close() }
+        editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
+        let manager = try #require(editor.layoutManager)
+        let literal = (storage.text as NSString).range(of: "'IPA'")
+        #expect(manager.temporaryAttribute(.backgroundColor, atCharacterIndex: literal.location, effectiveRange: nil) as? NSColor
+            == rich.style(for: ["source.sql", "string.quoted.single.sql"]).background?.nsColor)
+        #expect(manager.temporaryAttribute(.strokeWidth, atCharacterIndex: literal.location, effectiveRange: nil) as? Double == -2)
+        #expect(manager.temporaryAttribute(.obliqueness, atCharacterIndex: literal.location, effectiveRange: nil) as? Double == 0.16)
+        #expect(manager.temporaryAttribute(.underlineStyle, atCharacterIndex: literal.location, effectiveRange: nil) != nil)
+        #expect(manager.temporaryAttribute(.strikethroughStyle, atCharacterIndex: literal.location, effectiveRange: nil) != nil)
+
+        coordinator.update(text: storage.binding, isEditable: true, in: scroll,
+            completions: ["users"], editorTheme: sparse)
+        for index in [0, literal.location, (storage.text as NSString).range(of: "-- inventory").location] {
+            #expect(manager.temporaryAttribute(.foregroundColor, atCharacterIndex: index, effectiveRange: nil) as? NSColor
+                == sparse.colors["editor.foreground"]?.nsColor)
+        }
+        for attribute in [NSAttributedString.Key.backgroundColor, .font, .underlineStyle, .strikethroughStyle, .strokeWidth, .obliqueness] {
+            #expect(manager.temporaryAttribute(attribute, atCharacterIndex: literal.location, effectiveRange: nil) == nil)
+        }
+        #expect(editor.selectedTextAttributes[.backgroundColor] as? NSColor == .selectedTextBackgroundColor)
+        #expect(editor.selectedTextAttributes[.foregroundColor] as? NSColor == .selectedTextColor)
+        editor.complete(nil)
+        let panel = try #require(window.childWindows?.first)
+        let popupScroll = try #require(panel.contentView as? NSScrollView)
+        let table = try #require(popupScroll.documentView as? NSTableView)
+        let cell = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTableCellView)
+        #expect(cell.textField?.textColor == .alternateSelectedControlTextColor)
+        #expect(editor.string == storage.text)
+        #expect(editor.undoManager?.canUndo == false)
     }
 
     @Test func nativeEditorDisablesSQLAlteringTextServices() throws {
@@ -131,7 +289,7 @@ struct SQLEditorTests {
         #expect(scroll.hasVerticalRuler && scroll.rulersVisible)
         #expect(scroll.verticalRulerView?.ruleThickness ?? 0 >= 40)
         let keyword = editor.layoutManager?.temporaryAttribute(.foregroundColor, atCharacterIndex: 0, effectiveRange: nil) as? NSColor
-        #expect(keyword == .systemPurple)
+        #expect(keyword == SQLSyntaxPalette.keyword)
         #expect(editor.layoutManager?.temporaryAttribute(.underlineStyle, atCharacterIndex: 7, effectiveRange: nil) != nil)
         var selected = -1
         let values = coordinator.textView(editor, completions: [], forPartialWordRange: NSRange(location: 7, length: 4),
@@ -154,4 +312,6 @@ struct SQLEditorTests {
         let mysql = coordinator.textView(editor, completions: [], forPartialWordRange: NSRange(location: 0, length: 2), indexOfSelectedItem: nil)
         #expect(mysql == ["`Mixed``Name`"])
     }
+
+
 }

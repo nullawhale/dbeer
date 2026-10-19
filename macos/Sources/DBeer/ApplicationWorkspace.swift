@@ -77,6 +77,8 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var importError: String?
     @Published private(set) var isImportingProfiles = false
     let editorState = SQLEditorState()
+    let editorThemes: EditorThemeStore
+    let appearance: AppAppearance
 
     private let connectionStore: any ConnectionLibraryStore
     private let credentialStore: any ConnectionCredentialStore
@@ -104,12 +106,17 @@ final class ApplicationWorkspace: ObservableObject {
     init(connectionStore: any ConnectionLibraryStore = FileConnectionLibraryStore(),
          credentialStore: any ConnectionCredentialStore = KeychainConnectionCredentialStore(),
          documentStore: any SQLDocumentStore = MemorySQLDocumentStore(),
+         editorThemes: EditorThemeStore? = nil,
+         appearance: AppAppearance? = nil,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
         self.connectionStore = connectionStore
         self.credentialStore = credentialStore
         self.helperFactory = helperFactory
         self.documentStore = documentStore
+        let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
+        self.editorThemes = themes
+        self.appearance = appearance ?? AppAppearance(editorThemes: themes)
         self.closeDecision = closeDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }

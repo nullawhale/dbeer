@@ -7,7 +7,7 @@ struct ConnectionsSidebar: View {
 
     private var expandedState = SwiftUI.State(initialValue: true)
     private var deletionState = SwiftUI.State<SavedConnection?>(initialValue: nil)
-    private let amber = AppPalette.accent
+    private var amber: Color { AppPalette.accent }
 
     init(model: WorkspaceModel, onCreate: @escaping () -> Void, onEdit: @escaping (SavedConnection) -> Void) {
         self.model = model
@@ -74,7 +74,7 @@ struct ConnectionsSidebar: View {
                 } label: {
                     Label("PostgreSQL", systemImage: "externaldrive.connected.to.line.below")
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .appSecondaryText()
                         .catalogRowHover()
                 }
                 .accessibilityIdentifier("postgresConnectionsGroup")
@@ -86,9 +86,9 @@ struct ConnectionsSidebar: View {
                 if model.savedConnections.isEmpty {
                     VStack(spacing: 10) {
                         Text("No saved connections")
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.callout).appSecondaryText()
                         Text("Use + above to add a connection.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).appSecondaryText()
                     }
                     .padding(20)
                 }
@@ -141,7 +141,7 @@ struct ConnectionsSidebar: View {
                     .lineLimit(1)
                 Text("\(connection.host):\(String(connection.port))/\(connection.database)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .appSecondaryText()
                     .lineLimit(1)
                     .truncationMode(.middle)
             }

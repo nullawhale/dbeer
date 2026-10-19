@@ -1,0 +1,52 @@
+{
+  "$schema": "vscode://schemas/color-theme",
+  "name": "DBeer Dark",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#1E1E1E",
+    "editor.foreground": "#FFFFFFD9",
+    "editorCursor.foreground": "#FFFFFF",
+    "editor.selectionBackground": "#3F638B",
+    "editor.selectionForeground": "#FFFFFF",
+    "editor.inactiveSelectionBackground": "#4B4B4B",
+    "editor.lineHighlightBackground": "#FFFFFF05",
+    "editorGutter.background": "#252525",
+    "editorLineNumber.foreground": "#98989D",
+    "editorLineNumber.activeForeground": "#FFFFFFD9",
+    "editorError.foreground": "#FF453A",
+    "editorWarning.foreground": "#FF9F0A",
+    "editorInfo.foreground": "#0A84FF",
+    "editorSuggestWidget.background": "#282828",
+    "editorSuggestWidget.foreground": "#FFFFFFD9",
+    "editorSuggestWidget.highlightForeground": "#0A84FF",
+    "editorSuggestWidget.selectedBackground": "#34516F",
+    "editorSuggestWidget.selectedForeground": "#FFFFFF",
+    "editorSuggestWidget.border": "#555555"
+  },
+  "tokenColors": [
+    {
+      "scope": "keyword",
+      "settings": {
+        "foreground": "#C799F2"
+      }
+    },
+    {
+      "scope": "string",
+      "settings": {
+        "foreground": "#8CC27D"
+      }
+    },
+    {
+      "scope": "constant.numeric",
+      "settings": {
+        "foreground": "#7AB3F5"
+      }
+    },
+    {
+      "scope": "comment",
+      "settings": {
+        "foreground": "#98989D"
+      }
+    }
+  ]
+}

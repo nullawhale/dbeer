@@ -18,6 +18,7 @@ struct ControlSegmentPicker<Value: Hashable>: View {
     @Binding private var selection: Value
     private let choices: [Choice]
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.applicationPaletteRevision) private var paletteRevision
     @FocusState private var focusedChoice: Value?
 
     init(_ title: String, selection: Binding<Value>, choices: [Choice]) {
@@ -27,6 +28,7 @@ struct ControlSegmentPicker<Value: Hashable>: View {
     }
 
     var body: some View {
+        let _ = paletteRevision
         LabeledContent(title) {
             HStack(spacing: ControlHoverAppearance.gap) {
                 ForEach(choices) { choice in
@@ -35,6 +37,10 @@ struct ControlSegmentPicker<Value: Hashable>: View {
                         focusedChoice = choice.value
                     } label: {
                         Text(choice.title)
+                            .foregroundStyle(AppPalette.isCustom
+                                ? AnyShapeStyle((selection == choice.value ? AppPalette.selectionText : AppPalette.text)
+                                    .opacity(isEnabled ? 1 : 0.45))
+                                : AnyShapeStyle(.primary))
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 8)
                             .frame(minHeight: 24)
@@ -43,7 +49,8 @@ struct ControlSegmentPicker<Value: Hashable>: View {
                     .buttonStyle(.plain)
                     .background {
                         RoundedRectangle(cornerRadius: ControlHoverAppearance.cornerRadius)
-                            .fill(selection == choice.value ? AppPalette.accent.opacity(0.12) : Color.clear)
+                            .fill(selection == choice.value
+                                ? (AppPalette.isCustom ? AppPalette.selection : AppPalette.accent.opacity(0.12)) : Color.clear)
                             .padding(ControlHoverAppearance.inset)
                     }
                     .controlHover()

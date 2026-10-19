@@ -21,7 +21,8 @@ final class NativeButtonFocusPolicy: NSObject {
     }
 
     func apply(to window: NSWindow) {
-        guard let content = window.contentView else { return }
+        guard !(window is AppThemeIndependentWindow), let content = window.contentView else { return }
+        AppThemeSurface.apply(in: window)
         let isInteractionBlocked = Self.isInteractionBlocked(in: window)
         let rowRegions = CatalogRowHoverAnchor.apply(in: content)
         let regions = hoverRegions(in: content)

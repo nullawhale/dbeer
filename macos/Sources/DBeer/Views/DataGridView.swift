@@ -22,7 +22,7 @@ struct DataGridView: View {
                 Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                     .popover(isPresented: showingColumns.projectedValue) { columnDetails }
                 Spacer()
-                Text("\(grid.pendingCount) pending").font(.caption).foregroundStyle(.secondary)
+                Text("\(grid.pendingCount) pending").font(.caption).appSecondaryText()
                 Button("Preview SQL") { Task { await workspace.previewGrid(document) } }.controlHover()
                     .disabled(grid.pendingCount == 0 || grid.isApplying || grid.isPreviewing || document.isRunning || grid.isClosing || workspace.isClosing)
                 Button("Discard") { Task { await workspace.discardGrid(document) } }.controlHover()
@@ -32,10 +32,10 @@ struct DataGridView: View {
                     .disabled(grid.pendingCount == 0 || !grid.canEdit)
             }.font(.callout).padding(10)
             if let reason = grid.readOnlyReason {
-                Text("Read only: \(reason)").font(.caption).foregroundStyle(.secondary).padding(8)
+                Text("Read only: \(reason)").font(.caption).appSecondaryText().padding(8)
             } else {
                 Text("Double-click a cell to edit. Changes stay local until Apply. Use Columns for types and read-only reasons.")
-                    .font(.caption).foregroundStyle(.secondary).padding(.bottom, 8)
+                    .font(.caption).appSecondaryText().padding(.bottom, 8)
             }
             if grid.isApplying { ProgressView("Applying changes…").controlSize(.small).padding(8) }
             if grid.outcomeUnknown {
@@ -45,7 +45,7 @@ struct DataGridView: View {
                 }.font(.callout).padding(8)
             }
             if let error = grid.error { Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(8) }
-            if let notice = grid.notice { Text(notice).foregroundStyle(.secondary).padding(8) }
+            if let notice = grid.notice { Text(notice).appSecondaryText().padding(8) }
             Divider()
             ResultTableView(columns: grid.columns, rows: grid.displayedRows,
                 editableColumns: grid.canEdit ? grid.editableColumns : [], modifiedCells: grid.modifiedCells,
@@ -89,9 +89,9 @@ struct DataGridView: View {
         return VStack(alignment: .leading, spacing: 3) {
             Text(column.name).font(.callout.bold())
             Text(nativeType)
-                .font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
+                .font(.system(.caption, design: .monospaced)).appSecondaryText()
             Text(editReason)
-                .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                .font(.caption).appSecondaryText().textSelection(.enabled)
         }
     }
 
@@ -132,7 +132,7 @@ private struct GridCellEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Edit \(edit.column.name)").font(.title2)
-            Text("Row \(edit.cell.row + 1) · \(edit.column.nativeType)").font(.caption).foregroundStyle(.secondary)
+            Text("Row \(edit.cell.row + 1) · \(edit.column.nativeType)").font(.caption).appSecondaryText()
             ControlSegmentPicker("Value", selection: kind.projectedValue, choices: [
                 .init("Value", value: "value"),
                 .init("NULL", value: "null"),
@@ -144,18 +144,18 @@ private struct GridCellEditor: View {
                     .focusEffectDisabled()
                     .overlay {
                         RoundedRectangle(cornerRadius: 4)
-                            .stroke(isTextFocused ? AppPalette.accent : Color(nsColor: .separatorColor),
+                            .stroke(isTextFocused ? AppPalette.accent : AppPalette.border,
                                 lineWidth: isTextFocused ? 2 : 1)
                             .allowsHitTesting(false)
                     }
                 HStack {
                     Button("Empty Value") { text.wrappedValue = "" }.controlHover()
                     Text(edit.column.encoding == "base64" ? "Enter binary data as Base64." : "An empty value is an empty string, distinct from NULL and DEFAULT.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).appSecondaryText()
                 }
             } else {
                 Text(kind.wrappedValue == "null" ? "Store SQL NULL." : "Let the server use this column's default value.")
-                    .foregroundStyle(.secondary).frame(minHeight: 100)
+                    .appSecondaryText().frame(minHeight: 100)
             }
             if let error = error.wrappedValue { Text(error).foregroundStyle(.orange) }
             HStack {
@@ -188,14 +188,14 @@ private struct GridSQLPreviewView: View {
                 Button("Done", action: close).controlHover().keyboardShortcut(.cancelAction)
             }
             Text("Values are bound as parameters. Apply locks and verifies the original rows in a separate transaction.")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.callout).appSecondaryText()
             ScrollView([.vertical, .horizontal]) {
                 VStack(alignment: .leading, spacing: 18) {
                     ForEach(Array((result?.catalogRecords ?? []).enumerated()), id: \.offset) { _, record in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(record["operation"] ?? "").font(.headline)
                             Text(record["sql"] ?? "").font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                            Text(record["parameters"] ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).foregroundStyle(.secondary)
+                            Text(record["parameters"] ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).appSecondaryText()
                         }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(10)
