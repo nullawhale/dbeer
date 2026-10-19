@@ -30,8 +30,7 @@ struct GridPresentationIntegrationTests {
         @ObservedObject var presentation: Presentation
 
         var body: some View {
-            DataGridView(document: fixture.document, workspace: fixture.workspace,
-                grid: fixture.grid, result: fixture.result)
+            SQLDocumentPane(document: fixture.document, workspace: fixture.workspace)
                 .foregroundStyle(.primary)
                 .background(AppPalette.background).tint(AppPalette.accent)
                 .preferredColorScheme(presentation.scheme).focusEffectDisabled()
@@ -123,6 +122,8 @@ struct GridPresentationIntegrationTests {
         document.table = reference
         document.tableColumns = metadata
         document.attachGrid(grid)
+        document.executions = [SQLExecution(sql: "", range: NSRange(location: 0, length: 0),
+            status: "Completed", result: result)]
         return Fixture(workspace: workspace, document: document, grid: grid, result: result)
     }
 
@@ -153,6 +154,18 @@ struct GridPresentationIntegrationTests {
             charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
     }
 
+    private func click(_ cell: ResultGridCell, in table: ResultGridTableView, count: Int) throws {
+        let window = try #require(table.window)
+        let rect = table.frameOfCell(atColumn: cell.column, row: cell.row)
+        let point = table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try #require(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: count, clickCount: count, pressure: 1))
+            window.sendEvent(event)
+        }
+    }
+
     private func capture(_ content: NSView, name: String) throws {
         guard let path = ProcessInfo.processInfo.environment["DBEER_QA_OUTPUT_DIR"] else { return }
         // Include this owned window's backing below the transparent SwiftUI
@@ -170,7 +183,7 @@ struct GridPresentationIntegrationTests {
         try png.write(to: directory.appendingPathComponent(name + ".png"))
     }
 
-    @Test func navigationAndChangesLiveBelowTheGridInTheirRespectiveRows() async throws {
+    @Test func filterLivesBesideConnectionAboveTheGridAndRowActionsStayBelow() async throws {
         let fixture = fixture()
         let (window, content) = host(fixture)
         defer { window.close() }
@@ -181,6 +194,11 @@ struct GridPresentationIntegrationTests {
             let table = try #require(descendants(content, of: ResultGridTableView.self).first)
             let scroll = try #require(table.enclosingScrollView)
             let tableFrame = window.convertToScreen(scroll.convert(scroll.bounds, to: nil))
+            let filterFrame = try #require(element("gridFilter", in: content).frame)
+            let connectionFrame = try #require(element("documentConnection", in: content).frame)
+            #expect(filterFrame.minY >= tableFrame.maxY - 1)
+            #expect(filterFrame.minX >= connectionFrame.maxX)
+            #expect(abs(filterFrame.midY - connectionFrame.midY) < 5)
             for ids in [
                 ["gridInsertRow", "gridDeleteRows", "gridColumns", "tablePreviousPage", "tablePage", "tableNextPage"],
                 ["gridSelectionSummary", "gridExport", "gridDiscard", "gridApply"],
@@ -202,6 +220,27 @@ struct GridPresentationIntegrationTests {
         await fixture.workspace.shutdown()
     }
 
+    @Test(arguments: [Int64(3), Int64(13)])
+    func queryResultsShowDisplayedAndTotalCountsWithoutTheSelectHeading(_ total: Int64) async throws {
+        let fixture = fixture()
+        fixture.document.table = nil
+        fixture.document.attachGrid(nil)
+        fixture.document.executions[0].result?.rowCount = total
+        let (window, content) = host(fixture)
+        defer { window.close() }
+        try await settle(content)
+        let summary = try element("queryRowCount", in: content)
+        let expected = "3 from \(total) rows shown"
+        #expect(summary.label == expected || summary.value == expected)
+        #expect(!elements(in: content).contains { $0.label == "SELECT 3" || $0.value == "SELECT 3" })
+        let table = try #require(descendants(content, of: ResultGridTableView.self).first)
+        let tableFrame = window.convertToScreen(table.convert(table.bounds, to: nil))
+        let summaryFrame = try #require(summary.frame)
+        #expect(summaryFrame.midX > tableFrame.midX)
+        try capture(content, name: "query-row-count-\(total)")
+        await fixture.workspace.shutdown()
+    }
+
     @Test func previewIsPresentOnlyWhileChangesCanBePreviewed() async throws {
         let fixture = fixture()
         let (window, content) = host(fixture)
@@ -212,6 +251,7 @@ struct GridPresentationIntegrationTests {
         try await settle(content)
         #expect(try element("gridPreviewSQL", in: content).enabled)
         #expect(try !element("gridExport", in: content).enabled)
+        #expect(try !element("gridFilter", in: content).enabled)
 
         fixture.grid.isPreviewing = true
         try await settle(content)
@@ -259,7 +299,7 @@ struct GridPresentationIntegrationTests {
         try await settle(content)
         #expect(content.bounds.width <= 601)
         let visible = window.convertToScreen(content.convert(content.bounds, to: nil)).insetBy(dx: -1, dy: -1)
-        for identifier in ["gridInsertRow", "gridDeleteRows", "gridColumns", "gridFilter", "gridRowDetails",
+        for identifier in ["gridInsertRow", "gridDeleteRows", "gridColumns", "gridFilter",
                            "tablePreviousPage", "tablePage", "tableNextPage", "gridSelectionSummary", "gridExport",
                            "gridPreviewSQL", "gridDiscard", "gridApply", "gridRowInspector"] {
             let frame = try #require(element(identifier, in: content).frame)
@@ -302,6 +342,8 @@ struct GridPresentationIntegrationTests {
         editor.insertText("packing", replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
         try await settle(content)
         #expect(fixture.grid.pendingCount == 0)
+        #expect(fixture.grid.hasInlineDraft)
+        #expect(try !element("gridFilter", in: content).enabled)
         #expect(try element("gridApply", in: content).enabled)
 
         switch scope {
@@ -319,6 +361,70 @@ struct GridPresentationIntegrationTests {
         #expect(fixture.grid.pendingCount == 1)
         #expect(fixture.grid.value(row: 0, column: 1) == ChangeValue(kind: "text", value: "packing"))
         #expect(fixture.grid.canEdit)
+        await fixture.workspace.shutdown()
+    }
+
+    @Test(arguments: [1, 2])
+    func nativeDoubleClickOpensDetailsAndKeepsTheCellEditorReadyToType(_ column: Int) async throws {
+        let fixture = fixture()
+        let (window, content) = host(fixture, width: 600)
+        defer { window.close() }
+        try await settle(content)
+        #expect(!elements(in: content).contains { $0.identifier == "gridRowDetails" })
+        #expect(!elements(in: content).contains { $0.identifier == "gridRowInspector" })
+        let table = try #require(descendants(content, of: ResultGridTableView.self).first)
+        let cell = ResultGridCell(row: 1, column: column)
+        try click(cell, in: table, count: 1)
+        try await Task.sleep(for: .milliseconds(30))
+        #expect(!elements(in: content).contains { $0.identifier == "gridRowInspector" })
+        try click(cell, in: table, count: 2)
+        try await settle(content)
+        _ = try element("gridRowInspector", in: content)
+        #expect(fixture.grid.selectedRows == IndexSet(integer: 1))
+        #expect(try element("gridInspectorValue-\(column)", in: content).value == (column == 1 ? "paid" : ""))
+        #expect(window.attachedSheet == nil)
+        let field = try #require(descendants(table, of: NSTextField.self)
+            .first { $0.identifier?.rawValue == "inlineGridCellEditor" })
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        #expect(window.firstResponder === editor)
+        let editorFrame = field.convert(field.bounds, to: table)
+        #expect(table.visibleRect.contains(editorFrame))
+        let header = try #require(table.headerView)
+        let headerFrame = table.convert(header.headerRect(ofColumn: column), from: header)
+        #expect(abs(headerFrame.minX - table.rect(ofColumn: column).minX) < 1,
+            "The scrolled editor must remain beneath its own column header")
+        editor.insertText("packed", replacementRange: editor.selectedRange())
+        fixture.grid.commitEditing?()
+        try await settle(content)
+        #expect(fixture.grid.value(row: 1, column: column) == ChangeValue(kind: "text", value: "packed"))
+        #expect(try element("gridInspectorValue-\(column)", in: content).value == "packed")
+        try capture(content, name: "grid-cell-details-double-click-\(column)")
+        await fixture.workspace.shutdown()
+    }
+
+    @Test func contextMenuShowsTheClickedRowDetailsEvenWhenReadOnlyOrMultipleRowsAreSelected() async throws {
+        let fixture = fixture()
+        fixture.grid.policyReadOnly = true
+        fixture.grid.selectedRows = IndexSet([0, 2])
+        let (window, content) = host(fixture)
+        defer { window.close() }
+        try await settle(content)
+        let table = try #require(descendants(content, of: ResultGridTableView.self).first)
+        let rect = table.frameOfCell(atColumn: 1, row: 2)
+        let point = table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        let event = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        let menu = try #require(table.menu(for: event))
+        let details = try #require(menu.items.first { $0.title == "Row Details" })
+        #expect(details.isEnabled)
+        #expect(menu.items.allSatisfy { $0.title != "Edit Cell…" })
+        menu.performActionForItem(at: menu.index(of: details))
+        try await settle(content)
+        #expect(fixture.grid.selectedRows == IndexSet(integer: 2))
+        #expect(try element("gridInspectorValue-1", in: content).value == "new")
+        #expect(try !element("gridInspectorValue-1", in: content).enabled)
+        #expect(window.attachedSheet == nil)
         await fixture.workspace.shutdown()
     }
 

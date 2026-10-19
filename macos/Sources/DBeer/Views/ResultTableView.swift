@@ -100,7 +100,7 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
             selectRowIndexes(IndexSet(integersIn: selection.rowRange), byExtendingSelection: false)
         }
         scrollRowToVisible(cell.row)
-        scrollColumnToVisible(cell.column)
+        if !wholeRow { scrollColumnToVisible(cell.column) }
         invalidateCellSelection()
     }
 
@@ -110,6 +110,7 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
 
     private func invalidateCellSelection() {
         needsDisplay = true
+        enclosingScrollView?.verticalRulerView?.needsDisplay = true
         // A horizontal move leaves the native row selection unchanged. Its
         // row view must still repaint the cell range and clear the old border.
         enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
@@ -124,25 +125,55 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
         return ResultGridCell(row: row, column: column)
     }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = convert(point, from: superview)
+        if visibleRect.contains(local), let editor = copyCoordinator?.hitTestInlineEditor(at: local) { return editor }
+        return super.hitTest(point)
+    }
+
+    override func layout() {
+        super.layout()
+        copyCoordinator?.layoutInlineEditor()
+        copyCoordinator?.synchronizeHeaderScroll()
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard let cell = cell(at: event) else { super.mouseDown(with: event); return }
         contextCell = nil
         copyCoordinator?.finishInlineEdit()
         window?.makeFirstResponder(self)
         if event.modifierFlags.contains(.command) {
-            var rows = selectedRowIndexes
-            if rows.contains(cell.row) { rows.remove(cell.row) } else { rows.insert(cell.row) }
-            let focusRow = rows.contains(cell.row) ? cell.row : (rows.last ?? cell.row)
-            cellSelection = rows.isEmpty ? nil : ResultGridSelection(
-                anchor: ResultGridCell(row: rows.first ?? cell.row, column: 0),
-                focus: ResultGridCell(row: focusRow, column: numberOfColumns - 1))
-            selectsWholeRows = true
-            selectRowIndexes(rows, byExtendingSelection: false)
-            invalidateCellSelection()
+            toggleRowSelection(cell.row)
         } else {
             select(cell, extending: event.modifierFlags.contains(.shift), wholeRow: event.modifierFlags.contains(.option))
         }
-        if event.clickCount == 2 { copyCoordinator?.beginInlineEdit(cell) }
+        if event.clickCount == 2 { copyCoordinator?.activateCell(cell) }
+    }
+
+    func selectRowNumber(_ row: Int, modifiers: NSEvent.ModifierFlags = [], extending: Bool = false) {
+        guard (0..<numberOfRows).contains(row), numberOfColumns > 0 else { return }
+        contextCell = nil
+        if !extending {
+            copyCoordinator?.finishInlineEdit()
+            window?.makeFirstResponder(self)
+        }
+        if !extending, modifiers.contains(.command) { toggleRowSelection(row) }
+        else {
+            select(ResultGridCell(row: row, column: 0),
+                extending: extending || modifiers.contains(.shift), wholeRow: true)
+        }
+    }
+
+    private func toggleRowSelection(_ row: Int) {
+        var rows = selectedRowIndexes
+        if rows.contains(row) { rows.remove(row) } else { rows.insert(row) }
+        let focusRow = rows.contains(row) ? row : (rows.last ?? row)
+        cellSelection = rows.isEmpty ? nil : ResultGridSelection(
+            anchor: ResultGridCell(row: rows.first ?? row, column: 0),
+            focus: ResultGridCell(row: focusRow, column: numberOfColumns - 1))
+        selectsWholeRows = true
+        selectRowIndexes(rows, byExtendingSelection: false)
+        invalidateCellSelection()
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -180,7 +211,7 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
         let focus = cellSelection?.focus ?? ResultGridCell(row: max(0, selectedRow), column: 0)
         if [36, 76].contains(event.keyCode) {
             if event.modifierFlags.contains(.shift) { copyCoordinator?.editCell(focus) }
-            else { copyCoordinator?.beginInlineEdit(focus) }
+            else { copyCoordinator?.activateCell(focus) }
             return
         }
         if event.keyCode == 49, event.modifierFlags.contains(.shift) {
@@ -203,7 +234,7 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
         }
         guard numberOfRows > 0, numberOfColumns > 0 else { return }
         select(ResultGridCell(row: min(max(0, row), numberOfRows - 1), column: min(max(0, column), numberOfColumns - 1)),
-            extending: event.modifierFlags.contains(.shift))
+            extending: event.modifierFlags.contains(.shift), wholeRow: selectsWholeRows && [125, 126].contains(event.keyCode))
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
@@ -224,6 +255,13 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
             item.target = copyCoordinator
             item.isEnabled = enabled
             menu.addItem(item)
+        }
+        if copyCoordinator.onShowRowDetails != nil {
+            menu.addItem(.separator())
+            let details = NSMenuItem(title: "Row Details", action: #selector(ResultTableView.Coordinator.showContextRowDetails(_:)), keyEquivalent: "")
+            details.target = copyCoordinator
+            details.isEnabled = contextCell != nil
+            menu.addItem(details)
         }
         if copyCoordinator.supportsEditing {
             menu.addItem(.separator())
@@ -374,6 +412,7 @@ struct ResultTableView: NSViewRepresentable {
     var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
     var onSelectedRows: ((IndexSet) -> Void)?
     var onDeleteRows: (() -> Void)?
+    var onShowRowDetails: (() -> Void)?
     var onToggleRowDetails: (() -> Void)?
     var sortColumn: String?
     var sortAscending = true
@@ -407,6 +446,7 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onSetCellValue = onSetCellValue
         coordinator.onSelectedRows = onSelectedRows
         coordinator.onDeleteRows = onDeleteRows
+        coordinator.onShowRowDetails = onShowRowDetails
         coordinator.onToggleRowDetails = onToggleRowDetails
         coordinator.onSortColumn = onSortColumn
         coordinator.sortColumn = sortColumn
@@ -439,6 +479,7 @@ struct ResultTableView: NSViewRepresentable {
         var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
         var onSelectedRows: ((IndexSet) -> Void)?
         var onDeleteRows: (() -> Void)?
+        var onShowRowDetails: (() -> Void)?
         var onToggleRowDetails: (() -> Void)?
         var sortColumn: String?
         var sortAscending = true
@@ -450,6 +491,7 @@ struct ResultTableView: NSViewRepresentable {
         private var renderedDeletedRows: IndexSet = []
         private var renderedValueKinds: [[String]]?
         private var inlineEditor: NSTextField?
+        private var inlineViewportSize: NSSize?
         private var editingCell: ResultGridCell?
         private var originalInlineValue = ""
         private var originalInlineIsSpecial = false
@@ -488,6 +530,12 @@ struct ResultTableView: NSViewRepresentable {
             scrollView.borderType = .noBorder
             scrollView.focusRingType = .none
             scrollView.documentView = tableView
+            scrollView.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(self, selector: #selector(viewportChanged),
+                name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
+            scrollView.hasVerticalRuler = true
+            scrollView.verticalRulerView = ResultGridRowNumberRuler(scrollView: scrollView, table: tableView)
+            scrollView.rulersVisible = true
             tableView.applyApplicationPalette()
             return scrollView
         }
@@ -546,6 +594,7 @@ struct ResultTableView: NSViewRepresentable {
                 tableView.clampCellSelection()
             }
             updateSortIndicators(in: tableView)
+            (scrollView.verticalRulerView as? ResultGridRowNumberRuler)?.updateRowCount()
             // Keep the document at its natural width so wide results scroll horizontally.
             tableView.frame.size.width = max(scrollView.contentSize.width,
                 tableView.tableColumns.reduce(0) { $0 + $1.width + tableView.intercellSpacing.width })
@@ -598,6 +647,23 @@ struct ResultTableView: NSViewRepresentable {
 
         func editCell(_ cell: ResultGridCell) { if canEditCell(cell) { onEditCell?(cell) } }
 
+        func activateCell(_ cell: ResultGridCell) {
+            showRowDetails(for: cell)
+            beginInlineEdit(cell)
+        }
+
+        private func showRowDetails(for cell: ResultGridCell) {
+            guard let onShowRowDetails, let table, rows.indices.contains(cell.row),
+                  columns.indices.contains(cell.column) else { return }
+            finishInlineEdit()
+            table.selectCellForEditing(cell)
+            onShowRowDetails()
+        }
+
+        @objc func showContextRowDetails(_ sender: Any?) {
+            if let cell = table?.contextCell ?? table?.cellSelection?.focus { showRowDetails(for: cell) }
+        }
+
         func beginInlineEdit(_ cell: ResultGridCell) {
             finishInlineEdit()
             guard canEditCell(cell) else { return }
@@ -628,10 +694,47 @@ struct ResultTableView: NSViewRepresentable {
             inlineTextChanged = false
             editingCell = cell
             inlineEditor = field
+            inlineViewportSize = table.visibleRect.size
             table.addSubview(field)
             if window.makeFirstResponder(field) { field.currentEditor()?.selectAll(nil) }
             field.delegate = self
             refreshInlineEditorColors()
+        }
+
+        fileprivate func hitTestInlineEditor(at point: NSPoint) -> NSView? {
+            guard let field = inlineEditor, field.frame.contains(point) else { return nil }
+            // NSTableView normally returns itself for cell hits, including an
+            // overlay editor. Let AppKit place the caret inside the editor.
+            return field.hitTest(point)
+        }
+
+        @objc private func viewportChanged() {
+            layoutInlineEditor()
+            synchronizeHeaderScroll()
+        }
+
+        fileprivate func synchronizeHeaderScroll() {
+            guard let table, let header = table.headerView,
+                  let clip = header.superview as? NSClipView, let scroll = table.enclosingScrollView else { return }
+            // Ruler insets can leave the native header clip at its old offset
+            // after scrolling a cell into view. Align their actual view origins.
+            let offset = header.convert(.zero, to: scroll).x - table.convert(.zero, to: scroll).x
+            if abs(offset) > 0.5 {
+                clip.scroll(to: NSPoint(x: clip.bounds.minX + offset, y: clip.bounds.minY))
+            }
+        }
+
+        fileprivate func layoutInlineEditor() {
+            guard let field = inlineEditor, let cell = editingCell, let table else { return }
+            if inlineViewportSize != table.visibleRect.size {
+                // Opening row details changes the viewport after the editor
+                // starts. Keep its column visible without resetting selection.
+                inlineViewportSize = table.visibleRect.size
+                table.scrollRowToVisible(cell.row)
+                table.scrollColumnToVisible(cell.column)
+            }
+            let frame = table.frameOfCell(atColumn: cell.column, row: cell.row).insetBy(dx: 1, dy: 0)
+            if field.frame != frame { field.frame = frame }
         }
 
         func finishInlineEdit(cancel: Bool = false, restoreFocus: Bool = true) {
@@ -641,6 +744,7 @@ struct ResultTableView: NSViewRepresentable {
             // Clear state before changing first responder or publishing a draft
             // edit: both operations can synchronously re-enter this coordinator.
             inlineEditor = nil
+            inlineViewportSize = nil
             editingCell = nil
             setInlineDraftChanged(false)
             field.delegate = nil

@@ -2,11 +2,13 @@
 
 ## Next release — unreleased
 
+- Result tables have a fixed row-number gutter: click to select a whole row, drag or Shift-click for a range, and Command-click for individual rows. Row numbers are excluded from copied data and stay below the column header while scrolling.
+- Query results show displayed and total row counts on the right, such as `13 from 13 rows shown`, without a separate SELECT command heading.
 - Fixed clipped hover feedback on the application theme and editor color scheme pickers in Settings.
-- Table browsing: inline editing of simple values, a Space-key inspector for the selected row, and sorting by column headers. Pagination, Columns, filters, and row actions moved to the bottom; selection, export, and applying changes share a bottom bar. Preview SQL appears only when a preview is available.
+- Table browsing: double-click a cell to open row details and edit its value, or choose Row Details from the cell context menu; Space also toggles the inspector. The separate inspector toolbar button is removed. Sorting is available through column headers, and filters sit beside the connection picker above the table. Selection, export, and applying changes share the bar directly below the table; pagination, Columns, and row actions sit beneath it. Preview SQL appears only when a preview is available.
 - Fixed freezes during mouse and keyboard multiple selection: selection changes no longer reload data, and noncontiguous selected rows are preserved. Editors respect column types and distinguish empty strings, NULL, and DEFAULT.
 - All data tables and the SQL completion table use a style without outer horizontal padding or rounded rows.
-- Removed the persistent cell-editing hint above the data grid.
+- Removed the persistent cell-editing hints above the data grid and SQL query results.
 - A green checkmark beside the first line number confirms successful SQL fragment execution. Scripts mark each completed statement; errors, cancellation, and unknown outcomes receive no mark. Editing text, changing connections, or starting another run clears previous marks.
 - Settings → Appearance: independent application and SQL editor color schemes, live previews, and changes without restarting. The application supports System/Light/Dark and the shared scheme library: DBeer Light/Dark, VS Code Light+/Dark+, Solarized Light/Dark, JetBrains Light, Darcula, and imported themes. The application palette applies to panels, tabs, controls, and tables; the editor inherits it in Follow App Appearance mode or uses a separate scheme. Import standard VS Code JSON/JSONC, TextMate `.tmTheme`, and JetBrains `.icls` files, persist imports and selections locally, and remove custom schemes. Switching schemes preserves text, cursor position, scrolling, and Undo; the background, syntax, selection, cursor, line numbers, and completion popup use the selected palette.
 - Refreshed SQL editor layout: the background fills the panel to its edges without an outer padding border, while retaining internal text padding, line spacing, the current line and its number, adaptive light/dark colors, Undo, selection, and execution highlighting.

@@ -88,6 +88,7 @@ final class GridDraft: ObservableObject {
         didSet { cachedPresentation = nil }
     }
     @Published var selectedRows: IndexSet = []
+    @Published var hasInlineDraft = false
     @Published var isApplying = false
     @Published var isPreviewing = false
     @Published var isReloading = false

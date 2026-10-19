@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The filter editor is opened from the table's bottom toolbar.
+/// The filter editor is opened beside the connection picker above the table.
 struct TableBrowseControls: View {
     @ObservedObject var document: SQLDocument
     @ObservedObject var workspace: ApplicationWorkspace
@@ -77,6 +77,7 @@ struct TableBrowseControls: View {
 enum TableBrowseNavigation {
     static func isEnabled(document: SQLDocument, workspace: ApplicationWorkspace) -> Bool {
         !document.isRunning && !workspace.isClosing && document.grid?.isClosing != true &&
+            document.grid?.hasInlineDraft != true &&
             (document.grid?.pendingCount ?? 0) == 0 && document.grid?.isApplying != true &&
             document.grid?.isReloading != true && document.grid?.isPreviewing != true &&
             document.grid?.outcomeUnknown != true

@@ -8,9 +8,7 @@ struct DataGridView: View {
     let result: BackendMessage?
     private var editing = SwiftUI.State<GridCellEdit?>(initialValue: nil)
     private var showingColumns = SwiftUI.State(initialValue: false)
-    private var showingFilters = SwiftUI.State(initialValue: false)
     private var showingRowDetails = SwiftUI.State(initialValue: false)
-    private var inlineDraftChanged = SwiftUI.State(initialValue: false)
 
     init(document: SQLDocument, workspace: ApplicationWorkspace, grid: GridDraft, result: BackendMessage? = nil) {
         self.document = document
@@ -19,10 +17,10 @@ struct DataGridView: View {
         self.result = result
     }
 
-    private var canNavigate: Bool { TableBrowseNavigation.isEnabled(document: document, workspace: workspace) && !inlineDraftChanged.wrappedValue }
+    private var canNavigate: Bool { TableBrowseNavigation.isEnabled(document: document, workspace: workspace) }
     private var canEdit: Bool { grid.canEdit && !document.isRunning && !workspace.isClosing }
     private var canPreview: Bool {
-        (grid.pendingCount > 0 || inlineDraftChanged.wrappedValue) && !grid.isApplying && !grid.isPreviewing && !document.isRunning &&
+        (grid.pendingCount > 0 || grid.hasInlineDraft) && !grid.isApplying && !grid.isPreviewing && !document.isRunning &&
             !grid.isReloading && !grid.isClosing && !workspace.isClosing && !grid.outcomeUnknown
     }
 
@@ -49,9 +47,9 @@ struct DataGridView: View {
                 }
             }
             Divider()
-            navigationToolbar
-            Divider()
             changesToolbar
+            Divider()
+            navigationToolbar
         }
         .onDisappear { grid.commitEditing?() }
         .sheet(item: editing.projectedValue) { edit in
@@ -76,7 +74,7 @@ struct DataGridView: View {
         view.deletedRows = presentation.deletedRows
         view.valueKinds = presentation.valueKinds
         view.selectedRows = grid.selectedRows
-        view.onInlineDraftChanged = { inlineDraftChanged.wrappedValue = $0 }
+        view.onInlineDraftChanged = { grid.hasInlineDraft = $0 }
         view.dataIdentity = presentation
         view.onCoordinatorReady = { [weak grid] coordinator in
             grid?.commitEditing = { [weak coordinator] in coordinator?.finishInlineEdit() }
@@ -94,6 +92,7 @@ struct DataGridView: View {
             view.canSetEmptyColumns = IndexSet(policies.indices.filter { policies[$0].allowsEmptyString })
         }
         view.onSelectedRows = { selected in if grid.selectedRows != selected { grid.selectedRows = selected } }
+        view.onShowRowDetails = { showingRowDetails.wrappedValue = true }
         view.onToggleRowDetails = { showingRowDetails.wrappedValue.toggle() }
         view.sortColumn = document.tableSort.first?.column
         view.sortAscending = document.tableSort.first?.direction != "desc"
@@ -115,18 +114,6 @@ struct DataGridView: View {
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
                 .popover(isPresented: showingColumns.projectedValue) { columnDetails }
-            Button {
-                showingFilters.wrappedValue.toggle()
-            } label: {
-                Label(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))",
-                    systemImage: "line.3.horizontal.decrease")
-            }.controlHover().disabled(!canNavigate).accessibilityIdentifier("gridFilter")
-                .popover(isPresented: showingFilters.projectedValue) {
-                    TableBrowseControls(document: document, workspace: workspace)
-                }
-            ControlIconButton(systemName: "sidebar.right") { showingRowDetails.wrappedValue.toggle() }
-                .help("Show row details (Space)").accessibilityLabel("Row Details")
-                .accessibilityIdentifier("gridRowDetails")
             Spacer(minLength: 4)
             ControlIconButton(systemName: "chevron.left") {
                 guard canNavigate, document.page > 0 else { return }
@@ -158,12 +145,12 @@ struct DataGridView: View {
                     Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
                 }
             }.fixedSize().controlHover().help("Export loaded rows")
-                .disabled(result == nil || grid.pendingCount > 0 || inlineDraftChanged.wrappedValue || grid.isApplying || grid.outcomeUnknown || document.isRunning)
+                .disabled(result == nil || grid.pendingCount > 0 || grid.hasInlineDraft || grid.isApplying || grid.outcomeUnknown || document.isRunning)
                 .accessibilityIdentifier("gridExport")
             Spacer(minLength: 4)
             if grid.pendingCount > 0 {
                 Text("\(grid.pendingCount) pending").font(.caption).monospacedDigit().fixedSize().appSecondaryText()
-            } else if inlineDraftChanged.wrappedValue {
+            } else if grid.hasInlineDraft {
                 Text("Editing").font(.caption).appSecondaryText()
             } else if let duration = result?.durationMs {
                 Text(String(format: "%.1f ms", duration)).font(.caption).fixedSize().appSecondaryText()
@@ -173,10 +160,10 @@ struct DataGridView: View {
                     .accessibilityIdentifier("gridPreviewSQL")
             }
             Button("Discard") { finishEditing(); Task { await workspace.discardGrid(document) } }.controlHover()
-                .disabled((grid.pendingCount == 0 && !inlineDraftChanged.wrappedValue) || grid.isApplying || grid.isReloading || document.isRunning || grid.isClosing || workspace.isClosing)
+                .disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || grid.isApplying || grid.isReloading || document.isRunning || grid.isClosing || workspace.isClosing)
                 .accessibilityIdentifier("gridDiscard")
             Button("Apply") { finishEditing(); Task { await workspace.applyGrid(document) } }.controlHover()
-                .buttonStyle(.borderedProminent).disabled((grid.pendingCount == 0 && !inlineDraftChanged.wrappedValue) || !canEdit)
+                .buttonStyle(.borderedProminent).disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || !canEdit)
                 .accessibilityIdentifier("gridApply")
         }
         .font(.callout).controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)

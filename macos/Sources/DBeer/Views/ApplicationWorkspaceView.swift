@@ -273,7 +273,7 @@ struct DocumentTab: View {
     }
 }
 
-private struct SQLDocumentPane: View {
+struct SQLDocumentPane: View {
     @ObservedObject var document: SQLDocument
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var commands: AppCommandRegistry
@@ -281,6 +281,7 @@ private struct SQLDocumentPane: View {
     @ObservedObject private var appearance: AppAppearance
     @Environment(\.colorScheme) private var colorScheme
     private var resultSetIndex = SwiftUI.State(initialValue: 0)
+    private var showingFilters = SwiftUI.State(initialValue: false)
 
     init(document: SQLDocument, workspace: ApplicationWorkspace) {
         self.document = document
@@ -299,6 +300,7 @@ private struct SQLDocumentPane: View {
                         Text(profile.name).tag(Optional(profile.id))
                     }
                 }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(maxWidth: 220)
+                    .accessibilityIdentifier("documentConnection")
                     .disabled(document.runtime?.sessionId != nil || document.isRunning)
                 if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
                    (document.runtime?.policy ?? profile.policy).readOnly {
@@ -307,6 +309,19 @@ private struct SQLDocumentPane: View {
                         .help("Readonly")
                         .accessibilityLabel("Readonly")
                         .accessibilityIdentifier("documentReadOnly")
+                }
+                if document.table != nil, document.grid != nil {
+                    Button {
+                        showingFilters.wrappedValue.toggle()
+                    } label: {
+                        Label(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))",
+                            systemImage: "line.3.horizontal.decrease")
+                    }.controlHover().controlSize(.small)
+                        .disabled(!TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
+                        .accessibilityIdentifier("gridFilter")
+                        .popover(isPresented: showingFilters.projectedValue) {
+                            TableBrowseControls(document: document, workspace: workspace)
+                        }
                 }
                 Spacer()
                 Button("Stop") { commands.perform(.stop) }.controlHover()
@@ -443,7 +458,8 @@ private struct SQLDocumentPane: View {
                 }
                 if document.table == nil {
                     HStack {
-                        Text(result.commandTag ?? "Results").font(.headline)
+                        let showsRows = result.columns?.isEmpty == false
+                        if !showsRows { Text(result.commandTag ?? "Results").font(.headline) }
                         if let sets = result.resultSets, sets.count > 1 {
                             Picker("Result Set", selection: resultSetIndex.projectedValue) {
                                 ForEach(sets.indices, id: \.self) { index in
@@ -456,7 +472,9 @@ private struct SQLDocumentPane: View {
                             Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
                             Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
                         }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true)
-                        Text("\(result.displayedRowCount ?? 0) rows shown")
+                        let shown = result.displayedRowCount ?? result.rows?.count ?? 0
+                        Text(showsRows ? "\(shown) from \(result.rowCount ?? Int64(shown)) rows shown" : "\(shown) rows shown")
+                            .accessibilityIdentifier("queryRowCount")
                         if let duration = result.durationMs { Text(String(format: "%.1f ms", duration)) }
                     }.font(.callout).padding(12)
                 }
@@ -473,8 +491,6 @@ private struct SQLDocumentPane: View {
                     if document.table != nil, let grid = document.grid {
                         DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
-                        Text("Query results are read only. Open a table from Connections to edit its data.")
-                            .font(.caption).appSecondaryText().padding(8)
                         ResultTableView(columns: columns, rows: result.rows ?? [], documentID: document.id)
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }

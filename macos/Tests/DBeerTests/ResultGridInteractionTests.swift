@@ -39,6 +39,47 @@ struct ResultGridInteractionTests {
         ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { descendants($0, of: type) }
     }
 
+    private func click(_ point: NSPoint, in window: NSWindow, count: Int) throws {
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            let event = try #require(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 1, clickCount: count, pressure: 1))
+            window.sendEvent(event)
+        }
+    }
+
+    @Test func nativeDoubleClickStartsEditingAcrossTheCell() async throws {
+        let coordinator = ResultTableView.Coordinator()
+        let scroll = coordinator.makeScrollView()
+        coordinator.editableColumns = IndexSet(integer: 1)
+        coordinator.onCommitCell = { _, _ in }
+        coordinator.update(columns: columns, rows: [["1", "value"], ["2", ""]], in: scroll)
+        let window = host(scroll)
+        defer { window.close() }
+        try await Task.sleep(for: .milliseconds(30))
+        let table = try #require(scroll.documentView as? ResultGridTableView)
+        for (row, edge) in [(0, false), (1, true)] {
+            let cell = table.frameOfCell(atColumn: 1, row: row)
+            let point = table.convert(NSPoint(x: edge ? cell.maxX - 2 : cell.minX + 12, y: cell.midY), to: nil)
+            try click(point, in: window, count: 1)
+            try await Task.sleep(for: .milliseconds(30))
+            #expect(!descendants(table, of: NSTextField.self).contains { $0.identifier?.rawValue == "inlineGridCellEditor" })
+            try click(point, in: window, count: 2)
+            try await Task.sleep(for: .milliseconds(30))
+            let field = try #require(descendants(table, of: NSTextField.self)
+                .first { $0.identifier?.rawValue == "inlineGridCellEditor" })
+            let editor = try #require(field.currentEditor() as? NSTextView)
+            #expect(window.firstResponder === editor)
+            let content = try #require(window.contentView)
+            let hit = content.hitTest(content.superview?.convert(point, from: nil) ?? point)
+            #expect(hit === field || hit === editor || hit?.isDescendant(of: field) == true,
+                "The inline editor must receive clicks instead of restarting table selection")
+            #expect(table.cellSelection?.focus == ResultGridCell(row: row, column: 1))
+            coordinator.finishInlineEdit(cancel: true)
+            try await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
     @Test func selectionFeedbackDoesNotReloadCellsOrRepublishExternalSparseRows() throws {
         let coordinator = ResultTableView.Coordinator()
         let scroll = coordinator.makeScrollView()
