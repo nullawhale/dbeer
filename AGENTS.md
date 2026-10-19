@@ -42,14 +42,19 @@ SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
 
 - Build the signed app: `./scripts/build-app.sh`.
   Use `CONFIGURATION=debug` for a debug build. Output: `build/DBeer.app`.
-- Run Go race and native Swift tests: `./scripts/test.sh`. This builds the app
+- Default to focused checks for the changed behavior. Run selected native suites
+  with `./scripts/test.sh --filter SuiteName` (repeat `--filter` as needed).
+  This skips Go tests; theme/UI matrices run only if the filter selects them.
+  Do not run the full suite after every small edit. Use it for broad changes,
+  final verification of cross-cutting work, or an explicit request.
+- Run all Go race and native Swift tests: `./scripts/test.sh --all`. This builds the app
   and isolates test credentials in a temporary Keychain. Use this runner for
   AppKit tests; a plain `swift test` can exit before the suite completes.
 - Run helper-only tests: `./scripts/test-go.sh` (also supported on Linux).
 - Run isolated database integration: `./scripts/test-postgres.sh`,
   `./scripts/test-mysql.sh` and `./scripts/test-tls.sh` (Docker required).
 - Run both databases with the native suite:
-  `./scripts/test-postgres.sh ./scripts/test-mysql.sh ./scripts/test.sh --require-postgres`.
+  `./scripts/test-postgres.sh ./scripts/test-mysql.sh ./scripts/test.sh --all --require-postgres`.
 - Installed-archive acceptance: `./scripts/test-install-update.sh`; this needs
   full Xcode, Docker and the expected release archives. Read
   `macos/AcceptanceTests/README.md` before running it.
