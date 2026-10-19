@@ -26,6 +26,7 @@ struct SQLEditorView: NSViewRepresentable {
     var engine: DatabaseEngine = .postgresql
     var selectionChanged: ((NSRange) -> Void)?
     var onRunSelection: ((NSRange) -> Void)?
+    var onCommandEvent: ((NSEvent, NSRange) -> Bool)?
     var completions: [String] = []
     /// A zero-based UTF-16 offset in the document, matching NSTextView ranges.
     var errorPosition: Int?
@@ -47,7 +48,7 @@ struct SQLEditorView: NSViewRepresentable {
     private func update(_ scrollView: NSScrollView, coordinator: Coordinator) {
         coordinator.update(text: $text, isEditable: isEditable, in: scrollView,
             editorState: editorState, documentID: documentID, engine: engine,
-            selectionChanged: selectionChanged, onRunSelection: onRunSelection,
+            selectionChanged: selectionChanged, onRunSelection: onRunSelection, onCommandEvent: onCommandEvent,
             completions: completions, errorPosition: errorPosition,
             editorTheme: editorTheme)
     }
@@ -62,6 +63,7 @@ struct SQLEditorView: NSViewRepresentable {
         private var engine: DatabaseEngine = .postgresql
         private var selectionChanged: ((NSRange) -> Void)?
         private var onRunSelection: ((NSRange) -> Void)?
+        private var onCommandEvent: ((NSEvent, NSRange) -> Bool)?
         private var completionCandidates: [String] = []
         private var errorPosition: Int?
         private var parsedText: String?
@@ -147,13 +149,14 @@ struct SQLEditorView: NSViewRepresentable {
         func update(text: Binding<String>, isEditable: Bool, in scrollView: NSScrollView,
                     editorState: SQLEditorState? = nil, documentID: UUID? = nil,
                     engine: DatabaseEngine = .postgresql, selectionChanged: ((NSRange) -> Void)? = nil,
-                    onRunSelection: ((NSRange) -> Void)? = nil,
+                    onRunSelection: ((NSRange) -> Void)? = nil, onCommandEvent: ((NSEvent, NSRange) -> Bool)? = nil,
                     completions: [String] = [], errorPosition: Int? = nil,
                     editorTheme: EditorTheme? = nil) {
             self.text = text
             self.engine = engine
             self.selectionChanged = selectionChanged
             self.onRunSelection = onRunSelection
+            self.onCommandEvent = onCommandEvent
             self.completionCandidates = completions
             self.errorPosition = errorPosition
             if self.editorTheme != editorTheme { tokenStyles.removeAll(keepingCapacity: true) }
@@ -182,10 +185,14 @@ struct SQLEditorView: NSViewRepresentable {
             scrollView.appearance = textView.appearance
             scrollView.backgroundColor = textView.backgroundColor
             scrollView.verticalRulerView?.appearance = textView.appearance
+            textView.appCommandDocumentID = documentID
             textView.delegate = self
             if onRunSelection != nil {
                 textView.runSelection = { [weak self] in self?.onRunSelection?($0) }
             } else { textView.runSelection = nil }
+            textView.commandEvent = onCommandEvent.map { _ in { [weak self] event, selection in
+                self?.onCommandEvent?(event, selection) ?? false
+            } }
             textView.isEditable = isEditable
             textView.isSelectable = true
             if textView.string != text.wrappedValue {
@@ -416,7 +423,7 @@ enum SQLSyntaxPalette {
 }
 
 @MainActor
-final class SQLTextView: NSTextView {
+final class SQLTextView: NSTextView, AppCommandFocusResponder {
     private let documentUndo = UndoManager()
     private(set) var editorTheme: EditorTheme?
     var syntaxText: String?
@@ -427,6 +434,9 @@ final class SQLTextView: NSTextView {
     var executionHighlightTheme: EditorTheme?
     var executionHighlightRange: NSRange?
     var runSelection: ((NSRange) -> Void)?
+    var commandEvent: ((NSEvent, NSRange) -> Bool)?
+    var appCommandFocus: AppCommandFocus { .sqlEditor }
+    var appCommandDocumentID: UUID?
     override var undoManager: UndoManager? { documentUndo }
 
     /// Theme changes affect presentation attributes only. The document, native
@@ -462,7 +472,8 @@ final class SQLTextView: NSTextView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+        if commandEvent?(event, selectedRange()) == true { return true }
+        if commandEvent == nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 36, let runSelection {
             runSelection(selectedRange())
             return true
@@ -471,7 +482,8 @@ final class SQLTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+        if commandEvent?(event, selectedRange()) == true { return }
+        if commandEvent == nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 36, let runSelection {
             runSelection(selectedRange())
             return

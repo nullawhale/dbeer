@@ -1,0 +1,138 @@
+import AppKit
+import Combine
+
+enum AppCommandFocus: Equatable { case workspace, sqlEditor, grid, textInput }
+
+/// Native responders declare their command scope. A cell's field editor stays
+/// a text input, so grid shortcuts cannot replace text editing commands.
+@MainActor protocol AppCommandFocusResponder: AnyObject {
+    var appCommandFocus: AppCommandFocus { get }
+    var appCommandDocumentID: UUID? { get }
+}
+
+struct AppCommandContext: Equatable {
+    let documentID: UUID?
+    let focus: AppCommandFocus
+    let isWorkspaceWindow: Bool
+    let hasModal: Bool
+}
+
+struct AppCommandInvocation {
+    let command: AppCommandID
+    let documentID: UUID
+    let documentText: String
+    let profile: SavedConnection?
+    let fragment: SQLExecutionFragment?
+}
+
+/// Menus, toolbar controls and native key events all enter here. A synchronous
+/// invocation captures the document and fragment before a Task can suspend.
+@MainActor final class AppCommandRegistry: NSObject, ObservableObject {
+    let shortcuts: AppShortcutStore
+    private unowned let workspace: ApplicationWorkspace
+    private var shortcutObservation: AnyCancellable?
+    private var gridHandlers: [AppCommandID: (SQLDocument) async -> Void] = [:]
+    private let invocationHandler: ((AppCommandInvocation) async -> Void)?
+    private var previousContext: AppCommandContext?
+
+    init(workspace: ApplicationWorkspace, shortcuts: AppShortcutStore,
+         invocationHandler: ((AppCommandInvocation) async -> Void)? = nil) {
+        self.workspace = workspace
+        self.shortcuts = shortcuts
+        self.invocationHandler = invocationHandler
+        super.init()
+        shortcutObservation = shortcuts.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        NotificationCenter.default.addObserver(self, selector: #selector(refreshContext),
+            name: NSApplication.willUpdateNotification, object: nil)
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(refreshContext), name: name, object: nil)
+        }
+    }
+
+    @objc private func refreshContext() {
+        let context = context()
+        guard context != previousContext else { return }
+        previousContext = context
+        objectWillChange.send()
+    }
+
+    func context() -> AppCommandContext {
+        let window = workspace.presentationWindow
+        let responder = window?.firstResponder
+        let focus: AppCommandFocus
+        var documentID = workspace.selectedDocumentID
+        if let scoped = responder as? any AppCommandFocusResponder {
+            focus = scoped.appCommandFocus
+            documentID = scoped.appCommandDocumentID
+        }
+        else if responder is NSTextView || responder is NSTextField { focus = .textInput }
+        else { focus = .workspace }
+        return AppCommandContext(documentID: documentID, focus: focus,
+            isWorkspaceWindow: window != nil && NSApp.keyWindow === window,
+            hasModal: NSApp.modalWindow != nil || window?.attachedSheet != nil || workspace.library.isConnectionEditorPresented)
+    }
+
+    /// R21 adds descriptors to the same shortcut store and supplies a handler
+    /// that uses the active grid's common serializer.
+    func registerGridCommand(_ command: AppCommandID, handler: @escaping (SQLDocument) async -> Void) {
+        gridHandlers[command] = handler
+    }
+
+    func canPerform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Bool {
+        let context = context ?? self.context()
+        guard context.isWorkspaceWindow, !context.hasModal,
+              let document = workspace.selectedDocument, context.documentID == document.id,
+              let descriptor = shortcuts.descriptors.first(where: { $0.id == command }) else { return false }
+        if descriptor.scope == .grid {
+            return context.focus == .grid && gridHandlers[command] != nil && !document.isRunning
+        }
+        if command == .stop { return document.isRunning || document.grid?.isApplying == true }
+        guard context.focus != .textInput else { return false }
+        guard workspace.canStartOperation(document), !document.isRunning, document.grid?.isApplying != true,
+              let profileID = document.profileID, workspace.library.savedConnections.contains(where: { $0.id == profileID }) else { return false }
+        if descriptor.scope == .sqlDocument, document.table != nil { return false }
+        if document.table != nil { return command == .runCurrent }
+        // Invalid SQL remains launchable so the normal parser diagnostic appears.
+        let fragment = workspace.executionFragment(document, script: command == .runScript)
+        return fragment.map { !$0.sourceSQL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } == true
+    }
+
+    @discardableResult
+    func perform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Task<Void, Never>? {
+        guard canPerform(command, context: context), let document = workspace.selectedDocument else { return nil }
+        let invocation = AppCommandInvocation(command: command, documentID: document.id, documentText: document.text,
+            profile: workspace.library.savedConnections.first { $0.id == document.profileID },
+            fragment: document.table == nil && command != .stop ? workspace.executionFragment(document, script: command == .runScript) : nil)
+        let handler = gridHandlers[command]
+        return Task { [workspace, invocationHandler] in
+            if let invocationHandler { await invocationHandler(invocation); return }
+            // Tab switches after the click do not retarget the operation.
+            guard workspace.documents.contains(where: { $0 === document }) else { return }
+            if command == .stop { await workspace.stop(document); return }
+            guard document.text == invocation.documentText,
+                  document.profileID == invocation.profile?.id,
+                  workspace.library.savedConnections.first(where: { $0.id == document.profileID }) == invocation.profile else { return }
+            if let handler { await handler(document) }
+            else if command == .runCurrent {
+                if document.table != nil { await workspace.run(document) }
+                else if let fragment = invocation.fragment { await workspace.runResolved(document, fragment: fragment) }
+            } else if command == .runScript, let fragment = invocation.fragment {
+                await workspace.runResolved(document, fragment: fragment, script: true)
+            } else if command == .runToJSON || command == .runToCSV {
+                await workspace.runToFile(document, format: command == .runToJSON ? "json" : "csv", fragment: invocation.fragment)
+            }
+        }
+    }
+
+    func handleKeyEvent(_ event: NSEvent, documentID: UUID, selection: NSRange? = nil) -> Bool {
+        let context = self.context()
+        guard context.documentID == documentID, context.documentID == workspace.selectedDocumentID,
+              context.isWorkspaceWindow, !context.hasModal,
+              event.window === workspace.presentationWindow else { return false }
+        if context.focus == .sqlEditor, let selection { workspace.selectedDocument?.selection = selection }
+        guard let descriptor = shortcuts.descriptors.first(where: {
+            shortcuts.shortcut(for: $0.id)?.matches(event: event) == true && canPerform($0.id, context: context)
+        }) else { return false }
+        return perform(descriptor.id, context: context) != nil
+    }
+}

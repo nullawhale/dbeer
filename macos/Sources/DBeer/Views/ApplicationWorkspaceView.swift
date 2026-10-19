@@ -268,6 +268,7 @@ struct DocumentTab: View {
 private struct SQLDocumentPane: View {
     @ObservedObject var document: SQLDocument
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var commands: AppCommandRegistry
     @ObservedObject private var editorThemes: EditorThemeStore
     @ObservedObject private var appearance: AppAppearance
     @Environment(\.colorScheme) private var colorScheme
@@ -276,6 +277,7 @@ private struct SQLDocumentPane: View {
     init(document: SQLDocument, workspace: ApplicationWorkspace) {
         self.document = document
         self.workspace = workspace
+        self.commands = workspace.commands
         self.editorThemes = workspace.editorThemes
         self.appearance = workspace.appearance
     }
@@ -291,24 +293,32 @@ private struct SQLDocumentPane: View {
                 }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(maxWidth: 220)
                     .disabled(document.runtime?.sessionId != nil || document.isRunning)
                 Spacer()
-                Button("Stop") { Task { await workspace.stop(document) } }.controlHover()
-                    .disabled(!document.isRunning && document.grid?.isApplying != true)
+                Button("Stop") { commands.perform(.stop) }.controlHover()
+                    .disabled(!commands.canPerform(.stop))
+                    .help(commandHelp(.stop))
                 if document.table == nil {
-                    Button("Run Script") { Task { await workspace.runScript(document) } }.controlHover()
-                        .disabled(document.isRunning || document.profileID == nil)
-                        .help("Run all statements in order, stopping at the first error")
+                    Button("Run Script") { commands.perform(.runScript) }.controlHover()
+                        .disabled(!commands.canPerform(.runScript))
+                        .help(commandHelp(.runScript) + " · Run the entire document, stopping at the first error")
                     Menu("Run to File") {
-                        Button("JSON…") { Task { await workspace.runToFile(document, format: "json") } }
-                        Button("CSV…") { Task { await workspace.runToFile(document, format: "csv") } }
-                    }.fixedSize().controlHover().disabled(document.isRunning || document.profileID == nil)
+                        Button("JSON…") { commands.perform(.runToJSON) }
+                        Button("CSV…") { commands.perform(.runToCSV) }
+                    }.fixedSize().controlHover().disabled(!commands.canPerform(.runToJSON))
                         .accessibilityIdentifier("runToFile")
                 }
                 Button {
-                    Task { await workspace.run(document) }
-                } label: { Label(document.table == nil ? "Run" : "Refresh", systemImage: document.table == nil ? "play" : "arrow.clockwise") }.controlHover()
-                    .keyboardShortcut(.return, modifiers: .command)
+                    commands.perform(.runCurrent)
+                } label: {
+                    HStack(spacing: 6) {
+                        Label(document.table == nil ? "Run" : "Refresh", systemImage: document.table == nil ? "play" : "arrow.clockwise")
+                        if let shortcut = commands.shortcuts.shortcut(for: .runCurrent) {
+                            Text(shortcut.displayString).opacity(0.65)
+                        }
+                    }.fixedSize(horizontal: true, vertical: false)
+                }.controlHover()
                     .buttonStyle(.borderedProminent)
-                    .disabled(document.isRunning || document.grid?.isApplying == true || document.profileID == nil || document.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!commands.canPerform(.runCurrent))
+                    .help(commandHelp(.runCurrent))
                     .accessibilityIdentifier("runQuery")
             }.padding(12)
             Divider()
@@ -317,9 +327,8 @@ private struct SQLDocumentPane: View {
                     SQLEditorView(text: $document.text, editorState: workspace.editorState, documentID: document.id,
                         engine: workspace.library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql,
                         selectionChanged: { document.selection = $0 },
-                        onRunSelection: { selection in
-                            document.selection = selection
-                            Task { await workspace.run(document) }
+                        onCommandEvent: { event, selection in
+                            commands.handleKeyEvent(event, documentID: document.id, selection: selection)
                         }, completions: workspace.completions(profileID: document.profileID),
                         errorPosition: document.errorPosition,
                         editorTheme: effectiveEditorTheme)
@@ -348,6 +357,11 @@ private struct SQLDocumentPane: View {
         if editorThemes.selectedThemeID == EditorThemeStore.automaticID,
            let theme = appearance.selectedColorTheme { return theme }
         return editorThemes.effectiveTheme(isDark: colorScheme == .dark)
+    }
+
+    private func commandHelp(_ command: AppCommandID) -> String {
+        let title = commands.shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
+        return title + (commands.shortcuts.shortcut(for: command).map { " (\($0.displayString))" } ?? "")
     }
 
     private var displayedExecution: SQLExecution? {
@@ -439,7 +453,7 @@ private struct SQLDocumentPane: View {
                     } else {
                         Text("Query results are read only. Open a table from Connections to edit its data.")
                             .font(.caption).appSecondaryText().padding(8)
-                        ResultTableView(columns: columns, rows: result.rows ?? [])
+                        ResultTableView(columns: columns, rows: result.rows ?? [], documentID: document.id)
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }
             }

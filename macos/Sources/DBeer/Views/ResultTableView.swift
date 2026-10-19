@@ -20,7 +20,9 @@ struct ResultGridSelection: Equatable {
 }
 
 @MainActor
-final class ResultGridTableView: NSTableView {
+final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
+    var appCommandFocus: AppCommandFocus { .grid }
+    var appCommandDocumentID: UUID?
     weak var copyCoordinator: ResultTableView.Coordinator?
     private(set) var cellSelection: ResultGridSelection?
     private(set) var contextCell: ResultGridCell?
@@ -298,6 +300,7 @@ struct ResultTableView: NSViewRepresentable {
     var onEditCell: ((ResultGridCell) -> Void)?
     var onSelectedRows: ((IndexSet) -> Void)?
     var onDeleteRows: (() -> Void)?
+    var documentID: UUID?
 
     func makeCoordinator() -> Coordinator { Coordinator(pasteboard: pasteboard) }
 
@@ -320,6 +323,7 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onSelectedRows = onSelectedRows
         coordinator.onDeleteRows = onDeleteRows
         coordinator.update(columns: columns, rows: rows, in: scrollView)
+        (scrollView.documentView as? ResultGridTableView)?.appCommandDocumentID = documentID
         if let selectedRows, let table = scrollView.documentView as? ResultGridTableView,
            table.selectedRowIndexes != selectedRows { table.setRowsExternally(selectedRows) }
     }

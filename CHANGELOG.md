@@ -4,6 +4,9 @@
 
 - Settings → Appearance: independent application and SQL editor color schemes, live previews, and changes without restarting. The application supports System/Light/Dark and the shared scheme library: DBeer Light/Dark, VS Code Light+/Dark+, Solarized Light/Dark, JetBrains Light, Darcula, and imported themes. The application palette applies to panels, tabs, controls, and tables; the editor inherits it in Follow App Appearance mode or uses a separate scheme. Import standard VS Code JSON/JSONC, TextMate `.tmTheme`, and JetBrains `.icls` files, persist imports and selections locally, and remove custom schemes. Switching schemes preserves text, cursor position, scrolling, and Undo; the background, syntax, selection, cursor, line numbers, and completion popup use the selected palette.
 - Refreshed SQL editor layout: the background fills the panel to its edges without an outer padding border, while retaining internal text padding, line spacing, the current line and its number, adaptive light/dark colors, Undo, selection, and execution highlighting.
+- Shared execution registry for the Query menu, buttons, and keyboard, respecting the active tab, focus, and modal windows. The default ⌘Return and ⇧⌘Return shortcuts are preserved; the SQL fragment to execute is highlighted inside the editor instead of a separate block. Highlighting and execution follow the cursor, including immediately after `;`.
+- Configurable Run, Run Script, Stop, and Run to File shortcuts: recording, persistence, conflict detection, protected system editing shortcuts, clearing, and restoring defaults.
+- Individual shortcut clear/reset actions use icons without button borders.
 
 ## 0.1.0
 

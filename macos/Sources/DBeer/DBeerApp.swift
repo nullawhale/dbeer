@@ -26,8 +26,15 @@ struct DBeerApp: App {
         }
 
         Settings {
-            AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
-                .applicationTheme(appearance: appDelegate.appearance)
+            TabView {
+                AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
+                    .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                if let workspace = appDelegate.workspace {
+                    ShortcutSettingsView(store: workspace.commandShortcuts)
+                        .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+                }
+            }
+            .applicationTheme(appearance: appDelegate.appearance)
         }
     }
 }
@@ -50,7 +57,13 @@ private struct ConnectionCommands: Commands {
 
 private struct WorkspaceCommands: Commands {
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var commands: AppCommandRegistry
     @FocusedValue(\.focusCatalogSearch) private var focusCatalogSearch
+
+    init(workspace: ApplicationWorkspace) {
+        self.workspace = workspace
+        self.commands = workspace.commands
+    }
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -74,16 +87,13 @@ private struct WorkspaceCommands: Commands {
                 .disabled(focusCatalogSearch == nil)
         }
         CommandMenu("Query") {
-            Button("Run Selection or Current Statement") {
-                if let document = workspace.selectedDocument { Task { await workspace.run(document) } }
-            }.keyboardShortcut(.return, modifiers: .command)
-                .disabled(workspace.selectedDocument?.isRunning == true || workspace.selectedDocument?.profileID == nil)
-            Button("Run Script") {
-                if let document = workspace.selectedDocument { Task { await workspace.runScript(document) } }
-            }.keyboardShortcut(.return, modifiers: [.command, .shift])
-                .disabled(workspace.selectedDocument?.isRunning == true || workspace.selectedDocument?.profileID == nil || workspace.selectedDocument?.table != nil)
-            Button("Stop") { if let document = workspace.selectedDocument { Task { await workspace.stop(document) } } }
-                .disabled(workspace.selectedDocument?.isRunning != true && workspace.selectedDocument?.grid?.isApplying != true)
+            commandItem(.runCurrent)
+            commandItem(.runScript)
+            Menu("Run to File") {
+                commandItem(.runToJSON)
+                commandItem(.runToCSV)
+            }
+            commandItem(.stop)
             Divider()
             Button("SQL History…") { workspace.isHistoryPresented = true }
         }
@@ -92,6 +102,14 @@ private struct WorkspaceCommands: Commands {
             Button("Export Connections…") { workspace.exportProfiles() }
                 .disabled(workspace.library.savedConnections.isEmpty)
         }
+    }
+
+    private func commandItem(_ command: AppCommandID) -> some View {
+        let shortcut = commands.shortcuts.shortcut(for: command)
+        let descriptor = commands.shortcuts.descriptors.first { $0.id == command }
+        return Button(descriptor?.title ?? command.rawValue) { commands.perform(command) }
+            .keyboardShortcut(shortcut.map { KeyboardShortcut($0.keyEquivalent, modifiers: $0.eventModifiers) })
+            .disabled(!commands.canPerform(command))
     }
 }
 

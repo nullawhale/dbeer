@@ -19,11 +19,16 @@ struct SQLDiagnostic: Equatable, Sendable {
 
 struct SQLParseResult: Sendable {
     let statements: [SQLStatement]
+    /// Cursor hit areas include client delimiters, which are never sent to the server.
+    let statementEditorRanges: [NSRange]
     let tokens: [SQLToken]
     let diagnostics: [SQLDiagnostic]
 
     func statement(atUTF16 location: Int) -> SQLStatement? {
         statements.first { location >= $0.range.location && location <= NSMaxRange($0.range) } ??
+            zip(statements, statementEditorRanges).first {
+                location >= $0.1.location && location <= NSMaxRange($0.1)
+            }?.0 ??
             statements.first { $0.range.location > location } ?? statements.last
     }
 }
@@ -68,6 +73,7 @@ enum SQLScriptParser {
         let units: [UInt16]
         let engine: DatabaseEngine
         var statements: [SQLStatement] = []
+        var statementEditorRanges: [NSRange] = []
         var tokens: [SQLToken] = []
         var diagnostics: [SQLDiagnostic] = []
         var delimiter: [UInt16] = [59]
@@ -94,7 +100,7 @@ enum SQLScriptParser {
                 }
                 if matches(delimiter, at: index) {
                     if atomicDepth > 0 { index += delimiter.count; continue }
-                    finishStatement(at: index)
+                    finishStatement(at: index, delimiterLength: delimiter.count)
                     index += delimiter.count
                     segmentStart = index
                     continue
@@ -152,7 +158,8 @@ enum SQLScriptParser {
                     message: "Unterminated PostgreSQL BEGIN ATOMIC body."))
             }
             finishStatement(at: units.count)
-            return SQLParseResult(statements: statements, tokens: tokens, diagnostics: diagnostics)
+            return SQLParseResult(statements: statements, statementEditorRanges: statementEditorRanges,
+                tokens: tokens, diagnostics: diagnostics)
         }
 
         private func trackAtomicBody(word: String, range: NSRange) {
@@ -280,7 +287,7 @@ enum SQLScriptParser {
             if !closed { diagnostics.append(SQLDiagnostic(range: range, message: "Unterminated PostgreSQL dollar-quoted value.")) }
         }
 
-        private func finishStatement(at end: Int) {
+        private func finishStatement(at end: Int, delimiterLength: Int = 0) {
             defer { hasCode = false; words.removeAll(); atomicDepth = 0; caseDepth = 0; atomicStart = nil }
             guard hasCode else { return }
             var lower = segmentStart
@@ -290,6 +297,7 @@ enum SQLScriptParser {
             guard upper > lower else { return }
             let range = NSRange(location: lower, length: upper - lower)
             statements.append(SQLStatement(sql: text.substring(with: range), range: range))
+            statementEditorRanges.append(NSRange(location: lower, length: end + delimiterLength - lower))
             let names = words.map(\.0)
             if let first = names.first, ["SOURCE", "SYSTEM", "TEE", "NOTEE", "PAGER", "NOPAGER", "CONNECT", "QUIT", "EXIT"].contains(first) {
                 diagnostics.append(SQLDiagnostic(range: words[0].1, message: "mysql client commands are not supported."))

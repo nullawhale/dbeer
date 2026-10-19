@@ -79,6 +79,8 @@ final class ApplicationWorkspace: ObservableObject {
     let editorState = SQLEditorState()
     let editorThemes: EditorThemeStore
     let appearance: AppAppearance
+    let commandShortcuts: AppShortcutStore
+    lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
     private let credentialStore: any ConnectionCredentialStore
@@ -106,6 +108,7 @@ final class ApplicationWorkspace: ObservableObject {
     init(connectionStore: any ConnectionLibraryStore = FileConnectionLibraryStore(),
          credentialStore: any ConnectionCredentialStore = KeychainConnectionCredentialStore(),
          documentStore: any SQLDocumentStore = MemorySQLDocumentStore(),
+         commandShortcuts: AppShortcutStore? = nil,
          editorThemes: EditorThemeStore? = nil,
          appearance: AppAppearance? = nil,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
@@ -114,6 +117,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.credentialStore = credentialStore
         self.helperFactory = helperFactory
         self.documentStore = documentStore
+        self.commandShortcuts = commandShortcuts ?? AppShortcutStore()
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
         self.editorThemes = themes
         self.appearance = appearance ?? AppAppearance(editorThemes: themes)
@@ -246,36 +250,40 @@ final class ApplicationWorkspace: ObservableObject {
             return
         }
         if let sql {
-            await execute(document, statements: [SQLStatement(sql: sql, range: NSRange(location: 0, length: sql.utf16.count))])
+            let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
+            let parsed = SQLScriptParser.parse(sql, engine: engine)
+            if let diagnostic = parsed.diagnostics.first { document.localError = diagnostic.message; return }
+            await execute(document, statements: parsed.statements, sourceSQL: sql)
             return
         }
-        let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
-        guard let selected = SQLScriptParser.selectedStatement(in: document.text, selection: document.selection, engine: engine) else { return }
-        let parsed = SQLScriptParser.parse(selected.sql, engine: engine)
-        if let diagnostic = parsed.diagnostics.first {
-            document.localError = diagnostic.message
-            document.errorPosition = selected.range.location + diagnostic.range.location
-            return
-        }
-        await execute(document, statements: parsed.statements.map {
-            SQLStatement(sql: $0.sql, range: NSRange(location: selected.range.location + $0.range.location, length: $0.range.length))
-        })
+        guard let fragment = executionFragment(document) else { return }
+        await runResolved(document, fragment: fragment)
     }
 
     func reloadTableAfterDiscard(_ document: SQLDocument) async { await execute(document, statements: []) }
 
     func runScript(_ document: SQLDocument) async {
+        guard let fragment = executionFragment(document, script: true) else { return }
+        await runResolved(document, fragment: fragment, script: true)
+    }
+
+    func executionFragment(_ document: SQLDocument, script: Bool = false) -> SQLExecutionFragment? {
         let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
-        let parsed = SQLScriptParser.parse(document.text, engine: engine)
-        if let diagnostic = parsed.diagnostics.first {
+        let selection = editorState.selection(for: document.id, fallback: document.selection)
+        return SQLExecutionFragment.resolve(text: document.text, selection: selection, engine: engine, script: script)
+    }
+
+    func runResolved(_ document: SQLDocument, fragment: SQLExecutionFragment, script: Bool = false) async {
+        if let diagnostic = fragment.diagnostic {
             document.localError = diagnostic.message
             document.errorPosition = diagnostic.range.location
             return
         }
-        await execute(document, statements: parsed.statements)
+        await execute(document, statements: fragment.statements, isScript: script, sourceSQL: fragment.sourceSQL)
     }
 
-    private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil) async {
+    private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
+                         isScript: Bool = false, sourceSQL: String? = nil) async {
         guard canStartOperation(document), !document.isRunning, let profileID = document.profileID else { return }
         guard document.table != nil || !statements.isEmpty else { return }
         let previousGrid = document.table == nil ? nil : document.grid
@@ -519,12 +527,13 @@ final class ApplicationWorkspace: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
 
-    func runToFile(_ document: SQLDocument, format: String) async {
+    func runToFile(_ document: SQLDocument, format: String, fragment: SQLExecutionFragment? = nil) async {
         guard document.table == nil, !document.isRunning else { return }
-        let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
-        guard let selected = SQLScriptParser.selectedStatement(in: document.text, selection: document.selection, engine: engine) else { return }
-        let parsed = SQLScriptParser.parse(selected.sql, engine: engine)
-        guard parsed.diagnostics.isEmpty, parsed.statements.count == 1 else {
+        let boundText = document.text
+        let boundProfileID = document.profileID
+        let boundProfile = library.savedConnections.first { $0.id == boundProfileID }
+        guard let fragment = fragment ?? executionFragment(document) else { return }
+        guard fragment.diagnostic == nil, fragment.statements.count == 1 else {
             document.localError = "Select one SQL statement for Run to File."
             return
         }
@@ -538,9 +547,12 @@ final class ApplicationWorkspace: ObservableObject {
         panel.nameFieldStringValue = document.title + "." + format
         panel.message = "Run this SQL once and save all rows. The final file appears only after successful completion."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        let statement = parsed.statements[0]
-        await execute(document, statements: [SQLStatement(sql: statement.sql,
-            range: NSRange(location: selected.range.location + statement.range.location, length: statement.range.length))],
+        guard document.text == boundText, document.profileID == boundProfileID,
+              library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
+            document.localError = "The SQL or connection changed while choosing the export file. Review it and run again."
+            return
+        }
+        await execute(document, statements: fragment.statements,
             export: ExportRequest(path: destination.path, format: format, nullMarker: marker))
     }
 

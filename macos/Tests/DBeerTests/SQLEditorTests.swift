@@ -313,5 +313,91 @@ struct SQLEditorTests {
         #expect(mysql == ["`Mixed``Name`"])
     }
 
+    @Test func executionHighlightFollowsNativeCursorSelectionTypingAndUndo() throws {
+        let storage = TextStorage()
+        storage.text = "SELECT '😀';\n\nSELECT * FROM people;"
+        let coordinator = SQLEditorView.Coordinator(text: storage.binding)
+        let scroll = coordinator.makeScrollView()
+        var reportedSelection: NSRange?
+        coordinator.update(text: storage.binding, isEditable: true, in: scroll,
+            selectionChanged: { reportedSelection = $0 })
+        let editor = try #require(scroll.documentView as? NSTextView)
+        let manager = try #require(editor.layoutManager)
+        let first = (storage.text as NSString).range(of: "SELECT '😀'")
+        let second = (storage.text as NSString).range(of: "SELECT * FROM people")
+        func background(at index: Int) -> NSColor? {
+            manager.temporaryAttribute(.backgroundColor, atCharacterIndex: index, effectiveRange: nil) as? NSColor
+        }
+
+        // Reproduce the screenshot: insertion point just after the first semicolon.
+        let cursor = NSRange(location: NSMaxRange(first) + 1, length: 0)
+        editor.setSelectedRange(cursor)
+        #expect(reportedSelection == cursor)
+        #expect(background(at: first.location) != nil)
+        #expect(background(at: second.location) == nil)
+        #expect(manager.temporaryAttribute(.foregroundColor, atCharacterIndex: first.location, effectiveRange: nil) as? NSColor == SQLSyntaxPalette.keyword)
+
+        editor.setSelectedRange(NSRange(location: second.location + 3, length: 0))
+        #expect(background(at: first.location) == nil)
+        #expect(background(at: second.location) != nil)
+
+        let selection = (storage.text as NSString).range(of: "* FROM people")
+        editor.setSelectedRange(selection)
+        #expect(background(at: second.location) == nil)
+        #expect(background(at: selection.location) != nil)
+        #expect(background(at: NSMaxRange(selection)) == nil)
+        #expect(editor.selectedRange() == selection)
+
+        editor.insertText("42", replacementRange: selection)
+        #expect(storage.text == "SELECT '😀';\n\nSELECT 42;")
+        #expect(reportedSelection == editor.selectedRange())
+        #expect(background(at: first.location) == nil)
+        #expect(background(at: second.location) != nil)
+        editor.undoManager?.undo()
+        #expect(storage.text == "SELECT '😀';\n\nSELECT * FROM people;")
+        #expect(editor.selectedRange() == selection)
+        #expect(background(at: selection.location) != nil)
+        #expect(background(at: second.location) == nil)
+
+        storage.text = "-- comment only"
+        coordinator.update(text: storage.binding, isEditable: true, in: scroll)
+        #expect(background(at: 0) == nil)
+    }
+
+    @Test func executionUsesTheNativeCursorAndCachedEditorsCannotRetargetAnotherTab() throws {
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore())
+        let first = workspace.newDocument(text: "SELECT 1;\nSELECT 2;")
+        let second = workspace.newDocument(text: "SELECT 3;\nSELECT 4;")
+        let firstBinding = Binding(get: { first.text }, set: { first.text = $0 })
+        let secondBinding = Binding(get: { second.text }, set: { second.text = $0 })
+        let coordinator = SQLEditorView.Coordinator(text: firstBinding)
+        let scroll = coordinator.makeScrollView()
+        coordinator.update(text: firstBinding, isEditable: true, in: scroll,
+            editorState: workspace.editorState, documentID: first.id, selectionChanged: { first.selection = $0 })
+        let firstEditor = try #require(scroll.documentView as? NSTextView)
+        firstEditor.setSelectedRange(NSRange(location: 9, length: 0))
+        // Native selection is authoritative even if an update callback was suppressed.
+        first.selection = NSRange(location: 12, length: 0)
+        #expect(workspace.executionFragment(first)?.sourceSQL == "SELECT 1")
+
+        coordinator.update(text: secondBinding, isEditable: true, in: scroll,
+            editorState: workspace.editorState, documentID: second.id, selectionChanged: { second.selection = $0 })
+        let secondEditor = try #require(scroll.documentView as? NSTextView)
+        secondEditor.setSelectedRange(NSRange(location: 12, length: 0))
+        firstEditor.setSelectedRange(NSRange(location: 2, length: 0))
+        #expect(second.selection == NSRange(location: 12, length: 0))
+        #expect(workspace.executionFragment(second)?.sourceSQL == "SELECT 4")
+        #expect(second.text == "SELECT 3;\nSELECT 4;")
+
+        coordinator.update(text: firstBinding, isEditable: true, in: scroll,
+            editorState: workspace.editorState, documentID: first.id, selectionChanged: { first.selection = $0 })
+        #expect(scroll.documentView === firstEditor)
+        #expect(firstEditor.selectedRange() == NSRange(location: 2, length: 0))
+        #expect(workspace.executionFragment(first)?.sourceSQL == "SELECT 1")
+        #expect(firstEditor.layoutManager?.temporaryAttribute(.backgroundColor, atCharacterIndex: 0, effectiveRange: nil) != nil)
+        #expect(firstEditor.layoutManager?.temporaryAttribute(.backgroundColor, atCharacterIndex: 10, effectiveRange: nil) == nil)
+    }
+
 
 }
