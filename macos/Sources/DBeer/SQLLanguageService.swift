@@ -1,11 +1,38 @@
 import Foundation
 
+struct SQLFunctionParameter: Codable, Equatable, Sendable {
+    var name: String
+    var type: String
+    var position: Int? = nil
+    var optional: Bool? = nil
+    var variadic: Bool? = nil
+}
+
+struct SQLFunctionSignature: Codable, Equatable, Sendable {
+    var parameters: [SQLFunctionParameter]
+    var returnType: String
+}
+
+struct SQLCompletionForeignKeyColumn: Codable, Equatable, Sendable {
+    var source: String
+    var target: String
+}
+
+struct SQLCompletionForeignKey: Codable, Equatable, Sendable {
+    var name: String
+    var targetSchema: String
+    var targetTable: String
+    var columns: [SQLCompletionForeignKeyColumn]
+}
+
 struct SQLCompletionRelation: Equatable, Sendable {
     var schema: String
     var name: String
     /// Adapter-provided catalog kinds: table, view or function.
     var kind: String
     var columns: [String] = []
+    var foreignKeys: [SQLCompletionForeignKey] = []
+    var signatures: [SQLFunctionSignature] = []
 }
 
 struct SQLCompletionContext: Equatable, Sendable {
@@ -20,6 +47,8 @@ struct SQLCompletionItem: Equatable, Sendable {
     var kind: Int? = nil
     var replacement: String
     var replacementRange: NSRange
+    /// Ordered UTF-16 spans in label, provided by the helper's name matcher.
+    var matchRanges: [NSRange] = []
     var insertText: String { replacement }
 }
 
@@ -27,6 +56,20 @@ struct SQLLanguageDiagnostic: Equatable, Sendable {
     let range: NSRange
     let message: String
     let severity: Int
+}
+
+struct SQLSignatureInformation: Equatable, Sendable {
+    var label: String
+    var parameterRanges: [NSRange]
+    var activeParameter: Int?
+    var activeParameterRange: NSRange? {
+        activeParameter.flatMap { parameterRanges.indices.contains($0) ? parameterRanges[$0] : nil }
+    }
+}
+
+struct SQLSignatureHelp: Equatable, Sendable {
+    var signatures: [SQLSignatureInformation]
+    var activeSignature: Int
 }
 
 /// LSP positions and native editor ranges both count UTF-16 units. Line endings
@@ -180,15 +223,7 @@ final class SQLLanguageService {
                 "context": .object(["triggerKind": .int(1)])
             ]))
         } catch {
-            if let failure = error as? SQLLSPError {
-                switch failure {
-                case .remoteError, .requestLimit: break
-                default:
-                    isAvailable = false
-                    for id in Array(diagnosticValues.keys) { publish([], documentID: id) }
-                    await transport.shutdown()
-                }
-            }
+            await handleRequestFailure(error)
             return []
         }
         guard !Task.isCancelled, !stopped, let current = documents[documentID],
@@ -210,7 +245,76 @@ final class SQLLanguageService {
             // The client does not advertise snippets or additional edits.
             guard item["insertTextFormat"]?.integer != 2, item["additionalTextEdits"] == nil else { return nil }
             return SQLCompletionItem(label: label, detail: item["detail"]?.string, kind: item["kind"]?.integer,
-                                     replacement: replacement, replacementRange: range)
+                                     replacement: replacement, replacementRange: range,
+                                     matchRanges: Self.completionMatchRanges(item["data"]?["dbeerMatchRanges"], in: label))
+        }
+    }
+
+    private static func completionMatchRanges(_ value: SQLLSPJSON?, in label: String) -> [NSRange] {
+        guard let spans = value?.array, spans.count <= 64, label.utf8.count <= 1_024 else { return [] }
+        let units = Array(label.utf16)
+        func isBoundary(_ offset: Int) -> Bool {
+            offset == 0 || offset == units.count ||
+                !((0xD800...0xDBFF).contains(units[offset - 1]) && (0xDC00...0xDFFF).contains(units[offset]))
+        }
+        var result: [NSRange] = []
+        var previousEnd = 0
+        for value in spans {
+            guard let span = value.array, span.count == 2,
+                  let start = span[0].integer, let end = span[1].integer,
+                  start >= previousEnd, end > start, end <= units.count,
+                  isBoundary(start), isBoundary(end) else { return [] }
+            result.append(NSRange(location: start, length: end - start))
+            previousEnd = end
+        }
+        return result
+    }
+
+    func signatureHelp(documentID: UUID, offset: Int) async -> SQLSignatureHelp? {
+        guard !stopped else { return nil }
+        scheduleFlush()
+        while let flushing { await flushing.value }
+        guard isAvailable, let document = documents[documentID], sentVersions[document.uri] == document.version,
+              let position = SQLLSPPosition.position(offset: offset, in: document.text) else { return nil }
+        let response: SQLLSPJSON
+        do {
+            response = try await transport.request(method: "textDocument/signatureHelp", params: .object([
+                "textDocument": .object(["uri": .string(document.uri)]), "position": position
+            ]))
+        } catch { await handleRequestFailure(error); return nil }
+        guard !Task.isCancelled, !stopped, let current = documents[documentID],
+              current.uri == document.uri, current.version == document.version,
+              let values = response["signatures"]?.array, !values.isEmpty, values.count <= 32 else { return nil }
+        var signatures: [SQLSignatureInformation] = []
+        for value in values {
+            guard let label = value["label"]?.string, !label.isEmpty, label.utf8.count <= 8_192,
+                  let parameters = value["parameters"]?.array, parameters.count <= 256 else { return nil }
+            var ranges: [NSRange] = []
+            for parameter in parameters {
+                guard let span = parameter["label"]?.array, span.count == 2,
+                      let start = span[0].integer, let end = span[1].integer, end >= start,
+                      // Validate UTF-16 boundaries, including non-BMP parameter names.
+                      SQLLSPPosition.position(offset: start, in: label) != nil,
+                      SQLLSPPosition.position(offset: end, in: label) != nil else { return nil }
+                ranges.append(NSRange(location: start, length: end - start))
+            }
+            let active = value["activeParameter"]?.integer ?? response["activeParameter"]?.integer
+            signatures.append(SQLSignatureInformation(label: label, parameterRanges: ranges,
+                activeParameter: active.flatMap { ranges.indices.contains($0) ? $0 : nil }))
+        }
+        let active = response["activeSignature"]?.integer ?? 0
+        guard signatures.indices.contains(active) else { return nil }
+        return SQLSignatureHelp(signatures: signatures, activeSignature: active)
+    }
+
+    private func handleRequestFailure(_ error: Error) async {
+        guard let failure = error as? SQLLSPError else { return }
+        switch failure {
+        case .remoteError, .requestLimit: return
+        default:
+            isAvailable = false
+            for id in Array(diagnosticValues.keys) { publish([], documentID: id) }
+            await transport.shutdown()
         }
     }
 
@@ -328,6 +432,8 @@ final class SQLLanguageService {
     static func boundedCatalog(_ catalog: [SQLCompletionRelation]) -> [SQLLSPJSON] {
         var remainingBytes = 3 * 1_024 * 1_024
         var remainingColumns = 32_768
+        var remainingKeyColumns = 8_192
+        var remainingParameters = 8_192
         var result: [SQLLSPJSON] = []
         for relation in catalog {
             guard result.count < 2_048 else { break }
@@ -344,8 +450,40 @@ final class SQLLanguageService {
                 remainingBytes -= columnBytes
                 columns.append(.string(column))
             }
+            var foreignKeys: [SQLLSPJSON] = []
+            for key in relation.foreignKeys.prefix(64) {
+                guard !key.targetTable.isEmpty, !key.columns.isEmpty, key.columns.count <= 32,
+                      [key.name, key.targetSchema, key.targetTable].allSatisfy({ $0.utf8.count <= 1_024 }),
+                      key.columns.allSatisfy({ !$0.source.isEmpty && !$0.target.isEmpty && $0.source.utf8.count <= 1_024 && $0.target.utf8.count <= 1_024 }) else { continue }
+                let keyBytes = 256 + 6 * (key.name.utf8.count + key.targetSchema.utf8.count + key.targetTable.utf8.count)
+                    + key.columns.reduce(0) { $0 + 64 + 6 * ($1.source.utf8.count + $1.target.utf8.count) }
+                guard keyBytes <= remainingBytes, key.columns.count <= remainingKeyColumns else { break }
+                remainingBytes -= keyBytes
+                remainingKeyColumns -= key.columns.count
+                foreignKeys.append(.object(["name": .string(key.name), "targetSchema": .string(key.targetSchema),
+                    "targetTable": .string(key.targetTable), "columns": .array(key.columns.map {
+                        .object(["source": .string($0.source), "target": .string($0.target)])
+                    })]))
+            }
+            var signatures: [SQLLSPJSON] = []
+            for signature in relation.signatures.prefix(32) {
+                guard !signature.returnType.isEmpty, signature.returnType.utf8.count <= 4_096, signature.parameters.count <= 256,
+                      signature.parameters.allSatisfy({ $0.name.utf8.count <= 1_024 && !$0.type.isEmpty && $0.type.utf8.count <= 1_024 }) else { continue }
+                let signatureBytes = 128 + 6 * signature.returnType.utf8.count
+                    + signature.parameters.reduce(0) { $0 + 128 + 6 * ($1.name.utf8.count + $1.type.utf8.count) }
+                guard signatureBytes <= remainingBytes, signature.parameters.count <= remainingParameters else { break }
+                remainingBytes -= signatureBytes
+                remainingParameters -= signature.parameters.count
+                signatures.append(.object(["returnType": .string(signature.returnType),
+                    "parameters": .array(signature.parameters.enumerated().map { index, parameter in
+                        .object(["name": .string(parameter.name), "type": .string(parameter.type),
+                            "position": .int(min(256, max(1, parameter.position ?? index + 1))),
+                            "optional": .bool(parameter.optional ?? false), "variadic": .bool(parameter.variadic ?? false)])
+                    })]))
+            }
             result.append(.object(["schema": .string(relation.schema), "name": .string(relation.name),
-                                   "kind": .string(relation.kind), "columns": .array(columns)]))
+                                   "kind": .string(relation.kind), "columns": .array(columns), "foreignKeys": .array(foreignKeys),
+                                   "signatures": .array(signatures)]))
         }
         return result
     }

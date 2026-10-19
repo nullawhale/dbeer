@@ -3,6 +3,39 @@ import Testing
 @testable import DBeer
 
 struct SQLCompletionCatalogTests {
+    @Test func snapshotsDecodeOverloadsAndReplaceStaleSignatures() {
+        let profile = UUID()
+        var catalog = SQLCompletionCatalog()
+        let signatures = """
+        [{"returnType":"bigint","parameters":[{"name":"input_value","type":"integer","position":1},{"name":"scale","type":"integer","position":2,"optional":true}]},
+         {"returnType":"text","parameters":[{"name":"input_value","type":"text","position":1}]}]
+        """
+        catalog.record([["schema": "public", "name": "calculate", "kind": "function", "columns": "[]", "signatures": signatures]],
+            request: CatalogRequest(kind: "completion"), profileID: profile)
+        let function = catalog.context(profileID: profile).catalog.first
+        #expect(function?.signatures.count == 2)
+        #expect(function?.signatures.first?.parameters.last?.optional == true)
+        catalog.record([["schema": "public", "name": "calculate", "kind": "function", "columns": "[]", "signatures": "[]"]],
+            request: CatalogRequest(kind: "completion"), profileID: profile)
+        #expect(catalog.context(profileID: profile).catalog.first?.signatures.isEmpty == true)
+    }
+
+    @Test func foreignKeysSurviveColumnRefreshAndAreReplacedBySnapshots() {
+        var catalog = SQLCompletionCatalog()
+        let profile = UUID()
+        let foreignKeys = """
+        [{"name":"orders_customer_fk","targetSchema":"public","targetTable":"customers","columns":[{"source":"tenant_id","target":"tenant_id"},{"source":"customer_id","target":"id"}]}]
+        """
+        catalog.record([["schema": "public", "name": "orders", "kind": "table", "columns": "[\"id\"]", "foreignKeys": foreignKeys]],
+            request: CatalogRequest(kind: "completion"), profileID: profile)
+        catalog.record([["name": "id"], ["name": "customer_id"]],
+            request: CatalogRequest(kind: "columns", schema: "public", object: "orders", objectKind: "table"), profileID: profile)
+        #expect(catalog.context(profileID: profile).catalog.first?.foreignKeys.first?.columns.count == 2)
+        catalog.record([["schema": "public", "name": "orders", "kind": "table", "columns": "[\"id\"]", "foreignKeys": "[]"]],
+            request: CatalogRequest(kind: "completion"), profileID: profile)
+        #expect(catalog.context(profileID: profile).catalog.first?.foreignKeys.isEmpty == true)
+    }
+
     @Test func connectedSnapshotIncludesColumnsAndReplacesStaleObjects() {
         var catalog = SQLCompletionCatalog()
         let profile = UUID(), other = UUID()

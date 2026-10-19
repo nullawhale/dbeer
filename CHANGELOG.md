@@ -2,6 +2,10 @@
 
 ## Next release — unreleased
 
+- SQL completion highlights matching parts of each name, such as the `o` and `i` in `order_items` for `oi`. Highlighting supports abbreviations, typos, and Unicode, uses bold text and editor theme colors, and persists when the selected row or theme changes.
+- Completion search supports word-part abbreviations (`oi` → `order_items`), snake_case and camelCase names, minor typos, and adjacent letter transpositions. Columns in the current query and CTEs take priority among candidates of comparable match quality; exact names rank above typo corrections. Candidates are ranked before the completion count limit is applied.
+- Function signature help shows argument names and types, return types, and highlights the current argument while typing or moving the caret. It follows nested calls, overloads, named/default/variadic arguments, and SUBSTRING FROM/FOR syntax. Common built-ins work offline; PostgreSQL/MySQL stored-function signatures load through the connected profile's metadata service. The non-focusing panel supports editor themes, Escape, and native Undo.
+- SQL completion uses a separate offline helper module with clause-aware candidates, CTE and subquery scopes, projected columns, correlated/LATERAL visibility, and qualified ambiguous columns. Foreign keys from PostgreSQL/MySQL provide ready-to-insert JOIN/ON suggestions, including reverse, composite, and self joins. Contextual results replace the temporary keyword list, and completion also opens after clause whitespace.
 - Result tables have a fixed row-number gutter: click to select a whole row, drag or Shift-click for a range, and Command-click for individual rows. Row numbers are excluded from copied data and stay below the column header while scrolling.
 - Query results show displayed and total row counts on the right, such as `13 from 13 rows shown`, without a separate SELECT command heading.
 - Fixed clipped hover feedback on the application theme and editor color scheme pickers in Settings.

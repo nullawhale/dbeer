@@ -89,6 +89,11 @@ struct SQLEditorView: NSViewRepresentable {
         private var completionGeneration = 0
         private let completionPopup = SQLCompletionPopup()
         private var completionSnapshot: CompletionSnapshot?
+        private var signatureTask: Task<Void, Never>?
+        private var signatureGeneration = 0
+        private var signatureSnapshot: CompletionSnapshot?
+        private var signatureSuppressedSnapshot: CompletionSnapshot?
+        private let signaturePopup = SQLSignaturePopup()
         private var editorTheme: EditorTheme?
         private var tokenStyles: [[String]: EditorThemeTokenStyle] = [:]
 
@@ -102,14 +107,23 @@ struct SQLEditorView: NSViewRepresentable {
 
         var visibleCompletionLabels: [String] { completionPopup.items.map(\.label) }
         var selectedCompletionIndex: Int? { completionPopup.selectedIndex }
+        var visibleSignatureLabels: [String] { signaturePopup.help?.signatures.map(\.label) ?? [] }
+        var activeSignatureParameterTexts: [String] {
+            signaturePopup.help?.signatures.compactMap { signature in
+                signature.activeParameterRange.map { (signature.label as NSString).substring(with: $0) }
+            } ?? []
+        }
 
         deinit {
             completionTask?.cancel()
+            signatureTask?.cancel()
             let service = languageService
             let observer = diagnosticsObserver
             let popup = completionPopup
+            let signaturePopup = signaturePopup
             Task { @MainActor in
                 popup.hide()
+                signaturePopup.hide()
                 if let observer { service?.removeDiagnosticsObserver(observer) }
             }
         }
@@ -119,6 +133,7 @@ struct SQLEditorView: NSViewRepresentable {
         func detach(from scrollView: NSScrollView) {
             if let activeDocumentID { activeState?.scrollOrigins[activeDocumentID] = scrollView.contentView.bounds.origin }
             dismissCompletions()
+            dismissSignatures()
             if let diagnosticsObserver { languageService?.removeDiagnosticsObserver(diagnosticsObserver) }
             diagnosticsObserver = nil
             languageService = nil
@@ -214,6 +229,7 @@ struct SQLEditorView: NSViewRepresentable {
                     editorTheme: EditorTheme? = nil, successfulExecutionRanges: [NSRange] = []) {
             if self.languageService !== languageService {
                 dismissCompletions()
+                dismissSignatures()
                 if let diagnosticsObserver { self.languageService?.removeDiagnosticsObserver(diagnosticsObserver) }
                 self.languageService = languageService
                 diagnosticsObserver = languageService?.addDiagnosticsObserver { [weak self] documentID, _ in
@@ -222,7 +238,7 @@ struct SQLEditorView: NSViewRepresentable {
                     self.highlight(editor)
                 }
             }
-            if self.engine != engine || self.completionContext != completionContext { dismissCompletions() }
+            if self.engine != engine || self.completionContext != completionContext { dismissCompletions(); dismissSignatures() }
             self.completionContext = completionContext
             self.text = text
             self.engine = engine
@@ -241,6 +257,7 @@ struct SQLEditorView: NSViewRepresentable {
             if activeState !== state || activeDocumentID != id {
                 if let oldID = activeDocumentID { activeState?.scrollOrigins[oldID] = scrollView.contentView.bounds.origin }
                 dismissCompletions()
+                dismissSignatures()
                 let hadFocus = scrollView.window?.firstResponder === scrollView.documentView
                 let next = editor(in: state, documentID: id)
                 scrollView.documentView = next
@@ -260,20 +277,24 @@ struct SQLEditorView: NSViewRepresentable {
             scrollView.backgroundColor = textView.backgroundColor
             scrollView.verticalRulerView?.appearance = textView.appearance
             completionPopup.applyTheme(editorTheme, appearance: textView.effectiveAppearance)
+            signaturePopup.applyTheme(editorTheme, appearance: textView.effectiveAppearance)
             textView.appCommandDocumentID = documentID
             textView.requestCompletion = { [weak self, weak textView] in
                 guard let textView else { return }
                 self?.requestCompletion(in: textView, explicit: true)
+                self?.signatureSuppressedSnapshot = nil
+                self?.requestSignatureHelp(in: textView)
             }
-            textView.dismissCompletion = { [weak self] in self?.dismissCompletions() }
+            textView.dismissCompletion = { [weak self] in self?.dismissCompletions(); self?.dismissSignatures() }
             textView.viewportChanged = { [weak self, weak textView] in
-                guard let self, let textView, !self.completionPopup.items.isEmpty else { return }
-                guard self.completionSnapshot == self.snapshot(for: textView),
-                      textView.currentLineHighlightRect?.intersects(textView.visibleRect) == true else {
+                guard let self, let textView else { return }
+                guard textView.currentLineHighlightRect?.intersects(textView.visibleRect) == true else {
                     self.dismissCompletions()
+                    self.dismissSignatures()
                     return
                 }
-                self.completionPopup.reposition(for: textView)
+                if self.completionSnapshot == self.snapshot(for: textView) { self.completionPopup.reposition(for: textView) }
+                if self.signatureSnapshot == self.snapshot(for: textView) { self.signaturePopup.reposition(for: textView) }
             }
             textView.completionKey = { [weak self, weak textView] event in
                 guard let textView else { return false }
@@ -286,11 +307,12 @@ struct SQLEditorView: NSViewRepresentable {
             textView.commandEvent = onCommandEvent.map { _ in { [weak self] event, selection in
                 self?.onCommandEvent?(event, selection) ?? false
             } }
-            if !isEditable { dismissCompletions() }
+            if !isEditable { dismissCompletions(); dismissSignatures() }
             textView.isEditable = isEditable
             textView.isSelectable = true
             if textView.string != text.wrappedValue {
                 dismissCompletions()
+                dismissSignatures()
                 let selection = textView.selectedRanges
                 textView.string = text.wrappedValue
                 let length = textView.string.utf16.count
@@ -314,6 +336,7 @@ struct SQLEditorView: NSViewRepresentable {
                 textView.scrollRangeToVisible(NSRange(location: location, length: 0))
                 lastScrolledError = errorPosition
             } else if errorPosition == nil { lastScrolledError = nil }
+            requestSignatureHelp(in: textView)
         }
 
         private func parse(_ value: String) -> SQLParseResult {
@@ -474,7 +497,10 @@ struct SQLEditorView: NSViewRepresentable {
             highlight(textView)
             selectionChanged?(textView.selectedRange())
             (textView.enclosingScrollView?.verticalRulerView as? SQLLineNumberRuler)?.updateLines()
-            if let textView = textView as? SQLTextView { requestCompletion(in: textView, explicit: false) }
+            if let textView = textView as? SQLTextView {
+                requestCompletion(in: textView, explicit: false)
+                requestSignatureHelp(in: textView)
+            }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
@@ -484,6 +510,7 @@ struct SQLEditorView: NSViewRepresentable {
             highlightExecutionFragment(textView)
             (textView.enclosingScrollView?.verticalRulerView as? SQLLineNumberRuler)?.needsDisplay = true
             selectionChanged?(textView.selectedRange())
+            if let textView = textView as? SQLTextView { requestSignatureHelp(in: textView) }
         }
 
         private func snapshot(for textView: NSTextView) -> CompletionSnapshot? {
@@ -500,37 +527,81 @@ struct SQLEditorView: NSViewRepresentable {
             completionPopup.hide()
         }
 
+        private func dismissSignatures() {
+            signatureGeneration += 1
+            signatureTask?.cancel()
+            signatureTask = nil
+            signatureSnapshot = nil
+            signaturePopup.hide()
+        }
+
+        private func requestSignatureHelp(in textView: SQLTextView) {
+            guard textView.isEditable, !textView.hasMarkedText(),
+                  textView.window?.firstResponder === textView, textView.window?.isKeyWindow == true,
+                  let service = languageService, let snapshot = snapshot(for: textView), snapshot.selection.length == 0 else {
+                dismissSignatures()
+                return
+            }
+            guard snapshot != signatureSuppressedSnapshot, signatureSnapshot != snapshot else { return }
+            signatureGeneration += 1
+            let generation = signatureGeneration
+            signatureTask?.cancel()
+            signatureSnapshot = snapshot
+            signatureTask = Task { @MainActor [weak self, weak textView] in
+                do { try await Task.sleep(for: .milliseconds(75)) } catch { return }
+                guard !Task.isCancelled else { return }
+                let value = await service.signatureHelp(documentID: snapshot.documentID, offset: snapshot.selection.location)
+                guard let self, let textView, !Task.isCancelled, generation == self.signatureGeneration,
+                      self.snapshot(for: textView) == snapshot else { return }
+                guard textView.window?.firstResponder === textView, textView.window?.isKeyWindow == true,
+                      textView.currentLineHighlightRect?.intersects(textView.visibleRect) == true else { self.dismissSignatures(); return }
+                self.signatureTask = nil
+                if let value { self.signaturePopup.show(value, for: textView) }
+                else { self.signaturePopup.hide() }
+            }
+        }
+
         private func requestCompletion(in textView: SQLTextView, explicit: Bool) {
             dismissCompletions()
             guard textView.isEditable, !textView.hasMarkedText(),
                   textView.window?.firstResponder === textView, textView.window?.isKeyWindow == true,
                   let snapshot = snapshot(for: textView), snapshot.selection.length == 0,
                   !suppressesCompletion(text: snapshot.text, offset: snapshot.selection.location) else { return }
-            let source = snapshot.text as NSString
             let offset = snapshot.selection.location
             let input = completionInput(text: snapshot.text, offset: offset)
-            guard explicit || !input.prefix.isEmpty || (offset > 0 && source.character(at: offset - 1) == 46) else { return }
-            let fallback = localCompletions(prefix: input.prefix, quoted: input.quoted).map {
-                SQLCompletionItem(label: $0, replacement: $0, replacementRange: input.range)
+            guard explicit || offset > 0 else { return }
+            let fallback = localCompletions(prefix: input.prefix, quoted: input.quoted).map { label in
+                let quote = engine == .postgresql ? "\"" : "`"
+                let quoted = label.hasPrefix(quote)
+                let prefix = quoted ? input.prefix.replacingOccurrences(of: quote, with: quote + quote) : input.prefix
+                let source = label as NSString
+                let start = quoted ? 1 : 0
+                let match = source.range(of: prefix, options: [.anchored, .caseInsensitive],
+                    range: NSRange(location: start, length: source.length - start))
+                return SQLCompletionItem(label: label, replacement: label, replacementRange: input.range,
+                    matchRanges: !prefix.isEmpty && match.location != NSNotFound ? [match] : [])
             }
             let generation = completionGeneration
             // A duplicate selection notification during native layout must not
             // invalidate a request for this exact insertion point.
             completionSnapshot = snapshot
-            if explicit { showCompletions(fallback, snapshot: snapshot, in: textView) }
+            if explicit, languageService == nil { showCompletions(fallback, snapshot: snapshot, in: textView) }
             completionTask = Task { @MainActor [weak self, weak textView] in
                 if !explicit {
                     do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
                 }
                 guard let self, let textView, !Task.isCancelled,
                       generation == self.completionGeneration, self.snapshot(for: textView) == snapshot else { return }
-                if !explicit { self.showCompletions(fallback, snapshot: snapshot, in: textView) }
-                guard let service = self.languageService else { return }
+                guard let service = self.languageService else {
+                    if !explicit { self.showCompletions(fallback, snapshot: snapshot, in: textView) }
+                    return
+                }
                 let values = await service.completion(documentID: snapshot.documentID, offset: offset)
                 guard !Task.isCancelled, generation == self.completionGeneration,
                       self.snapshot(for: textView) == snapshot else { return }
                 if !values.isEmpty { self.showCompletions(values, snapshot: snapshot, in: textView) }
                 else if service.isAvailable { self.dismissCompletions() }
+                else { self.showCompletions(fallback, snapshot: snapshot, in: textView) }
             }
         }
 
@@ -586,8 +657,10 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func handleCompletionKey(_ event: NSEvent, in textView: SQLTextView) -> Bool {
             guard isActiveEditor(textView) else { return false }
-            if event.keyCode == 53, completionTask != nil || !completionPopup.items.isEmpty {
+            if event.keyCode == 53, completionTask != nil || !completionPopup.items.isEmpty || signatureTask != nil || signaturePopup.isVisible {
+                signatureSuppressedSnapshot = snapshot(for: textView)
                 dismissCompletions()
+                dismissSignatures()
                 return true
             }
             guard !completionPopup.items.isEmpty else { return false }
@@ -757,13 +830,17 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResizeNotification, object: nil)
         if let window {
             NotificationCenter.default.addObserver(self, selector: #selector(windowResignedKey),
                 name: NSWindow.didResignKeyNotification, object: window)
+            NotificationCenter.default.addObserver(self, selector: #selector(windowGeometryChanged),
+                name: NSWindow.didResizeNotification, object: window)
         } else { dismissCompletion?() }
     }
 
     @objc private func windowResignedKey() { dismissCompletion?() }
+    @objc private func windowGeometryChanged() { viewportChanged?() }
 
     override func resignFirstResponder() -> Bool {
         dismissCompletion?()

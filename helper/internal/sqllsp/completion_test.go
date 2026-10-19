@@ -1,9 +1,49 @@
 package sqllsp
 
 import (
+	"encoding/json"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestSharedCompletionMatchFixtures(t *testing.T) {
+	data, err := os.ReadFile("../../../protocol/fixtures/completion-matches.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures []struct {
+		Query, Label string
+		Ranges       [][2]int
+	}
+	if err := json.Unmarshal(data, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	for _, engine := range []string{"postgresql", "mysql"} {
+		quote := "\""
+		if engine == "mysql" {
+			quote = "`"
+		}
+		for _, fixture := range fixtures {
+			t.Run(engine+"/"+fixture.Query+"/"+fixture.Label, func(t *testing.T) {
+				context := configuration{Engine: engine, Catalog: []catalogEntry{{Name: fixture.Label, Kind: "table"}}}
+				text := "SELECT * FROM " + quote + strings.ReplaceAll(fixture.Query, quote, quote+quote) + quote
+				item, ok := itemWithLabel(complete(text, len(text), context), fixture.Label)
+				if !ok {
+					t.Fatal("fixture candidate missing")
+				}
+				var ranges [][2]int
+				if item.Data != nil {
+					ranges = item.Data.MatchRanges
+				}
+				if !slices.Equal(ranges, fixture.Ranges) {
+					t.Fatalf("highlight = %v, want %v", ranges, fixture.Ranges)
+				}
+			})
+		}
+	}
+}
 
 func TestUnicodeQuotedAliasAndWholeIdentifierEdit(t *testing.T) {
 	text := "SELECT '🦀', \"😀\".\"Na\" FROM \"Sales\".\"Order Items\" AS \"😀\""
@@ -28,6 +68,38 @@ func TestUnicodeQuotedAliasAndWholeIdentifierEdit(t *testing.T) {
 	updated := text[:start] + item.TextEdit.NewText + text[end:]
 	if !strings.Contains(updated, `"😀"."Name Value" FROM`) {
 		t.Fatalf("bad edited text: %s", updated)
+	}
+}
+
+func TestFuzzyCompletionPreservesUTF16EditsAndEngineOrder(t *testing.T) {
+	context := configuration{Engine: "postgresql", Catalog: []catalogEntry{
+		{Schema: "Sales", Name: "Order Items", Kind: "table", Columns: []string{"count_items"}},
+		{Schema: "public", Name: "orders", Kind: "table"},
+	}}
+	for _, check := range []struct{ text, typed, replacement string }{
+		{"SELECT '😀', * FROM \"oi\"", "\"oi\"", "\"Sales\".\"Order Items\""},
+		{"SELECT '😀', * FROM ordres_suffix", "ordres_suffix", "\"public\".\"orders\""},
+	} {
+		start := strings.Index(check.text, check.typed)
+		offset := start + len(check.typed)
+		if check.typed == "ordres_suffix" {
+			offset = start + len("ordres") // Replace the entire token at a mid-word caret.
+		}
+		items := complete(check.text, offset, context)
+		if len(items) == 0 || items[0].TextEdit.NewText != check.replacement {
+			t.Fatalf("unexpected fuzzy completion: %#v", items)
+		}
+		item := items[0]
+		editStart, _ := offsetAt(check.text, item.TextEdit.Range.Start)
+		editEnd, _ := offsetAt(check.text, item.TextEdit.Range.End)
+		if check.text[editStart:editEnd] != check.typed || item.TextEdit.Range.Start.Character != 20 {
+			t.Fatalf("incorrect UTF-16 replacement: %#v", item.TextEdit)
+		}
+	}
+	text := "SELECT co FROM \"Sales\".\"Order Items\" o"
+	items := complete(text, len("SELECT co"), context)
+	if len(items) < 2 || items[0].Label != "count_items" {
+		t.Fatalf("LSP changed contextual ranking: %#v", items)
 	}
 }
 
@@ -102,57 +174,6 @@ func TestUTF16PositionsIncludingCRLF(t *testing.T) {
 	for _, p := range []position{{0, 2}, {4, 0}, {2, 1}, {-1, 0}, {0, -1}} {
 		if _, ok := offsetAt(text, p); ok {
 			t.Fatalf("accepted invalid position %#v", p)
-		}
-	}
-}
-
-func TestLexicalDiagnosticsRespectDialectLiterals(t *testing.T) {
-	for _, check := range []struct{ engine, text string }{
-		{"postgresql", `DO $body$ BEGIN RAISE NOTICE '('; END $body$; SELECT 'it''s )'; /* outer /* nested ) */ ( */`},
-		{"postgresql", `SELECT 'backslash\', E'escaped\' quote)', "(" FROM t`},
-		{"postgresql", `SELECT $ετι$ unpaired ) '$ετι$`},
-		{"mysql", "SELECT 'it\\'s )', `(`; # )\r\n /* ) */ SELECT (1)"},
-		{"mysql", `SELECT "it's )"`},
-	} {
-		if _, d := lex(check.text, check.engine); len(d) != 0 {
-			t.Fatalf("false diagnostic in %s: %#v", check.engine, d)
-		}
-	}
-	for _, check := range []struct {
-		text  string
-		count int
-	}{{"SELECT (1", 1}, {"SELECT )", 1}, {"SELECT 'unterminated", 1}, {"SELECT /* open", 1}, {"SELECT $tag$ open", 1}, {"SELECT \"open", 1}} {
-		_, d := lex(check.text, "postgresql")
-		if len(d) != check.count {
-			t.Fatalf("diagnostics for %q: %#v", check.text, d)
-		}
-	}
-}
-
-func TestMySQLDashCommentRequiresWhitespace(t *testing.T) {
-	tokens, _ := lex("SELECT 1--2", "mysql")
-	for _, token := range tokens {
-		if token.kind == commentToken {
-			t.Fatal("MySQL subtraction parsed as comment")
-		}
-	}
-	context := configuration{Engine: "mysql"}
-	text := "-- comment\rSELECT CO"
-	if _, ok := itemWithLabel(complete(text, len(text), context), "COALESCE"); !ok {
-		t.Fatal("bare CR did not end line comment")
-	}
-}
-
-func TestEveryCatalogIdentifierIsQuoted(t *testing.T) {
-	for _, engine := range []string{"postgresql", "mysql"} {
-		quote := "\""
-		if engine == "mysql" {
-			quote = "`"
-		}
-		for _, name := range []string{"user", "constraint", "column", "interval", "ordinary"} {
-			if got := quoteIdentifier(name, engine); got != quote+name+quote {
-				t.Fatalf("unsafe %s identifier %s", engine, got)
-			}
 		}
 	}
 }

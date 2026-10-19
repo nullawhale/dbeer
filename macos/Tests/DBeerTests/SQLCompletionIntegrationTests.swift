@@ -36,8 +36,20 @@ struct SQLCompletionIntegrationTests {
         let quote = engine == .postgresql ? "\"" : "`"
         func quoted(_ name: String) -> String { quote + name.replacingOccurrences(of: quote, with: quote + quote) + quote }
         let qualified = quoted(schema) + "." + quoted(table)
+        let parent = table + "_customers"
+        let qualifiedParent = quoted(schema) + "." + quoted(parent)
+        let function = table + "_calculate"
+        let qualifiedFunction = quoted(schema) + "." + quoted(function)
         let setup = workspace.newDocument(profileID: profile)
-        await workspace.run(setup, sql: "CREATE TABLE " + qualified + " (id integer PRIMARY KEY, " + quoted("Display Name") + " text)")
+        await workspace.run(setup, sql: "CREATE TABLE " + qualifiedParent + " (tenant_id integer, id integer, name text, PRIMARY KEY (tenant_id,id))")
+        try #require(setup.runtime?.queryFailure == nil)
+        let functionSQL = "CREATE FUNCTION " + qualifiedFunction + " (input_value integer, scale integer"
+            + (engine == .postgresql ? " DEFAULT 1" : "") + ") RETURNS bigint "
+            + (engine == .postgresql ? "LANGUAGE sql AS 'SELECT input_value::bigint * scale'" : "DETERMINISTIC NO SQL RETURN input_value * scale")
+        await workspace.run(setup, sql: functionSQL)
+        try #require(setup.runtime?.queryFailure == nil)
+        await workspace.run(setup, sql: "CREATE TABLE " + qualified + " (id integer PRIMARY KEY, customer_id integer, tenant_id integer, "
+            + quoted("Display Name") + " text, FOREIGN KEY (tenant_id,customer_id) REFERENCES " + qualifiedParent + " (tenant_id,id))")
         try #require(setup.runtime?.queryFailure == nil)
         // Reconnect after creating the fixture: the connection itself must
         // hydrate completion metadata without opening any catalog branch.
@@ -48,6 +60,12 @@ struct SQLCompletionIntegrationTests {
         }
         let context = workspace.completionContext(profileID: profile)
         #expect(context.catalog.first { $0.name == table }?.columns.contains("Display Name") == true)
+        let key = try #require(context.catalog.first { $0.name == table }?.foreignKeys.first)
+        #expect(key.targetSchema == schema && key.targetTable == parent)
+        #expect(Set(key.columns.map(\.source)) == ["tenant_id", "customer_id"])
+        let functionMetadata = try #require(context.catalog.first { $0.name == function }?.signatures.first)
+        #expect(functionMetadata.parameters.count == 2)
+        #expect(functionMetadata.returnType.lowercased().contains("bigint"))
         #expect(workspace.catalogRoots[profile] == nil)
         #expect(workspace.completions(profileID: profile).contains(table))
         #expect(workspace.completions(profileID: profile).contains("Display Name"))
@@ -71,7 +89,40 @@ struct SQLCompletionIntegrationTests {
         #expect(workspace.history.count == previousHistory)
         #expect(document.text == "SELECT u.Di FROM " + qualified + " AS u")
 
+        let joinText = "SELECT * FROM " + qualified + " o JOIN " + parent
+        language.update(documentID: document.id, text: joinText, engine: engine, context: context)
+        let joins = await language.completion(documentID: document.id, offset: joinText.utf16.count)
+        let join = try #require(joins.first { $0.kind == 15 })
+        #expect(join.replacement.hasPrefix(qualifiedParent + " AS "))
+        #expect(join.replacement.contains(" ON ") && join.replacement.contains(" AND "))
+        #expect(join.replacement.contains(quoted("o") + "." + quoted("customer_id")))
+        #expect(join.replacement.contains(quoted("o") + "." + quoted("tenant_id")))
+        for query in ["WITH recent AS (SELECT id AS order_id FROM " + qualified + ") SELECT r.or FROM recent r",
+                      "SELECT d.or FROM (SELECT id AS order_id FROM " + qualified + ") d"] {
+            language.update(documentID: document.id, text: query, engine: engine, context: context)
+            let cursor = NSMaxRange((query as NSString).range(of: ".or"))
+            let columns = await language.completion(documentID: document.id, offset: cursor)
+            #expect(columns.contains { $0.label == "order_id" && $0.replacement == quoted("order_id") })
+        }
+        #expect(workspace.services.count == previousSessions && workspace.history.count == previousHistory)
+        #expect(document.runtime == nil)
+
+        let callText = "SELECT " + qualifiedFunction + "(1, "
+        language.update(documentID: document.id, text: callText, engine: engine, context: context)
+        let signatureHelp = try #require(await language.signatureHelp(documentID: document.id, offset: callText.utf16.count))
+        let signature = signatureHelp.signatures[signatureHelp.activeSignature]
+        let activeRange = try #require(signature.activeParameterRange)
+        let active = (signature.label as NSString).substring(with: activeRange)
+        #expect(active.hasPrefix("scale: integer") || active.hasPrefix("scale: int"))
+        #expect(signature.label.lowercased().hasSuffix(" → bigint"))
+        #expect(active.contains("DEFAULT") == (engine == .postgresql))
+        #expect(workspace.history.count == previousHistory && document.runtime == nil)
+
         await workspace.run(setup, sql: "DROP TABLE " + qualified)
+        try #require(setup.runtime?.queryFailure == nil)
+        await workspace.run(setup, sql: "DROP TABLE " + qualifiedParent)
+        try #require(setup.runtime?.queryFailure == nil)
+        await workspace.run(setup, sql: "DROP FUNCTION " + qualifiedFunction + (engine == .postgresql ? " (integer,integer)" : ""))
         try #require(setup.runtime?.queryFailure == nil)
         await workspace.loadSchemas(profile, refresh: true)
         #expect(!workspace.completionContext(profileID: profile).catalog.contains { $0.name == table })

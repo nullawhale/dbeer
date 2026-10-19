@@ -123,7 +123,27 @@ SELECT * FROM objects WHERE ($1::text<>'' AND schema=$1::text) OR ($1::text='' A
 ORDER BY schema,name,kind LIMIT 200 OFFSET ($2::int * 200)
 )
 SELECT name,kind,schema,COALESCE((SELECT json_agg(a.attname::text ORDER BY a.attnum)
- FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'[]'::json)::text AS columns
+ FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'[]'::json)::text AS columns,
+COALESCE((SELECT json_agg(json_build_object('name',k.conname::text,'targetSchema',n.nspname::text,'targetTable',c.relname::text,
+ 'columns',(SELECT json_agg(json_build_object('source',sa.attname::text,'target',ta.attname::text) ORDER BY pair.ordinality)
+ FROM unnest(k.conkey,k.confkey) WITH ORDINALITY pair(source,target,ordinality)
+ JOIN pg_catalog.pg_attribute sa ON sa.attrelid=k.conrelid AND sa.attnum=pair.source
+ JOIN pg_catalog.pg_attribute ta ON ta.attrelid=k.confrelid AND ta.attnum=pair.target)) ORDER BY k.conname)
+ FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.confrelid
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE k.contype='f' AND k.conrelid=page.relation AND ` + relationAccess + `),'[]'::json)::text AS "foreignKeys",
+COALESCE((SELECT json_agg(overloads.signature ORDER BY overloads.oid) FROM (
+ SELECT p.oid,json_build_object('returnType',pg_catalog.pg_get_function_result(p.oid),'parameters',
+ COALESCE((SELECT json_agg(json_build_object('name',COALESCE(args.name,''),'type',pg_catalog.format_type(args.type,NULL),
+ 'position',args.position,'optional',args.position>p.pronargs-p.pronargdefaults,'variadic',args.mode='v') ORDER BY args.position)
+ FROM (SELECT arg.type,p.proargnames[arg.ordinality] AS name,COALESCE(p.proargmodes[arg.ordinality]::text,'i') AS mode,
+ row_number() OVER (ORDER BY arg.ordinality) AS position
+ FROM unnest(COALESCE(p.proallargtypes,p.proargtypes::oid[])) WITH ORDINALITY arg(type,ordinality)
+ WHERE COALESCE(p.proargmodes[arg.ordinality]::text,'i') IN ('i','b','v')) args),'[]'::json)) AS signature
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+ WHERE page.kind='function' AND p.proname::text=page.name AND n.nspname::text=page.schema AND p.prokind IN ('f','a','w')
+ AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
+ ORDER BY p.oid LIMIT 32) overloads),'[]'::json)::text AS signatures
 FROM page ORDER BY schema,name,kind`, params(request.Schema, fmt.Sprint(request.Page)), ""
 	case "schemas":
 		return `SELECT nspname::text AS name, 'schema'::text AS kind FROM pg_catalog.pg_namespace

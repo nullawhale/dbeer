@@ -124,6 +124,8 @@ struct SQLLanguageServiceTests {
                 contexts.pop(uri, None)
             elif method == 'textDocument/completion':
                 complete(command)
+            elif method == 'textDocument/signatureHelp':
+                complete(command)
             elif method == 'shutdown':
                 result(command, None)
             elif method == 'exit':
@@ -169,6 +171,56 @@ struct SQLLanguageServiceTests {
         service.update(documentID: id, text: "SEL", engine: .postgresql, context: .empty)
         let completions = await service.completion(documentID: id, offset: 3)
         #expect(completions.map(\.label) == ["clean"])
+        await service.shutdown()
+    }
+
+    @Test func bundledCompletionMatchRangesUseSharedUTF16Fixtures() async throws {
+        struct Fixture: Decodable {
+            let query: String
+            let label: String
+            let ranges: [[Int]]
+        }
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let fixtures = try JSONDecoder().decode([Fixture].self,
+            from: Data(contentsOf: repository.appendingPathComponent("protocol/fixtures/completion-matches.json")))
+        let executable = repository.appendingPathComponent("build/DBeer.app/Contents/Helpers/dbeer-core")
+        for engine in [DatabaseEngine.postgresql, .mysql] {
+            let service = SQLLanguageService(helperURL: executable)
+            let id = UUID()
+            let quote = engine == .postgresql ? "\"" : "`"
+            for fixture in fixtures {
+                let text = "SELECT * FROM " + quote + fixture.query.replacingOccurrences(of: quote, with: quote + quote) + quote
+                // Fixtures are independent catalogs, including canonically equivalent Unicode names.
+                let context = SQLCompletionContext(profileID: UUID(), catalog: [
+                    SQLCompletionRelation(schema: "public", name: fixture.label, kind: "table")
+                ])
+                service.update(documentID: id, text: text, engine: engine, context: context)
+                let items = await service.completion(documentID: id, offset: text.utf16.count)
+                let item = try #require(items.first { $0.label == fixture.label },
+                    "Missing fixture \(engine.rawValue): \(fixture.query) / \(fixture.label); received \(items.map(\.label))")
+                #expect(item.matchRanges == fixture.ranges.map { NSRange(location: $0[0], length: $0[1] - $0[0]) })
+            }
+            await service.shutdown()
+        }
+    }
+
+    @Test func malformedMatchRangesLeaveValidCompletionsUsable() async throws {
+        let service = helper(completion: """
+        bad_ranges = [[[0,1]], [[-1,2]], [[0,999]], [[2,2]], [[2,3],[0,2]], [[0,2],[1,3]],
+                      [[0,2]] * 65, [[0,2.5]], 'bad', None]
+        items = [{'label':'😀orders', 'data':{'dbeerMatchRanges':ranges}} for ranges in bad_ranges]
+        items.append({'label':'😀orders', 'data':{'dbeerMatchRanges':[[0,3],[4,5]]}})
+        items.append({'label':'older_helper'})
+        result(command, items)
+        """)
+        let id = UUID()
+        service.update(documentID: id, text: "SELECT o", engine: .postgresql, context: .empty)
+        let items = await service.completion(documentID: id, offset: 8)
+        #expect(items.count == 12)
+        #expect(items.prefix(10).allSatisfy { $0.matchRanges.isEmpty })
+        #expect(items.dropFirst(10).first?.matchRanges == [NSRange(location: 0, length: 3), NSRange(location: 4, length: 1)])
+        #expect(items.last?.matchRanges.isEmpty == true)
         await service.shutdown()
     }
 
@@ -231,6 +283,73 @@ struct SQLLanguageServiceTests {
         #expect(catalog.reduce(0) { $0 + ($1["columns"]?.array?.count ?? 0) } == 32_768)
         #expect(try JSONEncoder().encode(SQLLSPJSON.array(catalog)).count < SQLLSPFramer.maxFrameBytes)
         #expect(SQLLanguageService.boundedCatalog([SQLCompletionRelation(schema: "", name: "", kind: "unknown")]).isEmpty)
+        let parameter = SQLFunctionParameter(name: String(repeating: "\"", count: 900), type: String(repeating: "\\", count: 900))
+        let signature = SQLFunctionSignature(parameters: Array(repeating: parameter, count: 100), returnType: "record")
+        let function = SQLCompletionRelation(schema: "public", name: "calculate", kind: "function", signatures: Array(repeating: signature, count: 32))
+        let functions = SQLLanguageService.boundedCatalog(Array(repeating: function, count: 2_100))
+        #expect(functions.first?["signatures"]?.array?.isEmpty == false)
+        #expect(try JSONEncoder().encode(SQLLSPJSON.array(functions)).count < SQLLSPFramer.maxFrameBytes)
+    }
+
+    @Test func signatureHelpUsesUTF16ParameterRangesAndRejectsStaleResponses() async throws {
+        let service = helper(completion: """
+        uri = command['params']['textDocument']['uri']
+        label = 'function 😀(first 😀: text, second: integer) → bigint'
+        first = label.index('first')
+        second = label.index('second')
+        u16 = lambda value: len(value.encode('utf-16-le')) // 2
+        time.sleep(0.12)
+        result(command, {'signatures':[{'label':label,'parameters':[{'label':[u16(label[:first]),u16(label[:second-2])]},
+                         {'label':[u16(label[:second]),u16(label[:label.index(')')])]}], 'activeParameter':1}], 'activeSignature':0})
+        """)
+        let id = UUID()
+        service.update(documentID: id, text: "SELECT f('x', ", engine: .postgresql, context: .empty)
+        let help = try #require(await service.signatureHelp(documentID: id, offset: 14))
+        let signature = try #require(help.signatures.first)
+        let range = try #require(signature.activeParameterRange)
+        #expect((signature.label as NSString).substring(with: range) == "second: integer")
+        let pending = Task { await service.signatureHelp(documentID: id, offset: 14) }
+        try await Task.sleep(for: .milliseconds(25))
+        service.update(documentID: id, text: "SELECT f('new', ", engine: .postgresql, context: .empty)
+        #expect(await pending.value == nil)
+        await service.shutdown()
+    }
+
+    @Test func signatureHelpRejectsInvalidUTF16RangesAndUnavailableServer() async {
+        let service = helper(completion: """
+        result(command, {'signatures':[{'label':'😀(value: text) → text','parameters':[{'label':[1,4]}], 'activeParameter':0}], 'activeSignature':0})
+        """)
+        let id = UUID()
+        service.update(documentID: id, text: "SELECT f(", engine: .postgresql, context: .empty)
+        #expect(await service.signatureHelp(documentID: id, offset: 9) == nil)
+        await service.shutdown()
+        let missing = SQLLanguageService(helperURL: URL(fileURLWithPath: "/nonexistent/dbeer-core"))
+        missing.update(documentID: id, text: "SELECT f(", engine: .postgresql, context: .empty)
+        #expect(await missing.signatureHelp(documentID: id, offset: 9) == nil)
+        await missing.shutdown()
+    }
+
+    @Test func realBundledLanguageServerSupportsSignatureHelpAndMetadata() async throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let language = SQLLanguageService(helperURL: repository.appendingPathComponent("build/DBeer.app/Contents/Helpers/dbeer-core"))
+        let id = UUID()
+        let context = SQLCompletionContext(profileID: UUID(), catalog: [
+            SQLCompletionRelation(schema: "public", name: "calculate", kind: "function", signatures: [
+                SQLFunctionSignature(parameters: [SQLFunctionParameter(name: "input_value", type: "numeric"),
+                    SQLFunctionParameter(name: "scale", type: "integer", optional: true)], returnType: "numeric")
+            ])
+        ])
+        for (query, expected) in [("SELECT NULLIF(LOWER('a,b'), ", "value2: any"),
+                                  ("SELECT public.calculate(1, ", "scale: integer = DEFAULT")] {
+            language.update(documentID: id, text: query, engine: .postgresql, context: context)
+            let help = try #require(await language.signatureHelp(documentID: id, offset: query.utf16.count))
+            let signature = help.signatures[help.activeSignature]
+            let range = try #require(signature.activeParameterRange)
+            #expect((signature.label as NSString).substring(with: range) == expected)
+            #expect(signature.label.contains(" → "))
+        }
+        await language.shutdown()
     }
 
     @Test func realBundledLanguageServerSupportsLoadedCatalogAndDiagnostics() async throws {

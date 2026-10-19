@@ -148,6 +148,80 @@ struct SQLEditorTests {
         #expect(storage.text == original)
     }
 
+    @Test func completionMatchHighlightsFollowSelectionThemesAndComposedCharacters() async throws {
+        let storage = TextStorage()
+        storage.text = "SELECT * FROM oi"
+        let coordinator = SQLEditorView.Coordinator(text: storage.binding)
+        let scroll = coordinator.makeScrollView()
+        coordinator.update(text: storage.binding, isEditable: true, in: scroll)
+        let editor = try #require(scroll.documentView as? SQLTextView)
+        let window = try await window(containing: scroll)
+        editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
+        let popup = SQLCompletionPopup()
+        defer { popup.hide(); window.close() }
+        let range = NSRange(location: storage.text.utf16.count - 2, length: 2)
+        popup.show(items: [
+            SQLCompletionItem(label: "order_items", detail: "table · public", replacement: "order_items", replacementRange: range,
+                matchRanges: [NSRange(location: 0, length: 1), NSRange(location: 6, length: 1)]),
+            SQLCompletionItem(label: "OrderItems", detail: "view · Sales", replacement: "OrderItems", replacementRange: range,
+                matchRanges: [NSRange(location: 0, length: 1), NSRange(location: 5, length: 1)]),
+            SQLCompletionItem(label: "😀órder_items", detail: "Unicode column", replacement: "value", replacementRange: range,
+                matchRanges: [NSRange(location: 2, length: 1), NSRange(location: 9, length: 1)])
+        ], for: editor, accept: {})
+        let panel = try #require(window.childWindows?.first)
+        let popupScroll = try #require(panel.contentView as? NSScrollView)
+        let table = try #require(popupScroll.documentView as? NSTableView)
+        func title(_ row: Int) throws -> NSAttributedString {
+            let cell = try #require(table.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSTableCellView)
+            return try #require(cell.textField?.attributedStringValue)
+        }
+        for (dark, builtin) in [(false, false), (true, false), (false, true), (true, true)] {
+            let base: EditorTheme
+            if builtin {
+                base = try #require(EditorThemeStore.builtinThemes().first { $0.id == (dark ? "native-dark" : "native-light") })
+            } else {
+                base = try importedTheme(dark: dark)
+            }
+            var colors = base.colors
+            if !builtin {
+                colors["editorSuggestWidget.highlightForeground"] = EditorThemeColor(hex: dark ? "#FFD788" : "#805000")
+                colors["editorSuggestWidget.focusHighlightForeground"] = EditorThemeColor(hex: dark ? "#BBE6AA" : "#1133AA")
+            }
+            let theme = EditorTheme(id: base.id, name: base.name, appearance: base.appearance,
+                colors: colors, tokenRules: base.tokenRules, isImported: true)
+            popup.applyTheme(theme, appearance: try #require(NSAppearance(named: dark ? .darkAqua : .aqua)))
+            popup.moveSelection(by: -100)
+            let first = try title(0)
+            #expect(first.string == "order_items")
+            for index in [0, 6] {
+                #expect(first.attribute(.font, at: index, effectiveRange: nil) as? NSFont == .monospacedSystemFont(ofSize: 12, weight: .bold))
+                #expect(first.attribute(.foregroundColor, at: index, effectiveRange: nil) as? NSColor
+                    == colors["editorSuggestWidget.focusHighlightForeground"]?.nsColor)
+            }
+            #expect(first.attribute(.font, at: 1, effectiveRange: nil) as? NSFont == .monospacedSystemFont(ofSize: 12, weight: .medium))
+            popup.moveSelection(by: 1)
+            #expect(popup.selectedIndex == 1)
+            let unselected = try title(0)
+            #expect(unselected.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                == colors["editorSuggestWidget.highlightForeground"]?.nsColor)
+            #expect(unselected.attribute(.foregroundColor, at: 1, effectiveRange: nil) as? NSColor
+                == colors["editorSuggestWidget.foreground"]?.nsColor)
+            let selected = try title(1)
+            #expect(selected.attribute(.foregroundColor, at: 5, effectiveRange: nil) as? NSColor
+                == colors["editorSuggestWidget.focusHighlightForeground"]?.nsColor)
+            let unicode = try title(2)
+            #expect(unicode.attribute(.font, at: 1, effectiveRange: nil) as? NSFont == .monospacedSystemFont(ofSize: 12, weight: .medium))
+            for index in [2, 3, 9] { // Base o and its combining accent receive the same style.
+                #expect(unicode.attribute(.font, at: index, effectiveRange: nil) as? NSFont == .monospacedSystemFont(ofSize: 12, weight: .bold))
+            }
+            #expect(window.firstResponder === editor)
+            #expect(storage.text == "SELECT * FROM oi")
+            #expect(editor.selectedRange() == NSRange(location: storage.text.utf16.count, length: 0))
+            #expect(editor.undoManager?.canUndo == false)
+            try saveQA(popupScroll, name: "completion-matches-" + (builtin ? "dbeer-" : "imported-") + (dark ? "dark" : "light"))
+        }
+    }
+
     @Test func cachedTabsReceiveLatestSchemeAndRetainIndependentNativeState() throws {
         let light = try importedTheme(dark: false)
         let dark = try importedTheme(dark: true)
@@ -586,6 +660,209 @@ struct SQLEditorTests {
         }
     }
 
+    @Test func bundledServerSearchesAbbreviationsTyposAndPreservesColumnRanking() async throws {
+        let executable = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/DBeer.app/Contents/Helpers/dbeer-core")
+        for engine in [DatabaseEngine.postgresql, .mysql] {
+            let storage = TextStorage()
+            let language = SQLLanguageService(helperURL: executable)
+            let coordinator = SQLEditorView.Coordinator(text: storage.binding)
+            let scroll = coordinator.makeScrollView()
+            let context = SQLCompletionContext(profileID: UUID(), catalog: [
+                SQLCompletionRelation(schema: "public", name: "order_items", kind: "table", columns: ["order_id"]),
+                SQLCompletionRelation(schema: "public", name: "orders", kind: "table", columns: ["count_items"])
+            ])
+            coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
+                languageService: language, completionContext: context)
+            let editor = try #require(scroll.documentView as? NSTextView)
+            let window = try await window(containing: scroll)
+            defer { window.close() }
+            let quote = engine == .postgresql ? "\"" : "`"
+            for (typed, label) in [("oi", "order_items"), ("ordres", "orders")] {
+                storage.text = "SELECT * FROM "
+                coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
+                    languageService: language, completionContext: context)
+                editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
+                editor.insertText(typed, replacementRange: editor.selectedRange())
+                let original = storage.text
+                for _ in 0..<100 where coordinator.visibleCompletionLabels.first != label {
+                    try await Task.sleep(for: .milliseconds(20))
+                }
+                #expect(coordinator.visibleCompletionLabels.first == label)
+                editor.keyDown(with: try key(48, characters: "\t"))
+                #expect(storage.text == "SELECT * FROM " + quote + "public" + quote + "." + quote + label + quote)
+                #expect(window.firstResponder === editor)
+                editor.undoManager?.undo()
+                #expect(storage.text == original)
+            }
+            storage.text = "SELECT  FROM orders o"
+            coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
+                languageService: language, completionContext: context)
+            editor.setSelectedRange(NSRange(location: 7, length: 0))
+            editor.insertText("co", replacementRange: editor.selectedRange())
+            for _ in 0..<100 where !coordinator.visibleCompletionLabels.contains("COUNT") {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(coordinator.visibleCompletionLabels.first == "count_items")
+            #expect(coordinator.visibleCompletionLabels.contains("COUNT"))
+            editor.keyDown(with: try key(48, characters: "\t"))
+            #expect(storage.text == "SELECT " + quote + "count_items" + quote + " FROM orders o")
+            editor.undoManager?.undo()
+            #expect(storage.text == "SELECT co FROM orders o")
+            await language.shutdown()
+        }
+    }
+
+    @Test func bundledServerInsertsScopedColumnsAndForeignKeyJoinsWithUndo() async throws {
+        let executable = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/DBeer.app/Contents/Helpers/dbeer-core")
+        for engine in [DatabaseEngine.postgresql, .mysql] {
+            let storage = TextStorage()
+            let language = SQLLanguageService(helperURL: executable)
+            let coordinator = SQLEditorView.Coordinator(text: storage.binding)
+            let scroll = coordinator.makeScrollView()
+            let context = SQLCompletionContext(profileID: UUID(), catalog: [
+                SQLCompletionRelation(schema: "public", name: "orders", kind: "table", columns: ["id", "customer_id"], foreignKeys: [
+                    SQLCompletionForeignKey(name: "customer_fk", targetSchema: "public", targetTable: "customers",
+                        columns: [SQLCompletionForeignKeyColumn(source: "customer_id", target: "id")])
+                ]),
+                SQLCompletionRelation(schema: "public", name: "customers", kind: "table", columns: ["id", "name"])
+            ])
+            coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
+                languageService: language, completionContext: context)
+            let editor = try #require(scroll.documentView as? NSTextView)
+            let window = try await window(containing: scroll)
+            defer { window.close() }
+            let quote = engine == .postgresql ? "\"" : "`"
+            for query in ["WITH recent AS (SELECT id AS order_id FROM orders) SELECT r.or FROM recent r",
+                          "SELECT d.or FROM (SELECT id AS order_id FROM orders) d"] {
+                storage.text = query
+                coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
+                    languageService: language, completionContext: context)
+                editor.setSelectedRange(NSRange(location: NSMaxRange((query as NSString).range(of: ".or")), length: 0))
+                editor.complete(nil)
+                for _ in 0..<100 where !coordinator.visibleCompletionLabels.contains("order_id") {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                #expect(coordinator.visibleCompletionLabels == ["order_id"])
+                editor.keyDown(with: try key(48, characters: "\t"))
+                #expect(storage.text == query.replacingOccurrences(of: ".or ", with: "." + quote + "order_id" + quote + " "))
+                editor.undoManager?.undo()
+                #expect(storage.text == query)
+            }
+            storage.text = "SELECT * FROM orders o JOIN"
+            coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
+                languageService: language, completionContext: context)
+            editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
+            editor.insertText(" ", replacementRange: editor.selectedRange())
+            let original = storage.text
+            for _ in 0..<100 where !coordinator.visibleCompletionLabels.contains("customers") {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            #expect(coordinator.visibleCompletionLabels.first == "customers")
+            editor.keyDown(with: try key(48, characters: "\t"))
+            #expect(storage.text == "SELECT * FROM orders o JOIN " + quote + "public" + quote + "." + quote + "customers" + quote
+                + " AS " + quote + "c" + quote + " ON " + quote + "o" + quote + "." + quote + "customer_id" + quote
+                + " = " + quote + "c" + quote + "." + quote + "id" + quote)
+            editor.undoManager?.undo()
+            #expect(storage.text == original)
+            await language.shutdown()
+        }
+    }
+
+    @Test func functionSignaturesFollowTypingCursorEscapeAndNativeUndo() async throws {
+        let executable = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/DBeer.app/Contents/Helpers/dbeer-core")
+        for engine in [DatabaseEngine.postgresql, .mysql] {
+            let storage = TextStorage()
+            storage.text = "SELECT NULLIF"
+            let language = SQLLanguageService(helperURL: executable)
+            let coordinator = SQLEditorView.Coordinator(text: storage.binding)
+            let scroll = coordinator.makeScrollView()
+            coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine, languageService: language)
+            let editor = try #require(scroll.documentView as? NSTextView)
+            let window = try await window(containing: scroll)
+            defer { window.close() }
+            editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
+            editor.insertText("(", replacementRange: editor.selectedRange())
+            for _ in 0..<100 where !coordinator.activeSignatureParameterTexts.contains("value1: any") {
+                try await Task.sleep(for: .milliseconds(15))
+            }
+            #expect(coordinator.activeSignatureParameterTexts == ["value1: any"])
+            #expect(coordinator.visibleSignatureLabels.first?.hasSuffix(" → type of value1") == true)
+            editor.insertText("LOWER('a,b'), ", replacementRange: editor.selectedRange())
+            for _ in 0..<100 where !coordinator.activeSignatureParameterTexts.contains("value2: any") {
+                try await Task.sleep(for: .milliseconds(15))
+            }
+            #expect(coordinator.activeSignatureParameterTexts == ["value2: any"])
+            #expect(window.firstResponder === editor)
+            let original = storage.text
+            let argument = (storage.text as NSString).range(of: "'a,b'")
+            editor.setSelectedRange(NSRange(location: argument.location + 2, length: 0))
+            for _ in 0..<100 where coordinator.visibleSignatureLabels.first?.hasPrefix("LOWER(") != true {
+                try await Task.sleep(for: .milliseconds(15))
+            }
+            #expect(coordinator.activeSignatureParameterTexts == [engine == .postgresql ? "value: text" : "value: string"])
+            #expect(storage.text == original)
+            editor.keyDown(with: try key(53))
+            try await Task.sleep(for: .milliseconds(120))
+            #expect(coordinator.visibleSignatureLabels.isEmpty)
+            editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
+            for _ in 0..<100 where !coordinator.activeSignatureParameterTexts.contains("value2: any") {
+                try await Task.sleep(for: .milliseconds(15))
+            }
+            #expect(coordinator.activeSignatureParameterTexts == ["value2: any"])
+            editor.breakUndoCoalescing()
+            editor.insertText("1)", replacementRange: editor.selectedRange())
+            editor.breakUndoCoalescing()
+            for _ in 0..<100 where !coordinator.visibleSignatureLabels.isEmpty { try await Task.sleep(for: .milliseconds(15)) }
+            #expect(coordinator.visibleSignatureLabels.isEmpty)
+            editor.undoManager?.undo()
+            #expect(storage.text == original)
+            for _ in 0..<100 where coordinator.visibleSignatureLabels.isEmpty { try await Task.sleep(for: .milliseconds(15)) }
+            #expect(coordinator.activeSignatureParameterTexts == ["value2: any"])
+            window.makeFirstResponder(nil)
+            #expect(coordinator.visibleSignatureLabels.isEmpty)
+            coordinator.detach(from: scroll)
+            await language.shutdown()
+        }
+    }
+
+    @Test func signaturePanelHighlightsParametersAndSupportsBothEditorThemes() async throws {
+        let storage = TextStorage()
+        storage.text = "SELECT SUBSTRING('hello', 1, "
+        let coordinator = SQLEditorView.Coordinator(text: storage.binding)
+        let scroll = coordinator.makeScrollView()
+        let editor = try #require(scroll.documentView as? NSTextView)
+        let window = try await window(containing: scroll)
+        defer { window.close() }
+        let popup = SQLSignaturePopup()
+        defer { popup.hide() }
+        let label = "SUBSTRING(value: text, start: integer, count: integer = DEFAULT) → text"
+        let range = (label as NSString).range(of: "count: integer = DEFAULT")
+        let help = SQLSignatureHelp(signatures: [SQLSignatureInformation(label: label, parameterRanges: [range], activeParameter: 0)], activeSignature: 0)
+        for dark in [false, true] {
+            let theme = try importedTheme(dark: dark)
+            coordinator.update(text: storage.binding, isEditable: true, in: scroll, editorTheme: theme)
+            editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
+            popup.show(help, for: editor)
+            #expect(popup.isVisible && popup.highlightedRanges == [range])
+            let panel = try #require(window.childWindows?.first { $0.identifier?.rawValue == "sqlSignaturePopup" || $0.contentView is NSScrollView })
+            #expect(!panel.canBecomeKey && window.firstResponder === editor)
+            let signatureScroll = try #require(panel.contentView as? NSScrollView)
+            let signatureText = try #require(signatureScroll.documentView as? NSTextView)
+            #expect(signatureText.string == label)
+            #expect(signatureText.textStorage?.attribute(.backgroundColor, at: range.location, effectiveRange: nil) != nil)
+            #expect(signatureText.textStorage?.attribute(.backgroundColor, at: 0, effectiveRange: nil) == nil)
+            #expect(panel.frame.width <= 540 && panel.frame.height >= 36)
+            try saveQA(signatureScroll, name: "function-signatures-" + (dark ? "dark" : "light"))
+            #expect(storage.text == "SELECT SUBSTRING('hello', 1, ")
+        }
+    }
+
     @Test func programmaticCaretScrollPreservesCompletionsUntilCaretLeavesViewport() async throws {
         let storage = TextStorage()
         storage.text = String(repeating: "SELECT 1;\n", count: 50) + "SELECT us"
@@ -694,6 +971,9 @@ struct SQLEditorTests {
             editor.undoManager?.removeAllActions()
             editor.setSelectedRange(NSRange(location: cursor, length: 0))
             editor.complete(nil)
+            for _ in 0..<100 where coordinator.visibleCompletionLabels.isEmpty {
+                try await Task.sleep(for: .milliseconds(10))
+            }
             #expect(coordinator.visibleCompletionLabels.count == 1)
             editor.keyDown(with: try key(48, characters: "\t"))
             #expect(storage.text == expected)

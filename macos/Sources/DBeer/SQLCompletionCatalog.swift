@@ -22,7 +22,14 @@ struct SQLCompletionCatalog {
                 let columns = record["columns"].flatMap { value in
                     try? JSONDecoder().decode([String].self, from: Data(value.utf8))
                 } ?? []
-                return SQLCompletionRelation(schema: schema, name: name, kind: kind, columns: Array(columns.prefix(2_000)))
+                let keys = record["foreignKeys"].flatMap { value in
+                    try? JSONDecoder().decode([SQLCompletionForeignKey].self, from: Data(value.utf8))
+                } ?? []
+                let signatures = record["signatures"].flatMap { value in
+                    try? JSONDecoder().decode([SQLFunctionSignature].self, from: Data(value.utf8))
+                } ?? []
+                return SQLCompletionRelation(schema: schema, name: name, kind: kind, columns: Array(columns.prefix(2_000)),
+                    foreignKeys: Array(keys.prefix(64)), signatures: Array(signatures.prefix(32)))
             }
         case "schemas":
             let names = Set(records.compactMap { $0["name"] })
@@ -47,7 +54,10 @@ struct SQLCompletionCatalog {
             let relation = SQLCompletionRelation(schema: schema, name: name, kind: kind,
                 columns: Array(records.prefix(2_000).compactMap { $0["name"] }))
             if let index = relations.firstIndex(where: { $0.schema == schema && $0.name == name && $0.kind == kind }) {
-                relations[index] = relation
+                var updated = relation
+                updated.foreignKeys = relations[index].foreignKeys
+                updated.signatures = relations[index].signatures
+                relations[index] = updated
             } else if relations.count < Self.limit { relations.append(relation) }
         default: return
         }

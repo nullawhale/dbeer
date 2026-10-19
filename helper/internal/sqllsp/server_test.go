@@ -140,8 +140,8 @@ func TestConfigurationIsolationAndDialectRefresh(t *testing.T) {
 	a, b := "dbeer-sql:///a.sql", "dbeer-sql:///b.sql"
 	catalog := []catalogEntry{{Schema: "public", Name: "users", Kind: "table", Columns: []string{"id"}}}
 	responses := testRun(t, rpc("initialize", 1, nil),
-		configurationMessage(a, "postgresql", catalog), open(a, "sql", "SELECT ", 1),
-		configurationMessage(b, "mysql", nil), open(b, "sql", "SELECT ", 1),
+		configurationMessage(a, "postgresql", catalog), open(a, "sql", "SELECT  FROM users", 1),
+		configurationMessage(b, "mysql", nil), open(b, "sql", "SELECT  FROM users", 1),
 		completion(a, position{Character: 7}, 2), completion(b, position{Character: 7}, 3),
 		configurationMessage(a, "mysql", nil), completion(a, position{Character: 7}, 4),
 		rpc("shutdown", 5, nil), rpc("exit", nil, nil))
@@ -149,7 +149,7 @@ func TestConfigurationIsolationAndDialectRefresh(t *testing.T) {
 	if _, ok := itemWithLabel(postgres, "DATE_TRUNC"); !ok {
 		t.Fatal("missing PostgreSQL function")
 	}
-	if _, ok := itemWithLabel(postgres, "users"); !ok {
+	if _, ok := itemWithLabel(postgres, "id"); !ok {
 		t.Fatal("missing supplied catalog")
 	}
 	for _, items := range [][]completionItem{mysql, updated} {
@@ -159,7 +159,7 @@ func TestConfigurationIsolationAndDialectRefresh(t *testing.T) {
 		if _, ok := itemWithLabel(items, "DATE_TRUNC"); ok {
 			t.Fatal("PostgreSQL function leaked")
 		}
-		if _, ok := itemWithLabel(items, "users"); ok {
+		if _, ok := itemWithLabel(items, "id"); ok {
 			t.Fatal("catalog leaked")
 		}
 	}

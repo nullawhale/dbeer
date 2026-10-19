@@ -163,7 +163,29 @@ final class SQLCompletionPopup: NSObject, NSTableViewDataSource, NSTableViewDele
 
     private func style(_ cell: Cell, row: Int) {
         let selected = row == table.selectedRow
-        cell.textField?.textColor = selected ? selectedForegroundColor : foregroundColor
+        let foreground = selected ? selectedForegroundColor : foregroundColor
+        cell.textField?.textColor = foreground
+        if let title = cell.textField, items.indices.contains(row) {
+            let label = items[row].label as NSString
+            let attributed = NSMutableAttributedString(string: label as String, attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium),
+                .foregroundColor: foreground
+            ])
+            let highlight = editorTheme?.color(selected ? "editorSuggestWidget.focusHighlightForeground" : "editorSuggestWidget.highlightForeground",
+                default: selected ? selectedForegroundColor : foregroundColor)
+                ?? (selected ? selectedForegroundColor : .linkColor)
+            for range in items[row].matchRanges {
+                guard range.location >= 0, range.location <= label.length, range.length > 0,
+                      range.length <= label.length - range.location else { continue }
+                // A matching base letter also styles its combining marks.
+                let composed = label.rangeOfComposedCharacterSequences(for: range)
+                attributed.addAttributes([
+                    .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .bold),
+                    .foregroundColor: highlight
+                ], range: composed)
+            }
+            title.attributedStringValue = attributed
+        }
         // Explicit schemes keep detail text readable even when the app and the
         // editor use different appearances.
         cell.detailField?.textColor = editorTheme == nil && !selected ? .secondaryLabelColor

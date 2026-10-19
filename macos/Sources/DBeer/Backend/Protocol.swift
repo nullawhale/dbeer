@@ -63,7 +63,8 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
 }
 
 struct CatalogRequest: Codable, Sendable, Equatable {
-    /// `completion` returns 200 objects per page with JSON column-name arrays.
+    /// `completion` returns 200 objects per page with JSON column-name and
+    /// structured foreign-key and function-signature arrays; rules belong to the helper.
     var kind: String
     var schema: String?
     var object: String?

@@ -5,10 +5,10 @@ package sqllsp
 import (
 	"bufio"
 	"bytes"
+	"dbeer/helper/internal/sqlcomplete"
 	"encoding/json"
 	"errors"
 	"io"
-	"strings"
 	"unicode/utf8"
 )
 
@@ -40,12 +40,7 @@ type document struct {
 	language string
 	invalid  bool
 }
-type catalogEntry struct {
-	Schema  string   `json:"schema"`
-	Name    string   `json:"name"`
-	Kind    string   `json:"kind"`
-	Columns []string `json:"columns"`
-}
+type catalogEntry = sqlcomplete.Relation
 type configuration struct {
 	URI     string         `json:"uri"`
 	Engine  string         `json:"engine"`
@@ -126,7 +121,7 @@ func (s *server) handle(m rpcMessage) (bool, error) {
 	request := len(m.ID) > 0
 	if m.Method == "initialize" && request && !s.initialized && !s.shutdown {
 		s.initialized = true
-		return false, s.response(m.ID, map[string]any{"capabilities": map[string]any{"positionEncoding": "utf-16", "textDocumentSync": map[string]any{"openClose": true, "change": 1}, "completionProvider": map[string]any{"triggerCharacters": []string{".", "\"", "`"}}}, "serverInfo": map[string]string{"name": "DBeer SQL", "version": "1"}})
+		return false, s.response(m.ID, map[string]any{"capabilities": map[string]any{"positionEncoding": "utf-16", "textDocumentSync": map[string]any{"openClose": true, "change": 1}, "completionProvider": map[string]any{"triggerCharacters": []string{".", "\"", "`"}}, "signatureHelpProvider": map[string]any{"triggerCharacters": []string{"(", ","}, "retriggerCharacters": []string{")"}}}, "serverInfo": map[string]string{"name": "DBeer SQL", "version": "1"}})
 	}
 	if !s.initialized || s.shutdown {
 		if request {
@@ -208,7 +203,7 @@ func (s *server) handle(m rpcMessage) (bool, error) {
 				}
 			}
 		}
-	case "textDocument/completion":
+	case "textDocument/completion", "textDocument/signatureHelp":
 		if !request {
 			break
 		}
@@ -220,6 +215,15 @@ func (s *server) handle(m rpcMessage) (bool, error) {
 		}
 		if json.Unmarshal(m.Params, &params) != nil {
 			return false, s.failure(m.ID, -32602, "Invalid completion parameters.")
+		}
+		if m.Method == "textDocument/signatureHelp" {
+			var value *signatureResult
+			if d, exists := s.documents[params.TextDocument.URI]; exists && !d.invalid {
+				if offset, ok := offsetAt(d.text, params.Position); ok {
+					value = signatureHelp(d.text, offset, s.context(d, params.TextDocument.URI))
+				}
+			}
+			return false, s.response(m.ID, value)
 		}
 		items := []completionItem{}
 		if d, exists := s.documents[params.TextDocument.URI]; exists && !d.invalid {
@@ -273,7 +277,7 @@ func boundedConfiguration(c configuration) bool {
 	if c.URI == "" || len(c.URI) > 4096 || (c.Engine != "postgresql" && c.Engine != "mysql") || len(c.Catalog) > maxCatalogEntries {
 		return false
 	}
-	columns := 0
+	columns, keyColumns, parameters := 0, 0, 0
 	for _, entry := range c.Catalog {
 		if (entry.Kind != "table" && entry.Kind != "view" && entry.Kind != "function") || entry.Name == "" || len(entry.Name) > 1024 || len(entry.Schema) > 1024 {
 			return false
@@ -285,6 +289,40 @@ func boundedConfiguration(c configuration) bool {
 		for _, column := range entry.Columns {
 			if len(column) > 1024 {
 				return false
+			}
+		}
+		if len(entry.ForeignKeys) > 64 {
+			return false
+		}
+		for _, key := range entry.ForeignKeys {
+			if len(key.Name) > 1024 || key.TargetTable == "" || len(key.TargetTable) > 1024 || len(key.TargetSchema) > 1024 || len(key.Columns) == 0 || len(key.Columns) > 32 {
+				return false
+			}
+			keyColumns += len(key.Columns)
+			if keyColumns > 8192 {
+				return false
+			}
+			for _, pair := range key.Columns {
+				if pair.Source == "" || pair.Target == "" || len(pair.Source) > 1024 || len(pair.Target) > 1024 {
+					return false
+				}
+			}
+		}
+		if len(entry.Signatures) > 32 {
+			return false
+		}
+		for _, signature := range entry.Signatures {
+			if signature.ReturnType == "" || len(signature.ReturnType) > 4096 || len(signature.Parameters) > 256 {
+				return false
+			}
+			parameters += len(signature.Parameters)
+			if parameters > 8192 {
+				return false
+			}
+			for _, parameter := range signature.Parameters {
+				if len(parameter.Name) > 1024 || parameter.Type == "" || len(parameter.Type) > 1024 || parameter.Position < 0 || parameter.Position > 256 {
+					return false
+				}
 			}
 		}
 	}
@@ -302,7 +340,10 @@ func (s *server) context(d document, uri string) configuration {
 }
 func (s *server) publish(uri string) error {
 	d := s.documents[uri]
-	_, diagnostics := lex(d.text, s.context(d, uri).Engine)
+	diagnostics := []diagnostic{}
+	for _, value := range sqlcomplete.Diagnostics(d.text, s.context(d, uri).Engine) {
+		diagnostics = append(diagnostics, diagnostic{Range: textRange{Start: positionAt(d.text, value.Start), End: positionAt(d.text, value.End)}, Severity: 1, Source: "DBeer SQL", Message: value.Message})
+	}
 	return s.transport.write(map[string]any{"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": map[string]any{"uri": uri, "version": d.version, "diagnostics": diagnostics}})
 }
 
@@ -357,22 +398,4 @@ func offsetAt(text string, p position) (int, bool) {
 		}
 	}
 	return len(text), line == p.Line && character == p.Character
-}
-
-func identifierEqual(token token, name, engine string) bool {
-	if token.kind == quotedToken {
-		return token.value == name
-	}
-	if engine == "mysql" {
-		return strings.EqualFold(token.value, name)
-	}
-	return strings.ToLower(token.value) == name
-}
-
-func identifierTokenEqual(a, b token, engine string) bool {
-	name := b.value
-	if engine != "mysql" && b.kind == wordToken {
-		name = strings.ToLower(name)
-	}
-	return identifierEqual(a, name, engine)
 }

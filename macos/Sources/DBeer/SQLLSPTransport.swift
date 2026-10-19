@@ -225,6 +225,10 @@ actor SQLLSPTransport {
                     "general": .object(["positionEncodings": .array([.string("utf-16")])]),
                     "textDocument": .object([
                         "completion": .object(["completionItem": .object(["snippetSupport": .bool(false)])]),
+                        "signatureHelp": .object(["signatureInformation": .object([
+                            "parameterInformation": .object(["labelOffsetSupport": .bool(true)]),
+                            "activeParameterSupport": .bool(true)
+                        ])]),
                         "publishDiagnostics": .object(["versionSupport": .bool(true)])
                     ])
                 ])

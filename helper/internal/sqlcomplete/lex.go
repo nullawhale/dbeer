@@ -1,4 +1,4 @@
-package sqllsp
+package sqlcomplete
 
 import (
 	"strings"
@@ -29,13 +29,13 @@ func identifierRune(r rune) bool {
 
 // lex deliberately diagnoses only lexical constructs. It never treats unfamiliar
 // dialect syntax as invalid SQL and never includes source text in diagnostics.
-func lex(text, engine string) ([]token, []diagnostic) {
+func lex(text, engine string) ([]token, []Diagnostic) {
 	tokens := make([]token, 0, min(len(text)/4, 4096))
-	diagnostics := []diagnostic{}
+	diagnostics := []Diagnostic{}
 	parentheses := []int{}
 	addDiagnostic := func(start, end int, message string) {
 		if len(diagnostics) < 64 {
-			diagnostics = append(diagnostics, diagnostic{Range: textRange{Start: positionAt(text, start), End: positionAt(text, end)}, Severity: 1, Source: "DBeer SQL", Message: message})
+			diagnostics = append(diagnostics, Diagnostic{Start: start, End: end, Message: message})
 		}
 	}
 	add := func(kind tokenKind, start, end int, value string, openEnd bool) {
@@ -170,4 +170,10 @@ func lex(text, engine string) ([]token, []diagnostic) {
 		addDiagnostic(start, start+1, "Unclosed parenthesis.")
 	}
 	return tokens, diagnostics
+}
+
+// Diagnostics reports lexical errors without retaining source text.
+func Diagnostics(text, engine string) []Diagnostic {
+	_, diagnostics := lex(text, engine)
+	return diagnostics
 }
