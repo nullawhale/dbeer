@@ -31,6 +31,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 	}
 	var unavailable bool
 	var metadataWarning bool
+	var browseNotice string
 	response := session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
 		var err error
 		switch request.Kind {
@@ -39,7 +40,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		case "name":
 			err = session.catalogName(collector, request)
 		case "select", "browse":
-			err = session.catalogSelect(collector, result, request)
+			err = session.catalogSelect(collector, result, request, &browseNotice)
 		default:
 			query, args := catalogQuery(request)
 			var loaded *wire.Result
@@ -66,7 +67,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		}
 		return err
 	}, sinks...)
-	if unavailable && response.Connected {
+	if unavailable && response.Connected && request.Kind != "browse" {
 		response.Type, response.Category, response.Message, response.SQLState = "query.result", "", "", ""
 		response.Columns, response.Rows = nil, [][]*string{}
 		response.RowCount, response.DisplayedRowCount = 0, 0
@@ -75,6 +76,9 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		response.Message = "Cannot load this MySQL catalog branch. Check object availability and permissions."
 	}
 	if response.Type == "query.result" && response.DisplayNotice == "" {
+		if request.Kind == "browse" {
+			response.DisplayNotice = browseNotice
+		}
 		if request.Kind == "definition" && len(response.Rows) == 0 {
 			response.DisplayNotice = "The object definition is unavailable with the current permissions."
 		}
@@ -210,7 +214,7 @@ func (session *Session) catalogDefinition(collector *collector, request protocol
 	return collectCatalogRows(collector, []string{"name", "definition"}, rows)
 }
 
-func (session *Session) catalogSelect(collector *collector, result *wire.Result, request protocol.CatalogRequest) error {
+func (session *Session) catalogSelect(collector *collector, result *wire.Result, request protocol.CatalogRequest, notice *string) error {
 	// Validate the relation even when it has no primary key, distinguishing a
 	// missing object from a legitimate view or a table without a key.
 	object, err := session.work.client.Execute(`SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=? LIMIT 1`, request.Schema, request.Object)
@@ -236,6 +240,9 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 		primaryKey = append(primaryKey, name)
 	}
 	keys.Close()
+	if request.Kind == "browse" && len(primaryKey) == 0 {
+		*notice = "This object has no primary key. No stable page order is guaranteed, even when data is unchanged; rows may repeat or be skipped between pages."
+	}
 	columns, err := session.work.client.Execute(`SELECT COLUMN_NAME,DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION LIMIT 4097`, request.Schema, request.Object)
 	if err != nil {
 		return err
@@ -297,8 +304,15 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 			if filter.Operator == "contains" {
 				predicates = append(predicates, "LOCATE(?, "+column+") > 0")
 			} else {
+				parameter, canonical, err := browseNumericParameter(kind, *filter.Value)
+				if err != nil {
+					return err
+				}
+				if parameter != "?" {
+					value = canonical
+				}
 				operator := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}[filter.Operator]
-				predicates = append(predicates, column+" "+operator+" ?")
+				predicates = append(predicates, column+" "+operator+" "+parameter)
 			}
 			args = append(args, value)
 		}

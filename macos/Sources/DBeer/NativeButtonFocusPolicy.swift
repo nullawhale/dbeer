@@ -21,7 +21,10 @@ final class NativeButtonFocusPolicy: NSObject {
     }
 
     func apply(to window: NSWindow) {
-        guard !(window is AppThemeIndependentWindow), let content = window.contentView else { return }
+        // Native menu windows own their drawing, vibrancy and selection.
+        guard !(window is AppThemeIndependentWindow),
+              window.level.rawValue < NSWindow.Level.mainMenu.rawValue,
+              let content = window.contentView else { return }
         AppThemeSurface.apply(in: window)
         let isInteractionBlocked = Self.isInteractionBlocked(in: window)
         let rowRegions = CatalogRowHoverAnchor.apply(in: content)

@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Foundation
 import UniformTypeIdentifiers
 
@@ -338,6 +339,9 @@ final class ApplicationWorkspace: ObservableObject {
         }
         do {
             let client = try await ensureHelper()
+            if export?.destination != nil, !(await client.supportsCapturedExport()) {
+                throw ExecutionPolicyError(message: "The helper does not support captured full export. SQL was not executed.")
+            }
             guard canStartOperation(document), !document.stopRequested, document.text == boundText,
                   document.profileID == profileID,
                   library.savedConnections.first(where: { $0.id == profileID }) == profile else {
@@ -419,7 +423,7 @@ final class ApplicationWorkspace: ObservableObject {
                     if runtime.queryFailure == nil, let result = runtime.result, result.outcomeUnknown != true {
                         document.recordExecutionSuccess(statement, revision: executionRevision)
                     }
-                    recordHistory(document: document, sql: statement.sql, outcome: document.executions[index].status)
+                    if runtime.queryFailure?.sqlNotExecuted != true { recordHistory(document: document, sql: statement.sql, outcome: document.executions[index].status) }
                     if let position = runtime.queryErrorPosition {
                         let scalars = statement.sql.unicodeScalars
                         let end = scalars.index(scalars.startIndex, offsetBy: min(max(0, position - 1), scalars.count))
@@ -634,8 +638,41 @@ final class ApplicationWorkspace: ObservableObject {
             document.localError = "The SQL or connection changed while choosing the export file. Review it and run again."
             return
         }
-        await execute(document, statements: fragment.statements,
-            export: ExportRequest(path: destination.path, format: format, nullMarker: marker))
+        do {
+            let captured = try await Task.detached { try Self.captureExportDestination(destination) }.value
+            guard document.text == boundText, document.profileID == boundProfileID,
+                  library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
+                document.localError = "The SQL or connection changed while capturing the export file. Review it and run again."
+                return
+            }
+            await execute(document, statements: fragment.statements,
+                export: ExportRequest(path: destination.path, format: format, nullMarker: marker, destination: captured))
+        } catch { document.localError = "The export destination changed or could not be captured. SQL was not executed." }
+    }
+
+    nonisolated private static func captureExportDestination(_ url: URL) throws -> ExportDestination {
+        let manager = FileManager.default
+        let parent = url.deletingLastPathComponent()
+        guard parent.resolvingSymlinksInPath().standardizedFileURL == parent.standardizedFileURL else { throw CocoaError(.fileReadUnknown) }
+        let parentAttributes = try manager.attributesOfItem(atPath: parent.path)
+        func identity(_ attributes: [FileAttributeKey: Any]) throws -> String {
+            guard let device = attributes[.systemNumber] as? NSNumber, let inode = attributes[.systemFileNumber] as? NSNumber else { throw CocoaError(.fileReadUnknown) }
+            return "\(device.uint64Value):\(inode.uint64Value)"
+        }
+        let parentIdentity = try identity(parentAttributes)
+        guard manager.fileExists(atPath: url.path) else { return ExportDestination(exists: false, parentIdentity: parentIdentity, size: 0, sha256: "") }
+        let before = try manager.attributesOfItem(atPath: url.path)
+        guard before[.type] as? FileAttributeType == .typeRegular else { throw CocoaError(.fileReadUnknown) }
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hash = SHA256()
+        while let bytes = try handle.read(upToCount: 65_536), !bytes.isEmpty { hash.update(data: bytes) }
+        let after = try manager.attributesOfItem(atPath: url.path)
+        guard before[.systemFileNumber] as? NSNumber == after[.systemFileNumber] as? NSNumber,
+              before[.size] as? NSNumber == after[.size] as? NSNumber,
+              before[.modificationDate] as? Date == after[.modificationDate] as? Date else { throw CocoaError(.fileReadUnknown) }
+        return ExportDestination(exists: true, identity: try identity(before), parentIdentity: parentIdentity, size: (before[.size] as? NSNumber)?.int64Value ?? 0,
+            sha256: hash.finalize().map { String(format: "%02x", $0) }.joined())
     }
 
     private func chooseNullMarker() -> String? {
@@ -690,10 +727,11 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func chooseImportedCA(_ id: UUID) {
-        guard let index = importPreview?.firstIndex(where: { $0.id == id }) else { return }
+        guard !isImportingProfiles, let original = importPreview?.first(where: { $0.id == id }) else { return }
         let panel = NSOpenPanel()
         panel.message = "Choose this Mac's trusted CA file. The profile's TLS verification mode stays the same."
         guard panel.runModal() == .OK, let selected = panel.url else { return }
+        guard !isImportingProfiles, let index = importPreview?.firstIndex(where: { $0.id == id && $0 == original }) else { return }
         importPreview?[index].profile.sslRootCert = selected.path
     }
 

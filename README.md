@@ -13,8 +13,8 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 - Arbitrary SQL, views, and tables without a primary key are read-only; MySQL editing requires InnoDB. Computed and unsupported types cannot be edited, with the reason shown in the interface.
 - Copy cells, rows, and ranges with **⌘C** or the context menu. Export Loaded saves rows already received. The separate **Run to File** action executes one statement once and publishes the complete file only after successful completion.
 - **⌘O**, **⌘S**, and **⇧⌘S** open and save UTF-8 `.sql` files. Drafts are saved after one second of inactivity. History is enabled by default: 1,000 entries retained for 30 days. Query → SQL History can disable or clear history, or clear restored documents. Restoration never connects to a database or executes SQL.
-- Connections → Import/Export Connections transfers profiles without passwords or private keys. Import shows a preview, creates new UUIDs, and requires selecting any missing CA while preserving the TLS mode.
-- Closing a tab, profile, or the application offers to complete transactions and apply/discard changes; Cancel keeps the window open. DBeer → Settings (**⌘,**) selects System/Light/Dark.
+- Connections → Import/Export Connections transfers profiles without passwords or private keys. Import shows a preview, creates new UUIDs, and requires selecting any missing or foreign CA while preserving the TLS mode. Portable files accept POSIX, Windows drive and UNC CA hints; foreign hints require explicit local remapping.
+- Closing a tab, profile, or the application offers to complete transactions and apply/discard changes; Cancel keeps the window open. DBeer → Settings (**⌘,**) selects System/Lager/Porter.
 
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
@@ -48,11 +48,11 @@ The bundled local language server suggests PostgreSQL/MySQL keywords and functio
 
 Function signatures appear above the caret while typing inside a call, with parameter names/types, the return type, and the current argument highlighted. Nested calls, PostgreSQL named arguments, defaults, variadic arguments, and overloads are supported; moving the caret updates the active parameter. The panel preserves editor focus and Undo, follows the editor theme, and closes with **Escape**. Common built-ins are available offline; user-function signatures load with the connected profile metadata and refresh through profile Refresh. Overloads are ranked by arity and argument names, without inferring expression types; polymorphic return types remain descriptive.
 
-**Settings → Appearance** separates the application appearance from the SQL editor scheme. The application supports System, Light, Dark, and every scheme in the shared library: DBeer Light/Dark, VS Code Light+/Dark+, Solarized Light/Dark, JetBrains Light, Darcula, and imported schemes. Application and editor choices are saved independently: for example, the application can use Solarized Light while the editor uses Darcula. Application colors apply to backgrounds, the sidebar, tabs, controls, and result tables; the Dock icon follows the scheme's light or dark appearance. In **Follow App Appearance** mode, the editor inherits the application scheme. The preview and open SQL tabs update immediately while preserving text, cursor position, scrolling, and Undo.
+**Settings → Appearance** separates the application appearance from the SQL editor scheme. The application supports System, Lager (light), Porter (dark), and every scheme in the shared library: DBeer Light/Dark, VS Code Light+/Dark+, Solarized Light/Dark, JetBrains Light, Darcula, and imported schemes. Application and editor choices are saved independently: for example, the application can use Solarized Light while the editor uses Darcula. Application colors apply to backgrounds, the sidebar, tabs, controls, and result tables; the Dock icon follows the scheme's light or dark appearance. In **Follow App Appearance** mode, the editor inherits the application scheme. The preview and open SQL tabs update immediately while preserving text, cursor position, scrolling, and Undo.
 
 **Import Theme…** accepts standard VS Code `.json`/`.jsonc`, TextMate `.tmTheme`, and JetBrains `.icls` color schemes. Export a JetBrains scheme through **Editor → Color Scheme → Export → IntelliJ IDEA color scheme (.icls)**. Supported settings include editor, selection, cursor, and line-number colors, basic SQL token classes, and available text styles. JetBrains UI `.theme.json` files, JAR plugins, TextMate grammars, and semantic-token rules are not loaded. `.icls` supports Default/Darcula inheritance; an unknown parent produces a clear error.
 
-JSONC can contain comments and trailing commas. Local `include` files and `tokenColors` references to `.tmTheme` resolve within the selected scheme's directory and its subdirectories. Import saves a standalone local copy in `~/Library/Application Support/DBeer/EditorThemes/themes.json`; source files are no longer needed. Available VS Code UI colors style the application, with missing colors derived from the editor palette for readability. **Remove Theme** removes only imported schemes and returns the editor to automatic selection; if the scheme is selected for the application, it returns to the previous System/Light/Dark appearance. Built-in schemes cannot be removed. Importing and switching themes never executes SQL or connects to a database. Format references: [VS Code](https://code.visualstudio.com/api/extension-guides/color-theme), [TextMate](https://www.sublimetext.com/docs/color_schemes_tmtheme.html), [JetBrains](https://www.jetbrains.com/help/idea/configuring-colors-and-fonts.html).
+JSONC can contain comments and trailing commas. Local `include` files and `tokenColors` references to `.tmTheme` resolve within the selected scheme's directory and its subdirectories. Import saves a standalone local copy in `~/Library/Application Support/DBeer/EditorThemes/themes.json`; source files are no longer needed. Available VS Code UI colors style the application, with missing colors derived from the editor palette for readability. **Remove Theme** removes only imported schemes and returns the editor to automatic selection; if the scheme is selected for the application, it returns to the previous System/Lager/Porter appearance. Built-in schemes cannot be removed. Importing and switching themes never executes SQL or connects to a database. Format references: [VS Code](https://code.visualstudio.com/api/extension-guides/color-theme), [TextMate](https://www.sublimetext.com/docs/color_schemes_tmtheme.html), [JetBrains](https://www.jetbrains.com/help/idea/configuring-colors-and-fonts.html).
 
 After an explicit connection, a separate service session loads table, view, function, column, foreign-key, and function-signature metadata in background batches; tree expansion is optional. Profile Refresh replaces stale metadata. The completion engine never connects to a database or executes SQL; restored tabs remain disconnected. All SQL completion rules live in [`helper/internal/sqlcomplete`](helper/internal/sqlcomplete/README.md), while LSP transport and native presentation remain separate. Complex expression outputs need explicit aliases; completion does not infer types or foreign keys through arbitrary derived expressions. The helper ships with the application and needs no third-party tools. Diagnostics identify unclosed strings, comments, and parentheses; they do not replace server-side SQL validation. If the language server is unavailable, normal editing, execution, and basic completion remain available. These changes are not yet included in the published 0.1.0 archive.
 
@@ -70,6 +70,27 @@ The output is `build/DBeer.app`, using the release configuration by default. For
 VERSION and BUILD_NUMBER define the application version and build number. The application and helper use a persistent **Apple Development** certificate from the login Keychain. If multiple certificates are available, set DBEER_SIGNING_IDENTITY to the SHA-1 shown by `security find-identity -v -p codesigning`. Use DBEER_SIGNING_KEYCHAIN for a different Keychain. The script never falls back to ad hoc signing. macOS may request codesign access to the key on first use.
 
 Application icons are in `macos/Resources`; after editing SVG files, run `./scripts/build-icon.sh` to regenerate PNG/ICNS files. CI uses a separate temporary signing certificate and marks builds with DBeerBuildKind=ci; these builds are not used as team updates.
+
+## Windows/Linux GPUI client (experimental)
+
+The [GPUI Kit client](prototypes/gpui/README.md) is the experimental Windows/Linux
+frontend, using the existing Go helper for PostgreSQL and MySQL. CI builds native
+Windows x64 and Ubuntu 24.04 x64 candidates with an exact matching helper and
+isolated unmarked headless tests. The supported acceptance targets are Windows 11
+x64 and Ubuntu 24.04 x64 Wayland/X11; their native desktop gates remain pending.
+Native wrappers compile the pair by default; `--test --package` / `-Test -Package`
+also verifies and prepares immutable unsigned candidates under `build/gpui/candidates/`.
+Fresh startup opens empty SQL without demo connections. Product display identity
+is DBeer / `app.dbeer.DBeer`, while original private GPUI data and credential
+namespaces stay unchanged. See [native build details](prototypes/gpui/BUILD_INTEGRATION.md)
+and [installation/update instructions](prototypes/gpui/packaging/INSTALL.md).
+
+The macOS product remains the SwiftUI/AppKit application, built with
+`./scripts/build-app.sh`; its CI, packaging, profiles, and Keychain service stay
+independent. For local GPUI development on Mac, use `./scripts/gpui-prototype.sh`
+or `./scripts/build-gpui-app.sh` (macOS 15+, Rust, and Go). GPUI uses separate
+profiles and the operating system's credential store on each platform. See the
+client guide for platform builds, dependencies, checks, and limitations.
 
 ## Verification
 

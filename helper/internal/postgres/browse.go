@@ -123,7 +123,7 @@ WHERE n.nspname::text=$1::text AND c.relname::text=$2::text ORDER BY a.attnum`, 
 	sql += " LIMIT 200 OFFSET " + strconv.Itoa(request.Page*200)
 	notice := ""
 	if len(primary) == 0 {
-		notice = "This object has no primary key. Rows can move between pages when data changes."
+		notice = "This object has no primary key. No stable page order is guaranteed, even when data is unchanged; rows may repeat or be skipped between pages."
 	}
 	return sql, values, notice, nil
 }

@@ -7,15 +7,26 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
+	"dbeer/helper/internal/productidentity"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/session"
 	"dbeer/helper/internal/sqllsp"
 )
+
+// Native GPUI product builds set these explicit -X main.* link values from the
+// same canonical identity and root VERSION/BUILD_NUMBER as their paired GUI.
+// Ordinary macOS and development helpers leave all three empty. Environment
+// variables are never product authority. Keep the plain compact JSON marker:
+// the native packager verifies its exact bytes before invoking --build-info.
+var productBuildIdentity string
+var productVersion string
+var productBuildNumber string
 
 type writeResult struct {
 	response protocol.Response
@@ -38,14 +49,18 @@ func openDatabase(ctx context.Context, connection protocol.Connection) (adapter.
 }
 
 func run(input io.Reader, output io.Writer) error {
+	return runProduct(input, output, nil)
+}
+
+func runProduct(input io.Reader, output io.Writer, identity *productidentity.Identity) error {
 	postgres.PrepareEnvironment()
-	return runWithFactory(input, output, openDatabase)
+	return runWithFactoryAndIdentity(input, output, openDatabase, identity)
 }
 
 // The input reader owns protocol guards and never waits for result output.
 // Ordinary admission is bounded; overflow is a transport failure, rather than
 // indefinitely hiding Stop/EOF behind an unresponsive output consumer.
-func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}) {
+func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity) {
 	reader := protocol.NewReader(input)
 	requests, queries := make(map[string]bool), make(map[string]string)
 	handshaken := false
@@ -113,7 +128,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1"}, BuildIdentity: identity}
 			}
 			if !emit(response) {
 				return
@@ -157,6 +172,10 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 }
 
 func runWithFactory(input io.Reader, output io.Writer, opener adapter.OpenFunc) error {
+	return runWithFactoryAndIdentity(input, output, opener, nil)
+}
+
+func runWithFactoryAndIdentity(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity) error {
 	manager := session.New(opener)
 	defer manager.Close()
 	local := make(chan protocol.Response, 256)
@@ -170,7 +189,7 @@ func runWithFactory(input io.Reader, output io.Writer, opener adapter.OpenFunc) 
 			_ = closer.Close()
 		}
 	}()
-	go readCommands(input, manager, local, ended, stopIO)
+	go readCommands(input, manager, local, ended, stopIO, identity)
 	writer := protocol.NewWriter(output)
 	go func() {
 		for {
@@ -258,12 +277,35 @@ func runWithFactory(input io.Reader, output io.Writer, opener adapter.OpenFunc) 
 	}
 }
 
-func main() {
-	runner := run
-	if len(os.Args) == 2 && os.Args[1] == "--language-server" {
-		runner = sqllsp.Run
+// Dispatch metadata before reading stdin or initializing PostgreSQL, framed
+// transport, sessions or the language server. Mixed/unknown metadata options
+// refuse here and can never fall through into an ordinary helper process.
+func runCommand(args []string, input io.Reader, output io.Writer, rawIdentity, version, build string) error {
+	for _, argument := range args {
+		if strings.HasPrefix(argument, "--build-info") {
+			if len(args) != 1 || argument != "--build-info" {
+				return productidentity.ErrInvalid
+			}
+			data, err := productidentity.HelperJSON(rawIdentity, version, build)
+			if err != nil {
+				return productidentity.ErrInvalid
+			}
+			_, err = output.Write(data)
+			return err
+		}
 	}
-	if err := runner(os.Stdin, os.Stdout); err != nil {
+	identity, err := productidentity.OptionalCompiled(rawIdentity, version, build)
+	if err != nil {
+		return productidentity.ErrInvalid
+	}
+	if len(args) == 1 && args[0] == "--language-server" {
+		return sqllsp.Run(input, output)
+	}
+	return runProduct(input, output, identity)
+}
+
+func main() {
+	if err := runCommand(os.Args[1:], os.Stdin, os.Stdout, productBuildIdentity, productVersion, productBuildNumber); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

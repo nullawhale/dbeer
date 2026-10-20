@@ -1,0 +1,146 @@
+{
+  "upstream_package": "gpui-component",
+  "version": "0.7.3",
+  "archive_sha256": "465a363235cd4062ef5f0953fc096fc764ed6f53dfbd9f409f669f93ea3b1ff9",
+  "upstream_revision": "67265a36e260ffe03c5aaebdcd8d654dbf892eab",
+  "omitted": [
+    ".cargo-ok (Cargo cache bookkeeping)"
+  ],
+  "changes": [
+    {
+      "path": "Cargo.lock",
+      "upstream_sha256": "d9a5a2bf7a2f51e9b761bda2130360dad21a9be2d9dbb8109f959cacdf436967",
+      "local_sha256": "d39cc0f9629e7e6d390f5c64feac521b956bd5a239217f2e4c36f9ff65d0e0d1"
+    },
+    {
+      "path": "LICENSE-LUCIDE",
+      "upstream_sha256": null,
+      "local_sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+    },
+    {
+      "path": "src/button/button.rs",
+      "upstream_sha256": "07118eb2453dbcf1f12ce495db4e6e97dd816d2d1c9b3de137af66db6234fa63",
+      "local_sha256": "c1507c44cf5756c0c3b4e6f9a7955155bdeab6a13e679f8b845f33263e077ab4"
+    },
+    {
+      "path": "src/button/button_icon.rs",
+      "upstream_sha256": "e2a0c578965c4998a730d2c86ab4b56e710df9dc3f64a9403fbcf69ef65bc82b",
+      "local_sha256": "1918a1418d66abab6e39578665d64b1f03d6de935effd1e42ce2c4ee06104c9c"
+    },
+    {
+      "path": "src/dialog/dialog.rs",
+      "upstream_sha256": "0189f3a07238d2ad275c891c39efaaa0773817a7f8eb45b061eda12b219d86a1",
+      "local_sha256": "3195595ec922368e4a30995a86040d1b994a1cda5b794d188d4e665c479d8eb2"
+    },
+    {
+      "path": "src/diff/selection_tests.rs",
+      "upstream_sha256": "4a4bd5c33171cc716c5b4c5105a83b2fb40fd2d91f29c00a90981add8b8e00ae",
+      "local_sha256": "7ccbd1a88e8009241824da2eebf7c083e346da5c6221e18857f97bef6298a395"
+    },
+    {
+      "path": "src/dock/mod.rs",
+      "upstream_sha256": "572164d84ffc0b6fa2b96af5d5d12f06ce7d6ab1036d3167a879ceaf135a8ecb",
+      "local_sha256": "5872999945856569e1f95449e0fefd13295ef26b4e38d0993bf569e471b7315b"
+    },
+    {
+      "path": "src/icon.rs",
+      "upstream_sha256": "f8f9355f51bed7e16634c9052454c2649ba1b800dd7932b1094997a967eebf02",
+      "local_sha256": "fd63533c4b1e863b2274378051d817518fade89e07917ddec5823e2bf462af4e"
+    },
+    {
+      "path": "src/input/accessibility.rs",
+      "upstream_sha256": null,
+      "local_sha256": "4a0d26dde292c6409e3e7a82e1b184cad507969e85b76c44efad1e8c1d492da3"
+    },
+    {
+      "path": "src/input/editor.rs",
+      "upstream_sha256": "570cb6c07776ecbd78a132c4105fd1a36fddc24512ee7043cc52cf1acd06d6d3",
+      "local_sha256": "f5e2a8372c71b4ba5271cce1bf5fdde36c714255e17966d111e71048fc7351c3"
+    },
+    {
+      "path": "src/input/input.rs",
+      "upstream_sha256": "842e488bc016f20c904c2c073573effbc04ea9487c8cf5ab5aa9f3a0f09de7a2",
+      "local_sha256": "709d18ff2fc6e20b5cdd7de95947bbdfb9d7125dfd56d90960e16e532fb8bed9"
+    },
+    {
+      "path": "src/input/mod.rs",
+      "upstream_sha256": "429d87db2154b663cd3d3967a7f62c4f2021a4ad1357327401cdc8c8cb918d89",
+      "local_sha256": "ad54142d495ddcb7372f2f901fa13d63bb719c7549a472a1c7dd51dcd7186690"
+    },
+    {
+      "path": "src/input/popovers/diagnostic_popover.rs",
+      "upstream_sha256": "60d2a2ab3a0893920d1c1ffc9c2c4ea7283ccdf462ebd4f3a746385b09384c6b",
+      "local_sha256": "f58ff2e8c5d82f5883c22615308749baff67bbc0e16452fbae4cf4d6eafecffd"
+    },
+    {
+      "path": "src/input/state.rs",
+      "upstream_sha256": "bdf4647703f84d29dd8cf92ca14dc0b4f7d7453abdee9754d7e3d8349d9466fe",
+      "local_sha256": "fb6a293f7dc134c35d1eb92f55fb35cb2f4236a1ff59fe658d27801c1edd63b6"
+    },
+    {
+      "path": "src/menu/context_menu.rs",
+      "upstream_sha256": "20b0e1c3f88e4894b07b8588629563d9be1ec4db02c0a6b2261d05ece49b28c5",
+      "local_sha256": "01e0e6ceca54d23435bf55c9ec7536f3a771103db6a9e8cd1329c10762881c0e"
+    },
+    {
+      "path": "src/menu/mod.rs",
+      "upstream_sha256": "519cc8114f636e5b5fba8a25b5d019dd180c6d4a011f0094017c3de2a7ad0bde",
+      "local_sha256": "14b538c6212ec9c9319c9c0d9ad9fad346b5b16d18af7986d966028c2d4f9e46"
+    },
+    {
+      "path": "src/root.rs",
+      "upstream_sha256": "c438aabc60f18252420a40e773e0aa4447fe89b00e27033c0ad7e5980b9c2749",
+      "local_sha256": "bedc0e1c4da842fe23e5d3ea2a5cd82ea295c9b5927ef80b101c6324c35076a0"
+    },
+    {
+      "path": "src/select.rs",
+      "upstream_sha256": "a029028c500500d1df071c9b44a13cc05158515010bb92f234ef4c6fddba9f48",
+      "local_sha256": "47b69eb3055f73a0f769dd8c55c94f9c66d95d364ad856c9f3bf0782b9edcaa1"
+    },
+    {
+      "path": "src/table/data_table.rs",
+      "upstream_sha256": "79936b4d48b7e02bd5725c0c5085c3f426ac36cc589159d219b6582fb8553a74",
+      "local_sha256": "743772ef4462d1470cdf28ab4609a6f32ba05acfa6dc402348ffbf3b3fce9c2b"
+    },
+    {
+      "path": "src/table/delegate.rs",
+      "upstream_sha256": "29ac2426b81931eb6d5dec0f213c3ad5e4f809331566d4cc889e139d9acf381d",
+      "local_sha256": "a3103e9d8f121f9971518d8b58fbab742ee3903c4a9ccd8a9e9a1e9497df58e8"
+    },
+    {
+      "path": "src/table/state.rs",
+      "upstream_sha256": "e6ceb95582c9263fd7b874f8f73da8fa5378768b8edee4255ef661e05cae1fbc",
+      "local_sha256": "3c921514cfbcb47c323ae9288fe0f0aa095918ce402cbf939ef9307840997fac"
+    },
+    {
+      "path": "src/text/compat.rs",
+      "upstream_sha256": "3e8d4d68f864a95df6df2827b8700f9e0ec12c67f8863a5619bea6ebd4f6d31f",
+      "local_sha256": "aa222edc84024b03d40dedb0bdde08ad442b154e54d46a3a5f1b2f55ff74c293"
+    },
+    {
+      "path": "src/theme/schema.rs",
+      "upstream_sha256": "d700cb811d96ed075cdec2df616e0b20321ae6488d2dec36e3fbf85b8892ba23",
+      "local_sha256": "fc14a9dc78aa0a52201c3661241ea2d23bb1605e5c7c7f68fdc3c8fc512c52c7"
+    },
+    {
+      "path": "tests/fixtures/arrow-up.svg",
+      "upstream_sha256": null,
+      "local_sha256": "8c22c25874c80bb062bef985d207d8f1d4a4d7847237d0a8cf720a3235968518"
+    },
+    {
+      "path": "tests/fixtures/aurora.json",
+      "upstream_sha256": null,
+      "local_sha256": "40176b7179352ade81371d7ebb27b1ad0144a0c506fd5637b5d8c3f58aee8b1f"
+    },
+    {
+      "path": "tests/fixtures/search.svg",
+      "upstream_sha256": null,
+      "local_sha256": "283d371c2e433817bb9c0c8310caa6c77fa4177c0f4f1168d9c83b97af7389dc"
+    },
+    {
+      "path": "tests/fixtures/test.md",
+      "upstream_sha256": null,
+      "local_sha256": "415dafbd01b23ab58b45fbb57cc4bc3c8e4c7d5c568702e1763511abe9102097"
+    }
+  ]
+}

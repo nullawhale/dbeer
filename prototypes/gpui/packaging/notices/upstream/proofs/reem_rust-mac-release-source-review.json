@@ -1,0 +1,85 @@
+{
+  "repository": "reem/rust-mac",
+  "revision": "66afc663b68a65633ea165c742b5a9c6734581c2",
+  "archiveUrl": "https://codeload.github.com/reem/rust-mac/tar.gz/66afc663b68a65633ea165c742b5a9c6734581c2",
+  "archiveSha256": "83699c5c4760d37e0e6fbe2f3e02b807cafa81a678a0323c33e5770f79a6e04b",
+  "legalPaths": [],
+  "packageReviews": [
+    {
+      "name": "mac",
+      "version": "0.1.1",
+      "manifestPath": "Cargo.toml",
+      "manifestSha256": "6d465c5e5a4b3e197049e9fb7393b2f996c1c654e6ded700afce046fac2f7969",
+      "manifestPackage": {
+        "name": "mac",
+        "version": "0.1.1",
+        "authors": [
+          "Jonathan Reem <jonathan.reem@gmail.com>"
+        ],
+        "repository": "https://github.com/reem/rust-mac.git",
+        "description": "A collection of great and ubiqutitous macros.",
+        "readme": "README.md",
+        "license": "MIT/Apache-2.0"
+      },
+      "comparedFiles": [
+        {
+          "path": ".gitignore",
+          "sha256": "f58cbb29ee4ff8a030c1e32d3f4ac2b19753d7fdf8f72d050d4bda1353364fda",
+          "upstreamSha256": "f58cbb29ee4ff8a030c1e32d3f4ac2b19753d7fdf8f72d050d4bda1353364fda"
+        },
+        {
+          "path": ".travis.yml",
+          "sha256": "180cc837b1ea2ce0ed737c2e15208e83abf6f92291a77ed1ebcc564c628c2077",
+          "upstreamSha256": "180cc837b1ea2ce0ed737c2e15208e83abf6f92291a77ed1ebcc564c628c2077"
+        },
+        {
+          "path": "README.md",
+          "sha256": "8edb7a912d295acf1e1cfeafdd19a6813a63b301c7bbfda3c67f65509bd8d8cc",
+          "upstreamSha256": "8edb7a912d295acf1e1cfeafdd19a6813a63b301c7bbfda3c67f65509bd8d8cc"
+        },
+        {
+          "path": "src/cfg.rs",
+          "sha256": "63e9c4da8b0f588c6af1e157e626044fc1fb52757348aa466d08d69795335f33",
+          "upstreamSha256": "63e9c4da8b0f588c6af1e157e626044fc1fb52757348aa466d08d69795335f33"
+        },
+        {
+          "path": "src/format.rs",
+          "sha256": "3c528949cdde598d3ddc5abea31b136ca256c7bb3932e053c5ff6e49775579a3",
+          "upstreamSha256": "3c528949cdde598d3ddc5abea31b136ca256c7bb3932e053c5ff6e49775579a3"
+        },
+        {
+          "path": "src/inspect.rs",
+          "sha256": "cf039cc721daa177b13d6b432589ceef3bdfa6078af3f71c34c28d2eca68d0c3",
+          "upstreamSha256": "cf039cc721daa177b13d6b432589ceef3bdfa6078af3f71c34c28d2eca68d0c3"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "f9c7705196f71dcabb4cfe1636f1b71b6362abb7eac70ddaa6e05cf9a0683dee",
+          "upstreamSha256": "f9c7705196f71dcabb4cfe1636f1b71b6362abb7eac70ddaa6e05cf9a0683dee"
+        },
+        {
+          "path": "src/matches.rs",
+          "sha256": "1ef2b80946cc5e3cd15e20a22f62b832066d2e2445881191741a83abe80e7566",
+          "upstreamSha256": "1ef2b80946cc5e3cd15e20a22f62b832066d2e2445881191741a83abe80e7566"
+        },
+        {
+          "path": "src/mem.rs",
+          "sha256": "f74d9172bb136b370c33fa524aae3543cf37815eeacf1d862b29b3c8c32a6aee",
+          "upstreamSha256": "f74d9172bb136b370c33fa524aae3543cf37815eeacf1d862b29b3c8c32a6aee"
+        },
+        {
+          "path": "src/syntax_ext.rs",
+          "sha256": "5c938b44d7aaa0f47eef495f4a42f1f91cd11fb0d1b20915786085b77e1db284",
+          "upstreamSha256": "5c938b44d7aaa0f47eef495f4a42f1f91cd11fb0d1b20915786085b77e1db284"
+        },
+        {
+          "path": "src/test.rs",
+          "sha256": "895fc0aed7f5f3863025b85de4d01c2551bed51778ca8846920be7febff837ac",
+          "upstreamSha256": "895fc0aed7f5f3863025b85de4d01c2551bed51778ca8846920be7febff837ac"
+        }
+      ],
+      "mismatches": [],
+      "unavailableFiles": []
+    }
+  ]
+}

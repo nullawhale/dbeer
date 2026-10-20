@@ -1,0 +1,10 @@
+{
+  "purpose": "Synthetic GNOME 46-compatible sequence; never initiate operator logout",
+  "steps": [
+    {"signal": "QueryEndSession", "flags": 0, "readiness": "absent", "isOkay": false, "request": 1},
+    {"signal": "QueryEndSession", "flags": 0, "readiness": "waiting:55", "isOkay": false, "request": 1},
+    {"signal": "CancelEndSession", "invalidatesRequest": 1},
+    {"signal": "QueryEndSession", "flags": 0, "readiness": "absent", "isOkay": false, "request": 2},
+    {"signal": "EndSession", "flags": 1, "readiness": "absent", "isOkay": false, "request": 2}
+  ]
+}

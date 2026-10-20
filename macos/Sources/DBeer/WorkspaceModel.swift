@@ -48,9 +48,11 @@ final class WorkspaceModel: ObservableObject {
         let message: String
         let sqlState: String?
         let outcomeUnknown: Bool
+        var sqlNotExecuted: Bool = false
 
         var title: String {
-            switch category {
+            if sqlNotExecuted { return "Not executed" }
+            return switch category {
             case "cancelled": "Query cancelled"
             case "timeout": "Query timed out"
             case "connection", "transport": "Connection lost"
@@ -513,7 +515,7 @@ final class WorkspaceModel: ObservableObject {
             queryDurationMs = error.reply.durationMs ?? elapsedMilliseconds()
             queryFailure = QueryFailure(category: error.reply.category ?? "sql",
                 message: error.reply.message ?? error.localizedDescription,
-                sqlState: error.reply.sqlState, outcomeUnknown: error.reply.outcomeUnknown == true)
+                sqlState: error.reply.sqlState, outcomeUnknown: error.reply.outcomeUnknown == true, sqlNotExecuted: error.reply.sqlNotExecuted == true)
             showRemoteFailure(error)
             if case .failed = state, error.reply.outcomeUnknown != true { preserveConfirmedOutcome() }
             finishQuery()

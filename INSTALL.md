@@ -19,3 +19,15 @@ The next release branch migrates profiles to format v3 with environment and read
 Readonly in the next release enables server-side read-only mode and rejects writes and unknown SQL in the helper. Enforce strict write restrictions with database user permissions: read-only mode does not replace server restrictions and has exceptions for temporary tables. Changing environment or readonly in the profile editor requires the normal session shutdown workflow; active transactions are never silently completed.
 
 Production confirmation uses a structural assessment of the operation. Views, overloaded built-in functions, custom casts, and operators can hide writes. The client does not promise to detect every such effect; restrict write access, temporary tables, and dangerous function execution in the database.
+
+## Windows/Linux development candidates
+
+The GPUI frontend targets Windows 11 x64 and Ubuntu 24.04 x64 Wayland/X11.
+Native desktop/install/update acceptance remains pending; these are unsigned
+development candidates, separate from the macOS SwiftUI/AppKit release above.
+Use the [GPUI install/update/remove guide](prototypes/gpui/packaging/INSTALL.md)
+and [runtime prerequisites](prototypes/gpui/packaging/RUNTIME.md). Verify the
+exact archive checksum and extract a complete new folder; retain the matching
+dbeer-gpui[.exe] and dbeer-core[.exe] pair. Updates are manual complete-folder
+updates. Original GPUI user data and OS credentials stay in place. No automatic
+publication, trust change, signing or existing archive replacement is performed.

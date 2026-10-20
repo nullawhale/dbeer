@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"dbeer/helper/internal/productidentity"
 )
 
 const Version = 3
@@ -54,12 +56,66 @@ type Command struct {
 }
 
 type ExportRequest struct {
-	Path       string  `json:"path"`
-	Format     string  `json:"format"`
-	NullMarker *string `json:"nullMarker,omitempty"`
+	Path        string             `json:"path"`
+	Format      string             `json:"format"`
+	NullMarker  *string            `json:"nullMarker,omitempty"`
+	Destination *ExportDestination `json:"destination,omitempty"`
+}
+
+type ExportDestination struct {
+	Identity            *string `json:"identity,omitempty"`
+	ParentIdentity      *string `json:"parentIdentity,omitempty"`
+	Exists              bool    `json:"exists"`
+	Size                int64   `json:"size"`
+	SHA256              string  `json:"sha256"`
+	ModifiedNanoseconds *string `json:"modifiedNanoseconds,omitempty"`
+}
+
+func (destination ExportDestination) Valid() bool {
+	for _, identity := range []*string{destination.Identity, destination.ParentIdentity} {
+		if identity != nil {
+			if len(*identity) == 0 || len(*identity) > 128 {
+				return false
+			}
+			for _, c := range *identity {
+				if c != ':' && (c < '0' || c > '9') {
+					return false
+				}
+			}
+		}
+	}
+
+	if !destination.Exists {
+		return destination.Size == 0 && destination.SHA256 == "" && destination.ModifiedNanoseconds == nil && destination.Identity == nil
+	}
+	if destination.Size < 0 || len(destination.SHA256) != 64 {
+		return false
+	}
+	for _, c := range destination.SHA256 {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	if destination.ModifiedNanoseconds != nil {
+		if len(*destination.ModifiedNanoseconds) > 32 || len(*destination.ModifiedNanoseconds) == 0 {
+			return false
+		}
+		for _, c := range *destination.ModifiedNanoseconds {
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (request ExportRequest) Valid() bool {
+	if request.Format == "csv" && request.NullMarker != nil && *request.NullMarker == "" {
+		return false
+	}
+	if request.Destination != nil && !request.Destination.Valid() {
+		return false
+	}
 	if !filepath.IsAbs(request.Path) || len(request.Path) > 4096 || strings.ContainsRune(request.Path, 0) || (request.Format != "csv" && request.Format != "json") {
 		return false
 	}
@@ -490,6 +546,7 @@ type Response struct {
 	Type              string
 	RequestID         string
 	ProtocolVersion   int
+	BuildIdentity     *productidentity.Identity
 	SessionID         string
 	QueryID           string
 	DurationMS        float64
@@ -508,6 +565,9 @@ type Response struct {
 	ErrorPosition     int
 	Connected         bool
 	OutcomeUnknown    bool
+	SQLCompleted      bool
+	SQLNotExecuted    bool
+	ExportPublication string
 	Engine            string
 	Capabilities      []string
 	ResultSets        []ResultSet
@@ -531,6 +591,12 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	switch response.Type {
 	case "hello.ack":
 		fields["protocolVersion"] = response.ProtocolVersion
+		if response.BuildIdentity != nil {
+			fields["buildIdentity"] = response.BuildIdentity
+		}
+		if response.Capabilities != nil {
+			fields["capabilities"] = response.Capabilities
+		}
 	case "operation.assessment":
 		fields["assessment"] = response.Assessment
 	case "connect.result":
@@ -542,6 +608,8 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		}
 		fields["capabilities"] = capabilities
 	case "query.started", "disconnect.ack", "shutdown.ack":
+	case "query.progress":
+		fields["resultIndex"], fields["rowCount"], fields["sequence"] = response.ResultIndex, response.RowCount, response.Sequence
 	case "query.chunk":
 		fields["sequence"], fields["resultIndex"] = response.Sequence, response.ResultIndex
 		if response.Columns != nil {
@@ -581,6 +649,15 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	case "error":
 		fields["category"], fields["message"] = response.Category, response.Message
 		fields["connected"], fields["outcomeUnknown"] = response.Connected, response.OutcomeUnknown
+		if response.SQLNotExecuted {
+			fields["sqlNotExecuted"] = true
+		}
+		if response.SQLCompleted {
+			fields["sqlCompleted"] = true
+		}
+		if response.ExportPublication != "" {
+			fields["exportPublication"] = response.ExportPublication
+		}
 		if response.SQLState != "" {
 			fields["sqlState"] = response.SQLState
 		}

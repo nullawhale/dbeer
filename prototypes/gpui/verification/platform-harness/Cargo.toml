@@ -1,0 +1,25 @@
+[package]
+name = "dbeer-gpui-platform-compile-harness"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+gpui-kit = { version = "=0.7.3", features = ["tree-sitter", "tree-sitter-sql"] }
+gpui-base = "=0.7.3"
+gpui-component = { version = "=0.7.3", features = ["tree-sitter", "tree-sitter-sql"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dbeer_gpui_linux = { package = "gpui-pre-linux", version = "=0.3.9" }
+
+[patch.crates-io]
+gpui-pre = { path = "../../vendor/gpui-pre" }
+gpui-component = { path = "../../vendor/gpui-component" }
+gpui-base = { path = "../../vendor/gpui-base" }
+gpui-pre-linux = { path = "../../vendor/gpui-pre-linux" }
+
+[profile.dev]
+debug = 0
+
+[profile.dev.package."*"]
+opt-level = 1

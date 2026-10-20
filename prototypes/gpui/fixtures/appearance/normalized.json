@@ -1,0 +1,14 @@
+{
+  "id": "imported-00000000-0000-4000-8000-000000000026",
+  "name": "Alpha Scope Fixture",
+  "appearance": "dark",
+  "colors": {
+    "editor.background": {"red": 0.1, "green": 0.12, "blue": 0.14, "alpha": 1.0},
+    "editor.foreground": {"red": 1.0, "green": 1.0, "blue": 1.0, "alpha": 0.85}
+  },
+  "tokenRules": [
+    {"scopes": [], "style": {"foreground": null, "background": null, "fontStyle": "italic"}},
+    {"scopes": ["source.sql keyword.control - string"], "style": {"foreground": {"red": 0.8, "green": 0.5, "blue": 1.0, "alpha": 0.7}, "background": null, "fontStyle": ""}}
+  ],
+  "isImported": true
+}

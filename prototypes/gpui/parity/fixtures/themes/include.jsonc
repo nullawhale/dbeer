@@ -1,0 +1,2 @@
+// Synthetic include and alpha precedence fixture.
+{"include":"paper.json","name":"Parity Include","colors":{"editor.background":"#fefefe"},"tokenColors":[{"scope":"keyword.other.sql","settings":{"fontStyle":""}}]}

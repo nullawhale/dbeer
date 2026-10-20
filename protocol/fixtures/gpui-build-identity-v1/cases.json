@@ -1,0 +1,423 @@
+{
+  "schemaVersion": 1,
+  "identityCases": [
+    {
+      "name": "valid-linux",
+      "file": "valid-linux.json",
+      "valid": true,
+      "canonical": "valid-linux.json"
+    },
+    {
+      "name": "valid-linux-reordered",
+      "file": "valid-linux-reordered.json",
+      "valid": true,
+      "canonical": "valid-linux.json"
+    },
+    {
+      "name": "valid-windows",
+      "file": "valid-windows.json",
+      "valid": true,
+      "canonical": "valid-windows.json"
+    },
+    {
+      "name": "valid-windows-reordered",
+      "file": "valid-windows-reordered.json",
+      "valid": true,
+      "canonical": "valid-windows.json"
+    },
+    {
+      "name": "unknown-field",
+      "file": "unknown-field.json",
+      "valid": false
+    },
+    {
+      "name": "future-schema",
+      "file": "future-schema.json",
+      "valid": false
+    },
+    {
+      "name": "schema-string",
+      "file": "schema-string.json",
+      "valid": false
+    },
+    {
+      "name": "schema-bool",
+      "file": "schema-bool.json",
+      "valid": false
+    },
+    {
+      "name": "wrong-product",
+      "file": "wrong-product.json",
+      "valid": false
+    },
+    {
+      "name": "version-short",
+      "file": "version-short.json",
+      "valid": false
+    },
+    {
+      "name": "version-long",
+      "file": "version-long.json",
+      "valid": false
+    },
+    {
+      "name": "version-negative",
+      "file": "version-negative.json",
+      "valid": false
+    },
+    {
+      "name": "version-unicode-digit",
+      "file": "version-unicode-digit.json",
+      "valid": false
+    },
+    {
+      "name": "build-zero",
+      "file": "build-zero.json",
+      "valid": false
+    },
+    {
+      "name": "build-leading-zero",
+      "file": "build-leading-zero.json",
+      "valid": false
+    },
+    {
+      "name": "build-number",
+      "file": "build-number.json",
+      "valid": false
+    },
+    {
+      "name": "build-long",
+      "file": "build-long.json",
+      "valid": false
+    },
+    {
+      "name": "protocol-old",
+      "file": "protocol-old.json",
+      "valid": false
+    },
+    {
+      "name": "contract-old",
+      "file": "contract-old.json",
+      "valid": false
+    },
+    {
+      "name": "capability-old",
+      "file": "capability-old.json",
+      "valid": false
+    },
+    {
+      "name": "capability-empty",
+      "file": "capability-empty.json",
+      "valid": false
+    },
+    {
+      "name": "capability-duplicate",
+      "file": "capability-duplicate.json",
+      "valid": false
+    },
+    {
+      "name": "capability-unknown-extra",
+      "file": "capability-unknown-extra.json",
+      "valid": false
+    },
+    {
+      "name": "capability-scalar",
+      "file": "capability-scalar.json",
+      "valid": false
+    },
+    {
+      "name": "target-arm",
+      "file": "target-arm.json",
+      "valid": false
+    },
+    {
+      "name": "target-musl",
+      "file": "target-musl.json",
+      "valid": false
+    },
+    {
+      "name": "target-windows-gnu",
+      "file": "target-windows-gnu.json",
+      "valid": false
+    },
+    {
+      "name": "target-mac",
+      "file": "target-mac.json",
+      "valid": false
+    },
+    {
+      "name": "source-uppercase",
+      "file": "source-uppercase.json",
+      "valid": false
+    },
+    {
+      "name": "source-short",
+      "file": "source-short.json",
+      "valid": false
+    },
+    {
+      "name": "source-nonhex",
+      "file": "source-nonhex.json",
+      "valid": false
+    },
+    {
+      "name": "missing-field",
+      "file": "missing-field.json",
+      "valid": false
+    },
+    {
+      "name": "null-capabilities",
+      "file": "null-capabilities.json",
+      "valid": false
+    },
+    {
+      "name": "duplicate-schema",
+      "file": "duplicate-schema.json",
+      "valid": false
+    },
+    {
+      "name": "escaped-duplicate-schema",
+      "file": "escaped-duplicate-schema.json",
+      "valid": false
+    },
+    {
+      "name": "schema-float",
+      "file": "schema-float.json",
+      "valid": false
+    },
+    {
+      "name": "protocol-exponent",
+      "file": "protocol-exponent.json",
+      "valid": false
+    },
+    {
+      "name": "source-surrogate",
+      "file": "source-surrogate.json",
+      "valid": false
+    },
+    {
+      "name": "trailing-value",
+      "file": "trailing-value.json",
+      "valid": false
+    },
+    {
+      "name": "oversize",
+      "file": "oversize.json",
+      "valid": false
+    },
+    {
+      "name": "root-array",
+      "file": "root-array.json",
+      "valid": false
+    },
+    {
+      "name": "valid-exact-bound",
+      "file": "valid-exact-bound.json",
+      "valid": true,
+      "canonical": "valid-linux.json"
+    },
+    {
+      "name": "invalid-utf8",
+      "file": "invalid-utf8.bin",
+      "valid": false
+    },
+    {
+      "name": "valid-numeric-boundary",
+      "file": "valid-numeric-boundary.json",
+      "valid": true,
+      "canonical": "valid-numeric-boundary.json"
+    }
+  ],
+  "infoCases": [
+    {
+      "name": "info-linux-gui",
+      "file": "info-linux-gui.json",
+      "valid": true,
+      "canonical": "info-linux-gui.json"
+    },
+    {
+      "name": "info-linux-helper",
+      "file": "info-linux-helper.json",
+      "valid": true,
+      "canonical": "info-linux-helper.json"
+    },
+    {
+      "name": "info-windows-gui",
+      "file": "info-windows-gui.json",
+      "valid": true,
+      "canonical": "info-windows-gui.json"
+    },
+    {
+      "name": "info-windows-helper",
+      "file": "info-windows-helper.json",
+      "valid": true,
+      "canonical": "info-windows-helper.json"
+    },
+    {
+      "name": "info-duplicate-component",
+      "file": "info-duplicate-component.json",
+      "valid": false
+    },
+    {
+      "name": "info-unknown",
+      "file": "info-unknown.json",
+      "valid": false
+    },
+    {
+      "name": "info-invalid-component",
+      "file": "info-invalid-component.json",
+      "valid": false
+    },
+    {
+      "name": "info-invalid-identity",
+      "file": "info-invalid-identity.json",
+      "valid": false
+    },
+    {
+      "name": "info-nested-duplicate",
+      "file": "info-nested-duplicate.json",
+      "valid": false
+    }
+  ],
+  "helloCases": [
+    {
+      "name": "hello-absent",
+      "file": "hello-absent.json",
+      "valid": true
+    },
+    {
+      "name": "hello-null",
+      "file": "hello-null.json",
+      "valid": true
+    },
+    {
+      "name": "hello-linux",
+      "file": "hello-linux.json",
+      "valid": true,
+      "canonical": "valid-linux.json"
+    },
+    {
+      "name": "hello-windows",
+      "file": "hello-windows.json",
+      "valid": true,
+      "canonical": "valid-windows.json"
+    },
+    {
+      "name": "hello-duplicate-identity",
+      "file": "hello-duplicate-identity.json",
+      "valid": false
+    },
+    {
+      "name": "hello-duplicate-nested",
+      "file": "hello-duplicate-nested.json",
+      "valid": false
+    },
+    {
+      "name": "hello-unknown-nested",
+      "file": "hello-unknown-nested.json",
+      "valid": false
+    },
+    {
+      "name": "hello-wrong-type",
+      "file": "hello-wrong-type.json",
+      "valid": false
+    },
+    {
+      "name": "hello-invalid-build",
+      "file": "hello-invalid-build.json",
+      "valid": false
+    },
+    {
+      "name": "hello-invalid-target",
+      "file": "hello-invalid-target.json",
+      "valid": false
+    },
+    {
+      "name": "hello-invalid-source",
+      "file": "hello-invalid-source.json",
+      "valid": false
+    },
+    {
+      "name": "hello-invalid-capability",
+      "file": "hello-invalid-capability.json",
+      "valid": false
+    },
+    {
+      "name": "hello-invalid-contract",
+      "file": "hello-invalid-contract.json",
+      "valid": false
+    },
+    {
+      "name": "hello-oversize-identity",
+      "file": "hello-oversize-identity.json",
+      "valid": false
+    },
+    {
+      "name": "hello-escaped-duplicate-type",
+      "file": "hello-escaped-duplicate-type.json",
+      "valid": false
+    }
+  ],
+  "nativeCases": [
+    {
+      "os": "windows",
+      "architecture": "x86_64",
+      "abi": "msvc",
+      "target": "windows-x86_64-msvc"
+    },
+    {
+      "os": "windows",
+      "architecture": "amd64",
+      "abi": "msvc",
+      "target": "windows-x86_64-msvc"
+    },
+    {
+      "os": "linux",
+      "architecture": "x86_64",
+      "abi": "gnu",
+      "target": "linux-x86_64-gnu"
+    },
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "abi": "gnu",
+      "target": "linux-x86_64-gnu"
+    },
+    {
+      "os": "linux",
+      "architecture": "arm64",
+      "abi": "gnu",
+      "target": null
+    },
+    {
+      "os": "linux",
+      "architecture": "aarch64",
+      "abi": "gnu",
+      "target": null
+    },
+    {
+      "os": "linux",
+      "architecture": "amd64",
+      "abi": "musl",
+      "target": null
+    },
+    {
+      "os": "windows",
+      "architecture": "amd64",
+      "abi": "gnu",
+      "target": null
+    },
+    {
+      "os": "macos",
+      "architecture": "x86_64",
+      "abi": "gnu",
+      "target": null
+    },
+    {
+      "os": "darwin",
+      "architecture": "arm64",
+      "abi": "",
+      "target": null
+    }
+  ]
+}

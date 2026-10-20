@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "status": "prepared-not-executed",
+  "supportedTargets": ["windows-x86_64-msvc", "linux-x86_64-gnu"],
+  "rejectArchiveNames": ["", "../foreign", "/absolute", "a/../b", "a//b", "a\\b", "C:/foreign", "a\nb", "a\u0000b"],
+  "ownedUpgradeScenarios": [
+    "absent fresh product library starts without built-in fixtures",
+    "saved opaque demo-brewery remains a saved profile",
+    "old executable owns canonical root; new executable refuses without reading or mutation",
+    "new executable owns canonical root; old supported prototype refuses same lock",
+    "kernel releases owner after exact owned child exit; bytes and IDs survive",
+    "selection, workspace UUIDs, SQL drafts/history, appearance, imported themes and shortcuts unchanged",
+    "missing/empty/nonempty credentials remain in original OS service/account IDs",
+    "restore starts disconnected and sends zero helper connect/execute requests",
+    "future or corrupt files remain byte-for-byte unchanged",
+    "manual archive update never copies or deletes private data/credentials"
+  ],
+  "nativeAcceptance": [
+    "Windows 11 x64 Direct3D11 device, native MSVC import inventory and VC runtime",
+    "Ubuntu 24.04 x64 glibc 2.39 baseline exact ELF NEEDED/version inventory",
+    "Wayland Vulkan/GL driver, desktop portal picker, unlocked Secret Service, GNOME session-end",
+    "X11 Vulkan/GL driver, desktop portal picker, unlocked Secret Service, GNOME session-end",
+    "standard-user install/remove with spaces, percent, quotes, backslashes and non-ASCII paths",
+    "exact previous/candidate SHA256 and build identity; native executable/PID accepted before workflows"
+  ]
+}

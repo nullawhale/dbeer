@@ -1,0 +1,150 @@
+name: GPUI supplemental final parity proof
+
+# Manual final-integration gate only. The existing ci.yml remains authoritative
+# for shared Go race/PG16-18/MySQL8.0-8.4/TLS and macOS SwiftUI/AppKit checks.
+on:
+  workflow_dispatch:
+    inputs:
+      all_task32_code_ready:
+        description: All remaining Task 32 code is ready; authorize runtime tests
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpui-final-parity-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-headless:
+    if: inputs.all_task32_code_ready
+    name: Headless proof / ${{ matrix.os }} x64 (no desktop acceptance)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    env:
+      RUSTUP_TOOLCHAIN: '1.99.1'
+      CARGO_HOME: ${{ github.workspace }}/build/gpui/cargo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/gpui/target
+      GOCACHE: ${{ github.workspace }}/build/.cache/go
+      GOMODCACHE: ${{ github.workspace }}/build/.cache/go-mod
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache: false
+      - name: Install Ubuntu compile dependencies (headless)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ clang cmake pkg-config libfontconfig-dev \
+            libwayland-dev libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libssl-dev libzstd-dev libasound2-dev libdbus-1-dev dbus-daemon \
+            vulkan-validationlayers libvulkan1
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
+      - uses: actions/cache@v6
+        with:
+          path: |
+            build/gpui/cargo/registry
+            build/gpui/cargo/git
+            build/.cache/go
+            build/.cache/go-mod
+          key: gpui-parity-${{ runner.os }}-x64-rust-1.99.1-${{ hashFiles('prototypes/gpui/**/Cargo.lock', 'helper/go.sum') }}
+      - name: Explicitly provision locked compile dependencies before offline verification
+        shell: bash
+        run: |
+          (cd helper && go mod download)
+          cargo fetch --locked --manifest-path prototypes/gpui/Cargo.toml
+          cargo fetch --locked --manifest-path prototypes/gpui/verification/fault-helper/Cargo.toml
+          fetch_unit() {
+            cargo fetch --locked --manifest-path "$1" \
+              --config "patch.crates-io.gpui-pre.path = '$GITHUB_WORKSPACE/prototypes/gpui/vendor/gpui-pre'" \
+              --config "patch.crates-io.gpui-base.path = '$GITHUB_WORKSPACE/prototypes/gpui/vendor/gpui-base'" \
+              --config "patch.crates-io.gpui-component.path = '$GITHUB_WORKSPACE/prototypes/gpui/vendor/gpui-component'" \
+              --config "patch.crates-io.gpui-pre-linux.path = '$GITHUB_WORKSPACE/prototypes/gpui/vendor/gpui-pre-linux'"
+          }
+          fetch_unit prototypes/gpui/vendor/gpui-base/Cargo.toml
+          fetch_unit prototypes/gpui/vendor/gpui-component/Cargo.toml
+          if [ "$RUNNER_OS" = Linux ]; then fetch_unit prototypes/gpui/verification/pre-linux-unit/Cargo.toml; fi
+      - name: Windows Server native headless and vendored targets
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-gpui-parity.ps1 --final-integration --all-headless --self-checks
+      - name: Ubuntu native headless, vendored targets and owned private GNOME bus
+        if: runner.os == 'Linux'
+        run: ./scripts/test-gpui-parity.sh --final-integration --all-headless --self-checks
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gpui-headless-proof-${{ runner.os }}-x64
+          # Never upload fixture config/data/temp, keys, passwords, SQL or results.
+          path: |
+            build/gpui/task30-runs/*/request.json
+            build/gpui/task30-runs/*/completed.json
+            build/gpui/task30-runs/*/*-build.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  owned-gpui-databases:
+    if: inputs.all_task32_code_ready
+    name: GPUI real DB observers / PG ${{ matrix.postgres }} + MySQL ${{ matrix.mysql }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: '16'
+            mysql: '8.0'
+          - postgres: '17'
+            mysql: '8.4'
+          - postgres: '18'
+            mysql: '8.4'
+    env:
+      RUSTUP_TOOLCHAIN: '1.99.1'
+      CARGO_HOME: ${{ github.workspace }}/build/gpui/cargo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/gpui/target
+      GOCACHE: ${{ github.workspace }}/build/.cache/go
+      GOMODCACHE: ${{ github.workspace }}/build/.cache/go-mod
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache: false
+      - name: Prepare native compile libraries and disposable image versions
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ clang cmake pkg-config libfontconfig-dev \
+            libwayland-dev libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libssl-dev libzstd-dev libasound2-dev libdbus-1-dev openssl \
+            vulkan-validationlayers libvulkan1
+          rustup toolchain install 1.99.1 --profile minimal
+          docker pull postgres:${{ matrix.postgres }}
+          docker pull mysql:${{ matrix.mysql }}
+      - name: Explicitly provision locked dependencies before offline database verification
+        run: |
+          (cd helper && go mod download)
+          cargo fetch --locked --manifest-path prototypes/gpui/Cargo.toml
+          cargo fetch --locked --manifest-path prototypes/gpui/verification/fault-helper/Cargo.toml
+      - name: Native helper/frontend real database and TLS observer proof
+        run: ./scripts/test-gpui-parity.sh --final-integration --database-pair ${{ matrix.postgres }} ${{ matrix.mysql }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gpui-db-proof-pg${{ matrix.postgres }}-mysql${{ matrix.mysql }}
+          path: |
+            build/gpui/task30-runs/*/request.json
+            build/gpui/task30-runs/*/completed.json
+            build/gpui/task30-runs/*/*-build.json
+            build/gpui/task30-runs/*/database-fixtures/journal-*.json
+          if-no-files-found: warn
+          retention-days: 14

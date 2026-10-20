@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "profiles": [
+    {
+      "name": "Team PostgreSQL",
+      "engine": "postgresql",
+      "host": "pg.example.test",
+      "port": 5432,
+      "database": "brewery",
+      "user": "analyst",
+      "sslMode": "verify-full",
+      "sslRootCert": "/Users/example/NewCA/team.pem",
+      "policy": {
+        "environment": "production",
+        "readOnly": true
+      }
+    },
+    {
+      "name": "Team MySQL",
+      "engine": "mysql",
+      "host": "mysql.example.test",
+      "port": 3306,
+      "database": "brewery",
+      "user": "analyst",
+      "sslMode": "verify-ca",
+      "sslRootCert": "/Users/example/NewCA/mysql.pem",
+      "policy": {
+        "environment": "staging",
+        "readOnly": false
+      }
+    },
+    {
+      "name": "System roots",
+      "engine": "postgresql",
+      "host": "system.example.test",
+      "port": 65535,
+      "database": "brewery",
+      "user": "analyst",
+      "sslMode": "require",
+      "policy": {
+        "environment": "unspecified",
+        "readOnly": false
+      }
+    }
+  ]
+}

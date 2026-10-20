@@ -1,0 +1,1505 @@
+{
+  "schemaVersion": 1,
+  "policy": "Prepared only. Execute after all Task 32 implementation is ready. Compilation never accepts native cells.",
+  "rustToolchain": "1.99.1",
+  "supportedDesktops": [
+    "windows-11-x64",
+    "ubuntu-24.04-x64-wayland",
+    "ubuntu-24.04-x64-x11"
+  ],
+  "retainedCI": {
+    "path": ".github/workflows/ci.yml",
+    "jobs": [
+      "go-race",
+      "postgres",
+      "mysql",
+      "macos",
+      "gpui-linux",
+      "gpui-windows"
+    ],
+    "macosProduct": "SwiftUI/AppKit; unchanged existing signed native runner",
+    "hostedWindows": "Windows Server headless compilation/tests; never Windows 11 UI acceptance"
+  },
+  "rustStages": [
+    {
+      "id": "default",
+      "layer": "headless",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "conditionalSkips": [
+        "Real database cases return without owned database settings; not covered here",
+        "TLS manifest case returns without owned TLS manifest; not covered here",
+        "Target-specific cfg tests are absent on other operating systems"
+      ],
+      "requiredSuffixes": [
+        "current_policy_and_selection_corruption_future_versions_and_unknown_fields_are_preserved",
+        "deletion_failure_restores_profile_selection_and_exact_credential",
+        "final_flush_waits_for_owner_and_supersedes_delayed_older_writers",
+        "full_regular_queue_reserves_first_stop_and_exact_acks_without_unbounded_progress",
+        "invalid_corrupt_future_duplicate_unknown_and_incomplete_files_survive_load_and_save",
+        "malformed_frames_and_duplicate_keys_have_only_fixed_diagnostics",
+        "malformed_terminal_retains_only_completed_prefix_and_authoritative_transaction",
+        "metadata_failure_restores_exact_missing_empty_and_nonempty_credentials",
+        "owned_helper_death_keeps_submitted_work_uncertain_before_started",
+        "rollback_failure_is_explicit_for_update_and_delete",
+        "signature_and_diagnostics_validate_exact_captured_source",
+        "streaming_hydrates_exact_null_text_numeric_and_binary_values",
+        "streaming_limits_apply_across_result_sets_and_bytes",
+        "typed_changes_preserve_default_null_empty_literal_binary_and_exact_numerics",
+        "utf16_crlf_surrogates_and_byte_boundaries_roundtrip",
+        "write_request_retains_data_ownership_and_releases_it_only_after_drop",
+        "approval_is_exact_preparation_session_and_invalidated_by_stop_or_teardown",
+        "new_preview_invalidates_previous_grant_even_on_same_session",
+        "apply_is_exact_one_shot_and_consumes_every_approval_before_enqueue",
+        "preview_failure_retries_with_unchanged_request_and_cleanup_failure_requires_retry",
+        "cancel_before_submit_and_original_client_cleanup_do_not_touch_other_sessions",
+        "common_registry_is_the_only_default_and_fixed_binding_source",
+        "clear_default_reset_and_conflicting_reset_are_atomic",
+        "complete_assignment_supports_valid_swaps_and_refuses_duplicate_or_conflicting_entries",
+        "explicit_recorder_clear_and_reset_finish_capture_only_after_atomic_success",
+        "protected_text_navigation_system_and_ambiguous_character_keys_are_refused",
+        "cancel_repeat_modifiers_conflict_and_failed_capture_preserve_the_previous_binding",
+        "altgr_marked_text_dead_keys_and_unknown_evidence_pass_through_without_mutation",
+        "native_layout_identity_and_menu_labels_never_substitute_text_or_physical_codes",
+        "absent_clear_reset_restart_and_last_close_flush_preserve_explicit_unbound",
+        "strict_corrupt_future_unknown_duplicate_oversize_and_bad_mappings_are_preserved",
+        "explicit_recovery_keeps_exact_original_and_invalidates_pre_recovery_requests",
+        "reservations_are_ordered_concurrent_and_reload_invalidates_old_work",
+        "external_edit_and_atomic_failure_preserve_destination_and_unrelated_state",
+        "private_modes_and_symlink_refusal_preserve_original_files",
+        "row_labels_follow_the_actual_preferences_and_registry_defaults_on_each_platform",
+        "candidates_are_temporary_and_conflicting_restore_does_not_relabel_any_row",
+        "actual_recording_core_emits_original_revision_epoch_without_committing_its_clone",
+        "blur_replacement_close_and_new_presentation_reject_stale_callbacks",
+        "prepared_native_capture_safety_fixture_preserves_original_mapping_and_input_path",
+        "escape_tab_reverse_tab_modifiers_and_fixed_conflicts_use_real_recorder_outcomes",
+        "corrupt_readonly_fallback_allows_only_explicit_reload_or_bounded_recovery_requests",
+        "revision_and_epoch_exhaustion_never_wrap_into_new_recording_authority",
+        "startup_clear_reset_and_corrupt_fallback_preserve_original_owner_and_close_authority",
+        "disposable_is_explicit_preview_and_revision_exhaustion_refuses_mutation",
+        "fixed_conflicts_and_candidate_only_preferences_cannot_start_backend_work",
+        "actual_latest_reservation_and_readonly_finalizers_have_distinct_close_obligations",
+        "factory_defaults_differ_from_legacy_migration_defaults",
+        "selection_is_stable_across_reordering_and_late_requests_cannot_overwrite_it",
+        "credential_read_write_delete_and_partial_mutation_failures_do_not_commit_metadata",
+        "shared_roundtrip_stages_preserve_engine_tls_policy_and_allocate_fresh_ids",
+        "shared_malformed_files_reject_secrets_duplicates_types_depth_and_unknown_fields",
+        "ca_hints_are_syntax_only_foreign_paths_require_explicit_remap_and_tls_is_unchanged",
+        "transfer_batch_is_atomic_merges_additions_preserves_selection_and_never_accesses_credentials",
+        "ordinary_launch_never_calls_reader",
+        "malformed_oversized_missing_and_sql_input_are_fixed_errors_and_retryable",
+        "metadata_arguments_are_exact_and_invalid_mixes_never_fall_through",
+        "demo_and_smoke_fixtures_are_explicit_mac_development_only",
+        "shared_swift_splitter_goldens_keep_exact_source_sql_ranges_and_diagnostics",
+        "shared_swift_fragments_resolve_caret_selection_script_and_original_offsets",
+        "shared_coordinates_match_swift_lsp_surrogate_combining_crlf_and_eof",
+        "all_nine_operators_keep_exact_typed_values_and_adapter_object_identity",
+        "explicit_default_null_empty_text_binary_and_exact_temporal_never_coerce",
+        "insertion_defaults_generated_values_stable_ids_and_delete_update_semantics_match_swift",
+        "capability_reasons_come_from_metadata_and_never_from_native_type_whitelists",
+        "platform_value_fixture_preserves_exact_native_values_and_type_descriptions",
+        "values_keep_null_empty_literal_binary_exact_and_default_distinct",
+        "old_callbacks_refuse_selection_source_modal_result_and_document_changes",
+        "invalid_tree_is_atomic_and_cycles_duplicate_ids_and_bad_focus_refuse",
+        "source_row_identity_survives_virtual_position_and_selection_change",
+        "bounds_read_only_disabled_and_action_data_are_enforced",
+        "ui_thread_ownership_is_checked_before_publication_or_binding",
+        "bounded_native_hierarchy_uses_original_rows_ordinals_and_virtual_metadata",
+        "actual_gpui_container_writes_native_role_identity_exact_value_and_metadata",
+        "unreviewed_repeated_query_is_negative_and_never_allocates_common_close",
+        "common_token_and_readiness_remain_the_only_authority",
+        "os_cancel_invalidates_association_and_new_query_never_inherits_ready_state",
+        "service_loss_and_forced_stop_do_not_claim_review_or_transaction_outcome",
+        "canonical_embedded_marker_is_sorted_ascii_without_file_newline",
+        "old_and_new_identity_processes_share_one_owner_and_preserve_bytes",
+        "unmarked_development_performs_no_metadata_filesystem_or_process_probe",
+        "offline_report_requires_exact_pair_and_strict_original_metadata"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredTests": [
+        "preview::tests::fault_helper::standalone_cannot_approve_and_every_preview_has_another_idle_session",
+        "preview::tests::fault_helper::approval_is_exact_preparation_session_and_invalidated_by_stop_or_teardown",
+        "preview::tests::fault_helper::cancel_before_submit_and_original_client_cleanup_do_not_touch_other_sessions",
+        "preview::tests::fault_helper::new_preview_invalidates_previous_grant_even_on_same_session",
+        "preview::tests::fault_helper::stop_after_preview_submission_skips_assessment_and_dml_then_drains",
+        "preview::tests::fault_helper::preview_failure_retries_with_unchanged_request_and_cleanup_failure_requires_retry",
+        "preview::tests::fault_helper::apply_is_exact_one_shot_and_consumes_every_approval_before_enqueue",
+        "preview::tests::fault_helper::sticky_stop_during_review_prevents_enqueue_on_the_original_session",
+        "preview::tests::fault_helper::stop_after_enqueue_drains_authoritative_commit_or_entire_batch_rollback",
+        "preview::tests::fault_helper::lost_terminal_after_submission_remains_unknown_after_disconnect_and_never_retries",
+        "preview::tests::fault_helper::known_conflict_preserves_exact_request_and_cleanup_retry_does_not_reapply",
+        "run_to_file::tests::fake_helper_progress_past_display_budget_exact_authorization_one_submission_late_stop_and_loss",
+        "run_to_file::tests::older_helper_without_capability_refuses_captured_export_before_sql"
+      ],
+      "portableFaultAssertionsExpected": 13,
+      "requiredSuffixesByHost": {
+        "Windows": [
+          "locked_windows_metadata_preserves_original_and_rolls_back_credential",
+          "windows_native_deny_sharing_prevents_export_without_changing_destination",
+          "windows_locked_workspace_preserves_previous_state_for_retry",
+          "locked_windows_destination_is_never_deleted_to_force_replacement"
+        ],
+        "Linux": [
+          "actual_signal_decoder_uses_unsigned_flags_and_empty_cancel_stop",
+          "common_readiness_owner_survives_client_teardown_move_and_rejects_old_registration",
+          "overflow_closes_the_adapter_instead_of_silently_dropping_cancellation"
+        ]
+      },
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "native-smoke",
+      "layer": "headless",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "conditionalSkips": [
+        "GPUI TestAppContext is headless, not desktop UI acceptance",
+        "Real databases and TLS require separate owned fixture stages",
+        "Platform cfg and explicitly ignored tests remain separate"
+      ],
+      "requiredSuffixes": [
+        "apply_review_stop_is_sticky_before_submission_and_stale_stop_cannot_cancel_later_flow",
+        "cancelled_preparation_stale_destination_encoding_and_replace_failures_preserve_original",
+        "choosing_cancel_stale_source_and_profile_never_start_helper_or_change_sql_file",
+        "close_cancel_retains_pid_window_query_and_exact_session_across_every_origin",
+        "close_requires_matching_disconnect_ack_and_stop_ack_is_not_a_query_terminal",
+        "command_menu_button_capture_exports_physical_original_rows_across_tab_filter_selection_switch",
+        "current_policy_and_selection_corruption_future_versions_and_unknown_fields_are_preserved",
+        "delayed_completion_cannot_publish_after_source_or_profile_context_change",
+        "deletion_failure_restores_profile_selection_and_exact_credential",
+        "every_async_boundary_rejects_mutable_context_keeps_original_drafts_and_no_requests",
+        "final_flush_waits_for_owner_and_supersedes_delayed_older_writers",
+        "full_regular_queue_reserves_first_stop_and_exact_acks_without_unbounded_progress",
+        "invalid_corrupt_future_duplicate_unknown_and_incomplete_files_survive_load_and_save",
+        "known_sql_publication_failure_and_lost_terminal_keep_distinct_original_recovery",
+        "late_stop_and_stale_source_terminal_reconcile_original_tab_and_one_history_entry",
+        "malformed_frames_and_duplicate_keys_have_only_fixed_diagnostics",
+        "malformed_terminal_retains_only_completed_prefix_and_authoritative_transaction",
+        "metadata_failure_restores_exact_missing_empty_and_nonempty_credentials",
+        "owned_helper_death_keeps_submitted_work_uncertain_before_started",
+        "queued_success_and_connected_error_use_original_helper_after_replacement",
+        "repeated_request_cannot_turn_selected_commit_or_disconnect_into_stop",
+        "restored_draft_uuid_order_selection_missing_binding_and_history_reopen_stay_disconnected",
+        "rollback_failure_is_explicit_for_update_and_delete",
+        "roundtrip_explicit_allowed_fields_preserves_opaque_binding_unicode_order_and_selection",
+        "script_error_navigation_uses_original_unicode_source_and_unknown_terminal_keeps_lock",
+        "script_stop_preserves_prefix_clears_active_highlight_and_marks_no_cancelled_success",
+        "selected_commit_is_idempotent_editor_independent_and_bound_to_original_helper",
+        "signature_and_diagnostics_validate_exact_captured_source",
+        "stop_close_waits_for_original_terminal_and_unknown_loss_stays_reviewable",
+        "streaming_hydrates_exact_null_text_numeric_and_binary_values",
+        "streaming_limits_apply_across_result_sets_and_bytes",
+        "typed_changes_preserve_default_null_empty_literal_binary_and_exact_numerics",
+        "unacknowledged_disconnect_never_removes_document_or_accepts_repeated_close",
+        "unknown_survives_disconnect_and_refuses_refresh_plain_discard_close_or_reapply",
+        "utf16_crlf_surrogates_and_byte_boundaries_roundtrip",
+        "write_request_retains_data_ownership_and_releases_it_only_after_drop",
+        "approval_is_exact_preparation_session_and_invalidated_by_stop_or_teardown",
+        "new_preview_invalidates_previous_grant_even_on_same_session",
+        "apply_is_exact_one_shot_and_consumes_every_approval_before_enqueue",
+        "stop_after_enqueue_drains_authoritative_commit_or_entire_batch_rollback",
+        "lost_terminal_after_submission_remains_unknown_after_disconnect_and_never_retries",
+        "preview_failure_retries_with_unchanged_request_and_cleanup_failure_requires_retry",
+        "cancel_before_submit_and_original_client_cleanup_do_not_touch_other_sessions",
+        "fake_helper_progress_past_display_budget_exact_authorization_one_submission_late_stop_and_loss",
+        "common_registry_is_the_only_default_and_fixed_binding_source",
+        "clear_default_reset_and_conflicting_reset_are_atomic",
+        "complete_assignment_supports_valid_swaps_and_refuses_duplicate_or_conflicting_entries",
+        "explicit_recorder_clear_and_reset_finish_capture_only_after_atomic_success",
+        "protected_text_navigation_system_and_ambiguous_character_keys_are_refused",
+        "cancel_repeat_modifiers_conflict_and_failed_capture_preserve_the_previous_binding",
+        "altgr_marked_text_dead_keys_and_unknown_evidence_pass_through_without_mutation",
+        "native_layout_identity_and_menu_labels_never_substitute_text_or_physical_codes",
+        "absent_clear_reset_restart_and_last_close_flush_preserve_explicit_unbound",
+        "strict_corrupt_future_unknown_duplicate_oversize_and_bad_mappings_are_preserved",
+        "explicit_recovery_keeps_exact_original_and_invalidates_pre_recovery_requests",
+        "reservations_are_ordered_concurrent_and_reload_invalidates_old_work",
+        "external_edit_and_atomic_failure_preserve_destination_and_unrelated_state",
+        "private_modes_and_symlink_refusal_preserve_original_files",
+        "row_labels_follow_the_actual_preferences_and_registry_defaults_on_each_platform",
+        "candidates_are_temporary_and_conflicting_restore_does_not_relabel_any_row",
+        "actual_recording_core_emits_original_revision_epoch_without_committing_its_clone",
+        "blur_replacement_close_and_new_presentation_reject_stale_callbacks",
+        "prepared_native_capture_safety_fixture_preserves_original_mapping_and_input_path",
+        "escape_tab_reverse_tab_modifiers_and_fixed_conflicts_use_real_recorder_outcomes",
+        "corrupt_readonly_fallback_allows_only_explicit_reload_or_bounded_recovery_requests",
+        "revision_and_epoch_exhaustion_never_wrap_into_new_recording_authority",
+        "startup_clear_reset_and_corrupt_fallback_preserve_original_owner_and_close_authority",
+        "disposable_is_explicit_preview_and_revision_exhaustion_refuses_mutation",
+        "fixed_conflicts_and_candidate_only_preferences_cannot_start_backend_work",
+        "actual_latest_reservation_and_readonly_finalizers_have_distinct_close_obligations",
+        "shared_settings_real_requests_save_clear_restart_restore_and_reject_stale_owner",
+        "explicit_recovery_and_reload_reconcile_original_request_after_settings_dismissal",
+        "recorder_precedes_workspace_run_and_preserves_composition_altgr_and_original_entities",
+        "exact_native_route_clear_rebind_and_common_busy_unknown_modal_gates",
+        "latest_shortcut_close_drains_original_reservation_and_stale_error_reflushes_same_scope",
+        "actual_record_cancel_and_clear_controls_keep_the_authoritative_mapping_until_projection",
+        "retained_original_input_focus_blur_aba_and_dismiss_invalidate_recorders",
+        "original_marked_input_and_altgr_keep_the_mapping_and_recording_intact",
+        "actual_footer_buttons_emit_typed_requests_and_readonly_recovery_has_no_edit_authority",
+        "factory_defaults_differ_from_legacy_migration_defaults",
+        "selection_is_stable_across_reordering_and_late_requests_cannot_overwrite_it",
+        "credential_read_write_delete_and_partial_mutation_failures_do_not_commit_metadata",
+        "shared_roundtrip_stages_preserve_engine_tls_policy_and_allocate_fresh_ids",
+        "shared_malformed_files_reject_secrets_duplicates_types_depth_and_unknown_fields",
+        "ca_hints_are_syntax_only_foreign_paths_require_explicit_remap_and_tls_is_unchanged",
+        "transfer_batch_is_atomic_merges_additions_preserves_selection_and_never_accesses_credentials",
+        "ordinary_launch_never_calls_reader",
+        "malformed_oversized_missing_and_sql_input_are_fixed_errors_and_retryable",
+        "metadata_arguments_are_exact_and_invalid_mixes_never_fall_through",
+        "demo_and_smoke_fixtures_are_explicit_mac_development_only",
+        "shared_swift_splitter_goldens_keep_exact_source_sql_ranges_and_diagnostics",
+        "shared_swift_fragments_resolve_caret_selection_script_and_original_offsets",
+        "shared_coordinates_match_swift_lsp_surrogate_combining_crlf_and_eof",
+        "tab_switch_theme_and_other_tab_close_preserve_editor_selection_scroll_and_undo",
+        "button_menu_shortcut_capture_identical_sql_and_target",
+        "text_fields_dialogs_parse_failures_and_ime_start_no_helper",
+        "utf8_signature_unicode_crlf_empty_extension_and_long_paths_roundtrip_exactly",
+        "common_menu_save_uses_original_document_and_source_across_picker_focus_and_edits",
+        "native_save_cancel_keeps_binding_title_bytes_and_close_request_waits_for_file_operation",
+        "search_returns_unexpanded_schema_context_and_distinct_overloads",
+        "lazy_error_retry_retains_metadata_and_exact_service_context",
+        "table_snapshot_and_generate_select_are_typed_disconnected_and_excluded_from_drafts",
+        "typing_and_missing_profile_never_connect_or_load_credentials",
+        "all_nine_operators_keep_exact_typed_values_and_adapter_object_identity",
+        "explicit_default_null_empty_text_binary_and_exact_temporal_never_coerce",
+        "insertion_defaults_generated_values_stable_ids_and_delete_update_semantics_match_swift",
+        "capability_reasons_come_from_metadata_and_never_from_native_type_whitelists",
+        "bundled_go_contextual_completion_and_plain_fk_edits_both_dialects",
+        "popup_limit_keeps_go_priority_exact_quoting_and_whole_token_edit",
+        "retained_native_selection_focus_and_modal_owners_invalidate_pending_completion",
+        "owned_fake_signature_callbacks_and_common_completion_priority_preserve_undo",
+        "startup_loads_normalized_imports_before_saved_selectors_without_source_files",
+        "common_settings_live_choices_keep_sql_grid_running_owner_focus_and_undo",
+        "normal_close_awaits_latest_actual_participant_and_stale_failure_cannot_refuse_it",
+        "shared_sources_match_every_normalized_color_rule_and_resolved_style",
+        "local_references_reject_traversal_remote_cycles_depth_and_nonregular_paths",
+        "native_picker_original_cancel_cannot_parse_or_cancel_new_review",
+        "committed_import_selects_editor_only_and_successful_remove_resets_current_matching_choices",
+        "actual_grid_wrappers_publish_typed_values_original_ids_and_virtual_positions",
+        "bounded_capture_retains_default_and_offscreen_selection_totals_without_erasing_other_cells",
+        "native_cell_action_uses_original_focus_selection_and_details_without_database_work",
+        "stale_source_snapshot_selection_and_modal_actions_cannot_select_a_new_owner",
+        "tab_traversal_and_context_menu_use_the_retained_grid_owner",
+        "platform_value_fixture_preserves_exact_native_values_and_type_descriptions",
+        "values_keep_null_empty_literal_binary_exact_and_default_distinct",
+        "old_callbacks_refuse_selection_source_modal_result_and_document_changes",
+        "invalid_tree_is_atomic_and_cycles_duplicate_ids_and_bad_focus_refuse",
+        "source_row_identity_survives_virtual_position_and_selection_change",
+        "bounds_read_only_disabled_and_action_data_are_enforced",
+        "ui_thread_ownership_is_checked_before_publication_or_binding",
+        "bounded_native_hierarchy_uses_original_rows_ordinals_and_virtual_metadata",
+        "actual_gpui_container_writes_native_role_identity_exact_value_and_metadata",
+        "unreviewed_repeated_query_is_negative_and_never_allocates_common_close",
+        "common_token_and_readiness_remain_the_only_authority",
+        "os_cancel_invalidates_association_and_new_query_never_inherits_ready_state",
+        "service_loss_and_forced_stop_do_not_claim_review_or_transaction_outcome",
+        "canonical_embedded_marker_is_sorted_ascii_without_file_newline",
+        "old_and_new_identity_processes_share_one_owner_and_preserve_bytes",
+        "unmarked_development_performs_no_metadata_filesystem_or_process_probe",
+        "fresh_product_workspace_is_empty_unbound_and_only_explicit_binding_selects_a_real_profile",
+        "offline_report_requires_exact_pair_and_strict_original_metadata",
+        "environment_allowlist_is_case_insensitive_windows_compatible_and_excludes_secrets",
+        "timeout_and_future_drop_cancel_only_the_owned_request_and_shutdown_reaps",
+        "paginated_metadata_requires_original_owner_and_atomic_complete_pages",
+        "owned_shutdown_preserves_an_unrelated_language_server_process"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredTests": [
+        "preview::tests::fault_helper::standalone_cannot_approve_and_every_preview_has_another_idle_session",
+        "preview::tests::fault_helper::approval_is_exact_preparation_session_and_invalidated_by_stop_or_teardown",
+        "preview::tests::fault_helper::cancel_before_submit_and_original_client_cleanup_do_not_touch_other_sessions",
+        "preview::tests::fault_helper::new_preview_invalidates_previous_grant_even_on_same_session",
+        "preview::tests::fault_helper::stop_after_preview_submission_skips_assessment_and_dml_then_drains",
+        "preview::tests::fault_helper::preview_failure_retries_with_unchanged_request_and_cleanup_failure_requires_retry",
+        "preview::tests::fault_helper::apply_is_exact_one_shot_and_consumes_every_approval_before_enqueue",
+        "preview::tests::fault_helper::sticky_stop_during_review_prevents_enqueue_on_the_original_session",
+        "preview::tests::fault_helper::stop_after_enqueue_drains_authoritative_commit_or_entire_batch_rollback",
+        "preview::tests::fault_helper::lost_terminal_after_submission_remains_unknown_after_disconnect_and_never_retries",
+        "preview::tests::fault_helper::known_conflict_preserves_exact_request_and_cleanup_retry_does_not_reapply",
+        "run_to_file::tests::fake_helper_progress_past_display_budget_exact_authorization_one_submission_late_stop_and_loss",
+        "run_to_file::tests::older_helper_without_capability_refuses_captured_export_before_sql"
+      ],
+      "portableFaultAssertionsExpected": 13,
+      "requiredSuffixesByHost": {
+        "Windows": [
+          "locked_windows_metadata_preserves_original_and_rolls_back_credential",
+          "windows_native_deny_sharing_prevents_export_without_changing_destination",
+          "windows_locked_workspace_preserves_previous_state_for_retry",
+          "locked_windows_destination_is_never_deleted_to_force_replacement",
+          "native_named_escape_and_tab_cancel_using_the_actual_control_tab_graph"
+        ],
+        "Linux": [
+          "synthetic_linux_key_without_original_native_dispatch_evidence_cannot_bind",
+          "actual_signal_decoder_uses_unsigned_flags_and_empty_cancel_stop",
+          "common_readiness_owner_survives_client_teardown_move_and_rejects_old_registration",
+          "overflow_closes_the_adapter_instead_of_silently_dropping_cancellation"
+        ]
+      },
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "transport-faults",
+      "layer": "transport",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "filter": "backend::",
+      "conditionalSkips": [],
+      "includedInAll": false,
+      "dependencyGraph": "root-lock",
+      "requiredSuffixes": [
+        "full_regular_queue_reserves_first_stop_and_exact_acks_without_unbounded_progress",
+        "owned_helper_death_keeps_submitted_work_uncertain_before_started",
+        "product_pairing_gates_every_submission_before_any_connect_frame",
+        "original_optional_identity_bytes_are_bounded_before_wire_normalization"
+      ],
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "persistence-faults",
+      "layer": "persistence",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "filter": "connections::",
+      "conditionalSkips": [
+        "Synthetic credential fault implementation does not exercise an unlocked or locked real desktop store",
+        "macOS-only disposable Keychain test is outside GPUI target acceptance"
+      ],
+      "includedInAll": false,
+      "dependencyGraph": "root-lock",
+      "requiredSuffixes": [
+        "metadata_failure_restores_exact_missing_empty_and_nonempty_credentials",
+        "rollback_failure_is_explicit_for_update_and_delete",
+        "current_policy_and_selection_corruption_future_versions_and_unknown_fields_are_preserved"
+      ],
+      "requiredSuffixesByHost": {
+        "Windows": [
+          "locked_windows_metadata_preserves_original_and_rolls_back_credential"
+        ]
+      },
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "private-gnome-bus",
+      "layer": "private-bus",
+      "hosts": [
+        "Linux"
+      ],
+      "filter": "session_end::gnome::protocol_tests",
+      "ignored": true,
+      "conditionalSkips": [
+        "Owned private fake GNOME bus; actual GNOME logout and Ubuntu Wayland/X11 UI remain not-run"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredSuffixes": [
+        "private_bus_real_registration_negative_reply_cancel_repeat_owner_loss_and_unregistration"
+      ],
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-base-alpha",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-base/Cargo.toml",
+      "lib": true,
+      "filter": "dbeer_explicit_alpha",
+      "conditionalSkips": [
+        "Headless rendering assertion only"
+      ],
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "dbeer_explicit_alpha_zero_palette_survives_render_and_normal_defaults_still_resolve"
+      ],
+      "includedInAll": false,
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base"
+      ]
+    },
+    {
+      "id": "vendor-component-accessibility",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "lib": true,
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "basePatch": true,
+      "filter": "input::accessibility::tests",
+      "conditionalSkips": [
+        "Headless editor assertions; external UIA/AT-SPI/screen reader remain not-run"
+      ],
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "native_utf8_grapheme_units_crlf_empty_and_final_caret_are_exact",
+        "numeric_source_revision_rejects_same_text_aba_and_geometry_is_optional",
+        "source_and_external_capture_invalidation_refuse_old_native_actions",
+        "stale_or_foreign_run_ids_and_invalid_character_indexes_refuse",
+        "bound_exhaustion_and_oversized_indivisible_grapheme_fail_closed"
+      ],
+      "includedInAll": true,
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-editor",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "lib": true,
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "basePatch": true,
+      "filter": "dbeer_",
+      "conditionalSkips": [
+        "Headless interaction and palette assertions; real OS input/IME remains not-run"
+      ],
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "dbeer_native_selection_replace_undo_readonly_disabled_and_composition",
+        "dbeer_repeated_independent_palette_render_keeps_original_editor_state",
+        "dbeer_native_guard_revalidates_live_owner_and_actual_selection_epoch",
+        "dbeer_named_popup_preserves_original_focus_and_reopened_dialog_has_new_native_owner"
+      ],
+      "includedInAll": false,
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-base-editor",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-base/Cargo.toml",
+      "lib": true,
+      "filter": "dbeer_completion",
+      "requiredSuffixes": [
+        "dbeer_completion_atomic_utf16_and_original_selection_undo",
+        "dbeer_completion_single_character_and_empty_edits_are_atomic",
+        "dbeer_completion_preserves_reversed_secondary_selections_in_undo",
+        "dbeer_completion_native_selection_focus_aba_and_composition"
+      ],
+      "conditionalSkips": [
+        "Headless original editor behavior; native input and IME acceptance remain not-run"
+      ],
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "includedInAll": false,
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base"
+      ]
+    },
+    {
+      "id": "vendor-base-selection",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-base/Cargo.toml",
+      "lib": true,
+      "filter": "dbeer_selection_epoch",
+      "requiredSuffixes": [
+        "dbeer_selection_epoch_covers_secondary_mutation_and_never_wraps"
+      ],
+      "conditionalSkips": [],
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "includedInAll": false,
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base"
+      ]
+    },
+    {
+      "id": "vendor-pre-linux-formats",
+      "layer": "vendor",
+      "hosts": [
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/verification/pre-linux-unit/Cargo.toml",
+      "lib": true,
+      "features": "test-support",
+      "filter": "native_formats::tests",
+      "requiredSuffixes": [
+        "ordinary_metadata_and_unknown_formats_never_become_external_targets"
+      ],
+      "conditionalSkips": [
+        "Standalone Linux dependency unit target; external clipboard and desktop acceptance remain not-run"
+      ],
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "sourceRoot": "prototypes/gpui/vendor/gpui-pre-linux/src",
+      "inputReview": "prototypes/gpui/verification/pre-linux-unit/inputs.json",
+      "includedInAll": false,
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-pre-linux"
+      ]
+    },
+    {
+      "id": "windows-owned-hwnd",
+      "layer": "native-window",
+      "hosts": [
+        "Windows"
+      ],
+      "includedInAll": false,
+      "requiresInteractiveWindows": true,
+      "ignored": true,
+      "filter": "termination::windows::owned_hwnd_subclass_lifetime_and_native_query_delivery",
+      "dependencyGraph": "root-lock",
+      "requiredSuffixes": [
+        "owned_hwnd_subclass_lifetime_and_native_query_delivery"
+      ],
+      "conditionalSkips": [
+        "Owned hidden HWND adapter delivery only; complete native close/desktop acceptance remains separate"
+      ],
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-base-units",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-base/Cargo.toml",
+      "features": "test-support",
+      "lib": true,
+      "integrationTests": false,
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "dbeer_explicit_alpha_zero_palette_survives_render_and_normal_defaults_still_resolve",
+        "dbeer_completion_atomic_utf16_and_original_selection_undo",
+        "dbeer_completion_single_character_and_empty_edits_are_atomic",
+        "dbeer_completion_preserves_reversed_secondary_selections_in_undo",
+        "dbeer_completion_native_selection_focus_aba_and_composition",
+        "dbeer_selection_epoch_covers_secondary_mutation_and_never_wraps"
+      ],
+      "conditionalSkips": [
+        "Actual dependency unit targets; native GUI/input/clipboard/accessibility acceptance remains not-run"
+      ],
+      "filter": "dbeer_",
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base"
+      ]
+    },
+    {
+      "id": "vendor-component-units",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "lib": true,
+      "integrationTests": false,
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "dbeer_native_selection_replace_undo_readonly_disabled_and_composition",
+        "dbeer_repeated_independent_palette_render_keeps_original_editor_state",
+        "dbeer_native_guard_revalidates_live_owner_and_actual_selection_epoch",
+        "dbeer_named_popup_preserves_original_focus_and_reopened_dialog_has_new_native_owner"
+      ],
+      "conditionalSkips": [
+        "Actual dependency unit targets; native GUI/input/clipboard/accessibility acceptance remains not-run"
+      ],
+      "filter": "dbeer_",
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-pre-linux-units",
+      "layer": "vendor",
+      "hosts": [
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/verification/pre-linux-unit/Cargo.toml",
+      "features": "test-support",
+      "lib": true,
+      "integrationTests": false,
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "ordinary_metadata_and_unknown_formats_never_become_external_targets",
+        "raw_dead_key_preedit_and_compose_evidence_survive_ascii_key_fallback",
+        "synchronous_nested_dispatch_and_unwind_restore_thread_local_evidence"
+      ],
+      "conditionalSkips": [
+        "Actual dependency unit targets; native GUI/input/clipboard/accessibility acceptance remains not-run"
+      ],
+      "inputReview": "prototypes/gpui/verification/pre-linux-unit/inputs.json",
+      "sourceRoot": "prototypes/gpui/vendor/gpui-pre-linux/src",
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-pre-linux"
+      ]
+    },
+    {
+      "id": "vendor-base-element-ext",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-base/Cargo.toml",
+      "testTarget": "element_ext",
+      "features": "test-support",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "prepaint_callback_observes_the_parent_bounds"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base"
+      ]
+    },
+    {
+      "id": "vendor-component-base-compat",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "testTarget": "base_compat",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "legacy_foundation_exports_remain_available",
+        "focus_ring_api_exposes_component_state_without_visual_options",
+        "base_crate_exports_the_same_foundation_types",
+        "motion_core_types_are_available_from_the_base_facade",
+        "base_avatar_uses_application_owned_image_and_fallback_slots",
+        "base_sheet_accepts_application_owned_overlay_and_surface",
+        "base_dialog_owns_modal_actions_and_alert_defaults",
+        "base_button_accepts_application_owned_state_styles",
+        "base_controls_expose_typed_semantic_style_contexts",
+        "base_collapsible_uses_normal_child_and_content_slots",
+        "base_accordion_uses_normal_parts_and_children",
+        "legacy_behavior_traits_are_the_base_traits",
+        "legacy_measure_type_is_the_base_type",
+        "base_progress_accepts_application_owned_indicator_content",
+        "base_table_and_toast_accept_application_owned_composition",
+        "legacy_tree_models_are_base_types",
+        "base_combobox_accepts_application_owned_content",
+        "base_input_frames_accept_application_owned_content",
+        "base_input_accepts_application_owned_highlighters",
+        "legacy_list_settings_are_the_base_type",
+        "legacy_global_state_is_the_base_type",
+        "legacy_popover_state_is_the_base_type",
+        "legacy_hover_card_state_is_the_base_type",
+        "base_tooltip_positioner_uses_normal_children",
+        "transition_ids_accept_strings_and_named_channels",
+        "legacy_styled_and_sizing_exports_remain_available",
+        "element_ext_is_available_from_base_and_the_legacy_root",
+        "legacy_history_path_reexports_the_base_type",
+        "legacy_auto_scroll_path_reexports_the_base_type",
+        "root_resizable_paths_reexport_base_types",
+        "legacy_resizable_module_paths_remain_available"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-controlled-change-callbacks",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "testTarget": "controlled_change_callbacks",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "controlled_change_callbacks_preserve_activation_and_replace_aliases",
+        "owner_applies_requested_value_before_the_next_activation"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-legacy-button-compat",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "testTarget": "legacy_button_compat",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "legacy_button_path_and_builder_surface_remain_available",
+        "legacy_button_variants_and_rounding_types_remain_public",
+        "legacy_button_group_and_dropdown_paths_remain_available",
+        "legacy_toggle_types_under_button_module_remain_available",
+        "base_button_does_not_replace_legacy_button_module_path"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-legacy-controls-compat",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "testTarget": "legacy_controls_compat",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "legacy_checkbox_builder_and_traits_remain_available",
+        "legacy_radio_and_radio_group_paths_remain_available",
+        "legacy_switch_builder_and_trait_methods_remain_available",
+        "base_controls_do_not_replace_legacy_module_paths"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-legacy-language-config-compat",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "testTarget": "legacy_language_config_compat",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "grammar_config_remains_unambiguous_with_legacy_glob_imports",
+        "base_imports_do_not_shadow_legacy_grammar_config"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-table-dump-range",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "testTarget": "table_dump_range",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "dump_range_clamps_and_only_materializes_requested_rows",
+        "dump_still_materializes_the_complete_table"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-theme-compat",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "testTarget": "theme_compat",
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "legacy_text_view_style_struct_literal_shape_is_unchanged",
+        "legacy_theme_config_struct_literal_shape_is_unchanged"
+      ],
+      "conditionalSkips": [
+        "Actual maintained compatibility target; native desktop behavior remains separate"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "vendor-component-input-controls",
+      "layer": "vendor",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "manifest": "prototypes/gpui/vendor/gpui-component/Cargo.toml",
+      "lib": true,
+      "features": "test-support,tree-sitter,tree-sitter-sql",
+      "filter": "input::group::tests",
+      "dependencyGraph": "standalone-vendor-lock-and-dev-dependencies",
+      "requiredSuffixes": [
+        "validation_takes_precedence_over_focus_and_remains_visible_when_disabled",
+        "test_input_group_builder",
+        "paste_hooks_receive_payloads_and_respect_editability",
+        "long_press_shows_edit_menu_and_copy_keeps_the_text",
+        "editor_overrides_preserve_caret_selection_and_ime_geometry",
+        "textarea_keeps_scrolling_native_between_block_addons",
+        "addon_focus_editing_and_button_actions_use_the_retained_state",
+        "disabled_blocks_actions_and_edits_but_readonly_keeps_copy_and_actions",
+        "textarea_grows_between_block_addons_and_retains_native_focus",
+        "ordered_children_and_native_button_popup_composition"
+      ],
+      "conditionalSkips": [
+        "Original headless controls; real OS input/composition/clipboard remain target acceptance"
+      ],
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    }
+  ],
+  "databaseStages": [
+    {
+      "id": "db-live",
+      "layer": "database",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "filter": "live_tests::",
+      "conditionalSkips": [],
+      "requiredSuffixes": [
+        "existing_go_helper_handshake",
+        "postgres_live_helper",
+        "mysql_live_helper",
+        "postgres_real_helper_death_awaits_original_exit_and_physical_session_loss",
+        "mysql_real_helper_death_awaits_original_exit_and_physical_session_loss",
+        "postgres_opt_in_write_policy",
+        "mysql_opt_in_write_policy",
+        "postgres_ordered_read_script",
+        "mysql_ordered_read_script",
+        "postgres_opt_in_script_grant_order_and_revocation",
+        "mysql_opt_in_script_grant_order_and_revocation",
+        "mysql_opt_in_delimiter_routine_keeps_all_statement_result_sets"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "db-apply-observer",
+      "layer": "database",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "filter": "preview::database_tests::",
+      "conditionalSkips": [],
+      "requiredSuffixes": [
+        "postgres_mysql_previews_and_atomic_apply_preserve_independent_sql_state"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "db-full-export-observer",
+      "layer": "database",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "filter": "run_to_file::database_tests::",
+      "conditionalSkips": [],
+      "requiredSuffixes": [
+        "both_engines_full_counts_independent_observer_temp_set_transaction_and_exact_once_mutations"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "db-workspace",
+      "layer": "database",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "filter": "workspace_query_cancel_transaction_routing",
+      "conditionalSkips": [
+        "Headless GPUI workspace; graphical acceptance remains not-run"
+      ],
+      "requiredSuffixes": [
+        "postgres_workspace_query_cancel_transaction_routing",
+        "mysql_workspace_query_cancel_transaction_routing"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "db-tls",
+      "layer": "database",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "filter": "tls_tests::",
+      "conditionalSkips": [
+        "Unreadable CA is a nonregular directory; actual permission-denied file is a separate desktop case"
+      ],
+      "requiredSuffixes": [
+        "real_helper_postgresql_and_mysql_tls_matrix_never_downgrades_or_executes_sql"
+      ],
+      "dependencyGraph": "root-lock",
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "db-catalog-observer",
+      "layer": "database",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "filter": "postgres_mysql_service_catalog_search_and_actions_preserve_sql_transaction",
+      "dependencyGraph": "root-lock",
+      "requiredSuffixes": [
+        "postgres_mysql_service_catalog_search_and_actions_preserve_sql_transaction"
+      ],
+      "conditionalSkips": [],
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    },
+    {
+      "id": "db-signature-metadata",
+      "layer": "database",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "features": "native-smoke",
+      "filter": "connected_go_function_metadata_refreshes_without_database_work_while_typing",
+      "dependencyGraph": "root-lock",
+      "requiredSuffixes": [
+        "connected_go_function_metadata_refreshes_without_database_work_while_typing"
+      ],
+      "conditionalSkips": [],
+      "requiredMaintainedDependenciesByHost": {
+        "Linux": [
+          "gpui-pre-linux"
+        ]
+      },
+      "requiredMaintainedDependencies": [
+        "gpui-pre",
+        "gpui-base",
+        "gpui-component"
+      ]
+    }
+  ],
+  "databaseVersions": {
+    "postgresql": [
+      "16",
+      "17",
+      "18"
+    ],
+    "mysql": [
+      "8.0",
+      "8.4"
+    ]
+  },
+  "databaseScheduling": [
+    [
+      "16",
+      "8.0"
+    ],
+    [
+      "17",
+      "8.4"
+    ],
+    [
+      "18",
+      "8.4"
+    ]
+  ],
+  "sharedFinalCommands": [
+    [
+      "./scripts/test-go.sh"
+    ],
+    [
+      "./scripts/test-postgres.sh",
+      "./scripts/test-mysql.sh",
+      "./scripts/test.sh",
+      "--all",
+      "--require-postgres"
+    ],
+    [
+      "./scripts/test-tls.sh"
+    ],
+    [
+      "./scripts/test-mysql.sh"
+    ],
+    [
+      "python3",
+      "prototypes/gpui/verification/test_runner.py"
+    ],
+    [
+      "python3",
+      "prototypes/gpui/packaging/test_packaging.py"
+    ],
+    [
+      "python3",
+      "prototypes/gpui/verification/test_fault_peer.py"
+    ]
+  ],
+  "nativeAcceptance": {
+    "registry": "prototypes/gpui/parity/registry.json",
+    "scenarios": "prototypes/gpui/parity/scenarios.json",
+    "features": 57,
+    "cells": 171,
+    "status": "not-run",
+    "headlessCanAccept": false,
+    "assertions": 190
+  },
+  "installedAcceptance": {
+    "task": 32,
+    "status": "not-run",
+    "requires": "Owned prior/candidate packages, exact executable/helper build identities and actual supported target desktop"
+  },
+  "finalSnapshotObligations": [
+    "Execute prepared full final source assertions only after all Task31/32 code and reviewed dependency inputs are frozen.",
+    "Retain native x64 headless, version/TLS/shared Go, SwiftUI, emulated/container and actual native installed evidence as distinct layers.",
+    "Consume all required completed Task30/Task32 proof kinds through reviewed pinned descriptors before F57/native acceptance; headless passing cannot close any native cell."
+  ],
+  "sharedStages": [
+    {
+      "id": "shared-go-owned-db-race",
+      "layer": "shared",
+      "hosts": [
+        "Windows",
+        "Linux"
+      ],
+      "requiredTests": [
+        "dbeer/helper/internal/postgres/TestChangesLostCommitAcknowledgementIsUnknownAndNeverRepeated",
+        "dbeer/helper/internal/postgres/TestChangesConstraintFailureGeneratedColumnsAndReadOnlyReasons",
+        "dbeer/helper/internal/postgres/TestChangesCompositePrimaryKeyDefaultsGeneratedBinaryNullAndExactNumeric",
+        "dbeer/helper/internal/postgres/TestChangesCancellationRollsBackAndRecoversItsConnection",
+        "dbeer/helper/internal/postgres/TestChangesDeadlockRollsBackTheEntireApplyWithoutRetry",
+        "dbeer/helper/internal/mysql/TestMySQLChangesLostCommitAckIsUnknownAndNeverRepeated",
+        "dbeer/helper/internal/mysql/TestMySQLChangesRejectReadOnlyTablesAndActiveSQLTransaction",
+        "dbeer/helper/internal/mysql/TestMySQLChangesCompositeDefaultsGeneratedAndTypedSnapshot",
+        "dbeer/helper/internal/mysql/TestMySQLChangesCancellationRollsBackBeforeReturning",
+        "dbeer/helper/internal/mysql/TestMySQLChangesDeadlockRollsBackOneCompleteBatch"
+      ],
+      "conditionalSkips": [
+        "Exact required DB assertions cannot skip; unrelated Go optional environments remain explicit"
+      ]
+    }
+  ],
+  "frozenInputs": {
+    "prototypes/gpui/parity/registry.json": "beb8ad978b692af7e5c6b9f1b5572f8472a3d4ac97b8463c090e4e59c76a197a",
+    "prototypes/gpui/parity/scenarios.json": "6e7ee81fe1771046d2a5793ccb975a3f37386553c8aba6d65e4307cc1823394c",
+    "prototypes/gpui/parity/baseline.json": "59038d3830ba5c0630914a9498519a8fa265f4075665a90b98a0500e6ca40365",
+    "prototypes/gpui/parity/source-manifest.json": "3793aa65dec99b8508c60a12ec3d3c39bd9de079cdd8a7ea19f82ccd6c5b0677",
+    "prototypes/gpui/parity/reference-app-manifest.json": "c6b3ec8938b6e2fc5e5e9117e889ad777ef7227ba7634a5eccd63e7c44fb4077",
+    "prototypes/gpui/parity/fixture-manifest.json": "3ed3ea2935e569d07adcb30bb30d868e1b128435f6265f6e311d42dad296844a"
+  },
+  "featureBindings": {
+    "F01": [
+      "PROFILE-DEFAULTS-LIFECYCLE"
+    ],
+    "F02": [
+      "RESTORE-DISCONNECTED",
+      "PROFILE-DEFAULTS-LIFECYCLE"
+    ],
+    "F03": [
+      "PROFILE-DEFAULTS-LIFECYCLE",
+      "TRANSFER-PORTABLE-CA"
+    ],
+    "F04": [
+      "CREDENTIAL-ROLLBACK"
+    ],
+    "F05": [
+      "PERSIST-CORRUPT-FUTURE"
+    ],
+    "F06": [
+      "TRANSFER-PORTABLE-CA"
+    ],
+    "F07": [
+      "TRANSFER-PORTABLE-CA",
+      "TLS-TRUST-HOSTNAME"
+    ],
+    "F08": [
+      "EXPLICIT-STDIN-STARTUP"
+    ],
+    "F09": [
+      "DB-ATOMIC-OBSERVER",
+      "DB-EXACT-ONCE-EXPORT"
+    ],
+    "F10": [
+      "CATALOG-SERVICE-OWNER",
+      "LSP-COMPLETION-SIGNATURE",
+      "DB-CATALOG-OBSERVER"
+    ],
+    "F11": [
+      "STREAM-BOUNDS",
+      "CANCEL-TERMINAL-GAP"
+    ],
+    "F12": [
+      "CLOSE-ORIGINS",
+      "ORIGINAL-HELPER"
+    ],
+    "F13": [
+      "CLOSE-ORIGINS",
+      "APPLY-LOST-COMMIT-ACK"
+    ],
+    "F14": [
+      "EDITOR-COMMAND-OWNER"
+    ],
+    "F15": [
+      "SOURCE-PARSER-CAPTURE",
+      "EDITOR-COMMAND-OWNER"
+    ],
+    "F16": [
+      "SOURCE-PARSER-CAPTURE",
+      "DB-ROUTINES-MULTISETS"
+    ],
+    "F17": [
+      "PREVIEW-GRANT",
+      "SCRIPT-FIRST-MIDDLE"
+    ],
+    "F18": [
+      "SCRIPT-FIRST-MIDDLE",
+      "DB-ROUTINES-MULTISETS"
+    ],
+    "F19": [
+      "SCRIPT-FIRST-MIDDLE",
+      "LSP-UNICODE-CRLF"
+    ],
+    "F20": [
+      "SQL-FILE-OWNER",
+      "LOCKED-FILE"
+    ],
+    "F21": [
+      "RESTORE-DISCONNECTED",
+      "FINAL-SAVE-OWNERS"
+    ],
+    "F22": [
+      "RESTORE-DISCONNECTED",
+      "FINAL-SAVE-OWNERS"
+    ],
+    "F23": [
+      "CATALOG-SERVICE-OWNER"
+    ],
+    "F24": [
+      "CATALOG-SERVICE-OWNER"
+    ],
+    "F25": [
+      "CATALOG-SERVICE-OWNER"
+    ],
+    "F26": [
+      "TABLE-PAGING-TYPED-DRAFTS"
+    ],
+    "F27": [
+      "VALUES-EXACT",
+      "STREAM-BOUNDS"
+    ],
+    "F28": [
+      "ACCESSIBILITY-ORIGINAL-OWNER",
+      "EXPORT-LOADED"
+    ],
+    "F29": [
+      "ACCESSIBILITY-ORIGINAL-OWNER",
+      "EDITOR-COMMAND-OWNER"
+    ],
+    "F30": [
+      "ACCESSIBILITY-ORIGINAL-OWNER",
+      "TABLE-PAGING-TYPED-DRAFTS"
+    ],
+    "F31": [
+      "TABLE-PAGING-TYPED-DRAFTS",
+      "DB-READONLY-NOPK-MYISAM"
+    ],
+    "F32": [
+      "TABLE-PAGING-TYPED-DRAFTS"
+    ],
+    "F33": [
+      "PREVIEW-GRANT"
+    ],
+    "F34": [
+      "DB-ATOMIC-OBSERVER",
+      "STALE-PROFILE-TAB"
+    ],
+    "F35": [
+      "DB-ATOMIC-OBSERVER",
+      "APPLY-CANCEL-LATE-ACK"
+    ],
+    "F36": [
+      "APPLY-LOST-COMMIT-ACK"
+    ],
+    "F37": [
+      "EXPORT-LOADED"
+    ],
+    "F38": [
+      "VALUES-EXACT",
+      "DB-EXACT-ONCE-EXPORT"
+    ],
+    "F39": [
+      "EXPORT-FAULTS",
+      "DB-EXACT-ONCE-EXPORT"
+    ],
+    "F40": [
+      "LSP-UNICODE-CRLF",
+      "LSP-COMPLETION-SIGNATURE"
+    ],
+    "F41": [
+      "LSP-COMPLETION-SIGNATURE",
+      "CATALOG-SERVICE-OWNER",
+      "DB-CATALOG-OBSERVER",
+      "DB-SIGNATURE-METADATA"
+    ],
+    "F42": [
+      "LSP-COMPLETION-SIGNATURE"
+    ],
+    "F43": [
+      "LSP-COMPLETION-SIGNATURE",
+      "DEPENDENCY-NATIVE-GUARDS"
+    ],
+    "F44": [
+      "LSP-COMPLETION-SIGNATURE",
+      "DB-SIGNATURE-METADATA"
+    ],
+    "F45": [
+      "EDITOR-COMMAND-OWNER"
+    ],
+    "F46": [
+      "SHORTCUT-STORE-REGISTRY",
+      "SHORTCUT-RETAINED-SETTINGS"
+    ],
+    "F47": [
+      "APPEARANCE-LATEST-CLOSE"
+    ],
+    "F48": [
+      "THEME-LIBRARY-IMPORT-OWNER"
+    ],
+    "F49": [
+      "APPEARANCE-LATEST-CLOSE",
+      "DEPENDENCY-NATIVE-GUARDS"
+    ],
+    "F50": [
+      "SQL-FILE-OWNER",
+      "SHORTCUT-RETAINED-SETTINGS"
+    ],
+    "F51": [
+      "CREDENTIAL-ROLLBACK",
+      "PROFILE-DEFAULTS-LIFECYCLE"
+    ],
+    "F52": [
+      "ACCESSIBILITY-ORIGINAL-OWNER",
+      "DEPENDENCY-NATIVE-GUARDS"
+    ],
+    "F53": [
+      "TRANSPORT-LOSS",
+      "REAL-HELPER-DEATH-BARRIER"
+    ],
+    "F54": [
+      "PRODUCT-STARTUP-IDENTITY"
+    ],
+    "F55": [
+      "PRODUCT-STARTUP-IDENTITY"
+    ],
+    "F56": [
+      "PRODUCT-STARTUP-IDENTITY",
+      "RESTORE-DISCONNECTED"
+    ],
+    "F57": [
+      "REAL-HELPER-DEATH-BARRIER",
+      "APPLY-LOST-COMMIT-ACK",
+      "TLS-TRUST-HOSTNAME",
+      "PRODUCT-STARTUP-IDENTITY",
+      "WINDOWS-OWNED-HWND",
+      "GNOME-PRIVATE-PROTOCOL",
+      "DB-CATALOG-OBSERVER",
+      "DB-SIGNATURE-METADATA"
+    ]
+  },
+  "f57Requirements": {
+    "nativeRust": "Completed actual native x64 default/native-smoke, all thirteen portable faults each mode, separate maintained dependency units/integration tests and platform-private stages.",
+    "databaseVersionsAndTls": "Owned PG16/17/18 and MySQL8.0/8.4 pair runs, real TLS, physical cancellation/helper-death observers, Apply/export exact-once.",
+    "sharedGo": "Supported Go race runner under each owned DB pair; required adapter COMMIT-ACK/rollback/read-only/type assertions pass exactly once and never skip.",
+    "macosSwiftUI": "Supported signed scripts/test.sh --all completed Go and Swift Testing, shared source contracts and existing SwiftUI CI.",
+    "nativeDesktops": "All 57 features, 190 native assertions and 171 cells on Windows11x64/Ubuntu24.04x64Wayland/X11 with actual input/UIA/AT-SPI/store/dialog/clipboard/DPI observation.",
+    "installedUpdate": "Genuine trusted previous/candidate artifact identity, clean install/update/remove, ordinary restart, ownership and retained state.",
+    "physicalLostAck": "Separate installed opaque SQL COMMIT and two-lease Apply ACK-loss relay plus independent physical server effects; fake peer and adapter ACK injection do not substitute.",
+    "ownershipAndCleanup": "Stable exact source/executable/nonce/native file identity and retained original child/CID cleanup with completed structural summaries; missing/failed/truncated evidence cannot accept."
+  }
+}

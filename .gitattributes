@@ -1,0 +1,13 @@
+# Preserve exact audited source, publisher, resource and fixture bytes on every host.
+/prototypes/gpui/** -text
+/helper/** -text
+/protocol/fixtures/** -text
+/VERSION -text
+/BUILD_NUMBER -text
+/macos/Resources/AppIcon.svg -text
+/macos/Resources/AppIcon.png -text
+/macos/Resources/AppIcon.icns -text
+/scripts/*gpui*.ps1 -text
+
+# Native shell entry points require LF even on a Windows checkout.
+/scripts/*gpui*.sh text eol=lf

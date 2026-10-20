@@ -230,6 +230,49 @@ func (sinks fanoutSink) End(index int, summary protocol.ResultSet) error {
 	return nil
 }
 
+// Full export progress has no display budget and grants no stream credit or completion.
+// The bounded manager event queue provides backpressure; counts contain no SQL or values.
+type exportProgressSink struct {
+	ctx    context.Context
+	credit *creditState
+	rows   int64
+}
+
+func (sink *exportProgressSink) send(index int) error {
+	sink.credit.mu.Lock()
+	sink.credit.sequence++
+	sequence := sink.credit.sequence
+	sink.credit.expected = sequence
+	sink.credit.mu.Unlock()
+	response := protocol.Response{Sequence: sequence, Type: "query.progress", RequestID: sink.credit.command.RequestID, SessionID: sink.credit.command.SessionID, QueryID: sink.credit.command.QueryID, ResultIndex: index, RowCount: sink.rows}
+	select {
+	case sink.credit.owner.manager.events <- event{sessionID: sink.credit.owner.id, response: response}:
+	case <-sink.ctx.Done():
+		return sink.ctx.Err()
+	case <-sink.credit.owner.manager.stop:
+		return context.Canceled
+	}
+	select {
+	case <-sink.credit.credit:
+		return nil
+	case <-sink.ctx.Done():
+		return sink.ctx.Err()
+	case <-sink.credit.owner.manager.stop:
+		return context.Canceled
+	}
+}
+func (sink *exportProgressSink) Begin(index int, columns []protocol.Column) error { return nil }
+func (sink *exportProgressSink) Row(index int, row []*string) error {
+	sink.rows++
+	if sink.rows%4096 == 0 {
+		return sink.send(index)
+	}
+	return nil
+}
+func (sink *exportProgressSink) End(index int, summary protocol.ResultSet) error {
+	return sink.send(index)
+}
+
 func runExecution(ctx context.Context, physical adapter.Session, command protocol.Command, credit *creditState) protocol.Response {
 	if !command.Stream && command.Export == nil {
 		return physical.Execute(ctx, command)
@@ -241,6 +284,7 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 		}
 		failure := protocol.ErrorResponse(command, "export", "This database adapter cannot export complete executions.")
 		failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
+		failure.SQLNotExecuted, failure.ExportPublication = true, "notPublished"
 		return failure
 	}
 	var sinks fanoutSink
@@ -256,18 +300,23 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 		if err != nil {
 			failure := protocol.ErrorResponse(command, "export", "The export file could not be created. SQL was not executed.")
 			failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
+			failure.SQLNotExecuted, failure.ExportPublication = true, "notPublished"
 			return failure
 		}
 		defer file.Abort()
 		stopCleanup := file.CancelOn(ctx)
 		defer stopCleanup()
 		sinks = append(sinks, file)
+		if command.Stream {
+			sinks = append(sinks, &exportProgressSink{ctx: ctx, credit: credit})
+		}
 	}
 	response := streaming.ExecuteWithSink(ctx, command, sinks)
 	if file != nil && response.Type == "query.result" {
 		if ctx.Err() != nil {
 			failure := protocol.ErrorResponse(command, "cancelled", "Export was cancelled; no final file was saved. SQL completion was confirmed.")
 			failure.Connected, failure.TransactionStatus = true, response.TransactionStatus
+			failure.SQLCompleted, failure.ExportPublication = true, "notPublished"
 			response = failure
 		} else if err := file.CommitContext(ctx); err != nil {
 			failure := protocol.ErrorResponse(command, "export", "SQL completed, but export failed. No final file was saved. "+err.Error())
@@ -275,6 +324,11 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 				failure.Category, failure.Message = "cancelled", "Export was cancelled; no final file was saved. SQL completion was confirmed."
 			}
 			failure.Connected, failure.TransactionStatus = true, response.TransactionStatus
+			failure.SQLCompleted, failure.ExportPublication = true, "notPublished"
+			if errors.Is(err, exportfile.ErrPublicationUnknown) {
+				failure.ExportPublication = "unknown"
+				failure.Message = "SQL completed, but file publication could not be verified. Inspect the destination. Do not rerun SQL to recover the save."
+			}
 			failure.ResultSets = response.ResultSets
 			response = failure
 		} else {

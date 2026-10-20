@@ -10,8 +10,8 @@ enum AppTheme: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .system: "System"
-        case .light: "Light"
-        case .dark: "Dark"
+        case .light: "Lager"
+        case .dark: "Porter"
         }
     }
 

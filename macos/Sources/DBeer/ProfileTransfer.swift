@@ -10,9 +10,7 @@ struct ImportedProfile: Identifiable, Equatable, Sendable {
     /// silently switch the connection to the system trust store.
     var requiresCASelection: Bool {
         guard let path = profile.sslRootCert else { return false }
-        var directory: ObjCBool = false
-        return !FileManager.default.fileExists(atPath: path, isDirectory: &directory) ||
-            directory.boolValue || !FileManager.default.isReadableFile(atPath: path)
+        return !ProfileTransfer.isLocalReadableCA(path)
     }
 }
 
@@ -95,7 +93,9 @@ enum ProfileTransfer {
                 throw ProfileTransferError.invalid
             }
             guard raw.allSatisfy({ record in
-                guard let policy = record["policy"] else { return true }
+                // Legacy v1 treats null like omission. Version 2 still requires
+                // a decoded policy below, and present objects remain strict.
+                guard let policy = record["policy"], !(policy is NSNull) else { return true }
                 guard let fields = policy as? [String: Any] else { return false }
                 return Set(fields.keys) == ["environment", "readOnly"]
             }) else { throw ProfileTransferError.invalid }
@@ -125,8 +125,35 @@ enum ProfileTransfer {
                   return fields.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                       !$0.contains("\0") && $0.utf8.count <= 1_024 } && profile.name.count <= 128 &&
                       (1...65_535).contains(profile.port) && profile.engine.sslModes.contains(profile.sslMode) &&
-                      (profile.sslRootCert.map { $0.hasPrefix("/") && !$0.contains("\0") && $0.utf8.count <= 4_096 } ?? true)
+                      (profile.sslRootCert.map { validCAHint($0) } ?? true)
               }) else { throw ProfileTransferError.invalid }
+    }
+
+    /// Portable absolute hints carry no authority on another OS. Only a POSIX
+    /// path can be local on this Mac; Windows drive/UNC hints require the user
+    /// to choose a local CA before import. Never probe foreign/network hints.
+    static func validCAHint(_ path: String) -> Bool {
+        guard !path.isEmpty, !path.contains("\0"), path.utf8.count <= 4_096 else { return false }
+        if path.hasPrefix("/") { return true }
+        let bytes = Array(path.utf8)
+        if bytes.count >= 3, ((65...90).contains(bytes[0]) || (97...122).contains(bytes[0])),
+           bytes[1] == 58, bytes[2] == 92 || bytes[2] == 47 { return true }
+        if path.hasPrefix("\\\\") {
+            let parts = path.dropFirst(2).split(separator: "\\", omittingEmptySubsequences: false)
+            guard parts.count >= 2, !parts[0].isEmpty, !parts[1].isEmpty,
+                  !["?", "."].contains(String(parts[0])),
+                  !parts[0].contains(where: { $0 == "/" || $0 == ":" }),
+                  !parts[1].contains(where: { $0 == "/" || $0 == ":" }) else { return false }
+            return true
+        }
+        return false
+    }
+
+    static func isLocalReadableCA(_ path: String) -> Bool {
+        guard validCAHint(path), path.hasPrefix("/") else { return false }
+        var directory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &directory) &&
+            !directory.boolValue && FileManager.default.isReadableFile(atPath: path)
     }
 
     /// JSONDecoder accepts repeated keys. Reject them, including escaped

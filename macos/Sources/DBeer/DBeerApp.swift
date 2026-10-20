@@ -26,15 +26,16 @@ struct DBeerApp: App {
         }
 
         Settings {
+            // Theme the panels so toolbar symbols retain native template rendering.
             TabView {
                 AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
                     .tabItem { Label("Appearance", systemImage: "paintpalette") }
                 if let workspace = appDelegate.workspace {
                     ShortcutSettingsView(store: workspace.commandShortcuts)
+                        .applicationTheme(appearance: appDelegate.appearance)
                         .tabItem { Label("Shortcuts", systemImage: "keyboard") }
                 }
             }
-            .applicationTheme(appearance: appDelegate.appearance)
         }
     }
 }

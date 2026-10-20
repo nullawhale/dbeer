@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "baselineID": "swiftui-working-tree-v1",
+  "measuredReference": {
+    "architecture": "arm64",
+    "configuration": "debug test module; release signed app built separately",
+    "metrics": [
+      {
+        "id": "parse-1000-statements",
+        "input": "1000 SELECT statements; UTF-8, non-BMP, combining mark, CRLF",
+        "max": 8.066917,
+        "measurementKind": "synchronous-production-operation",
+        "p50": 7.111833,
+        "p95": 7.658666,
+        "samples": 30,
+        "unit": "ms",
+        "warmups": 3
+      },
+      {
+        "id": "json-1000x32",
+        "input": "1000 rows x 32 text columns; in-memory loaded-result JSON",
+        "max": 14.141292,
+        "measurementKind": "synchronous-production-operation",
+        "p50": 13.75625,
+        "p95": 14.117583,
+        "samples": 30,
+        "unit": "ms",
+        "warmups": 3
+      },
+      {
+        "id": "theme-jsonc-include",
+        "input": "Synthetic local JSONC include with alpha and scope override",
+        "max": 0.1415,
+        "measurementKind": "synchronous-production-operation",
+        "p50": 0.134416,
+        "p95": 0.141209,
+        "samples": 30,
+        "unit": "ms",
+        "warmups": 3
+      },
+      {
+        "id": "grid-reload-layout-1000x32",
+        "input": "Native AppKit 960x540 window; 1000x32; change one cell, reload and layout; no compositor fence",
+        "max": 143.394542,
+        "measurementKind": "synchronous-production-operation",
+        "p50": 112.467583,
+        "p95": 141.01875,
+        "samples": 30,
+        "unit": "ms",
+        "warmups": 3
+      },
+      {
+        "id": "grid-select-visible-row",
+        "input": "Native loaded 1000x32 grid; select next visible row; redraw; no OS input injection",
+        "max": 0.058209,
+        "measurementKind": "synchronous-production-operation",
+        "p50": 0.016833,
+        "p95": 0.055375,
+        "samples": 30,
+        "unit": "ms",
+        "warmups": 3
+      }
+    ],
+    "os": "Version 27.0.1 (Build 26A434)",
+    "physicalMemoryBytes": 25769803776,
+    "processorCount": 10,
+    "reference": "frozen SwiftUI/AppKit source in native Swift Testing host",
+    "schemaVersion": 1,
+    "unmeasured": [
+      "OS input-to-present latency",
+      "compositor frame pacing",
+      "cold startup",
+      "network and database latency",
+      "Windows 11",
+      "Ubuntu Wayland",
+      "Ubuntu X11"
+    ]
+  },
+  "methodology": "DispatchTime monotonic wall clock; 3 warmups and 30 timed samples per operation; nearest-rank p95; synthetic input; debug production module in native Swift Testing host. Assertions/allocation/layout/redraw calls included. No input injection or compositor fence. Single machine; not a statistical fleet baseline.",
+  "budgets": [
+    {
+      "id": "parse-1000-statements",
+      "status": "reference-derived-provisional",
+      "referenceP95Ms": 7.658666,
+      "p95BudgetMs": 31,
+      "derivation": "max(1ms, ceil(4 x measured reference p95)); scheduling/platform allowance, not a measured target result",
+      "input": "1000 SELECT statements; UTF-8, non-BMP, combining mark, CRLF",
+      "nativeMethod": "Same synthetic operation/input, 3 warmups/30 samples, nearest-rank p95 in native optimized candidate; retain build/OS/hardware/DPI and compare after calibration."
+    },
+    {
+      "id": "json-1000x32",
+      "status": "reference-derived-provisional",
+      "referenceP95Ms": 14.117583,
+      "p95BudgetMs": 57,
+      "derivation": "max(1ms, ceil(4 x measured reference p95)); scheduling/platform allowance, not a measured target result",
+      "input": "1000 rows x 32 text columns; in-memory loaded-result JSON",
+      "nativeMethod": "Same synthetic operation/input, 3 warmups/30 samples, nearest-rank p95 in native optimized candidate; retain build/OS/hardware/DPI and compare after calibration."
+    },
+    {
+      "id": "theme-jsonc-include",
+      "status": "reference-derived-provisional",
+      "referenceP95Ms": 0.141209,
+      "p95BudgetMs": 1,
+      "derivation": "max(1ms, ceil(4 x measured reference p95)); scheduling/platform allowance, not a measured target result",
+      "input": "Synthetic local JSONC include with alpha and scope override",
+      "nativeMethod": "Same synthetic operation/input, 3 warmups/30 samples, nearest-rank p95 in native optimized candidate; retain build/OS/hardware/DPI and compare after calibration."
+    },
+    {
+      "id": "grid-reload-layout-1000x32",
+      "status": "reference-derived-provisional",
+      "referenceP95Ms": 141.01875,
+      "p95BudgetMs": 283,
+      "derivation": "max(16ms, ceil(2 x measured reference p95)); scheduling/platform allowance, not a measured target result",
+      "input": "Native AppKit 960x540 window; 1000x32; change one cell, reload and layout; no compositor fence",
+      "nativeMethod": "Same synthetic operation/input, 3 warmups/30 samples, nearest-rank p95 in native optimized candidate; retain build/OS/hardware/DPI and compare after calibration."
+    },
+    {
+      "id": "grid-select-visible-row",
+      "status": "reference-derived-provisional",
+      "referenceP95Ms": 0.055375,
+      "p95BudgetMs": 16,
+      "derivation": "max(16ms, ceil(4 x measured reference p95)); scheduling/platform allowance, not a measured target result",
+      "input": "Native loaded 1000x32 grid; select next visible row; redraw; no OS input injection",
+      "nativeMethod": "Same synthetic operation/input, 3 warmups/30 samples, nearest-rank p95 in native optimized candidate; retain build/OS/hardware/DPI and compare after calibration."
+    }
+  ],
+  "unmeasuredNativeMetrics": [
+    {
+      "id": "input-to-present",
+      "status": "proposed-unmeasured",
+      "p95BudgetMs": 100,
+      "method": "Inject exact native editor/grid action and measure first presented response, 100 samples after 10 warmups per desktop/DPI; no observed baseline claim."
+    },
+    {
+      "id": "frame-pacing",
+      "status": "proposed-unmeasured",
+      "p95BudgetMs": 33.4,
+      "method": "Capture compositor presentation timing during scripted scroll, 10 seconds x 3 repeats per desktop/DPI; target 60Hz with at most 2-frame p95; no observed baseline claim."
+    },
+    {
+      "id": "stop-dispatch",
+      "status": "proposed-unmeasured",
+      "p95BudgetMs": 100,
+      "method": "From native Stop input to helper cancellation write while stream queue saturated; 30 runs per engine/desktop; server completion latency excluded."
+    },
+    {
+      "id": "cold-start",
+      "status": "unmeasured-no-budget",
+      "method": "Task 2 establishes native startup reference before setting a package gate; do not extrapolate from test-host timings."
+    }
+  ],
+  "nativeCalibration": "Windows 11 and Ubuntu 24.04 graphical environments absent by user confirmation. All target budgets are provisional until comparable native measurements in Tasks 2/29/30."
+}

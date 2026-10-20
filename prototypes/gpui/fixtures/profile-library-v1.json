@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "connections": [
+    {
+      "id": "demo-brewery",
+      "name": "Legacy PostgreSQL",
+      "engine": "postgresql",
+      "host": "localhost",
+      "port": 5432,
+      "database": "postgres",
+      "user": "postgres",
+      "sslMode": "verify-full"
+    },
+    {
+      "id": "opaque-saved-2",
+      "name": "Explicit MySQL policy",
+      "engine": "mysql",
+      "host": "localhost",
+      "port": 3306,
+      "database": "mysql",
+      "user": "root",
+      "sslMode": "require",
+      "readonly": false,
+      "environment": "production"
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+[
+  {
+    "id": "P01",
+    "engine": "postgresql",
+    "sql": "SELECT '😀';\r\n  SELECT 'é and 世界';",
+    "statements": [
+      "SELECT '😀'",
+      "SELECT 'é and 世界'"
+    ],
+    "diagnostics": 0,
+    "caretUTF16": 12,
+    "selected": "SELECT '😀'"
+  },
+  {
+    "id": "P02",
+    "engine": "mysql",
+    "sql": "SELECT '😀';\r\nSELECT 2;",
+    "statements": [
+      "SELECT '😀'",
+      "SELECT 2"
+    ],
+    "diagnostics": 0,
+    "caretUTF16": 12,
+    "selected": "SELECT '😀'"
+  },
+  {
+    "id": "P03",
+    "engine": "postgresql",
+    "sql": "DO $body$ BEGIN PERFORM 'a;b'; END; $body$; SELECT 2;",
+    "statements": [
+      "DO $body$ BEGIN PERFORM 'a;b'; END; $body$",
+      "SELECT 2"
+    ],
+    "diagnostics": 0
+  },
+  {
+    "id": "P04",
+    "engine": "mysql",
+    "sql": "DELIMITER //\r\nCREATE PROCEDURE p() BEGIN SELECT 'a;//'; SELECT 2; END//\r\nDELIMITER ;\r\nCALL p();",
+    "statements": [
+      "CREATE PROCEDURE p() BEGIN SELECT 'a;//'; SELECT 2; END",
+      "CALL p()"
+    ],
+    "diagnostics": 0
+  },
+  {
+    "id": "P05",
+    "engine": "postgresql",
+    "sql": "/* outer /* inner ; */ */ SELECT 1;",
+    "statements": [
+      "/* outer /* inner ; */ */ SELECT 1"
+    ],
+    "diagnostics": 0
+  },
+  {
+    "id": "P06",
+    "engine": "mysql",
+    "sql": "SELECT 1--2; SELECT 3; # ; hidden\nSELECT 4;",
+    "statements": [
+      "SELECT 1--2",
+      "SELECT 3",
+      "# ; hidden\nSELECT 4"
+    ],
+    "diagnostics": 0
+  },
+  {
+    "id": "P07",
+    "engine": "postgresql",
+    "sql": "SELECT '😀",
+    "statementCount": 1,
+    "diagnostics": 1
+  },
+  {
+    "id": "P08",
+    "engine": "postgresql",
+    "sql": "CREATE FUNCTION p() RETURNS integer LANGUAGE SQL BEGIN ATOMIC SELECT 1; SELECT 2; END; SELECT 3;",
+    "statements": [
+      "CREATE FUNCTION p() RETURNS integer LANGUAGE SQL BEGIN ATOMIC SELECT 1; SELECT 2; END",
+      "SELECT 3"
+    ],
+    "diagnostics": 0
+  }
+]

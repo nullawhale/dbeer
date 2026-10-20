@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 
@@ -50,6 +51,36 @@ func TestExecutionPolicyMatrixAndExactAuthorization(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestFullExportGrantBindsFormatMarkerDestinationFingerprintAndSession(t *testing.T) {
+	for _, field := range []string{"format", "marker", "destination"} {
+		t.Run(field, func(t *testing.T) {
+			marker := `\N`
+			destination := &protocol.ExportDestination{Exists: false}
+			export := &protocol.ExportRequest{Path: filepath.Join(t.TempDir(), "out.json"), Format: "json", NullMarker: &marker, Destination: destination}
+			owner := &owner{id: "original-sql"}
+			policy := protocol.ExecutionPolicy{Environment: "production"}
+			operation := protocol.OperationRequest{Type: "execute", SQL: "SELECT fixture_side_effect()", Export: export}
+			response := owner.assess(protocol.Command{Operations: []protocol.OperationRequest{operation}}, "postgresql", policy)
+			if response.Assessment == nil {
+				t.Fatal("assessment")
+			}
+			changed := *export
+			switch field {
+			case "format":
+				changed.Format = "csv"
+			case "marker":
+				other := "other"
+				changed.NullMarker = &other
+			case "destination":
+				changed.Destination = &protocol.ExportDestination{Exists: true, Size: 0, SHA256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+			}
+			if owner.authorize(protocol.Command{Type: "execute", SQL: operation.SQL, Export: &changed, Authorization: response.Assessment.Authorization}, "postgresql", policy) {
+				t.Fatal("altered full export reused grant")
+			}
+		})
 	}
 }
 

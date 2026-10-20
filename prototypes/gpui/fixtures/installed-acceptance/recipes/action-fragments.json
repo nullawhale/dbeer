@@ -1,0 +1,1884 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-expected-recipe-fragments",
+  "nativeObserved": false,
+  "selectorIntegrationReviewed": false,
+  "notAnExecutionPlan": true,
+  "fragments": [
+    {
+      "id": "cancel-profile-edit",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Original synthetic profile selected and dialog may edit it."
+      ],
+      "addresses": [
+        "F01-S01-A04"
+      ],
+      "limitations": [
+        "Persisted equality does not prove credential unchanged; verify already reserved credential separately."
+      ],
+      "actions": [
+        {
+          "op": "capture-state",
+          "capture": "before-profile-cancel"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.postgresql.edit"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.name",
+          "input": "synthetic.typedLiteralNull"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.cancel"
+        },
+        {
+          "op": "assert-state-same",
+          "capture": "before-profile-cancel",
+          "assertion": "F01-S01-A04"
+        }
+      ]
+    },
+    {
+      "id": "editor-existing-input-exact",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Original editable SQL tab, no marked text or modal."
+      ],
+      "addresses": [
+        "F14-S01-A01"
+      ],
+      "limitations": [
+        "Semantic SetValue is not paste/keyboard/IME/Undo proof; rich Unicode, selection and multi-tab source checks stay required."
+      ],
+      "actions": [
+        {
+          "op": "native",
+          "action": "focus",
+          "selector": "editor.original"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "editor.original",
+          "input": "synthetic.plainText"
+        },
+        {
+          "op": "native",
+          "action": "assert",
+          "selector": "editor.original",
+          "expectedSha256": "33b7aef3dff3074a576bd4facd390115814bea11d6f76ecea27856e552feb44b",
+          "assertion": "F14-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "create-disconnected-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh isolated library; no profile for this engine; exact observer sessions already idle.",
+        "Password remains untouched; metadata-only Save must not create any credential.",
+        "Each chooser key names this first observed modal lifetime; reopening needs a fresh key."
+      ],
+      "addresses": [
+        "F01-S01-A01",
+        "F01-S01-A03"
+      ],
+      "limitations": [
+        "Server zero after Save proves disconnected state only; Save-and-Connect needs a physical new-session receipt/counter.",
+        "CA public fixture uses CN localhost; the connection host must be localhost before verify-full Connect.",
+        "Actual default NEW profile is separately tested before changing TLS/policy."
+      ],
+      "actions": [
+        {
+          "op": "capture-profile-set",
+          "capture": "postgresql-before-create"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.add"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.engine.postgresql"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.host",
+          "input": "connection.postgresql.host"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.port",
+          "input": "connection.postgresql.port"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.database",
+          "input": "connection.postgresql.database"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.user",
+          "input": "connection.postgresql.user"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.name",
+          "input": "synthetic.profileName"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.tls.verify-full"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.ca.choose"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "chooser.path",
+          "input": "connection.postgresql.caFile",
+          "window": "profiles.postgresql.ca"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "chooser.accept",
+          "window": "profiles.postgresql.ca"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.policy.development"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.policy.readonly"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.save"
+        },
+        {
+          "op": "capture-profile-id",
+          "engine": "postgresql",
+          "capture": "postgresql-profile",
+          "before": "postgresql-before-create",
+          "nameInput": "synthetic.profileName"
+        },
+        {
+          "op": "wait-server-count",
+          "engine": "postgresql",
+          "query": "connections-postgresql",
+          "equals": 0,
+          "assertion": "F01-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "credential-first-write-postgresql-nonempty",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Exactly one UI-created metadata-only profile for this engine in this isolated library.",
+        "Native absence reservation succeeds before UI write; collision or locked lookup refuses.",
+        "This first-write fragment needs the profile-id capture created by the creation fragment; empty/nonempty first writes use separate fresh accounts."
+      ],
+      "addresses": [
+        "F04-S01-A01",
+        "F51-S01-A01"
+      ],
+      "limitations": [
+        "Conditional UI update/delete intents are available; each branch must retain its original account and verify its exact explicit outcome.",
+        "Do not reread password controls; verification uses only exact owned native store account and known input hash.",
+        "Deleting a profile before credential-owned cleanup currently makes removal verification unsupported."
+      ],
+      "actions": [
+        {
+          "op": "credential-reserve",
+          "profileId": "capture.postgresql-profile",
+          "capture": "postgresql-credential"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "postgresql-credential",
+          "absent": true,
+          "empty": false,
+          "assertion": "F04-S01-A01"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.postgresql.edit"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.password.replace"
+        },
+        {
+          "op": "credential-arm-ui-write",
+          "capture": "postgresql-credential",
+          "value": "connection.postgresql.password"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.password",
+          "input": "connection.postgresql.password"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.save"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "postgresql-credential",
+          "absent": false,
+          "empty": false,
+          "assertion": "F04-S01-A01",
+          "outcome": "written"
+        }
+      ]
+    },
+    {
+      "id": "credential-first-write-postgresql-empty",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Exactly one UI-created metadata-only profile for this engine in this isolated library.",
+        "Native absence reservation succeeds before UI write; collision or locked lookup refuses.",
+        "This first-write fragment needs the profile-id capture created by the creation fragment; empty/nonempty first writes use separate fresh accounts."
+      ],
+      "addresses": [
+        "F04-S01-A01",
+        "F51-S01-A01"
+      ],
+      "limitations": [
+        "Conditional UI update/delete intents are available; each branch must retain its original account and verify its exact explicit outcome.",
+        "Do not reread password controls; verification uses only exact owned native store account and known input hash.",
+        "Deleting a profile before credential-owned cleanup currently makes removal verification unsupported."
+      ],
+      "actions": [
+        {
+          "op": "credential-reserve",
+          "profileId": "capture.postgresql-profile",
+          "capture": "postgresql-empty-credential"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "postgresql-empty-credential",
+          "absent": true,
+          "empty": false,
+          "assertion": "F04-S01-A01"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.postgresql.edit"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.password.replace"
+        },
+        {
+          "op": "credential-arm-ui-write",
+          "capture": "postgresql-empty-credential",
+          "value": "empty"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.password",
+          "input": "synthetic.typedEmpty"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.save"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "postgresql-empty-credential",
+          "absent": false,
+          "empty": true,
+          "assertion": "F04-S01-A01",
+          "outcome": "written"
+        }
+      ]
+    },
+    {
+      "id": "physical-stop-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Original SQL tab explicitly connected; no other sleep on this dedicated owned server.",
+        "Run and Stop selectors retain the original document/operation owner."
+      ],
+      "addresses": [
+        "F11-S01-A02",
+        "F53-S01-A02"
+      ],
+      "limitations": [
+        "This checks physical cancellation only. Held chunk ACK, terminal idle/failed state, bounds and owned helper death are separate required gates.",
+        "No expected UI status string is invented; observe the terminal surface before pinning its source-known exact text."
+      ],
+      "actions": [
+        {
+          "op": "native",
+          "action": "focus",
+          "selector": "editor.original"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "editor.original",
+          "input": "synthetic.cancelPostgresql"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "execution.run-current"
+        },
+        {
+          "op": "wait-server-count",
+          "engine": "postgresql",
+          "query": "active-postgresql-sleep",
+          "equals": 1,
+          "assertion": "F11-S01-A02"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "execution.stop-original"
+        },
+        {
+          "op": "wait-server-count",
+          "engine": "postgresql",
+          "query": "active-postgresql-sleep",
+          "equals": 0,
+          "assertion": "F11-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "typed-observer-head-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh unmodified checked-in dbeer_parity_v1 corpus on exact owned server."
+      ],
+      "addresses": [
+        "F27-S01-A01",
+        "F27-S01-A02"
+      ],
+      "limitations": [
+        "The engine compares independently declared metadata and typed values; this alone does not establish native grid fidelity.",
+        "Server rows do not prove native displayed typed values. NULL and text NULL share native text; typed role/description must also be checked."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "values-head",
+          "oracle": "snapshot",
+          "assertion": "F27-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "loaded-json-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F38-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/loaded.json",
+          "engine": "postgresql",
+          "oracle": "loaded-json",
+          "assertion": "F38-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "loaded-csv-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F38-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/loaded.csv",
+          "engine": "postgresql",
+          "oracle": "loaded-csv",
+          "assertion": "F38-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "complete-json-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/complete.json",
+          "engine": "postgresql",
+          "oracle": "complete-json",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "complete-csv-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/complete.csv",
+          "engine": "postgresql",
+          "oracle": "complete-csv",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "create-disconnected-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh isolated library; no profile for this engine; exact observer sessions already idle.",
+        "Password remains untouched; metadata-only Save must not create any credential.",
+        "Each chooser key names this first observed modal lifetime; reopening needs a fresh key."
+      ],
+      "addresses": [
+        "F01-S01-A01",
+        "F01-S01-A03"
+      ],
+      "limitations": [
+        "Server zero after Save proves disconnected state only; Save-and-Connect needs a physical new-session receipt/counter.",
+        "CA public fixture uses CN localhost; the connection host must be localhost before verify-full Connect.",
+        "Actual default NEW profile is separately tested before changing TLS/policy."
+      ],
+      "actions": [
+        {
+          "op": "capture-profile-set",
+          "capture": "mysql-before-create"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.add"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.engine.mysql"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.host",
+          "input": "connection.mysql.host"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.port",
+          "input": "connection.mysql.port"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.database",
+          "input": "connection.mysql.database"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.user",
+          "input": "connection.mysql.user"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.name",
+          "input": "synthetic.profileName"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.tls.verify-full"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.ca.choose"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "chooser.path",
+          "input": "connection.mysql.caFile",
+          "window": "profiles.mysql.ca"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "chooser.accept",
+          "window": "profiles.mysql.ca"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.policy.development"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.policy.readonly"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.save"
+        },
+        {
+          "op": "capture-profile-id",
+          "engine": "mysql",
+          "capture": "mysql-profile",
+          "before": "mysql-before-create",
+          "nameInput": "synthetic.profileName"
+        },
+        {
+          "op": "wait-server-count",
+          "engine": "mysql",
+          "query": "connections-mysql",
+          "equals": 0,
+          "assertion": "F01-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "credential-first-write-mysql-nonempty",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Exactly one UI-created metadata-only profile for this engine in this isolated library.",
+        "Native absence reservation succeeds before UI write; collision or locked lookup refuses.",
+        "This first-write fragment needs the profile-id capture created by the creation fragment; empty/nonempty first writes use separate fresh accounts."
+      ],
+      "addresses": [
+        "F04-S01-A01",
+        "F51-S01-A01"
+      ],
+      "limitations": [
+        "Conditional UI update/delete intents are available; each branch must retain its original account and verify its exact explicit outcome.",
+        "Do not reread password controls; verification uses only exact owned native store account and known input hash.",
+        "Deleting a profile before credential-owned cleanup currently makes removal verification unsupported."
+      ],
+      "actions": [
+        {
+          "op": "credential-reserve",
+          "profileId": "capture.mysql-profile",
+          "capture": "mysql-credential"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "mysql-credential",
+          "absent": true,
+          "empty": false,
+          "assertion": "F04-S01-A01"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.mysql.edit"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.password.replace"
+        },
+        {
+          "op": "credential-arm-ui-write",
+          "capture": "mysql-credential",
+          "value": "connection.mysql.password"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.password",
+          "input": "connection.mysql.password"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.save"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "mysql-credential",
+          "absent": false,
+          "empty": false,
+          "assertion": "F04-S01-A01",
+          "outcome": "written"
+        }
+      ]
+    },
+    {
+      "id": "credential-first-write-mysql-empty",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Exactly one UI-created metadata-only profile for this engine in this isolated library.",
+        "Native absence reservation succeeds before UI write; collision or locked lookup refuses.",
+        "This first-write fragment needs the profile-id capture created by the creation fragment; empty/nonempty first writes use separate fresh accounts."
+      ],
+      "addresses": [
+        "F04-S01-A01",
+        "F51-S01-A01"
+      ],
+      "limitations": [
+        "Conditional UI update/delete intents are available; each branch must retain its original account and verify its exact explicit outcome.",
+        "Do not reread password controls; verification uses only exact owned native store account and known input hash.",
+        "Deleting a profile before credential-owned cleanup currently makes removal verification unsupported."
+      ],
+      "actions": [
+        {
+          "op": "credential-reserve",
+          "profileId": "capture.mysql-profile",
+          "capture": "mysql-empty-credential"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "mysql-empty-credential",
+          "absent": true,
+          "empty": false,
+          "assertion": "F04-S01-A01"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.mysql.edit"
+        },
+        {
+          "op": "native",
+          "action": "select",
+          "selector": "profiles.password.replace"
+        },
+        {
+          "op": "credential-arm-ui-write",
+          "capture": "mysql-empty-credential",
+          "value": "empty"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "profiles.password",
+          "input": "synthetic.typedEmpty"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "profiles.save"
+        },
+        {
+          "op": "credential-verify",
+          "capture": "mysql-empty-credential",
+          "absent": false,
+          "empty": true,
+          "assertion": "F04-S01-A01",
+          "outcome": "written"
+        }
+      ]
+    },
+    {
+      "id": "physical-stop-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Original SQL tab explicitly connected; no other sleep on this dedicated owned server.",
+        "Run and Stop selectors retain the original document/operation owner."
+      ],
+      "addresses": [
+        "F11-S01-A02",
+        "F53-S01-A02"
+      ],
+      "limitations": [
+        "This checks physical cancellation only. Held chunk ACK, terminal idle/failed state, bounds and owned helper death are separate required gates.",
+        "No expected UI status string is invented; observe the terminal surface before pinning its source-known exact text."
+      ],
+      "actions": [
+        {
+          "op": "native",
+          "action": "focus",
+          "selector": "editor.original"
+        },
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "editor.original",
+          "input": "synthetic.cancelMysql"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "execution.run-current"
+        },
+        {
+          "op": "wait-server-count",
+          "engine": "mysql",
+          "query": "active-mysql-sleep",
+          "equals": 1,
+          "assertion": "F11-S01-A02"
+        },
+        {
+          "op": "native",
+          "action": "invoke",
+          "selector": "execution.stop-original"
+        },
+        {
+          "op": "wait-server-count",
+          "engine": "mysql",
+          "query": "active-mysql-sleep",
+          "equals": 0,
+          "assertion": "F11-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "typed-observer-head-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh unmodified checked-in dbeer_parity_v1 corpus on exact owned server."
+      ],
+      "addresses": [
+        "F27-S01-A01",
+        "F27-S01-A02"
+      ],
+      "limitations": [
+        "The engine compares independently declared metadata and typed values; this alone does not establish native grid fidelity.",
+        "Server rows do not prove native displayed typed values. NULL and text NULL share native text; typed role/description must also be checked."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "values-head",
+          "oracle": "snapshot",
+          "assertion": "F27-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "loaded-json-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F38-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/loaded.json",
+          "engine": "mysql",
+          "oracle": "loaded-json",
+          "assertion": "F38-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "loaded-csv-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F38-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/loaded.csv",
+          "engine": "mysql",
+          "oracle": "loaded-csv",
+          "assertion": "F38-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "complete-json-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/complete.json",
+          "engine": "mysql",
+          "oracle": "complete-json",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "complete-csv-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Use prepared duplicate-values query with explicit numeric sort independent of MySQL INSERT allocation.",
+        "Set exact collision-free marker <DBEER-SQL-NULL> for CSV; use original captured result.",
+        "Export already completed via real native workflow and exact owned destination; same file cannot be reused across engines."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "Exact bytes/count alone do not prove run-once, no SQL for loaded export, cancellation or failed publication.",
+        "Fixed corpus inputs and pinned source staging must be explicitly selected; publication and run-once effects require their separate independent receipts."
+      ],
+      "actions": [
+        {
+          "op": "export-check",
+          "path": "outputs/complete.csv",
+          "engine": "mysql",
+          "oracle": "complete-csv",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "editor-unicode-fixed-corpus",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Original editable synthetic document retains its native owner."
+      ],
+      "addresses": [
+        "F14-S01-A01"
+      ],
+      "limitations": [
+        "Actual paste, caret, selection, Undo and IME are mandatory separate observations."
+      ],
+      "actions": [
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "editor.original",
+          "input": "corpus.editorUnicodeCRLF"
+        },
+        {
+          "op": "native",
+          "action": "assert",
+          "selector": "editor.original",
+          "expectedSha256": "6506dfd0d32bd4569e717d080de353f93fba31b8bc1698c98ab4e2651cd4b45a",
+          "assertion": "F14-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "fixed-effect-baseline-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh exact owned database corpus; additive effects have never been attempted."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "Baseline count zero is a precondition, never successful exactly-once proof."
+      ],
+      "actions": [
+        {
+          "op": "effects-setup",
+          "engine": "postgresql"
+        },
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "acceptance-effects",
+          "oracle": "snapshot",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "independent-once-sql-commit-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh effect baseline verified; original GUI issued the fixed case exactly once."
+      ],
+      "addresses": [
+        "F36-S01-A01"
+      ],
+      "limitations": [
+        "This is an exact committed effect count; lost-ACK boundary/original unknown UI and retry refusal still require real native proofs."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "acceptance-effects",
+          "oracle": "effect-once",
+          "case": "sql-commit",
+          "assertion": "F36-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "independent-once-apply-commit-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh effect baseline verified; original GUI issued the fixed case exactly once."
+      ],
+      "addresses": [
+        "F36-S01-A02"
+      ],
+      "limitations": [
+        "This is an exact committed effect count; lost-ACK boundary/original unknown UI and retry refusal still require real native proofs."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "acceptance-effects",
+          "oracle": "effect-once",
+          "case": "apply-commit",
+          "assertion": "F36-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "independent-once-full-export-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh effect baseline verified; original GUI issued the fixed case exactly once."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "This is an exact committed effect count; lost-ACK boundary/original unknown UI and retry refusal still require real native proofs."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "acceptance-effects",
+          "oracle": "effect-once",
+          "case": "full-export",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "fixed-effect-baseline-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh exact owned database corpus; additive effects have never been attempted."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "Baseline count zero is a precondition, never successful exactly-once proof."
+      ],
+      "actions": [
+        {
+          "op": "effects-setup",
+          "engine": "mysql"
+        },
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "acceptance-effects",
+          "oracle": "snapshot",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "independent-once-sql-commit-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh effect baseline verified; original GUI issued the fixed case exactly once."
+      ],
+      "addresses": [
+        "F36-S01-A01"
+      ],
+      "limitations": [
+        "This is an exact committed effect count; lost-ACK boundary/original unknown UI and retry refusal still require real native proofs."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "acceptance-effects",
+          "oracle": "effect-once",
+          "case": "sql-commit",
+          "assertion": "F36-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "independent-once-apply-commit-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh effect baseline verified; original GUI issued the fixed case exactly once."
+      ],
+      "addresses": [
+        "F36-S01-A02"
+      ],
+      "limitations": [
+        "This is an exact committed effect count; lost-ACK boundary/original unknown UI and retry refusal still require real native proofs."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "acceptance-effects",
+          "oracle": "effect-once",
+          "case": "apply-commit",
+          "assertion": "F36-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "independent-once-full-export-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh effect baseline verified; original GUI issued the fixed case exactly once."
+      ],
+      "addresses": [
+        "F39-S01-A01"
+      ],
+      "limitations": [
+        "This is an exact committed effect count; lost-ACK boundary/original unknown UI and retry refusal still require real native proofs."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "acceptance-effects",
+          "oracle": "effect-once",
+          "case": "full-export",
+          "assertion": "F39-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "fresh-connections-corrupt-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F05-S01-A02"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "connections-corrupt",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F05-S01-A02"
+            }
+          ],
+          "assertion": "F05-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "fresh-connections-future-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F05-S01-A02"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "connections-future",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F05-S01-A02"
+            }
+          ],
+          "assertion": "F05-S01-A02"
+        }
+      ]
+    },
+    {
+      "id": "fresh-workspace-corrupt-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F21-S01-A04"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "workspace-corrupt",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F21-S01-A04"
+            }
+          ],
+          "assertion": "F21-S01-A04"
+        }
+      ]
+    },
+    {
+      "id": "fresh-workspace-future-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F21-S01-A04"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "workspace-future",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F21-S01-A04"
+            }
+          ],
+          "assertion": "F21-S01-A04"
+        }
+      ]
+    },
+    {
+      "id": "fresh-appearance-corrupt-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F47-S01-A01"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "appearance-corrupt",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F47-S01-A01"
+            }
+          ],
+          "assertion": "F47-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "fresh-appearance-future-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F47-S01-A01"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "appearance-future",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F47-S01-A01"
+            }
+          ],
+          "assertion": "F47-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "fresh-themes-corrupt-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F48-S01-A03"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "themes-corrupt",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F48-S01-A03"
+            }
+          ],
+          "assertion": "F48-S01-A03"
+        }
+      ]
+    },
+    {
+      "id": "fresh-themes-future-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F48-S01-A03"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "themes-future",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F48-S01-A03"
+            }
+          ],
+          "assertion": "F48-S01-A03"
+        }
+      ]
+    },
+    {
+      "id": "fresh-shortcuts-corrupt-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F46-S01-A03"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "shortcuts-corrupt",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F46-S01-A03"
+            }
+          ],
+          "assertion": "F46-S01-A03"
+        }
+      ]
+    },
+    {
+      "id": "fresh-shortcuts-future-preserved",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Populated original main workspace can complete actual normal common Close.",
+        "Fresh fixed empty canonical subfixture contains no migrated IDs or credentials."
+      ],
+      "addresses": [
+        "F46-S01-A03"
+      ],
+      "limitations": [
+        "This checks exact startup/normal-close preservation. Native readonly fallback/error and attempted edits still require observed controls.",
+        "Destructive procedures never connect, borrow credentials or overwrite the main data owner."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "shortcuts-future",
+          "actions": [
+            {
+              "op": "file-assert-same",
+              "capture": "original",
+              "assertion": "F46-S01-A03"
+            }
+          ],
+          "assertion": "F46-S01-A03"
+        }
+      ]
+    },
+    {
+      "id": "rich-editor-original-utf16-selection",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Observed original SQL editor supports actual TextPattern/AT-SPI Text and native stable identity."
+      ],
+      "addresses": [
+        "F14-S01-A01"
+      ],
+      "limitations": [
+        "Range endpoints must be representable native endpoints; split surrogate offsets refuse.",
+        "Actual keyboard/IME/Undo/scroll/geometry and later operation ownership remain required."
+      ],
+      "actions": [
+        {
+          "op": "native",
+          "action": "set-text",
+          "selector": "editor.original",
+          "input": "corpus.editorUnicodeCRLF"
+        },
+        {
+          "op": "native-text-select",
+          "selector": "editor.original",
+          "input": "corpus.editorUnicodeCRLF",
+          "start": 13,
+          "end": 15,
+          "pin": "original-editor"
+        },
+        {
+          "op": "native-text-assert",
+          "selector": "editor.original",
+          "input": "corpus.editorUnicodeCRLF",
+          "start": 13,
+          "end": 15,
+          "pin": "original-editor",
+          "assertion": "F14-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "latest-settings-close-full-dtos",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Real native Settings already chose Lager/native-dark, committed exactly the fixed shared-32 import, and cleared Run Current.",
+        "Actual import UUID captured as imported-theme after full independently normalized library comparison."
+      ],
+      "addresses": [
+        "F47-S01-A01"
+      ],
+      "limitations": [
+        "Full files are checked after actual common Close and after fresh exact restart.",
+        "A deterministic held-old-save/new-reservation race and actual rendered palettes still need original owner barriers."
+      ],
+      "actions": [
+        {
+          "op": "settings-close-restart",
+          "expected": [
+            "afterImported",
+            "libraryImported",
+            "explicitUnbind"
+          ],
+          "theme": "imported-theme",
+          "assertion": "F47-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "shortcut-explicit-default-recovery",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Owned previous main state can complete common Close; actual observed recovery control is available."
+      ],
+      "addresses": [
+        "F46-S01-A03"
+      ],
+      "limitations": [
+        "Explicit recovery is separate from readonly fallback/Retry. Real native keyboard rebind/defaults remains required."
+      ],
+      "actions": [
+        {
+          "op": "persistence-case",
+          "case": "shortcuts-future",
+          "assertion": "F46-S01-A03",
+          "actions": [
+            {
+              "op": "native",
+              "action": "invoke",
+              "selector": "settings.shortcuts.open"
+            },
+            {
+              "op": "native",
+              "action": "invoke",
+              "selector": "shortcuts.recover-defaults"
+            },
+            {
+              "op": "file-backup-discover",
+              "capture": "original",
+              "assertion": "F46-S01-A03"
+            },
+            {
+              "op": "assert-settings-expected",
+              "expected": "shortcutDefaults",
+              "assertion": "F46-S01-A03"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "script-independent-receipts-script-success-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh fixed effects installed; original GUI completed only the exact fixed script-success script."
+      ],
+      "addresses": [
+        "F18-S01-A01"
+      ],
+      "limitations": [
+        "Ordered committed write receipts distinguish skipped/duplicate writes. Read-only command ordering still requires the original runtime trace."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "acceptance-receipts",
+          "oracle": "script-receipts",
+          "case": "script-success",
+          "assertion": "F18-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "script-independent-receipts-script-first-error-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh fixed effects installed; original GUI completed only the exact fixed script-first-error script."
+      ],
+      "addresses": [
+        "F18-S01-A01"
+      ],
+      "limitations": [
+        "Ordered committed write receipts distinguish skipped/duplicate writes. Read-only command ordering still requires the original runtime trace."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "acceptance-receipts",
+          "oracle": "script-receipts",
+          "case": "script-first-error",
+          "assertion": "F18-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "script-independent-receipts-script-middle-error-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh fixed effects installed; original GUI completed only the exact fixed script-middle-error script."
+      ],
+      "addresses": [
+        "F18-S01-A01"
+      ],
+      "limitations": [
+        "Ordered committed write receipts distinguish skipped/duplicate writes. Read-only command ordering still requires the original runtime trace."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "postgresql",
+          "query": "acceptance-receipts",
+          "oracle": "script-receipts",
+          "case": "script-middle-error",
+          "assertion": "F18-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "physical-session-preservation-postgresql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Original tab A/service physical sessions captured as original-sessions before an unrelated tab action."
+      ],
+      "addresses": [
+        "F09-S01-A03"
+      ],
+      "limitations": [
+        "PostgreSQL backend creation is compared; MySQL PROCESSLIST supplies no creation time or transaction owner.",
+        "Exact tab/service role correlation, temp state and MySQL transaction ownership remain separate gates."
+      ],
+      "actions": [
+        {
+          "op": "assert-physical-sessions",
+          "engine": "postgresql",
+          "capture": "original-sessions",
+          "added": 0,
+          "removed": 0,
+          "assertion": "F09-S01-A03"
+        }
+      ]
+    },
+    {
+      "id": "script-independent-receipts-script-success-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh fixed effects installed; original GUI completed only the exact fixed script-success script."
+      ],
+      "addresses": [
+        "F18-S01-A01"
+      ],
+      "limitations": [
+        "Ordered committed write receipts distinguish skipped/duplicate writes. Read-only command ordering still requires the original runtime trace."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "acceptance-receipts",
+          "oracle": "script-receipts",
+          "case": "script-success",
+          "assertion": "F18-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "script-independent-receipts-script-first-error-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh fixed effects installed; original GUI completed only the exact fixed script-first-error script."
+      ],
+      "addresses": [
+        "F18-S01-A01"
+      ],
+      "limitations": [
+        "Ordered committed write receipts distinguish skipped/duplicate writes. Read-only command ordering still requires the original runtime trace."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "acceptance-receipts",
+          "oracle": "script-receipts",
+          "case": "script-first-error",
+          "assertion": "F18-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "script-independent-receipts-script-middle-error-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Fresh fixed effects installed; original GUI completed only the exact fixed script-middle-error script."
+      ],
+      "addresses": [
+        "F18-S01-A01"
+      ],
+      "limitations": [
+        "Ordered committed write receipts distinguish skipped/duplicate writes. Read-only command ordering still requires the original runtime trace."
+      ],
+      "actions": [
+        {
+          "op": "assert-observer-oracle",
+          "engine": "mysql",
+          "query": "acceptance-receipts",
+          "oracle": "script-receipts",
+          "case": "script-middle-error",
+          "assertion": "F18-S01-A01"
+        }
+      ]
+    },
+    {
+      "id": "physical-session-preservation-mysql",
+      "kind": "source-expected-current-dsl-fragment",
+      "nativeObserved": false,
+      "selectorIntegrationReviewed": false,
+      "standaloneScenario": false,
+      "preconditions": [
+        "Original tab A/service physical sessions captured as original-sessions before an unrelated tab action."
+      ],
+      "addresses": [
+        "F09-S01-A03"
+      ],
+      "limitations": [
+        "PostgreSQL backend creation is compared; MySQL PROCESSLIST supplies no creation time or transaction owner.",
+        "Exact tab/service role correlation, temp state and MySQL transaction ownership remain separate gates."
+      ],
+      "actions": [
+        {
+          "op": "assert-physical-sessions",
+          "engine": "mysql",
+          "capture": "original-sessions",
+          "added": 0,
+          "removed": 0,
+          "assertion": "F09-S01-A03"
+        }
+      ]
+    }
+  ]
+}

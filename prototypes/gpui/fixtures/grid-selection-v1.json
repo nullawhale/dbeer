@@ -1,0 +1,52 @@
+{
+  "columns": [
+    {
+      "index": 0,
+      "name": "x",
+      "engine": "postgresql",
+      "nativeType": "numeric",
+      "typeOid": 1700
+    },
+    {
+      "index": 1,
+      "name": "x",
+      "engine": "postgresql",
+      "nativeType": "text",
+      "typeOid": 25
+    },
+    {
+      "index": 2,
+      "name": "bytes",
+      "engine": "postgresql",
+      "nativeType": "bytea",
+      "typeOid": 17,
+      "encoding": "base64"
+    }
+  ],
+  "rows": [
+    [
+      "9007199254740993.123456789",
+      "",
+      "AAEC/w=="
+    ],
+    [
+      null,
+      "NULL",
+      ""
+    ],
+    [
+      "-0.00000000000000000001",
+      "\\N",
+      null
+    ],
+    [
+      "1e+900",
+      "line one\r\nline two\t\"quoted\"",
+      "AP8="
+    ]
+  ],
+  "commandTag": "SELECT 4",
+  "rowCount": 4,
+  "displayedRowCount": 4,
+  "truncated": false
+}

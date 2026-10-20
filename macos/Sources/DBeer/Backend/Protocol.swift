@@ -87,10 +87,20 @@ struct CatalogFilter: Codable, Sendable, Equatable {
     var value: String?
 }
 
+struct ExportDestination: Codable, Sendable, Equatable {
+    var exists: Bool
+    var identity: String?
+    var parentIdentity: String?
+    var size: Int64
+    var sha256: String
+    var modifiedNanoseconds: String?
+}
+
 struct ExportRequest: Codable, Sendable, Equatable {
     var path: String
     var format: String
     var nullMarker: String?
+    var destination: ExportDestination?
 }
 
 struct QueryResultSet: Codable, Sendable, Equatable {
@@ -237,6 +247,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     let type: String
     let requestId: String
     var protocolVersion: Int?
+    var buildIdentity: GPUIProductBuildIdentity?
     var engine: DatabaseEngine?
     var capabilities: [String]?
     var sessionId: String?
@@ -264,6 +275,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var exportRowCount: Int64?
     var connected: Bool?
     var outcomeUnknown: Bool?
+    var sqlCompleted: Bool?
+    var sqlNotExecuted: Bool?
+    var exportPublication: String?
     var assessment: OperationAssessment?
 
     func validate() throws {
@@ -275,6 +289,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         case "hello.ack": valid = protocolVersion != nil
         case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
+        case "query.progress": valid = (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
         case "query.started": valid = sessionId != nil && queryId != nil
         case "query.chunk":
             valid = sessionId != nil && queryId != nil && (sequence ?? 0) > 0 &&
@@ -301,7 +316,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard valid else { throw BackendTransportError(.invalidMessage) }
+        guard sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
+              sqlCompleted != true || (type == "error" && outcomeUnknown != true && ["notPublished", "unknown"].contains(exportPublication)),
+              exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }
     }
 
     static func validID(_ value: String) -> Bool {
@@ -318,7 +335,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
     enum Code: Sendable, Equatable {
         case missingExecutable, alreadyStarted, notReady, invalidMessage, frameTooLarge
         case invalidUTF8, unexpectedEOF, processExited(Int32), writeFailed
-        case incompatibleVersion(Int), handshakeTimeout, duplicateRequest
+        case incompatibleVersion(Int), handshakeTimeout, duplicateRequest, unsupportedCapturedExport
     }
 
     let code: Code
@@ -343,6 +360,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
         case .writeFailed: explanation = "The command could not be sent to the helper."
         case .incompatibleVersion(let version): explanation = "The helper uses incompatible protocol version \(version)."
         case .handshakeTimeout: explanation = "The helper did not complete its handshake within 5 seconds."
+        case .unsupportedCapturedExport: explanation = "The helper does not support captured full export. SQL was not executed."
         case .duplicateRequest: explanation = "A command identifier was reused."
         }
         return explanation + (outcomeUnknown ? " The SQL outcome is unknown; the command was not repeated." : "")
@@ -385,9 +403,16 @@ struct NDJSONFramer: Sendable {
 
     static func decode(_ frame: Data) throws -> BackendMessage {
         guard String(data: frame, encoding: .utf8) != nil else { throw BackendTransportError(.invalidUTF8) }
-        guard let reply = try? JSONDecoder().decode(BackendMessage.self, from: frame) else {
+        let identity: GPUIProductBuildIdentity?
+        do {
+            identity = try GPUIProductBuildIdentity.optionalFromFrame(frame, maximumFrameBytes: BackendProtocol.maxFrameBytes)
+        } catch { throw BackendTransportError(.invalidMessage) }
+        guard var reply = try? JSONDecoder().decode(BackendMessage.self, from: frame) else {
             throw BackendTransportError(.invalidMessage)
         }
+        // Keep the value validated from original bytes, before JSONDecoder can
+        // discard duplicate keys or normalize an oversized nested representation.
+        reply.buildIdentity = identity
         try reply.validate()
         return reply
     }

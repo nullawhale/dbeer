@@ -77,6 +77,7 @@ actor BackendClient {
     private var exit: Exit?
     private var exitWaiters: [CheckedContinuation<Exit, Never>] = []
     private var ready = false
+    private var capturedExportSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -171,9 +172,12 @@ actor BackendClient {
 
     /// Returns the terminal reply. `query.started` is delivered separately;
     /// cancelling a SQL query uses an explicit cancel command, not Task.cancel.
+    func supportsCapturedExport() -> Bool { capturedExportSupported }
+
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
-        try await send(command, onEvent: onEvent)
+        if command.export?.destination != nil, !capturedExportSupported { throw BackendTransportError(.unsupportedCapturedExport) }
+        return try await send(command, onEvent: onEvent)
     }
 
     func waitForFailure() async -> BackendTransportError {
@@ -273,6 +277,14 @@ actor BackendClient {
             request.onEvent?(reply)
             return
         }
+        if reply.type == "query.progress" {
+            guard command.export != nil, request.started, let sequence = reply.sequence, sequence == request.streamSequence + 1 else { fail(BackendTransportError(.invalidMessage)); return }
+            request.streamSequence = sequence
+            pending[reply.requestId] = request
+            do { try acknowledgeChunk(reply) } catch { fail(BackendTransportError(.invalidMessage)); return }
+            request.onEvent?(reply)
+            return
+        }
         if reply.type == "query.chunk" {
             do {
                 guard command.stream == true, request.started else { throw BackendTransportError(.invalidMessage) }
@@ -286,6 +298,9 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
+        // The original frame has already validated optional product metadata.
+        // Native SwiftUI helpers remain compatible without GPUI product pairing.
+        if reply.type == "hello.ack" { capturedExportSupported = reply.capabilities?.contains("capturedExportV1") == true }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
             return

@@ -2,6 +2,8 @@
 
 DBeer is a native SQL client for macOS 14+ on Apple Silicon, built with
 SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
+The experimental Windows/Linux frontend uses GPUI Kit and the same helper.
+The macOS product remains SwiftUI/AppKit; GPUI on Mac is for development only.
 
 ## Repository map
 
@@ -9,6 +11,7 @@ SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
 - `macos/Tests/DBeerTests/`: Swift Testing suites, including native AppKit tests.
 - `macos/AcceptanceTests/`: XCTest UI acceptance for installed application archives.
 - `helper/`: Go helper, database adapters and framed protocol transport.
+- `prototypes/gpui/`: experimental Rust/GPUI Windows/Linux frontend and checks.
 - `protocol/fixtures/`: shared Swift/Go protocol and export fixtures.
 - `assets/`: database logo sources; SwiftPM resources link to these files.
 - `macos/Resources/`: app icons and accent colors, including checked-in `Assets.car`.
@@ -26,8 +29,10 @@ SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
   streaming backpressure and explicit handling of uncertain commit outcomes.
 - Preserve the distinction between SQL NULL, empty strings, text `NULL`, DEFAULT,
   exact numeric strings and binary values in editing, transport and exports.
-- Store passwords in Keychain. Profile transfer must exclude secrets and private
-  keys. Never log credentials, connection strings, SQL text or query results.
+- Store passwords in the platform credential store: macOS Keychain, Windows
+  Credential Manager, or Linux Secret Service. Profile transfer must exclude
+  secrets and private keys. Never log credentials, connection strings, SQL text
+  or query results.
 - Keep restored documents disconnected until the user explicitly connects or
   executes a query. Database edits require the existing preview/apply workflow.
 - Match native focus, keyboard navigation, hover behavior and light/dark themes
@@ -42,6 +47,16 @@ SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
 
 - Build the signed app: `./scripts/build-app.sh`.
   Use `CONFIGURATION=debug` for a debug build. Output: `build/DBeer.app`.
+- GPUI Windows/Linux paired builds use `./scripts/build-gpui-client.ps1 -Test -Package`
+  and `./scripts/build-gpui-client.sh --test --package` on native x64 builders.
+  Without options they compile only. Tests use separate unmarked artifacts;
+  `build/gpui/candidates/` contains immutable unsigned development candidates.
+  Keep the existing macOS CI job on SwiftUI. `./scripts/build-gpui-app.sh` builds
+  only the separate Mac development prototype.
+- GPUI focused checks: `./scripts/gpui-prototype.sh test --locked`,
+  `./scripts/gpui-prototype.sh clippy --locked --all-targets -- -D warnings`,
+  and `./scripts/gpui-prototype.sh fmt -- --check`. Use Rust 1.92+ (CI pins
+  1.99.1); do not claim Windows/Linux UI coverage from a headless build.
 - Default to focused checks for the changed behavior. Run selected native suites
   with `./scripts/test.sh --filter SuiteName` (repeat `--filter` as needed).
   This skips Go tests; theme/UI matrices run only if the filter selects them.

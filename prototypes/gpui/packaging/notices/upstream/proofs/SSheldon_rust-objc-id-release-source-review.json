@@ -1,0 +1,54 @@
+{
+  "repository": "SSheldon/rust-objc-id",
+  "revision": "6527cdf28fef2b155c67c1681f548ecfd794003c",
+  "archiveUrl": "https://codeload.github.com/SSheldon/rust-objc-id/tar.gz/6527cdf28fef2b155c67c1681f548ecfd794003c",
+  "archiveSha256": "a6d6adf9f3afed35520e648199cfe9273b251b840fb05ab0bbe189bed7cfeb3f",
+  "legalPaths": [],
+  "packageReviews": [
+    {
+      "name": "objc_id",
+      "version": "0.1.1",
+      "manifestPath": "Cargo.toml",
+      "manifestSha256": "8a219f5fdd84d366e0298e543d5a0c537d68ff2aceb0459698c047c4ffc082dc",
+      "manifestPackage": {
+        "name": "objc_id",
+        "version": "0.1.1",
+        "authors": [
+          "Steven Sheldon"
+        ],
+        "description": "Rust smart pointers for Objective-C reference counting.",
+        "keywords": [
+          "objective-c",
+          "osx",
+          "ios"
+        ],
+        "readme": "README.md",
+        "repository": "http://github.com/SSheldon/rust-objc-id",
+        "documentation": "http://ssheldon.github.io/rust-objc/objc_id/",
+        "license": "MIT",
+        "exclude": [
+          ".gitignore"
+        ]
+      },
+      "comparedFiles": [
+        {
+          "path": "README.md",
+          "sha256": "09ef009a08879a901c3bbfa2aeb35813e084d841b721905e5ae2d1cd84f6063c",
+          "upstreamSha256": "09ef009a08879a901c3bbfa2aeb35813e084d841b721905e5ae2d1cd84f6063c"
+        },
+        {
+          "path": "src/id.rs",
+          "sha256": "d5034fbefbd59e18cacc00ee20dbab087e2b1cb7a47780789dc25efc83f7918b",
+          "upstreamSha256": "d5034fbefbd59e18cacc00ee20dbab087e2b1cb7a47780789dc25efc83f7918b"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "fdc6a052f18cc8d96f24848e107c73eac0ddf12882b69f6d40f09f4652c7fc73",
+          "upstreamSha256": "fdc6a052f18cc8d96f24848e107c73eac0ddf12882b69f6d40f09f4652c7fc73"
+        }
+      ],
+      "mismatches": [],
+      "unavailableFiles": []
+    }
+  ]
+}

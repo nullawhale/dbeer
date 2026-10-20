@@ -234,9 +234,10 @@ func TestMySQLCatalogReadOnlyReasonsAndDeletedObjects(t *testing.T) {
 			t.Fatal("read-only reason missing")
 		}
 		run(t, session, "DROP TABLE "+name)
-		response = catalogRequest(t, session, protocol.CatalogRequest{Kind: "browse", Schema: schema, Object: item.name, ObjectKind: "table"})
-		if len(response.Rows) != 0 || response.DisplayNotice == "" {
-			t.Fatal("deleted browse object was not reported safely")
+		request := protocol.CatalogRequest{Kind: "browse", Schema: schema, Object: item.name, ObjectKind: "table"}
+		response = session.Execute(context.Background(), protocol.Command{Type: "catalog", RequestID: "missing-browse", SessionID: "catalog-s", QueryID: "missing-q", Catalog: &request})
+		if response.Type != "error" || !response.Connected {
+			t.Fatal("deleted browse object did not retain a known failure")
 		}
 	}
 }

@@ -1,0 +1,35 @@
+{
+  "repository": "SSheldon/malloc_buf",
+  "revision": "a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9",
+  "archiveUrl": "https://codeload.github.com/SSheldon/malloc_buf/tar.gz/a7811e5f4c6f9685dd57ad9bfe34e9bf6b0ba4f9",
+  "archiveSha256": "9149a293334084c8adda5a139f3b882d0a564f6953d1b2ea5216a10974b21352",
+  "legalPaths": [],
+  "packageReviews": [
+    {
+      "name": "malloc_buf",
+      "version": "0.0.6",
+      "manifestPath": "Cargo.toml",
+      "manifestSha256": "1c70c91688d9850272e43cee9b189ffe3fe667151d7caf576a36a720f8b28194",
+      "manifestPackage": {
+        "name": "malloc_buf",
+        "version": "0.0.6",
+        "authors": [
+          "Steven Sheldon"
+        ],
+        "description": "Structs for handling malloc'd memory passed to Rust.",
+        "repository": "https://github.com/SSheldon/malloc_buf",
+        "documentation": "http://ssheldon.github.io/malloc_buf/malloc_buf/",
+        "license": "MIT"
+      },
+      "comparedFiles": [
+        {
+          "path": "src/lib.rs",
+          "sha256": "1130dacbe045a20c1ea1e65e00976f18eb7513da492b07d538e7b1b5c64b8842",
+          "upstreamSha256": "1130dacbe045a20c1ea1e65e00976f18eb7513da492b07d538e7b1b5c64b8842"
+        }
+      ],
+      "mismatches": [],
+      "unavailableFiles": []
+    }
+  ]
+}

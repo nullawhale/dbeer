@@ -102,7 +102,8 @@ private final class ApplicationThemeAnchorView: NSView {
 }
 
 /// Adapts owned AppKit surfaces without changing system colors, button drawing,
-/// field editing delegates or the independently themed SQL editor hierarchy.
+/// native material rendering, field editing delegates or the independently
+/// themed SQL editor hierarchy.
 @MainActor
 enum AppThemeSurface {
     private static let windows = NSMapTable<NSWindow, WindowStyle>.weakToStrongObjects()
@@ -110,6 +111,7 @@ enum AppThemeSurface {
 
     static func apply(in window: NSWindow) {
         guard !(window is NSSavePanel), !(window is AppThemeIndependentWindow),
+              window.level.rawValue < NSWindow.Level.mainMenu.rawValue,
               let content = window.contentView else { return }
         if AppPalette.isCustom {
             let original = windows.object(forKey: window) ?? WindowStyle(window: window)
@@ -167,7 +169,6 @@ enum AppThemeSurface {
             case scroll(background: NSColor)
             case clip(background: NSColor)
             case table(background: NSColor, grid: NSColor, alternating: Bool)
-            case effect(ApplicationThemeBackingView)
         }
         private let kind: Kind
 
@@ -204,11 +205,6 @@ enum AppThemeSurface {
                 kind = .scroll(background: scroll.backgroundColor)
             } else if let clip = view as? NSClipView {
                 kind = .clip(background: clip.backgroundColor)
-            } else if let effect = view as? NSVisualEffectView {
-                let backing = ApplicationThemeBackingView(frame: effect.bounds)
-                backing.autoresizingMask = [.width, .height]
-                effect.addSubview(backing, positioned: .below, relativeTo: nil)
-                kind = .effect(backing)
             } else { return nil }
         }
 
@@ -244,7 +240,6 @@ enum AppThemeSurface {
                 if table.backgroundColor != background { table.backgroundColor = background }
                 if table.gridColor != AppPalette.nsColor(.border) { table.gridColor = AppPalette.nsColor(.border) }
                 if table.usesAlternatingRowBackgroundColors { table.usesAlternatingRowBackgroundColors = false }
-            case .effect: break
             }
         }
 
@@ -266,17 +261,7 @@ enum AppThemeSurface {
                 table.backgroundColor = background
                 table.gridColor = grid
                 table.usesAlternatingRowBackgroundColors = alternating
-            case .effect(let backing): backing.removeFromSuperview()
             }
         }
-    }
-}
-
-private final class ApplicationThemeBackingView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func isAccessibilityElement() -> Bool { false }
-    override func draw(_ dirtyRect: NSRect) {
-        AppPalette.nsColor(.panel).setFill()
-        dirtyRect.fill()
     }
 }

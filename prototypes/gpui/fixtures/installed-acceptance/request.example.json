@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "desktop": "ubuntu2404-x64-wayland",
+  "previous": {
+    "archive": "/absolute/trusted-previous/DBeer-0.1.0-1-linux-x86_64.tar.gz",
+    "checksumFile": "/absolute/trusted-previous/DBeer-0.1.0-1-linux-x86_64.tar.gz.sha256",
+    "archiveSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "identitySha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "provenance": "trusted-prior-artifact"
+  },
+  "candidate": {
+    "archive": "/absolute/trusted-candidate/DBeer-0.2.0-1-linux-x86_64.tar.gz",
+    "checksumFile": "/absolute/trusted-candidate/DBeer-0.2.0-1-linux-x86_64.tar.gz.sha256",
+    "archiveSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "identitySha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "provenance": "trusted-candidate-artifact"
+  },
+  "selectorContracts": {
+    "previous": {"path": "/absolute/private/previous-native-selectors.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+    "candidate": {"path": "/absolute/private/candidate-native-selectors.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+  },
+  "executionPlan": {"path": "/absolute/private/reviewed-execution-plan.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+  "databasePair": ["16", "8.4"]
+}

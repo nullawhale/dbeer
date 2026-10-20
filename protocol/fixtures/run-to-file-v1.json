@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "capability": "capturedExportV1",
+  "export": {
+    "path": "/fixture/output.csv",
+    "format": "csv",
+    "nullMarker": "\\N",
+    "destination": {
+      "exists": true,
+      "size": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "modifiedNanoseconds": "1792368000000000000"
+    }
+  },
+  "progress": {
+    "type": "query.progress",
+    "requestId": "full-export",
+    "sessionId": "original-sql-session",
+    "queryId": "original-query",
+    "sequence": 3,
+    "resultIndex": 2050,
+    "rowCount": 9001
+  },
+  "sqlCompletedPublicationFailed": {
+    "type": "error",
+    "requestId": "full-export",
+    "sessionId": "original-sql-session",
+    "queryId": "original-query",
+    "category": "export",
+    "message": "SQL completed, but the file was not published.",
+    "connected": true,
+    "outcomeUnknown": false,
+    "transactionStatus": "transaction",
+    "sqlCompleted": true,
+    "exportPublication": "notPublished"
+  },
+  "sqlCompletedPublicationUnknown": {
+    "type": "error",
+    "requestId": "full-export",
+    "sessionId": "original-sql-session",
+    "queryId": "original-query",
+    "category": "export",
+    "message": "SQL completed, but file publication could not be verified.",
+    "connected": true,
+    "outcomeUnknown": false,
+    "transactionStatus": "idle",
+    "sqlCompleted": true,
+    "exportPublication": "unknown"
+  }
+}

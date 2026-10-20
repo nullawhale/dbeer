@@ -1,0 +1,215 @@
+{
+  "files": [
+    {
+      "path": "Contents/Helpers/dbeer-core",
+      "kind": "file",
+      "sha256": "ddd15ead12f280df1bdaf9ead36908ec41ed2a394a106c27e19b4d24b9b57211",
+      "bytes": 18217184,
+      "mode": "0o755"
+    },
+    {
+      "path": "Contents/Info.plist",
+      "kind": "file",
+      "sha256": "afa4df0576c4634303646573bc51ea8f4785d45e7c07e3feeac1ada77c6b12cf",
+      "bytes": 1018,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/MacOS/DBeer",
+      "kind": "file",
+      "sha256": "62bc112300c48580034aff3bd0113669d06c2e80a2c1ee0cd165cfd6e5599d6f",
+      "bytes": 7077296,
+      "mode": "0o755"
+    },
+    {
+      "path": "Contents/Resources/AppIcon.icns",
+      "kind": "file",
+      "sha256": "c11bec3a41df1ac4fe5ac3cabeae068e6628411e196945d1f1c94197c864c996",
+      "bytes": 264874,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/AppIconDark.icns",
+      "kind": "file",
+      "sha256": "fc1805650cf89741c20ccef62447191409e6a3bf312480e80d03cefe77334bf6",
+      "bytes": 267233,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/Assets.car",
+      "kind": "file",
+      "sha256": "7f90e8c43b1762fdec81362d5efc5ae53b27a4960bba2747f07bc2ca44dbda72",
+      "bytes": 18504,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Info.plist",
+      "kind": "file",
+      "sha256": "6c9473fa7f6b7253cdd2216007a311cb7bd952223b6e29a7cca466968f49935e",
+      "bytes": 1112,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/LICENSE-jetbrains.txt",
+      "kind": "file",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/LICENSE-vscode.txt",
+      "kind": "file",
+      "sha256": "9480271317925265e806a9a196aaa33410a962fa9d4d1e248a4a5187bc8c9df9",
+      "bytes": 1088,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/NOTICE-jetbrains.txt",
+      "kind": "file",
+      "sha256": "04efdbb6fc4cfccbf4b099a6be6a115c00f3a8d4e73782850f6aeb6ba06e9a26",
+      "bytes": 500,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/NOTICE.txt",
+      "kind": "file",
+      "sha256": "9d89fd8210d040f850e2f99991598be18cb90a4e838e9a82a99121ab78cdd04e",
+      "bytes": 310,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/dark_plus.json",
+      "kind": "file",
+      "sha256": "409f33088a5cfd6589384900ef80627787c568d367c25b12f31bc7940936e573",
+      "bytes": 4700,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/dark_vs.json",
+      "kind": "file",
+      "sha256": "97517bb4bdcdd6d4642453bf0114000ed74ff28aa1a8ef5d0a83f0440b8108b1",
+      "bytes": 7926,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/dbeer-dark.json",
+      "kind": "file",
+      "sha256": "216dd5c010eec16378f72e912df6201db938c485da6722868f4649a33fad38ee",
+      "bytes": 1491,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/dbeer-light.json",
+      "kind": "file",
+      "sha256": "196e8a2412916731fc1ea39099873968de817c2e07fe16a2bbc711725c60f8d1",
+      "bytes": 1493,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/jetbrains-darcula.icls",
+      "kind": "file",
+      "sha256": "2b93d8a375cf68e23bd17d722db06efe25887eb9a730bb199024e0c9d4248cec",
+      "bytes": 55629,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/jetbrains-default.icls",
+      "kind": "file",
+      "sha256": "2eda18f01b585f88d4008db3f5142123eb1436c0306d9249964922a8684ffaa0",
+      "bytes": 60552,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/light_plus.json",
+      "kind": "file",
+      "sha256": "26fbb053bec8ce2b65706d5fcb993da8c19174cfdbf35a49b465236b5ed26203",
+      "bytes": 4783,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/light_vs.json",
+      "kind": "file",
+      "sha256": "ac299fee01baf722a60b29d177c642b5ab94f87a20bf09015362d7dba890a310",
+      "bytes": 8924,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/solarized-dark-color-theme.json",
+      "kind": "file",
+      "sha256": "d0d54af2fd3fc4a5b01b41f6b99633a398b007f924d4120de710fc88e0334183",
+      "bytes": 12095,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/EditorThemes/solarized-light-color-theme.json",
+      "kind": "file",
+      "sha256": "9df1553f76c3f55f409b8897b7a9c538adb433f8338818e7e0da3765217c855e",
+      "bytes": 12312,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/mysql-logo.svg",
+      "kind": "file",
+      "sha256": "029b960573612cafab5234cf41d607af7174e42f4b2e8115959866f897d5be4d",
+      "bytes": 4949,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/Resources/postgresql-logo.svg",
+      "kind": "file",
+      "sha256": "1b3206cf6476574cd9cdbe174fe9fd5476f39985a1ba784e955d94612359d14d",
+      "bytes": 6913,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/_CodeSignature/CodeDirectory",
+      "kind": "file",
+      "sha256": "1fd1f5452d50b1000e4197971815e5b434da94ba1980170107c70019b50884db",
+      "bytes": 198,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/_CodeSignature/CodeRequirements",
+      "kind": "file",
+      "sha256": "987920904eab650e75788c054aa0b0524e6a80bfc71aa32df8d237a61743f986",
+      "bytes": 12,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/_CodeSignature/CodeResources",
+      "kind": "file",
+      "sha256": "d8a920bd3d08d8ae8d9eaafc135b9a9ac852d9f7d9598a64589a87c52d1dea55",
+      "bytes": 6464,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/DBeer_DBeer.bundle/Contents/_CodeSignature/CodeSignature",
+      "kind": "file",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/ToolbarIcon.svg",
+      "kind": "file",
+      "sha256": "a3acd17c7180fbec3e0099f82486275147b49e4d5ca326f3225d8917c90a259c",
+      "bytes": 929,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/Resources/ToolbarIconDark.svg",
+      "kind": "file",
+      "sha256": "f6f26f2239f5eb216acf1a84a1d023d50dab6ef9889f6cbad22578d5bee92b23",
+      "bytes": 934,
+      "mode": "0o644"
+    },
+    {
+      "path": "Contents/_CodeSignature/CodeResources",
+      "kind": "file",
+      "sha256": "b2f7b54194fc5e537038ed3fbd1a9a6bef0794e6a2142d0f37ef127d3671a973",
+      "bytes": 10791,
+      "mode": "0o644"
+    }
+  ],
+  "contentSHA256": "02dd47029db5e4b3bb9f7729244731b29c7ee1f8de36ffdcf15f42168b022fc9"
+}

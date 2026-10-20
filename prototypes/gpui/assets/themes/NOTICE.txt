@@ -1,0 +1,5 @@
+Bundled VS Code color themes
+Source: https://github.com/microsoft/vscode/tree/09fe3fcbc1514bc35742dc4325d05b7d7adfcad2
+Copyright (c) 2015 - present Microsoft Corporation
+License: MIT; see LICENSE-vscode.txt
+Files are unmodified upstream color-theme resources. DBeer Native themes are original DBeer resources.

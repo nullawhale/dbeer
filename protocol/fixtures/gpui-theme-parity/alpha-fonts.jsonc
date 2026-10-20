@@ -1,0 +1,12 @@
+{
+ // Strings keep comment delimiters.
+ "name": "Shared JSONC https://example.invalid/a/*literal*/", "type": "hcDark",
+ "colors": {"editor.background": "#11223388", "editor.selectionBackground": "#1234",},
+ "tokenColors": [
+  {"settings": {"foreground":"#abc", "background":"#fff", "caret":"#f008", "fontStyle":"bold italic"}},
+  {"scope":"keyword, storage.type", "settings":{"foreground":"#1234", "background":"#01020304"}},
+  {"scope":"source.sql keyword.control", "settings":{"foreground":"#112233", "fontStyle":""}},
+  {"scope":"keyword - keyword.control", "settings":{"foreground":"#fff"}},
+  {"scope":"(keyword | string)", "settings":{"foreground":"#000"}},
+ ],
+}

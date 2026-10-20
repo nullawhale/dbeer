@@ -1,0 +1,1 @@
+{"version": 2, "profiles": [{"name": "Team PostgreSQL", "engine": "mysql", "host": "pg.example.test", "port": 5432, "database": "brewery", "user": "analyst", "sslMode": "prefer", "sslRootCert": "/Users/example/CA/team.pem", "policy": {"environment": "production", "readOnly": true}}]}
