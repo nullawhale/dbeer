@@ -1,8 +1,7 @@
 name: CI
 
+# Automatic CI is temporarily paused. Restore push and pull_request to resume.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
