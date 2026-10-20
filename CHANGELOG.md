@@ -2,6 +2,8 @@
 
 ## Next release — unreleased
 
+- DBeer is now licensed under GNU GPL version 3 only (GPL-3.0-only). The license text is included in macOS application bundles and release ZIP archives.
+
 - Cassandra table grids show pinned, color-coded partition labels with key tooltips. Clicking a label selects every loaded row in that partition, including nonadjacent and offscreen rows. The status beside Apply counts partitions in pending edits, and atomic Apply is disabled when edits span partitions or a partition key is unavailable. Labels are local to the loaded page and stay out of copied/exported data.
 
 - Connection environments now appear beside the profile name in the macOS sidebar, retaining their muted gray styling.

@@ -201,8 +201,19 @@ Only this UI runner requires full Xcode and control of a separate application; D
 
 ## Internal release
 
-After verification on the owner's machine, run `./scripts/package-release.sh`. It builds the application with the persistent signature, verifies signing, and creates `build/releases/DBeer-<version>-<build>-macos-arm64.zip` and .zip.sha256. The archive includes the changelog and [installation instructions](INSTALL.md). Existing releases are not overwritten, CI signatures are rejected, and nothing is published.
+After verification on the owner's machine, run `./scripts/package-release.sh`. It builds the application with the persistent signature, verifies signing, and creates `build/releases/DBeer-<version>-<build>-macos-arm64.zip` and .zip.sha256. The archive includes the [license](LICENSE), changelog and [installation instructions](INSTALL.md). Existing releases are not overwritten, CI signatures are rejected, and nothing is published.
 
 The current version is **0.1.0**, an early internal build. Installation and update acceptance from build 5 to build 6 on the current Mac completed with **PASS**. On October 18, 2026, the owner waived the required second-Mac check. Finder/Gatekeeper and installation on a clean second device have not been verified.
 
 The first v0.2.0 release is planned around execution safety, history, and copying. Result snapshots, SQL folders, data and schema comparison, additional engines, and Windows/Linux remain later stages. MCP comes last among engineering tasks. Public overview sources: [dbeer-landing](https://github.com/nullawhale/dbeer-landing); a feature implemented in the working branch does not imply a newly published archive.
+
+## License
+
+DBeer is licensed under the [GNU General Public License, version 3 only](LICENSE)
+(`SPDX-License-Identifier: GPL-3.0-only`).
+
+DBeer is distributed without any warranty, including the implied warranties of
+merchantability or fitness for a particular purpose. See [LICENSE](LICENSE) for
+the full terms.
+
+Third-party code and resources retain their respective licenses and notices.
