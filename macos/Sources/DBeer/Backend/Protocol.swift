@@ -1,21 +1,25 @@
 import Foundation
 
 enum BackendProtocol {
-    static let version = 2
+    static let version = 4
     static let maxFrameBytes = 16 * 1_024 * 1_024
 }
 
 enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
-    case postgresql, mysql
+    case postgresql, mysql, cassandra
 
+    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra]
     var id: String { rawValue }
-    var displayName: String { self == .postgresql ? "PostgreSQL" : "MySQL" }
-    var defaultPort: Int { self == .postgresql ? 5432 : 3306 }
-    var defaultDatabase: String { self == .postgresql ? "postgres" : "mysql" }
-    var defaultUser: String { self == .postgresql ? "postgres" : "root" }
+    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra" } }
+    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042 } }
+    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra: "" } }
+    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra: "" } }
     var sslModes: [String] {
-        self == .postgresql ? ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"] :
-            ["disable", "require", "verify-ca", "verify-full"]
+        switch self {
+        case .postgresql: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
+        case .mysql: ["disable", "require", "verify-ca", "verify-full"]
+        case .cassandra: ["verify-full", "disable"]
+        }
     }
 }
 
@@ -28,9 +32,15 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     var password: String
     var sslMode: String
     var sslRootCert: String?
+    var policy: ExecutionPolicy
+    var contactPoints: [String]?
+    var localDatacenter: String?
+    var consistency: String?
 
     init(host: String, port: Int, database: String, user: String, password: String,
-         sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql) {
+         sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql,
+         policy: ExecutionPolicy = ExecutionPolicy(), contactPoints: [String]? = nil,
+         localDatacenter: String? = nil, consistency: String? = nil) {
         self.engine = engine
         self.host = host
         self.port = port
@@ -39,10 +49,14 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
         self.password = password
         self.sslMode = sslMode
         self.sslRootCert = sslRootCert
+        self.policy = policy
+        self.contactPoints = contactPoints
+        self.localDatacenter = localDatacenter
+        self.consistency = consistency ?? (engine == .cassandra ? "LOCAL_QUORUM" : nil)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, host, port, database, user, password, sslMode, sslRootCert
+        case engine, host, port, database, user, password, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency
     }
 
     init(from decoder: Decoder) throws {
@@ -55,10 +69,16 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
         password = try values.decode(String.self, forKey: .password)
         sslMode = try values.decode(String.self, forKey: .sslMode)
         sslRootCert = try values.decodeIfPresent(String.self, forKey: .sslRootCert)
+        policy = try values.decodeIfPresent(ExecutionPolicy.self, forKey: .policy) ?? ExecutionPolicy()
+        contactPoints = try values.decodeIfPresent([String].self, forKey: .contactPoints)
+        localDatacenter = try values.decodeIfPresent(String.self, forKey: .localDatacenter)
+        consistency = try values.decodeIfPresent(String.self, forKey: .consistency) ?? (engine == .cassandra ? "LOCAL_QUORUM" : nil)
     }
 }
 
 struct CatalogRequest: Codable, Sendable, Equatable {
+    /// `completion` returns 200 objects per page with JSON column-name and
+    /// structured foreign-key and function-signature arrays; rules belong to the helper.
     var kind: String
     var schema: String?
     var object: String?
@@ -66,6 +86,7 @@ struct CatalogRequest: Codable, Sendable, Equatable {
     var identity: String?
     var search: String?
     var page: Int?
+    var cursor: String?
     var sort: [CatalogSort]?
     var filters: [CatalogFilter]?
 }
@@ -81,10 +102,20 @@ struct CatalogFilter: Codable, Sendable, Equatable {
     var value: String?
 }
 
+struct ExportDestination: Codable, Sendable, Equatable {
+    var exists: Bool
+    var identity: String?
+    var parentIdentity: String?
+    var size: Int64
+    var sha256: String
+    var modifiedNanoseconds: String?
+}
+
 struct ExportRequest: Codable, Sendable, Equatable {
     var path: String
     var format: String
     var nullMarker: String?
+    var destination: ExportDestination?
 }
 
 struct QueryResultSet: Codable, Sendable, Equatable {
@@ -95,9 +126,13 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     var displayedRowCount: Int = 0
     var truncated: Bool = false
     var displayNotice: String?
+    var affectedRowCountKnown: Bool?
+    var nextCursor: String?
+
+    static func validCursor(_ value: String) -> Bool { BackendMessage.validID(value) && !value.contains("\0") }
 
     func valid(streamed: Bool = false) -> Bool {
-        rowCount >= 0 && displayedRowCount >= 0 &&
+        (nextCursor == nil || Self.validCursor(nextCursor!)) && rowCount >= 0 && displayedRowCount >= 0 &&
             (streamed ? rows.isEmpty : displayedRowCount == rows.count) &&
             columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
                 ($0.element.encoding == nil || $0.element.encoding == "base64") } &&
@@ -118,6 +153,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var export: ExportRequest?
     var sequence: Int?
     var changes: ChangesRequest?
+    var operations: [OperationRequest]?
+    var authorization: String?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -159,6 +196,11 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "shutdown", requestId: UUID().uuidString)
     }
 
+    static func assess(sessionId: String, operations: [OperationRequest]) -> Self {
+        Self(type: "operation.assess", requestId: UUID().uuidString, sessionId: sessionId,
+            queryId: UUID().uuidString, operations: operations)
+    }
+
     var terminalType: String? {
         switch type {
         case "hello": "hello.ack"
@@ -167,13 +209,14 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "cancel": "cancel.ack"
         case "disconnect": "disconnect.ack"
         case "shutdown": "shutdown.ack"
+        case "operation.assess": "operation.assessment"
         default: nil
         }
     }
 }
 
 enum TransactionStatus: String, Codable, Sendable {
-    case idle, transaction, failedTransaction
+    case idle, transaction, failedTransaction, unsupported
 }
 
 struct ResultColumn: Codable, Sendable, Equatable {
@@ -223,7 +266,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
     let type: String
     let requestId: String
     var protocolVersion: Int?
+    var buildIdentity: GPUIProductBuildIdentity?
     var engine: DatabaseEngine?
+    var currentKeyspace: String?
     var capabilities: [String]?
     var sessionId: String?
     var queryId: String?
@@ -236,6 +281,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var displayedRowCount: Int?
     var truncated: Bool?
     var displayNotice: String?
+    var affectedRowCountKnown: Bool?
+    var nextCursor: String?
     var status: String?
     var category: String?
     var message: String?
@@ -248,17 +295,28 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var exportPath: String?
     var exportFormat: String?
     var exportRowCount: Int64?
+    var appliedChangeCount: Int?
     var connected: Bool?
     var outcomeUnknown: Bool?
+    var sqlCompleted: Bool?
+    var sqlNotExecuted: Bool?
+    var exportPublication: String?
+    var assessment: OperationAssessment?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
         if let sessionId, !Self.validID(sessionId) { throw BackendTransportError(.invalidMessage) }
         if let queryId, !Self.validID(queryId) { throw BackendTransportError(.invalidMessage) }
+        if let nextCursor, !QueryResultSet.validCursor(nextCursor) { throw BackendTransportError(.invalidMessage) }
+        if let appliedChangeCount, !(0...1000).contains(appliedChangeCount) || !["query.result", "error"].contains(type) {
+            throw BackendTransportError(.invalidMessage)
+        }
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
+        case "query.progress": valid = (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
         case "query.started": valid = sessionId != nil && queryId != nil
         case "query.chunk":
             valid = sessionId != nil && queryId != nil && (sequence ?? 0) > 0 &&
@@ -285,7 +343,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard valid else { throw BackendTransportError(.invalidMessage) }
+        guard sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
+              sqlCompleted != true || (type == "error" && outcomeUnknown != true),
+              exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }
     }
 
     static func validID(_ value: String) -> Bool {
@@ -302,7 +362,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
     enum Code: Sendable, Equatable {
         case missingExecutable, alreadyStarted, notReady, invalidMessage, frameTooLarge
         case invalidUTF8, unexpectedEOF, processExited(Int32), writeFailed
-        case incompatibleVersion(Int), handshakeTimeout, duplicateRequest
+        case incompatibleVersion(Int), handshakeTimeout, duplicateRequest, unsupportedCapturedExport
     }
 
     let code: Code
@@ -327,6 +387,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
         case .writeFailed: explanation = "The command could not be sent to the helper."
         case .incompatibleVersion(let version): explanation = "The helper uses incompatible protocol version \(version)."
         case .handshakeTimeout: explanation = "The helper did not complete its handshake within 5 seconds."
+        case .unsupportedCapturedExport: explanation = "The helper does not support captured full export. SQL was not executed."
         case .duplicateRequest: explanation = "A command identifier was reused."
         }
         return explanation + (outcomeUnknown ? " The SQL outcome is unknown; the command was not repeated." : "")
@@ -369,9 +430,16 @@ struct NDJSONFramer: Sendable {
 
     static func decode(_ frame: Data) throws -> BackendMessage {
         guard String(data: frame, encoding: .utf8) != nil else { throw BackendTransportError(.invalidUTF8) }
-        guard let reply = try? JSONDecoder().decode(BackendMessage.self, from: frame) else {
+        let identity: GPUIProductBuildIdentity?
+        do {
+            identity = try GPUIProductBuildIdentity.optionalFromFrame(frame, maximumFrameBytes: BackendProtocol.maxFrameBytes)
+        } catch { throw BackendTransportError(.invalidMessage) }
+        guard var reply = try? JSONDecoder().decode(BackendMessage.self, from: frame) else {
             throw BackendTransportError(.invalidMessage)
         }
+        // Keep the value validated from original bytes, before JSONDecoder can
+        // discard duplicate keys or normalize an oversized nested representation.
+        reply.buildIdentity = identity
         try reply.validate()
         return reply
     }

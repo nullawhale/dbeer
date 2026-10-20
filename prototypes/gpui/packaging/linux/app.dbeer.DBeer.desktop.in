@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=DBeer
+Comment=SQL client for PostgreSQL and MySQL
+Exec=@QUOTED_ABSOLUTE_EXECUTABLE@
+Icon=app.dbeer.DBeer
+Terminal=false
+Categories=Development;Database;
+StartupWMClass=app.dbeer.DBeer
+StartupNotify=true

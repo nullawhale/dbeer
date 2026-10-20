@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "productId": "app.dbeer.DBeer",
+  "version": "0.2.0",
+  "buildNumber": "1",
+  "target": "windows-x86_64-msvc",
+  "protocolVersion": 3,
+  "contractRevision": "gpui-v3-captured-export-v1",
+  "sourceSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "capabilities": [
+    "capturedExportV1"
+  ]
+}

@@ -1,0 +1,1347 @@
+{
+  "schemaVersion": 1,
+  "origin": "declared-synthetic-corpus-and-protocol-schema",
+  "applicationOutputUsed": false,
+  "runtimeObserved": false,
+  "engines": {
+    "postgresql": {
+      "valuesCount": 1205,
+      "observer": {
+        "values-head": {
+          "columns": [
+            {
+              "index": 0,
+              "name": "id",
+              "engine": "postgresql",
+              "nativeType": "int8",
+              "typeOid": 20
+            },
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "postgresql",
+              "nativeType": "text",
+              "typeOid": 25
+            },
+            {
+              "index": 2,
+              "name": "exact_value",
+              "engine": "postgresql",
+              "nativeType": "numeric",
+              "typeOid": 1700
+            },
+            {
+              "index": 3,
+              "name": "payload",
+              "engine": "postgresql",
+              "nativeType": "bytea",
+              "encoding": "base64",
+              "typeOid": 17
+            },
+            {
+              "index": 4,
+              "name": "computed_length",
+              "engine": "postgresql",
+              "nativeType": "int4",
+              "typeOid": 23
+            }
+          ],
+          "rows": [
+            [
+              "1",
+              null,
+              "9007199254740993.123456789000000000",
+              "AP8=",
+              null
+            ],
+            [
+              "2",
+              "",
+              "-0.000000000000000001",
+              "",
+              "0"
+            ],
+            [
+              "3",
+              "NULL",
+              null,
+              null,
+              "4"
+            ],
+            [
+              "4",
+              "é, \"😀\"\r\n世界",
+              "1.000000000000000000",
+              "AA==",
+              "11"
+            ],
+            [
+              "5",
+              "\\N",
+              "2.000000000000000000",
+              null,
+              "2"
+            ]
+          ]
+        },
+        "composite": {
+          "columns": [
+            {
+              "index": 0,
+              "name": "a",
+              "engine": "postgresql",
+              "nativeType": "int4",
+              "typeOid": 23
+            },
+            {
+              "index": 1,
+              "name": "b",
+              "engine": "postgresql",
+              "nativeType": "int4",
+              "typeOid": 23
+            },
+            {
+              "index": 2,
+              "name": "label",
+              "engine": "postgresql",
+              "nativeType": "text",
+              "typeOid": 25
+            }
+          ],
+          "rows": [
+            [
+              "1",
+              "1",
+              "one"
+            ],
+            [
+              "1",
+              "2",
+              "two"
+            ],
+            [
+              "2",
+              "1",
+              "three"
+            ]
+          ]
+        }
+      },
+      "exports": {
+        "loaded-json": {
+          "format": "json",
+          "expectedSha256": "71c42af6e14b53be8f0bdcaf4b7084c5fef482ea5501f5f144125fe0f470b7ca",
+          "expectedSize": 103537,
+          "complete": false,
+          "engine": "postgresql",
+          "countQuery": "values-count",
+          "rowCounts": [
+            1000
+          ]
+        },
+        "loaded-csv": {
+          "format": "csv",
+          "expectedSha256": "e5bafe3e468d8773c801b7bdb18311f07177bf7b4db31e8edc63b5a2e621a05a",
+          "expectedSize": 58719,
+          "complete": false,
+          "engine": "postgresql",
+          "countQuery": "values-count",
+          "csvRecordCount": 1001
+        },
+        "complete-json": {
+          "format": "json",
+          "expectedSha256": "42bf6fa36843324921ce95df9f46d811a1a8190918c74b758c7a4f1593efce2f",
+          "expectedSize": 63199,
+          "complete": true,
+          "engine": "postgresql",
+          "countQuery": "values-count",
+          "rowCounts": [
+            1205
+          ]
+        },
+        "complete-csv": {
+          "format": "csv",
+          "expectedSha256": "89ec012a8e687b567862cc890357ce0c23acae4abea4fefc05052e0d49988624",
+          "expectedSize": 70010,
+          "complete": true,
+          "engine": "postgresql",
+          "countQuery": "values-count",
+          "csvRecordCount": 1206
+        }
+      },
+      "exactlyOnceComposite": {
+        "columns": [
+          {
+            "index": 0,
+            "name": "a",
+            "engine": "postgresql",
+            "nativeType": "int4",
+            "typeOid": 23
+          },
+          {
+            "index": 1,
+            "name": "b",
+            "engine": "postgresql",
+            "nativeType": "int4",
+            "typeOid": 23
+          },
+          {
+            "index": 2,
+            "name": "label",
+            "engine": "postgresql",
+            "nativeType": "text",
+            "typeOid": 25
+          }
+        ],
+        "rows": [
+          [
+            "1",
+            "1",
+            "one"
+          ],
+          [
+            "1",
+            "2",
+            "two"
+          ],
+          [
+            "2",
+            "1",
+            "three!"
+          ]
+        ]
+      },
+      "wideGrid": {
+        "rowCount": 1000,
+        "columnCount": 32,
+        "typedSha256": "500e0833b69f13f4595705693ca04fcec1e672c0676a95e26adc3f4a4bec4df3"
+      },
+      "selectedHead": {
+        "cell-empty": {
+          "columns": [
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "postgresql",
+              "nativeType": "text",
+              "typeOid": 25
+            }
+          ],
+          "rows": [
+            [
+              ""
+            ]
+          ]
+        },
+        "rectangle": {
+          "columns": [
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "postgresql",
+              "nativeType": "text",
+              "typeOid": 25
+            },
+            {
+              "index": 2,
+              "name": "exact_value",
+              "engine": "postgresql",
+              "nativeType": "numeric",
+              "typeOid": 1700
+            }
+          ],
+          "rows": [
+            [
+              null,
+              "9007199254740993.123456789000000000"
+            ],
+            [
+              "",
+              "-0.000000000000000001"
+            ],
+            [
+              "NULL",
+              null
+            ]
+          ]
+        },
+        "sparse-rows": {
+          "columns": [
+            {
+              "index": 0,
+              "name": "id",
+              "engine": "postgresql",
+              "nativeType": "int8",
+              "typeOid": 20
+            },
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "postgresql",
+              "nativeType": "text",
+              "typeOid": 25
+            },
+            {
+              "index": 2,
+              "name": "exact_value",
+              "engine": "postgresql",
+              "nativeType": "numeric",
+              "typeOid": 1700
+            },
+            {
+              "index": 3,
+              "name": "payload",
+              "engine": "postgresql",
+              "nativeType": "bytea",
+              "encoding": "base64",
+              "typeOid": 17
+            },
+            {
+              "index": 4,
+              "name": "computed_length",
+              "engine": "postgresql",
+              "nativeType": "int4",
+              "typeOid": 23
+            }
+          ],
+          "rows": [
+            [
+              "1",
+              null,
+              "9007199254740993.123456789000000000",
+              "AP8=",
+              null
+            ],
+            [
+              "4",
+              "é, \"😀\"\r\n世界",
+              "1.000000000000000000",
+              "AA==",
+              "11"
+            ]
+          ]
+        }
+      },
+      "largeText": {
+        "byteCount": 1048576,
+        "sha256": "8f990ba0b577b51cf009ea049368c16bbda1b21e1b93be07a824758bb253c39b"
+      },
+      "additionalSetupObservers": {
+        "baseline": {
+          "acceptance-effects": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "0"
+              ],
+              [
+                "full-export",
+                "0"
+              ],
+              [
+                "sql-commit",
+                "0"
+              ]
+            ]
+          },
+          "acceptance-receipts": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ]
+            ]
+          },
+          "acceptance-apply": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "id",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              },
+              {
+                "index": 1,
+                "name": "label",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 2,
+                "name": "exact_value",
+                "engine": "postgresql",
+                "nativeType": "numeric",
+                "typeOid": 1700
+              },
+              {
+                "index": 3,
+                "name": "payload",
+                "engine": "postgresql",
+                "nativeType": "bytea",
+                "encoding": "base64",
+                "typeOid": 17
+              },
+              {
+                "index": 4,
+                "name": "computed_length",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "1",
+                "before",
+                "1.000000000000000000",
+                "AP8=",
+                "6"
+              ],
+              [
+                "2",
+                "second",
+                "2.000000000000000000",
+                null,
+                "6"
+              ]
+            ]
+          }
+        },
+        "exactlyOnce": {
+          "apply-commit": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "1"
+              ],
+              [
+                "full-export",
+                "0"
+              ],
+              [
+                "sql-commit",
+                "0"
+              ]
+            ]
+          },
+          "full-export": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "0"
+              ],
+              [
+                "full-export",
+                "1"
+              ],
+              [
+                "sql-commit",
+                "0"
+              ]
+            ]
+          },
+          "sql-commit": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "0"
+              ],
+              [
+                "full-export",
+                "0"
+              ],
+              [
+                "sql-commit",
+                "1"
+              ]
+            ]
+          }
+        },
+        "currentObserverAllowlistSupported": true,
+        "setupApi": "OwnedDatabases.setup_acceptance_effects(original_record)",
+        "setupInstalled": false,
+        "scriptReceipts": {
+          "script-success": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-success",
+                "1",
+                "11"
+              ],
+              [
+                "script-success",
+                "2",
+                "22"
+              ],
+              [
+                "script-success",
+                "3",
+                "33"
+              ]
+            ]
+          },
+          "script-first-error": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ]
+            ]
+          },
+          "script-middle-error": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "postgresql",
+                "nativeType": "int4",
+                "typeOid": 23
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "1",
+                "11"
+              ]
+            ]
+          }
+        }
+      }
+    },
+    "mysql": {
+      "valuesCount": 1005,
+      "observer": {
+        "values-head": {
+          "columns": [
+            {
+              "index": 0,
+              "name": "id",
+              "engine": "mysql",
+              "nativeType": "BIGINT"
+            },
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "mysql",
+              "nativeType": "VARCHAR"
+            },
+            {
+              "index": 2,
+              "name": "exact_value",
+              "engine": "mysql",
+              "nativeType": "DECIMAL"
+            },
+            {
+              "index": 3,
+              "name": "payload",
+              "engine": "mysql",
+              "nativeType": "BLOB",
+              "encoding": "base64"
+            },
+            {
+              "index": 4,
+              "name": "computed_length",
+              "engine": "mysql",
+              "nativeType": "INT"
+            }
+          ],
+          "rows": [
+            [
+              "1",
+              null,
+              "9007199254740993.123456789000000000",
+              "AP8=",
+              null
+            ],
+            [
+              "2",
+              "",
+              "-0.000000000000000001",
+              "",
+              "0"
+            ],
+            [
+              "3",
+              "NULL",
+              null,
+              null,
+              "4"
+            ],
+            [
+              "4",
+              "é, \"😀\"\r\n世界",
+              "1.000000000000000000",
+              "AA==",
+              "11"
+            ],
+            [
+              "5",
+              "\\N",
+              "2.000000000000000000",
+              null,
+              "2"
+            ]
+          ]
+        },
+        "composite": {
+          "columns": [
+            {
+              "index": 0,
+              "name": "a",
+              "engine": "mysql",
+              "nativeType": "INT"
+            },
+            {
+              "index": 1,
+              "name": "b",
+              "engine": "mysql",
+              "nativeType": "INT"
+            },
+            {
+              "index": 2,
+              "name": "label",
+              "engine": "mysql",
+              "nativeType": "BLOB"
+            }
+          ],
+          "rows": [
+            [
+              "1",
+              "1",
+              "one"
+            ],
+            [
+              "1",
+              "2",
+              "two"
+            ],
+            [
+              "2",
+              "1",
+              "three"
+            ]
+          ]
+        }
+      },
+      "exports": {
+        "loaded-json": {
+          "format": "json",
+          "expectedSha256": "6b5dd07bf1c7b45aa5023e3c08e37c47303bfc85f1fcbe2a0afb1b6586f53247",
+          "expectedSize": 103432,
+          "complete": false,
+          "engine": "mysql",
+          "countQuery": "values-count",
+          "rowCounts": [
+            1000
+          ]
+        },
+        "loaded-csv": {
+          "format": "csv",
+          "expectedSha256": "469550a41159f3c173ac393699ca1ff9e6c2862eba740502622191e49b79088c",
+          "expectedSize": 58715,
+          "complete": false,
+          "engine": "mysql",
+          "countQuery": "values-count",
+          "csvRecordCount": 1001
+        },
+        "complete-json": {
+          "format": "json",
+          "expectedSha256": "0de10f5a9ea5cfa5dd6463be7f989c671a1b19d81b6cfd19fd41f6ade484707e",
+          "expectedSize": 52334,
+          "complete": true,
+          "engine": "mysql",
+          "countQuery": "values-count",
+          "rowCounts": [
+            1005
+          ]
+        },
+        "complete-csv": {
+          "format": "csv",
+          "expectedSha256": "5170b40e045212de65a93c618864518b7fa6c487842c373e4311f05141412d51",
+          "expectedSize": 58004,
+          "complete": true,
+          "engine": "mysql",
+          "countQuery": "values-count",
+          "csvRecordCount": 1006
+        }
+      },
+      "exactlyOnceComposite": {
+        "columns": [
+          {
+            "index": 0,
+            "name": "a",
+            "engine": "mysql",
+            "nativeType": "INT"
+          },
+          {
+            "index": 1,
+            "name": "b",
+            "engine": "mysql",
+            "nativeType": "INT"
+          },
+          {
+            "index": 2,
+            "name": "label",
+            "engine": "mysql",
+            "nativeType": "BLOB"
+          }
+        ],
+        "rows": [
+          [
+            "1",
+            "1",
+            "one"
+          ],
+          [
+            "1",
+            "2",
+            "two"
+          ],
+          [
+            "2",
+            "1",
+            "three!"
+          ]
+        ]
+      },
+      "wideGrid": {
+        "rowCount": 1000,
+        "columnCount": 32,
+        "typedSha256": "c394805af1807fd1be6fd6d1561852a0ca912b8c36a64d9efd0bb309b2e9190a"
+      },
+      "selectedHead": {
+        "cell-empty": {
+          "columns": [
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "mysql",
+              "nativeType": "VARCHAR"
+            }
+          ],
+          "rows": [
+            [
+              ""
+            ]
+          ]
+        },
+        "rectangle": {
+          "columns": [
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "mysql",
+              "nativeType": "VARCHAR"
+            },
+            {
+              "index": 2,
+              "name": "exact_value",
+              "engine": "mysql",
+              "nativeType": "DECIMAL"
+            }
+          ],
+          "rows": [
+            [
+              null,
+              "9007199254740993.123456789000000000"
+            ],
+            [
+              "",
+              "-0.000000000000000001"
+            ],
+            [
+              "NULL",
+              null
+            ]
+          ]
+        },
+        "sparse-rows": {
+          "columns": [
+            {
+              "index": 0,
+              "name": "id",
+              "engine": "mysql",
+              "nativeType": "BIGINT"
+            },
+            {
+              "index": 1,
+              "name": "label",
+              "engine": "mysql",
+              "nativeType": "VARCHAR"
+            },
+            {
+              "index": 2,
+              "name": "exact_value",
+              "engine": "mysql",
+              "nativeType": "DECIMAL"
+            },
+            {
+              "index": 3,
+              "name": "payload",
+              "engine": "mysql",
+              "nativeType": "BLOB",
+              "encoding": "base64"
+            },
+            {
+              "index": 4,
+              "name": "computed_length",
+              "engine": "mysql",
+              "nativeType": "INT"
+            }
+          ],
+          "rows": [
+            [
+              "1",
+              null,
+              "9007199254740993.123456789000000000",
+              "AP8=",
+              null
+            ],
+            [
+              "4",
+              "é, \"😀\"\r\n世界",
+              "1.000000000000000000",
+              "AA==",
+              "11"
+            ]
+          ]
+        }
+      },
+      "largeText": {
+        "byteCount": 1048576,
+        "sha256": "8f990ba0b577b51cf009ea049368c16bbda1b21e1b93be07a824758bb253c39b"
+      },
+      "additionalSetupObservers": {
+        "baseline": {
+          "acceptance-effects": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "0"
+              ],
+              [
+                "full-export",
+                "0"
+              ],
+              [
+                "sql-commit",
+                "0"
+              ]
+            ]
+          },
+          "acceptance-receipts": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "mysql",
+                "nativeType": "INT"
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ]
+            ]
+          },
+          "acceptance-apply": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "id",
+                "engine": "mysql",
+                "nativeType": "INT"
+              },
+              {
+                "index": 1,
+                "name": "label",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 2,
+                "name": "exact_value",
+                "engine": "mysql",
+                "nativeType": "DECIMAL"
+              },
+              {
+                "index": 3,
+                "name": "payload",
+                "engine": "mysql",
+                "nativeType": "BLOB",
+                "encoding": "base64"
+              },
+              {
+                "index": 4,
+                "name": "computed_length",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "1",
+                "before",
+                "1.000000000000000000",
+                "AP8=",
+                "6"
+              ],
+              [
+                "2",
+                "second",
+                "2.000000000000000000",
+                null,
+                "6"
+              ]
+            ]
+          }
+        },
+        "exactlyOnce": {
+          "apply-commit": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "1"
+              ],
+              [
+                "full-export",
+                "0"
+              ],
+              [
+                "sql-commit",
+                "0"
+              ]
+            ]
+          },
+          "full-export": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "0"
+              ],
+              [
+                "full-export",
+                "1"
+              ],
+              [
+                "sql-commit",
+                "0"
+              ]
+            ]
+          },
+          "sql-commit": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "commits",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "apply-commit",
+                "0"
+              ],
+              [
+                "full-export",
+                "0"
+              ],
+              [
+                "sql-commit",
+                "1"
+              ]
+            ]
+          }
+        },
+        "currentObserverAllowlistSupported": true,
+        "setupApi": "OwnedDatabases.setup_acceptance_effects(original_record)",
+        "setupInstalled": false,
+        "scriptReceipts": {
+          "script-success": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "mysql",
+                "nativeType": "INT"
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-success",
+                "1",
+                "11"
+              ],
+              [
+                "script-success",
+                "2",
+                "22"
+              ],
+              [
+                "script-success",
+                "3",
+                "33"
+              ]
+            ]
+          },
+          "script-first-error": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "mysql",
+                "nativeType": "INT"
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ]
+            ]
+          },
+          "script-middle-error": {
+            "columns": [
+              {
+                "index": 0,
+                "name": "case_id",
+                "engine": "mysql",
+                "nativeType": "VARCHAR"
+              },
+              {
+                "index": 1,
+                "name": "statement_ordinal",
+                "engine": "mysql",
+                "nativeType": "INT"
+              },
+              {
+                "index": 2,
+                "name": "marker",
+                "engine": "mysql",
+                "nativeType": "INT"
+              }
+            ],
+            "rows": [
+              [
+                "script-first-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "0",
+                "0"
+              ],
+              [
+                "script-middle-error",
+                "1",
+                "11"
+              ]
+            ]
+          }
+        }
+      }
+    }
+  },
+  "sourcePins": {
+    "prototypes/gpui/parity/fixtures/postgresql.sql": "189a3b26f5d74474515df963a8ffc8858d3bdb7f2154cc2c4042e444162e0ac0",
+    "prototypes/gpui/parity/fixtures/mysql.sql": "e2d9ceb3d915e8db1f27677d80a790a51676c2e56eb623eb2ff85953d64da0a1",
+    "helper/internal/protocol/protocol.go": "fe2980a883374cda9c627068839f3d6f5b4729d6e42c92f34e7c2d247811a039",
+    "helper/internal/exportfile/export.go": "0be416a89c8f6b933d80fdf7b3a5497a52f54fb65f471902b39e56dfe2f1cf02",
+    "prototypes/gpui/src/exports.rs": "5f4a0cfff18816b2345b4da3fbb1beb2075dd34bed22b66ee134ec38d029ff03",
+    "prototypes/gpui/fixtures/installed-acceptance/recipes/effects/postgresql.sql": "6e1b660839d4fe87ef8717d52609e12239315dc5bf49075652ffd6262e227878",
+    "prototypes/gpui/fixtures/installed-acceptance/recipes/effects/mysql.sql": "650a31afd0bf7d6d56a4c94fc8ef4d83c522311725c4de71f2b1b0fc0018237d",
+    "helper/internal/postgres/changes.go": "586473837d5bd0d8bc3eae663677ecb933bdf8b7d679fbcf43bca2a6ea09441e",
+    "helper/internal/mysql/changes.go": "e81029a13972c110b8baea48d4891c010324c949535edf49aaa61a5d75757ae8"
+  }
+}

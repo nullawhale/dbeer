@@ -99,6 +99,7 @@ func (h *pgHarness) connect() string {
 func (h *pgHarness) start(id, sql string) protocol.Command {
 	h.t.Helper()
 	command := protocol.Command{Type: "execute", RequestID: h.id(), SessionID: id, QueryID: h.id(), SQL: sql}
+	command = h.authorized(command)
 	h.send(command)
 	response := h.receive()
 	if response.Type != "query.started" || response.RequestID != command.RequestID || response.SessionID != id || response.QueryID != command.QueryID {
@@ -244,4 +245,16 @@ func TestPostgresSessionLossInvalidatesOnlyItsOwnSession(t *testing.T) {
 	if response := h.receive(); response.Type != "error" || response.Connected || response.OutcomeUnknown {
 		t.Fatal("failed session remained available after connection loss")
 	}
+}
+
+// Integration fixtures explicitly acknowledge their complete operation payload.
+func (h *pgHarness) authorized(command protocol.Command) protocol.Command {
+	h.t.Helper()
+	h.send(protocol.Command{Type: "operation.assess", RequestID: h.id(), SessionID: command.SessionID, QueryID: h.id(), Operations: []protocol.OperationRequest{{Type: command.Type, SQL: command.SQL, Export: command.Export, Changes: command.Changes}}})
+	response := h.receive()
+	if response.Type != "operation.assessment" || response.Assessment == nil || response.Assessment.Authorization == "" {
+		h.t.Fatal("operation was not assessed")
+	}
+	command.Authorization = response.Assessment.Authorization
+	return command
 }

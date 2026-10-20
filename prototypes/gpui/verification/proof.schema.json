@@ -1,0 +1,489 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dbeer:gpui:verification-proof:1",
+  "title": "Final integration completed-run proof, separate from native parity acceptance",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runNonce",
+    "startedAt",
+    "finishedAt",
+    "host",
+    "sourceSha256",
+    "sourceSha256After",
+    "stages",
+    "nativeAcceptance",
+    "status",
+    "buildMode",
+    "rustToolchain",
+    "targetDirectory",
+    "rootIdentity",
+    "fixtureRootIdentity",
+    "finalSnapshotObligations",
+    "behaviorEvidence",
+    "sourceInventory",
+    "sourceInventoryAfter"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "runNonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sourceSha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "sourceSha256After": {
+      "$ref": "#/$defs/digest"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "host": {
+      "type": "object",
+      "required": [
+        "os",
+        "release",
+        "machine",
+        "pythonBits",
+        "coverageLayer",
+        "desktopAcceptance",
+        "container"
+      ],
+      "properties": {
+        "os": {
+          "enum": [
+            "Windows",
+            "Linux",
+            "Darwin"
+          ]
+        },
+        "machine": {
+          "type": "string"
+        },
+        "release": {
+          "type": "string"
+        },
+        "pythonBits": {
+          "enum": [
+            32,
+            64
+          ]
+        },
+        "coverageLayer": {
+          "const": "headless"
+        },
+        "desktopAcceptance": {
+          "const": false
+        },
+        "container": {
+          "type": "boolean"
+        }
+      }
+    },
+    "helper": {
+      "$ref": "#/$defs/artifact"
+    },
+    "faultHelper": {
+      "$ref": "#/$defs/artifact"
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "layer",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$"
+          },
+          "layer": {
+            "enum": [
+              "headless",
+              "transport",
+              "persistence",
+              "vendor",
+              "private-bus",
+              "database",
+              "shared",
+              "swiftui",
+              "runner-safety",
+              "native-window"
+            ]
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "skipped",
+              "invalidated",
+              "pending"
+            ]
+          },
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/run"
+            }
+          },
+          "proof": {
+            "$ref": "#/$defs/run"
+          },
+          "conditionalSkips": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingRequiredAssertions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "requiredAssertionsExpected": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requiredAssertionsObserved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "portableFaultAssertionsExpected": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "portableFaultAssertionsObserved": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dependencyGraph": {
+            "enum": [
+              "root-lock",
+              "standalone-vendor-lock-and-dev-dependencies"
+            ]
+          },
+          "manifestSha256": {
+            "$ref": "#/$defs/digest"
+          },
+          "lockSha256": {
+            "$ref": "#/$defs/digest"
+          }
+        }
+      }
+    },
+    "nativeAcceptance": {
+      "type": "object",
+      "required": [
+        "features",
+        "cells",
+        "status",
+        "headlessCanAccept"
+      ],
+      "properties": {
+        "features": {
+          "const": 57
+        },
+        "cells": {
+          "const": 171
+        },
+        "status": {
+          "const": "not-run"
+        },
+        "headlessCanAccept": {
+          "const": false
+        },
+        "assertions": {
+          "const": 190
+        }
+      }
+    },
+    "error": {
+      "type": "string"
+    },
+    "privateRoot": {
+      "type": "string"
+    },
+    "cleanup": {
+      "const": "owned-resources-only"
+    },
+    "databaseFixtures": {
+      "type": "object"
+    },
+    "buildMode": {
+      "const": "unmarked-development-tests"
+    },
+    "rustToolchain": {
+      "const": "1.99.1"
+    },
+    "targetDirectory": {
+      "type": "string"
+    },
+    "rootIdentity": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "integer"
+      }
+    },
+    "fixtureRootIdentity": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "integer"
+      }
+    },
+    "finalSnapshotObligations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "behaviorEvidence": {
+      "type": "object",
+      "required": [
+        "nativeAcceptanceEstablished",
+        "f57Complete",
+        "frozenFeatures",
+        "frozenAssertions",
+        "nativeCells",
+        "cases"
+      ],
+      "properties": {
+        "nativeAcceptanceEstablished": {
+          "const": false
+        },
+        "f57Complete": {
+          "const": false
+        },
+        "frozenFeatures": {
+          "const": 57
+        },
+        "frozenAssertions": {
+          "const": 190
+        },
+        "nativeCells": {
+          "const": 171
+        },
+        "cases": {
+          "type": "array",
+          "minItems": 47
+        }
+      }
+    },
+    "sourceInventory": {
+      "$ref": "#/$defs/sourceInventory"
+    },
+    "sourceInventoryAfter": {
+      "$ref": "#/$defs/sourceInventory"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "artifact": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "buildCommand": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "device": {
+          "type": "integer"
+        },
+        "inode": {
+          "type": "integer"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "modifiedNs": {
+          "type": "integer"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "command",
+        "ownedPid",
+        "startedAt",
+        "finishedAt",
+        "exitCode",
+        "completed",
+        "summaries",
+        "ignored",
+        "timedOut"
+      ],
+      "properties": {
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "ownedPid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "summaries": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "outcome"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_:/.-]+$"
+              },
+              "outcome": {
+                "enum": [
+                  "ok",
+                  "FAILED",
+                  "ignored"
+                ]
+              }
+            }
+          }
+        },
+        "ignored": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timedOut": {
+          "type": "boolean"
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "missingPackages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^dbeer/helper/[A-Za-z0-9_./-]+$"
+          }
+        }
+      }
+    },
+    "sourceInventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "digestAlgorithm",
+        "sourceSha256",
+        "files"
+      ],
+      "properties": {
+        "contract": {
+          "const": "task30-reviewed-source-v1"
+        },
+        "digestAlgorithm": {
+          "const": "sha256(pathUtf8,NUL,fileSha256Bytes) in POSIX path order"
+        },
+        "sourceSha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "files": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "sha256",
+              "size"
+            ],
+            "properties": {
+              "sha256": {
+                "$ref": "#/$defs/digest"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "passed"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "stages": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
+}

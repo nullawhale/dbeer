@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "nullMarker": "__DBEER_NULL__",
+  "resultSets": [
+    {
+      "metadata": {
+        "columns": [
+          {
+            "index": 0,
+            "name": "x",
+            "engine": "postgresql",
+            "nativeType": "text",
+            "typeOid": 25
+          },
+          {
+            "index": 1,
+            "name": "x",
+            "engine": "postgresql",
+            "nativeType": "numeric",
+            "typeOid": 1700
+          },
+          {
+            "index": 2,
+            "name": "bytes,quoted",
+            "engine": "mysql",
+            "nativeType": "BLOB",
+            "encoding": "base64"
+          }
+        ],
+        "commandTag": "SELECT 10000",
+        "rowCount": 10000,
+        "displayedRowCount": 4,
+        "truncated": true
+      },
+      "rows": [
+        [
+          null,
+          "9007199254740993.123456789",
+          "AP8="
+        ],
+        [
+          "",
+          "NULL",
+          null
+        ],
+        [
+          "κόσμος, \"🌍\"\r\nsecond line",
+          "-0.000000000000000000001",
+          ""
+        ],
+        [
+          "\\N",
+          "1e999999",
+          "AA=="
+        ]
+      ]
+    },
+    {
+      "metadata": {
+        "columns": [
+          {
+            "index": 0,
+            "name": "x",
+            "engine": "postgresql",
+            "nativeType": "text",
+            "typeOid": 25
+          },
+          {
+            "index": 1,
+            "name": "x",
+            "engine": "postgresql",
+            "nativeType": "numeric",
+            "typeOid": 1700
+          },
+          {
+            "index": 2,
+            "name": "bytes,quoted",
+            "engine": "mysql",
+            "nativeType": "BLOB",
+            "encoding": "base64"
+          }
+        ],
+        "commandTag": "SELECT 0",
+        "rowCount": 0,
+        "displayedRowCount": 0,
+        "truncated": false
+      },
+      "rows": []
+    },
+    {
+      "metadata": {
+        "columns": [],
+        "commandTag": "CALL",
+        "rowCount": 0,
+        "displayedRowCount": 0,
+        "truncated": false
+      },
+      "rows": []
+    }
+  ],
+  "csv": [
+    "x,x,\"bytes,quoted\"\r\n__DBEER_NULL__,9007199254740993.123456789,AP8=\r\n,NULL,__DBEER_NULL__\r\n\"κόσμος, \"\"🌍\"\"\r\nsecond line\",-0.000000000000000000001,\r\n\\N,1e999999,AA==\r\n",
+    "x,x,\"bytes,quoted\"\r\n",
+    "\r\n"
+  ]
+}

@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Foundation
 import UniformTypeIdentifiers
 
@@ -9,8 +10,14 @@ import UniformTypeIdentifiers
 final class SQLDocument: ObservableObject, Identifiable {
     let id: UUID
     @Published var title: String
-    @Published var text: String
-    @Published var profileID: UUID?
+    @Published var text: String {
+        didSet { if text != oldValue { clearExecutionSuccess() } }
+    }
+    @Published var profileID: UUID? {
+        didSet { if profileID != oldValue { clearExecutionSuccess() } }
+    }
+    @Published private(set) var successfulExecutionRanges: [NSRange] = []
+    private(set) var executionRevision: UInt64 = 0
     @Published var runtime: WorkspaceModel?
     @Published var isRunning = false
     @Published var selection = NSRange(location: 0, length: 0)
@@ -22,8 +29,17 @@ final class SQLDocument: ObservableObject, Identifiable {
     var stopRequested = false
     var table: TableReference?
     @Published var page = 0
-    @Published var tableSort: [CatalogSort] = []
-    @Published var tableFilters: [CatalogFilter] = []
+    @Published var tableCursor: String?
+    @Published var tableNextCursor: String?
+    @Published var tableSort: [CatalogSort] = [] { didSet { if tableSort != oldValue { resetTablePaging() } } }
+    @Published var tableFilters: [CatalogFilter] = [] {
+        didSet {
+            guard tableFilters != oldValue else { return }
+            resetTablePaging()
+            if tableColumns.contains(where: { (Int($0["partitionKeyPosition"] ?? "0") ?? 0) > 0 }),
+               !CassandraBrowseRules.hasValidSort(self) { tableSort = [] }
+        }
+    }
     @Published var tableColumns: [[String: String]] = []
     @Published private(set) var grid: GridDraft?
     private var runtimeObservation: AnyCancellable?
@@ -36,9 +52,30 @@ final class SQLDocument: ObservableObject, Identifiable {
         self.profileID = profileID
     }
 
+    func resetTablePaging() {
+        page = 0
+        tableCursor = nil
+        tableNextCursor = nil
+    }
+
     func attach(_ model: WorkspaceModel) {
+        resetTablePaging()
         runtime = model
         runtimeObservation = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+    }
+
+    func clearExecutionSuccess() {
+        executionRevision &+= 1
+        if !successfulExecutionRanges.isEmpty { successfulExecutionRanges = [] }
+    }
+
+    func recordExecutionSuccess(_ statement: SQLStatement, revision: UInt64) {
+        let source = text as NSString
+        let range = statement.range
+        guard revision == executionRevision, range.location >= 0, range.location <= source.length,
+              range.length > 0, range.length <= source.length - range.location,
+              source.substring(with: range) == statement.sql else { return }
+        successfulExecutionRanges.append(range)
     }
 
     func attachGrid(_ draft: GridDraft?) {
@@ -66,6 +103,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private(set) var isStarting = false
     @Published private(set) var catalogRoots: [UUID: [CatalogNode]] = [:]
     @Published private(set) var catalogErrors: [UUID: String] = [:]
+    @Published private var completionCatalog = SQLCompletionCatalog()
     @Published var inspection: CatalogInspection?
     @Published var catalogSearch = ""
     @Published private(set) var catalogSearchResults: [UUID: [CatalogNode]] = [:]
@@ -77,12 +115,17 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var importError: String?
     @Published private(set) var isImportingProfiles = false
     let editorState = SQLEditorState()
+    let editorThemes: EditorThemeStore
+    let appearance: AppAppearance
+    let commandShortcuts: AppShortcutStore
+    lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
     private let credentialStore: any ConnectionCredentialStore
     private let helperFactory: () -> BackendClient
     private let documentStore: any SQLDocumentStore
     private let closeDecision: @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision
+    let executionDecision: @MainActor (OperationConfirmation) async -> Bool
     private var autosave: Task<Void, Never>?
     private var draftsLoaded = false
     private var documentObservations: [UUID: [AnyCancellable]] = [:]
@@ -94,6 +137,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var disconnectingProfiles: Set<UUID> = []
     private var closingDocuments: Set<UUID> = []
     private var catalogRequests: [UUID: (id: UUID, task: Task<BackendMessage, Error>)] = [:]
+    private var completionLoads: [UUID: (id: UUID, task: Task<Void, Never>)] = [:]
     private var shutdownTask: Task<Void, Never>?
     private var started = false
     private var observations: [UUID: AnyCancellable] = [:]
@@ -104,13 +148,22 @@ final class ApplicationWorkspace: ObservableObject {
     init(connectionStore: any ConnectionLibraryStore = FileConnectionLibraryStore(),
          credentialStore: any ConnectionCredentialStore = KeychainConnectionCredentialStore(),
          documentStore: any SQLDocumentStore = MemorySQLDocumentStore(),
+         commandShortcuts: AppShortcutStore? = nil,
+         editorThemes: EditorThemeStore? = nil,
+         appearance: AppAppearance? = nil,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
+         executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
          helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
         self.connectionStore = connectionStore
         self.credentialStore = credentialStore
         self.helperFactory = helperFactory
         self.documentStore = documentStore
+        self.commandShortcuts = commandShortcuts ?? AppShortcutStore()
+        let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
+        self.editorThemes = themes
+        self.appearance = appearance ?? AppAppearance(editorThemes: themes)
         self.closeDecision = closeDecision
+        self.executionDecision = executionDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
@@ -127,7 +180,7 @@ final class ApplicationWorkspace: ObservableObject {
             _ = try await ensureHelper()
             if case .success(let settings) = startupConnection {
                 let existing = library.savedConnections.first { $0.matches(settings) }
-                if await library.saveConnection(name: existing?.name ?? settings.database, settings: settings, id: existing?.id),
+                if await library.saveConnection(name: existing?.name ?? (settings.database.isEmpty ? settings.host : settings.database), settings: settings, id: existing?.id),
                    let id = library.selectedConnectionId { await connectProfile(id) }
             } else if case .failure(let failure) = startupConnection { error = failure.localizedDescription }
             if documents.isEmpty { newDocument(profileID: library.selectedConnectionId) }
@@ -135,9 +188,12 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     @discardableResult
-    func newDocument(profileID: UUID? = nil, text: String = "SELECT 1;") -> SQLDocument {
-        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: text,
-            profileID: profileID ?? library.selectedConnectionId)
+    func newDocument(profileID: UUID? = nil, text: String? = nil) -> SQLDocument {
+        let selectedProfileID = profileID ?? library.selectedConnectionId
+        let engine = library.savedConnections.first { $0.id == selectedProfileID }?.engine
+        let initialText = text ?? (engine == .cassandra ? "SELECT cluster_name, release_version, data_center FROM system.local;" : "SELECT 1;")
+        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: initialText,
+            profileID: selectedProfileID)
         documents.append(document)
         observeDocument(document)
         selectedDocumentID = document.id
@@ -164,7 +220,10 @@ final class ApplicationWorkspace: ObservableObject {
             await service.start(sharedHelper: client)
             await service.connectSavedConnection(id)
             if service.connectionState != .connected { error = service.errorMessage ?? service.connectionsError }
-            else { error = nil }
+            else {
+                error = nil
+                Task { @MainActor [weak self] in await self?.loadCompletionCatalog(id) }
+            }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -174,18 +233,21 @@ final class ApplicationWorkspace: ObservableObject {
         guard !isClosing, !documents.contains(where: { $0.profileID == id && closingDocuments.contains($0.id) }),
               disconnectingProfiles.insert(id).inserted else { return false }
         let grids = documents.filter { $0.profileID == id }.compactMap(\.grid)
+        for grid in grids { grid.commitEditing?() }
         for grid in grids { grid.isClosing = true }
         defer {
             disconnectingProfiles.remove(id)
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.profile(id)) else { return false }
+        completionLoads.removeValue(forKey: id)?.task.cancel()
         if let connecting = profileConnections[id] { await connecting.value }
         let sessions = documents.filter { $0.profileID == id }.compactMap(\.runtime)
         for session in sessions { await session.shutdown() }
         if let service = services.removeValue(forKey: id) { await service.shutdown() }
         observations[id] = nil
         catalogRoots[id] = nil
+        completionCatalog.remove(profileID: id)
         catalogErrors[id] = nil
         for document in documents where document.profileID == id {
             document.runtime = nil
@@ -197,6 +259,7 @@ final class ApplicationWorkspace: ObservableObject {
     func closeDocument(_ document: SQLDocument) async {
         guard canStartOperation(document), closingDocuments.insert(document.id).inserted else { return }
         let grid = document.grid
+        grid?.commitEditing?()
         grid?.isClosing = true
         defer {
             closingDocuments.remove(document.id)
@@ -224,6 +287,7 @@ final class ApplicationWorkspace: ObservableObject {
     func run(_ document: SQLDocument, sql: String? = nil) async {
         guard canStartOperation(document) else { return }
         if document.table != nil {
+            document.grid?.commitEditing?()
             guard !isClosing, document.grid?.isApplying != true else { return }
             if let grid = document.grid, grid.outcomeUnknown {
                 guard await closeDecision(.unknownApply(document.title)) == .discard else { return }
@@ -239,38 +303,47 @@ final class ApplicationWorkspace: ObservableObject {
             return
         }
         if let sql {
-            await execute(document, statements: [SQLStatement(sql: sql, range: NSRange(location: 0, length: sql.utf16.count))])
+            let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
+            let parsed = SQLScriptParser.parse(sql, engine: engine)
+            if let diagnostic = parsed.diagnostics.first { document.localError = diagnostic.message; return }
+            await execute(document, statements: parsed.statements, sourceSQL: sql)
             return
         }
-        let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
-        guard let selected = SQLScriptParser.selectedStatement(in: document.text, selection: document.selection, engine: engine) else { return }
-        let parsed = SQLScriptParser.parse(selected.sql, engine: engine)
-        if let diagnostic = parsed.diagnostics.first {
-            document.localError = diagnostic.message
-            document.errorPosition = selected.range.location + diagnostic.range.location
-            return
-        }
-        await execute(document, statements: parsed.statements.map {
-            SQLStatement(sql: $0.sql, range: NSRange(location: selected.range.location + $0.range.location, length: $0.range.length))
-        })
+        guard let fragment = executionFragment(document) else { return }
+        await runResolved(document, fragment: fragment)
     }
 
     func reloadTableAfterDiscard(_ document: SQLDocument) async { await execute(document, statements: []) }
 
     func runScript(_ document: SQLDocument) async {
+        guard let fragment = executionFragment(document, script: true) else { return }
+        await runResolved(document, fragment: fragment, script: true)
+    }
+
+    func executionFragment(_ document: SQLDocument, script: Bool = false) -> SQLExecutionFragment? {
         let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
-        let parsed = SQLScriptParser.parse(document.text, engine: engine)
-        if let diagnostic = parsed.diagnostics.first {
+        let selection = editorState.selection(for: document.id, fallback: document.selection)
+        return SQLExecutionFragment.resolve(text: document.text, selection: selection, engine: engine, script: script)
+    }
+
+    func runResolved(_ document: SQLDocument, fragment: SQLExecutionFragment, script: Bool = false) async {
+        if let diagnostic = fragment.diagnostic {
+            document.clearExecutionSuccess()
             document.localError = diagnostic.message
             document.errorPosition = diagnostic.range.location
             return
         }
-        await execute(document, statements: parsed.statements)
+        await execute(document, statements: fragment.statements, isScript: script, sourceSQL: fragment.sourceSQL)
     }
 
-    private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil) async {
+    private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
+                         isScript: Bool = false, sourceSQL: String? = nil) async {
         guard canStartOperation(document), !document.isRunning, let profileID = document.profileID else { return }
         guard document.table != nil || !statements.isEmpty else { return }
+        guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
+        let boundText = document.text
+        document.clearExecutionSuccess()
+        let executionRevision = document.executionRevision
         let previousGrid = document.table == nil ? nil : document.grid
         previousGrid?.isReloading = true
         document.isRunning = true
@@ -285,7 +358,14 @@ final class ApplicationWorkspace: ObservableObject {
         }
         do {
             let client = try await ensureHelper()
-            guard documents.contains(where: { $0.id == document.id }) else { return }
+            if export?.destination != nil, !(await client.supportsCapturedExport()) {
+                throw ExecutionPolicyError(message: "The helper does not support captured full export. SQL was not executed.")
+            }
+            guard canStartOperation(document), !document.stopRequested, document.text == boundText,
+                  document.profileID == profileID,
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile else {
+                throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
+            }
             if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
             guard documents.contains(where: { $0.id == document.id }),
                   services[profileID]?.connectionState == .connected else { return }
@@ -296,6 +376,10 @@ final class ApplicationWorkspace: ObservableObject {
                 await runtime.connectSavedConnection(profileID)
             }
             guard let runtime = document.runtime else { return }
+            guard !document.stopRequested, document.text == boundText, document.profileID == profileID,
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile else {
+                throw ExecutionPolicyError(message: "The SQL or connection context changed while connecting. Review it and run again.")
+            }
             guard runtime.connectionState == .connected else {
                 document.localError = runtime.errorMessage ?? runtime.connectionsError ?? "The working session could not be opened."
                 for index in document.executions.indices { document.executions[index].status = "Not executed" }
@@ -314,23 +398,57 @@ final class ApplicationWorkspace: ObservableObject {
                 }
                 guard canStartOperation(document), !document.stopRequested else { return }
                 await runtime.run(catalog: CatalogRequest(kind: "browse", schema: table.schema,
-                    object: table.name, objectKind: table.kind, page: document.page,
-                    sort: document.tableSort, filters: document.tableFilters))
+                    object: table.name, objectKind: table.kind, page: runtime.usesCursorPagination ? 0 : document.page,
+                    cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: document.tableSort, filters: document.tableFilters))
                 if runtime.queryFailure == nil, let result = runtime.result {
                     document.tableColumns = metadata
-                    document.attachGrid(GridDraft(reference: table, result: result, metadata: metadata))
+                    document.tableNextCursor = result.nextCursor
+                    let grid = GridDraft(reference: table, result: result, metadata: metadata)
+                    grid.policyReadOnly = runtime.policy.readOnly
+                    grid.supportsEditing = runtime.supportsGridEditing
+                    document.attachGrid(grid)
+                } else if runtime.queryFailure?.category == "cursor" {
+                    document.resetTablePaging()
                 }
             } else {
+                guard let sessionID = runtime.sessionId else { return }
+                guard runtime.activeConnectionId == profileID, runtime.policy == profile.policy,
+                      runtime.engine == profile.engine, runtime.host == profile.host,
+                      Int(runtime.port) == profile.port, runtime.database == profile.database,
+                      runtime.contactPoints == profile.contactPoints, runtime.localDatacenter == profile.localDatacenter,
+                      runtime.consistency == profile.consistency,
+                      runtime.user == profile.user, runtime.sslMode == profile.sslMode,
+                      (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
+                    throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before executing SQL.")
+                }
+                let operations = statements.map { OperationRequest(type: "execute", sql: $0.sql, export: export) }
+                guard let authorization = try await authorizeOperations(operations, sessionID: sessionID,
+                    profile: profile, client: client, isScript: isScript || statements.count > 1,
+                    sourceSQL: isScript || statements.count > 1 ? (sourceSQL ?? statements.map(\.sql).joined(separator: ";\n")) : nil),
+                    canStartOperation(document), !document.stopRequested,
+                    document.profileID == profileID, document.runtime === runtime,
+                    runtime.sessionId == sessionID, runtime.policy == profile.policy,
+                    library.savedConnections.first(where: { $0.id == profileID }) == profile,
+                    document.text == boundText else {
+                    _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
+                    for index in document.executions.indices { document.executions[index].status = "Not executed" }
+                    return
+                }
                 for (index, statement) in statements.enumerated() {
-                    guard !document.stopRequested else { break }
+                    guard !document.stopRequested, document.text == boundText,
+                          document.profileID == profileID, runtime.sessionId == sessionID,
+                          library.savedConnections.first(where: { $0.id == profileID }) == profile else { break }
                     document.selectedExecution = index
                     document.executions[index].status = "Running"
-                    await runtime.run(sql: statement.sql, export: export)
+                    await runtime.run(sql: statement.sql, export: export, authorization: authorization)
                     document.executions[index].result = runtime.result
                     document.executions[index].failure = runtime.queryFailure
                     document.executions[index].status = runtime.queryFailure?.title ?? (runtime.result == nil ? "Failed" : "Completed")
                     if runtime.queryFailure?.outcomeUnknown == true { document.executions[index].status = "Unknown outcome" }
-                    recordHistory(document: document, sql: statement.sql, outcome: document.executions[index].status)
+                    if runtime.queryFailure == nil, let result = runtime.result, result.outcomeUnknown != true {
+                        document.recordExecutionSuccess(statement, revision: executionRevision)
+                    }
+                    if runtime.queryFailure?.sqlNotExecuted != true { recordHistory(document: document, sql: statement.sql, outcome: document.executions[index].status) }
                     if let position = runtime.queryErrorPosition {
                         let scalars = statement.sql.unicodeScalars
                         let end = scalars.index(scalars.startIndex, offsetBy: min(max(0, position - 1), scalars.count))
@@ -341,8 +459,14 @@ final class ApplicationWorkspace: ObservableObject {
                 for index in document.executions.indices where document.executions[index].status == "Pending" {
                     document.executions[index].status = "Skipped"
                 }
+                _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
             }
-        } catch { self.error = error.localizedDescription }
+        } catch {
+            document.localError = error.localizedDescription
+            for index in document.executions.indices where document.executions[index].status == "Pending" {
+                document.executions[index].status = "Not executed"
+            }
+        }
     }
 
     func stop(_ document: SQLDocument) async {
@@ -368,6 +492,7 @@ final class ApplicationWorkspace: ObservableObject {
         guard closingDocuments.isDisjoint(with: ids) else { return }
         closingDocuments.formUnion(ids)
         let grids = affected.compactMap(\.grid)
+        for grid in grids { grid.commitEditing?() }
         for grid in grids { grid.isClosing = true }
         defer {
             closingDocuments.subtract(ids)
@@ -380,14 +505,15 @@ final class ApplicationWorkspace: ObservableObject {
 
     func prepareToClose(_ scope: WorkspaceCloseScope) async -> Bool {
         guard !isClosing else { return false }
-        isClosing = true
-        defer { isClosing = false }
         let affected: [SQLDocument]
         switch scope {
         case .document(let id): affected = documents.filter { $0.id == id }
         case .profile(let id): affected = documents.filter { $0.profileID == id }
         case .application: affected = documents
         }
+        for document in affected { document.grid?.commitEditing?() }
+        isClosing = true
+        defer { isClosing = false }
         let gridLocks = affected.compactMap(\.grid).map { ($0, $0.isClosing) }
         for (grid, _) in gridLocks { grid.isClosing = true }
         defer { for (grid, wasClosing) in gridLocks { grid.isClosing = wasClosing } }
@@ -512,12 +638,13 @@ final class ApplicationWorkspace: ObservableObject {
         } catch { self.error = error.localizedDescription }
     }
 
-    func runToFile(_ document: SQLDocument, format: String) async {
+    func runToFile(_ document: SQLDocument, format: String, fragment: SQLExecutionFragment? = nil) async {
         guard document.table == nil, !document.isRunning else { return }
-        let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
-        guard let selected = SQLScriptParser.selectedStatement(in: document.text, selection: document.selection, engine: engine) else { return }
-        let parsed = SQLScriptParser.parse(selected.sql, engine: engine)
-        guard parsed.diagnostics.isEmpty, parsed.statements.count == 1 else {
+        let boundText = document.text
+        let boundProfileID = document.profileID
+        let boundProfile = library.savedConnections.first { $0.id == boundProfileID }
+        guard let fragment = fragment ?? executionFragment(document) else { return }
+        guard fragment.diagnostic == nil, fragment.statements.count == 1 else {
             document.localError = "Select one SQL statement for Run to File."
             return
         }
@@ -531,10 +658,46 @@ final class ApplicationWorkspace: ObservableObject {
         panel.nameFieldStringValue = document.title + "." + format
         panel.message = "Run this SQL once and save all rows. The final file appears only after successful completion."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        let statement = parsed.statements[0]
-        await execute(document, statements: [SQLStatement(sql: statement.sql,
-            range: NSRange(location: selected.range.location + statement.range.location, length: statement.range.length))],
-            export: ExportRequest(path: destination.path, format: format, nullMarker: marker))
+        guard document.text == boundText, document.profileID == boundProfileID,
+              library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
+            document.localError = "The SQL or connection changed while choosing the export file. Review it and run again."
+            return
+        }
+        do {
+            let captured = try await Task.detached { try Self.captureExportDestination(destination) }.value
+            guard document.text == boundText, document.profileID == boundProfileID,
+                  library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
+                document.localError = "The SQL or connection changed while capturing the export file. Review it and run again."
+                return
+            }
+            await execute(document, statements: fragment.statements,
+                export: ExportRequest(path: destination.path, format: format, nullMarker: marker, destination: captured))
+        } catch { document.localError = "The export destination changed or could not be captured. SQL was not executed." }
+    }
+
+    nonisolated private static func captureExportDestination(_ url: URL) throws -> ExportDestination {
+        let manager = FileManager.default
+        let parent = url.deletingLastPathComponent()
+        guard parent.resolvingSymlinksInPath().standardizedFileURL == parent.standardizedFileURL else { throw CocoaError(.fileReadUnknown) }
+        let parentAttributes = try manager.attributesOfItem(atPath: parent.path)
+        func identity(_ attributes: [FileAttributeKey: Any]) throws -> String {
+            guard let device = attributes[.systemNumber] as? NSNumber, let inode = attributes[.systemFileNumber] as? NSNumber else { throw CocoaError(.fileReadUnknown) }
+            return "\(device.uint64Value):\(inode.uint64Value)"
+        }
+        let parentIdentity = try identity(parentAttributes)
+        guard manager.fileExists(atPath: url.path) else { return ExportDestination(exists: false, parentIdentity: parentIdentity, size: 0, sha256: "") }
+        let before = try manager.attributesOfItem(atPath: url.path)
+        guard before[.type] as? FileAttributeType == .typeRegular else { throw CocoaError(.fileReadUnknown) }
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hash = SHA256()
+        while let bytes = try handle.read(upToCount: 65_536), !bytes.isEmpty { hash.update(data: bytes) }
+        let after = try manager.attributesOfItem(atPath: url.path)
+        guard before[.systemFileNumber] as? NSNumber == after[.systemFileNumber] as? NSNumber,
+              before[.size] as? NSNumber == after[.size] as? NSNumber,
+              before[.modificationDate] as? Date == after[.modificationDate] as? Date else { throw CocoaError(.fileReadUnknown) }
+        return ExportDestination(exists: true, identity: try identity(before), parentIdentity: parentIdentity, size: (before[.size] as? NSNumber)?.int64Value ?? 0,
+            sha256: hash.finalize().map { String(format: "%02x", $0) }.joined())
     }
 
     private func chooseNullMarker() -> String? {
@@ -589,10 +752,11 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func chooseImportedCA(_ id: UUID) {
-        guard let index = importPreview?.firstIndex(where: { $0.id == id }) else { return }
+        guard !isImportingProfiles, let original = importPreview?.first(where: { $0.id == id }) else { return }
         let panel = NSOpenPanel()
         panel.message = "Choose this Mac's trusted CA file. The profile's TLS verification mode stays the same."
         guard panel.runModal() == .OK, let selected = panel.url else { return }
+        guard !isImportingProfiles, let index = importPreview?.firstIndex(where: { $0.id == id && $0 == original }) else { return }
         importPreview?[index].profile.sslRootCert = selected.path
     }
 
@@ -649,7 +813,53 @@ final class ApplicationWorkspace: ObservableObject {
                 (node.kind == .object || node.kind == .detail || node.kind == .schema ? [node.name] : []) + collect(node.children ?? [])
             }
         }
-        return Array(Set(collect(catalogRoots[profileID] ?? []))).sorted()
+        let metadata = completionCatalog.context(profileID: profileID).catalog.flatMap {
+            [$0.schema, $0.name] + $0.columns
+        }
+        return Array(Set(collect(catalogRoots[profileID] ?? []) + metadata).subtracting([""])).sorted()
+    }
+
+    func completionContext(profileID: UUID?, keyspace: String? = nil) -> SQLCompletionContext {
+        var context = completionCatalog.context(profileID: profileID)
+        let profile = library.savedConnections.first { $0.id == profileID }
+        context.keyspace = keyspace ?? (profile?.engine == .cassandra ? profile?.database : nil)
+        return context
+    }
+
+    /// Uses only the existing service session. Typing and restoring documents
+    /// must never initiate a database connection or use a tab's transaction.
+    func loadCompletionCatalog(_ profileID: UUID, refresh: Bool = false) async {
+        guard shutdownTask == nil, !isClosing, !disconnectingProfiles.contains(profileID),
+              let service = services[profileID], service.connectionState == .connected,
+              let sessionID = service.sessionId else { return }
+        if let loading = completionLoads[profileID] {
+            if refresh { loading.task.cancel() }
+            else { await loading.task.value; return }
+        }
+        let loadID = UUID()
+        let task = Task { @MainActor in
+            do {
+                var records: [[String: String]] = []
+                for page in 0..<50 {
+                    try Task.checkCancellation()
+                    let reply = try await self.catalog(CatalogRequest(kind: "completion", page: page),
+                        profileID: profileID, connectedSessionID: sessionID)
+                    guard reply.truncated != true else { return }
+                    let batch = reply.catalogRecords
+                    records += batch
+                    if batch.count < 200 { break }
+                }
+                try Task.checkCancellation()
+                guard self.services[profileID]?.sessionId == sessionID else { return }
+                self.completionCatalog.record(records, request: CatalogRequest(kind: "completion"), profileID: profileID)
+            } catch {
+                // Completion metadata is optional; failures leave the editor
+                // usable and preserve names already loaded by catalog browsing.
+            }
+        }
+        completionLoads[profileID] = (loadID, task)
+        await task.value
+        if completionLoads[profileID]?.id == loadID { completionLoads[profileID] = nil }
     }
 
     private func scheduleSave() {
@@ -677,6 +887,7 @@ final class ApplicationWorkspace: ObservableObject {
                 return CatalogNode(profileID: profileID, name: name, kind: .schema, schema: name)
             }
             catalogErrors[profileID] = nil
+            if refresh { await loadCompletionCatalog(profileID, refresh: true) }
         } catch { catalogErrors[profileID] = error.localizedDescription }
     }
 
@@ -686,15 +897,19 @@ final class ApplicationWorkspace: ObservableObject {
         node.error = nil
         defer { node.isLoading = false }
         if node.kind == .schema {
-            node.children = [("Tables", "table"), ("Views", "view"), ("Functions", "function"),
-                ("Procedures", "procedure"), ("Triggers", "trigger")].map { title, kind in
+            let engine = library.savedConnections.first { $0.id == node.profileID }?.engine
+            let groups = engine == .cassandra ? [("Tables", "table"), ("Materialized Views", "view"), ("User-defined Types", "type")] :
+                [("Tables", "table"), ("Views", "view"), ("Functions", "function"), ("Procedures", "procedure"), ("Triggers", "trigger")]
+            node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .group, schema: node.schema, objectKind: kind)
             }
             return
         }
         if node.kind == .object {
-            node.children = [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes"),
-                ("Constraints", "constraints"), ("Triggers", "triggers")].map { title, kind in
+            let engine = library.savedConnections.first { $0.id == node.profileID }?.engine
+            let groups = node.objectKind == "type" ? [("Columns", "columns")] : engine == .cassandra ? [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes")] :
+                [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes"), ("Constraints", "constraints"), ("Triggers", "triggers")]
+            node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .detailGroup, schema: node.schema,
                     object: node.name, objectKind: kind, identity: node.objectKind)
             }
@@ -712,7 +927,13 @@ final class ApplicationWorkspace: ObservableObject {
             node.children = result.catalogRecords.enumerated().compactMap { index, record in
                 guard let name = record["name"] else { return nil }
                 let isObject = node.kind == .group
-                let type = record["nativeType"]
+                let type = record["nativeType"].map { nativeType in
+                    var details = [nativeType]
+                    if (Int(record["partitionKeyPosition"] ?? "0") ?? 0) > 0 { details.append("partition key") }
+                    if (Int(record["clusteringPosition"] ?? "0") ?? 0) > 0 { details.append("clustering " + (record["clusteringOrder"] ?? "asc")) }
+                    if record["static"] == "true" { details.append("static") }
+                    return details.joined(separator: " · ")
+                }
                 return CatalogNode(profileID: node.profileID, name: name,
                     kind: isObject ? .object : .detail, schema: node.schema,
                     object: isObject ? name : node.object, objectKind: record["kind"] ?? node.objectKind,
@@ -726,7 +947,7 @@ final class ApplicationWorkspace: ObservableObject {
         inspection = CatalogInspection(title: title)
         let inspectionID = inspection?.id
         do {
-            if ["table", "view"].contains(node.objectKind) {
+            if ["table", "view", "type"].contains(node.objectKind) {
                 let structure = try await catalog(CatalogRequest(kind: "columns", schema: node.schema,
                     object: node.name, objectKind: node.objectKind), profileID: node.profileID)
                 guard inspection?.id == inspectionID else { return }
@@ -797,9 +1018,19 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
-    private func catalog(_ request: CatalogRequest, profileID: UUID) async throws -> BackendMessage {
-        let client = try await ensureHelper()
-        await connectProfile(profileID)
+    private func catalog(_ request: CatalogRequest, profileID: UUID, connectedSessionID: String? = nil) async throws -> BackendMessage {
+        let client: BackendClient
+        if let connectedSessionID {
+            guard shutdownTask == nil, !helperFailed, !disconnectingProfiles.contains(profileID),
+                  services[profileID]?.sessionId == connectedSessionID,
+                  services[profileID]?.connectionState == .connected, let helper else {
+                throw CatalogFailure(message: "The profile was disconnected while loading completion metadata.")
+            }
+            client = helper
+        } else {
+            client = try await ensureHelper()
+            await connectProfile(profileID)
+        }
         guard let sessionID = services[profileID]?.sessionId else {
             throw CatalogFailure(message: services[profileID]?.errorMessage ?? "Connect to this profile before browsing objects.")
         }
@@ -812,9 +1043,14 @@ final class ApplicationWorkspace: ObservableObject {
         }
         catalogRequests[profileID] = (requestID, task)
         defer { if catalogRequests[profileID]?.id == requestID { catalogRequests[profileID] = nil } }
-        let reply = try await task.value
+        let reply = try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: { task.cancel() }
         guard services[profileID]?.sessionId == sessionID else {
             throw CatalogFailure(message: "The profile was disconnected while loading this branch.")
+        }
+        if request.kind != "completion" {
+            completionCatalog.record(reply.catalogRecords, request: request, profileID: profileID)
         }
         return reply
     }
@@ -828,6 +1064,8 @@ final class ApplicationWorkspace: ObservableObject {
         if let shutdownTask { await shutdownTask.value; return }
         let task = Task { @MainActor in
             await self.flushDocuments()
+            for load in self.completionLoads.values { load.task.cancel() }
+            await self.editorState.languageService.shutdown()
             if let start = self.helperStart { _ = try? await start.value }
             if let helper = self.helper { _ = await helper.shutdown() }
             await self.library.shutdown()

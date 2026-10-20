@@ -97,8 +97,12 @@ struct ResultGridFocusTests {
         let point = table.convert(NSPoint(x: cell.midX, y: cell.midY), to: nil)
         let event = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: point,
             modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 2, pressure: 1))
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
         table.mouseDown(with: event)
+        let expand = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .shift,
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+            characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        table.keyDown(with: expand)
         try await Task.sleep(for: .milliseconds(150))
         let sheet = try #require(window.attachedSheet)
         let content = try #require(sheet.contentView)

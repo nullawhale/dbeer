@@ -2,11 +2,13 @@ package mysql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/sqlcomplete"
 )
 
 func TestMySQLCatalogQuotesIdentifiersAndParameterizesNames(t *testing.T) {
@@ -58,12 +60,60 @@ func TestMySQLCatalogRealObjectsAndStableBrowse(t *testing.T) {
 	run(t, session, "CREATE TABLE "+qualified(table)+" (id INT NOT NULL, part INT NOT NULL, parent_id INT, label VARCHAR(40) DEFAULT 'ready', computed INT GENERATED ALWAYS AS (part+1) STORED, doc JSON, PRIMARY KEY(id,part), CONSTRAINT "+QuoteIdentifier(base+"_fk")+" FOREIGN KEY(parent_id) REFERENCES "+qualified(parent)+" (id), CONSTRAINT "+QuoteIdentifier(base+"_check")+" CHECK(part>=0), INDEX "+QuoteIdentifier(base+"_idx")+" (label DESC)) ENGINE=InnoDB")
 	run(t, session, "CREATE VIEW "+qualified(view)+" AS SELECT id,label FROM "+qualified(table))
 	run(t, session, "CREATE PROCEDURE "+qualified(procedure)+"() SELECT 1")
-	run(t, session, "CREATE FUNCTION "+qualified(function)+"() RETURNS INT DETERMINISTIC NO SQL RETURN 42")
+	run(t, session, "CREATE FUNCTION "+qualified(function)+"(input_value INT, scale INT) RETURNS BIGINT DETERMINISTIC NO SQL RETURN input_value * scale")
 	run(t, session, "CREATE TRIGGER "+qualified(trigger)+" BEFORE INSERT ON "+qualified(table)+" FOR EACH ROW SET NEW.label=COALESCE(NEW.label,'trigger')")
 	run(t, session, "INSERT INTO "+qualified(table)+" (id,part,label) WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<205) SELECT 206-n,MOD(n,2),'κόσμος' FROM seq")
 	response := catalogRequest(t, session, protocol.CatalogRequest{Kind: "schemas"})
 	if catalogRow(response, schema) == nil {
 		t.Fatal("accessible schema missing")
+	}
+	response = catalogRequest(t, session, protocol.CatalogRequest{Kind: "completion", Schema: schema})
+	completionRow := catalogRow(response, table)
+	var completionColumns []string
+	if len(completionRow) != 6 || completionRow[3] == nil || json.Unmarshal([]byte(*completionRow[3]), &completionColumns) != nil || len(completionColumns) != 6 {
+		t.Fatal("completion snapshot lost table columns")
+	}
+	var keys []struct {
+		Name         string `json:"name"`
+		TargetSchema string `json:"targetSchema"`
+		TargetTable  string `json:"targetTable"`
+		Columns      []struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
+		} `json:"columns"`
+	}
+	if completionRow[4] == nil || json.Unmarshal([]byte(*completionRow[4]), &keys) != nil || len(keys) != 1 || keys[0].TargetSchema != schema || keys[0].TargetTable != parent || len(keys[0].Columns) != 1 || keys[0].Columns[0].Source != "parent_id" || keys[0].Columns[0].Target != "id" {
+		t.Fatal("completion snapshot lost the foreign key")
+	}
+	for _, name := range []string{"id", "part", "parent_id", "label", "computed", "doc"} {
+		found := false
+		for _, column := range completionColumns {
+			found = found || column == name
+		}
+		if !found {
+			t.Fatal("completion snapshot lost a column")
+		}
+	}
+	if catalogRow(response, view) == nil || catalogRow(response, function) == nil || catalogRow(response, trigger) != nil {
+		t.Fatal("completion snapshot has incorrect object kinds")
+	}
+	functionRow := catalogRow(response, function)
+	var signatures []sqlcomplete.FunctionSignature
+	if len(functionRow) != 6 || functionRow[5] == nil || json.Unmarshal([]byte(*functionRow[5]), &signatures) != nil || len(signatures) != 1 || len(signatures[0].Parameters) != 2 || !strings.Contains(strings.ToLower(signatures[0].ReturnType), "bigint") {
+		t.Fatal("completion lost the stored function signature")
+	}
+	byPosition := map[int]sqlcomplete.FunctionParameter{}
+	for _, parameter := range signatures[0].Parameters {
+		byPosition[parameter.Position] = parameter
+	}
+	if byPosition[1].Name != "input_value" || byPosition[2].Name != "scale" || byPosition[1].Type != "int" {
+		t.Fatal("stored function arguments lost names, types, or positions")
+	}
+	if empty := catalogRequest(t, session, protocol.CatalogRequest{Kind: "completion", Schema: schema, Page: 100}); len(empty.Rows) != 0 {
+		t.Fatal("completion page repeated objects")
+	}
+	if empty := catalogRequest(t, session, protocol.CatalogRequest{Kind: "completion", Schema: "' OR 1=1 --"}); len(empty.Rows) != 0 {
+		t.Fatal("completion schema was interpreted as SQL")
 	}
 	for _, item := range []struct{ kind, name string }{{"table", table}, {"view", view}, {"procedure", procedure}, {"function", function}, {"trigger", trigger}} {
 		response = catalogRequest(t, session, protocol.CatalogRequest{Kind: "objects", Schema: schema, ObjectKind: item.kind})
@@ -184,9 +234,10 @@ func TestMySQLCatalogReadOnlyReasonsAndDeletedObjects(t *testing.T) {
 			t.Fatal("read-only reason missing")
 		}
 		run(t, session, "DROP TABLE "+name)
-		response = catalogRequest(t, session, protocol.CatalogRequest{Kind: "browse", Schema: schema, Object: item.name, ObjectKind: "table"})
-		if len(response.Rows) != 0 || response.DisplayNotice == "" {
-			t.Fatal("deleted browse object was not reported safely")
+		request := protocol.CatalogRequest{Kind: "browse", Schema: schema, Object: item.name, ObjectKind: "table"}
+		response = session.Execute(context.Background(), protocol.Command{Type: "catalog", RequestID: "missing-browse", SessionID: "catalog-s", QueryID: "missing-q", Catalog: &request})
+		if response.Type != "error" || !response.Connected {
+			t.Fatal("deleted browse object did not retain a known failure")
 		}
 	}
 }

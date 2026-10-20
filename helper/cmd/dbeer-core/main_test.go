@@ -33,8 +33,8 @@ func runMessages(t *testing.T, input string) []protocol.Response {
 }
 
 func TestHandshakeAndShutdown(t *testing.T) {
-	responses := runMessages(t, "{\"type\":\"hello\",\"requestId\":\"h1\",\"protocolVersion\":2}\n{\"type\":\"shutdown\",\"requestId\":\"s1\"}\n{\"type\":\"shutdown\",\"requestId\":\"ignored\"}\n")
-	if len(responses) != 2 || responses[0].Type != "hello.ack" || responses[0].RequestID != "h1" || responses[0].ProtocolVersion != 2 || responses[1].Type != "shutdown.ack" || responses[1].RequestID != "s1" {
+	responses := runMessages(t, "{\"type\":\"hello\",\"requestId\":\"h1\",\"protocolVersion\":4}\n{\"type\":\"shutdown\",\"requestId\":\"s1\"}\n{\"type\":\"shutdown\",\"requestId\":\"ignored\"}\n")
+	if len(responses) != 2 || responses[0].Type != "hello.ack" || responses[0].RequestID != "h1" || responses[0].ProtocolVersion != protocol.Version || responses[1].Type != "shutdown.ack" || responses[1].RequestID != "s1" {
 		t.Fatalf("unexpected handshake/shutdown responses: %+v", responses)
 	}
 }
@@ -68,14 +68,14 @@ func TestMalformedFrameIsSafeAndNextFrameWorks(t *testing.T) {
 }
 
 func TestVersionAndHandshakeRequired(t *testing.T) {
-	responses := runMessages(t, "{\"type\":\"disconnect\",\"requestId\":\"r1\",\"sessionId\":\"s1\"}\n{\"type\":\"hello\",\"requestId\":\"r2\",\"protocolVersion\":1}\n{\"type\":\"hello\",\"requestId\":\"r3\",\"protocolVersion\":2}\n")
+	responses := runMessages(t, "{\"type\":\"disconnect\",\"requestId\":\"r1\",\"sessionId\":\"s1\"}\n{\"type\":\"hello\",\"requestId\":\"r2\",\"protocolVersion\":1}\n{\"type\":\"hello\",\"requestId\":\"r3\",\"protocolVersion\":4}\n")
 	if len(responses) != 3 || responses[0].Category != "protocol" || !strings.Contains(responses[0].Message, "handshake") || !strings.Contains(responses[1].Message, "version") || responses[2].Type != "hello.ack" {
 		t.Fatalf("unexpected version handling: %+v", responses)
 	}
 }
 
 func TestIdentifiersCannotBeReused(t *testing.T) {
-	responses := runMessages(t, "{\"type\":\"hello\",\"requestId\":\"r1\",\"protocolVersion\":2}\n{\"type\":\"hello\",\"requestId\":\"r1\",\"protocolVersion\":2}\n{\"type\":\"execute\",\"requestId\":\"r2\",\"sessionId\":\"s1\",\"queryId\":\"q1\",\"sql\":\"select 1\"}\n{\"type\":\"execute\",\"requestId\":\"r3\",\"sessionId\":\"s1\",\"queryId\":\"q1\",\"sql\":\"select 1\"}\n{\"type\":\"shutdown\",\"requestId\":\"shutdown\"}\n")
+	responses := runMessages(t, "{\"type\":\"hello\",\"requestId\":\"r1\",\"protocolVersion\":4}\n{\"type\":\"hello\",\"requestId\":\"r1\",\"protocolVersion\":4}\n{\"type\":\"execute\",\"requestId\":\"r2\",\"sessionId\":\"s1\",\"queryId\":\"q1\",\"sql\":\"select 1\"}\n{\"type\":\"execute\",\"requestId\":\"r3\",\"sessionId\":\"s1\",\"queryId\":\"q1\",\"sql\":\"select 1\"}\n{\"type\":\"shutdown\",\"requestId\":\"shutdown\"}\n")
 	queryRejected := false
 	for _, response := range responses {
 		if response.RequestID == "r3" && strings.Contains(response.Message, "already been used") {
@@ -88,7 +88,7 @@ func TestIdentifiersCannotBeReused(t *testing.T) {
 }
 
 func TestExecuteWithoutSessionHasOneSafeTerminalResponse(t *testing.T) {
-	responses := runMessages(t, "{\"type\":\"hello\",\"requestId\":\"r1\",\"protocolVersion\":2}\n{\"type\":\"execute\",\"requestId\":\"r2\",\"sessionId\":\"s1\",\"queryId\":\"q1\",\"sql\":\"secret-password\"}\n{\"type\":\"shutdown\",\"requestId\":\"r3\"}\n")
+	responses := runMessages(t, "{\"type\":\"hello\",\"requestId\":\"r1\",\"protocolVersion\":4}\n{\"type\":\"execute\",\"requestId\":\"r2\",\"sessionId\":\"s1\",\"queryId\":\"q1\",\"sql\":\"secret-password\"}\n{\"type\":\"shutdown\",\"requestId\":\"r3\"}\n")
 	if len(responses) != 3 || responses[1].Category != "connection" || responses[1].Connected || strings.Contains(responses[1].Message, "secret-password") {
 		t.Fatalf("unexpected unavailable response: %+v", responses)
 	}
@@ -96,7 +96,7 @@ func TestExecuteWithoutSessionHasOneSafeTerminalResponse(t *testing.T) {
 
 func TestBurstCommandsDrainResponsesWithoutDeadlock(t *testing.T) {
 	var input strings.Builder
-	input.WriteString("{\"type\":\"hello\",\"requestId\":\"hello\",\"protocolVersion\":2}\n")
+	input.WriteString("{\"type\":\"hello\",\"requestId\":\"hello\",\"protocolVersion\":4}\n")
 	for index := range 200 {
 		fmt.Fprintf(&input, "{\"type\":\"disconnect\",\"requestId\":\"r%d\",\"sessionId\":\"absent\"}\n", index)
 	}

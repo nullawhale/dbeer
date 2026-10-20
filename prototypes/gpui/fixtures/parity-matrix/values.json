@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "disposableMarker": "owned-dbeer-parity-only-v1",
+  "values": [
+    {
+      "kind": "null"
+    },
+    {
+      "kind": "text",
+      "value": ""
+    },
+    {
+      "kind": "text",
+      "value": "NULL"
+    },
+    {
+      "kind": "default"
+    },
+    {
+      "kind": "text",
+      "value": "9007199254740993.123456789"
+    },
+    {
+      "kind": "binary",
+      "value": "AP9c"
+    },
+    {
+      "kind": "text",
+      "value": "é, \"😀\"\r\n世界"
+    }
+  ],
+  "duplicateColumnNames": [
+    "x",
+    "x"
+  ],
+  "compositePrimaryKey": [
+    "id",
+    "part"
+  ],
+  "readOnlyObjectKinds": [
+    "no-primary-key",
+    "view",
+    "generated-column",
+    "non-InnoDB"
+  ]
+}

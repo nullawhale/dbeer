@@ -5,6 +5,19 @@ import Testing
 /// Real adapters execute each parsed routine as one server statement. These
 /// fixtures use temporary PostgreSQL routines or uniquely named MySQL routines.
 struct SQLRoutineParserIntegrationTests {
+    /// These adapter fixtures explicitly approve their exact SQL and export
+    /// destination; they do not change the application's confirmation behavior.
+    private func approvedFixture(_ client: BackendClient, _ command: BackendCommand,
+                                 onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        let session = try #require(command.sessionId)
+        let operation = OperationRequest(type: command.type, sql: command.sql, export: command.export, changes: command.changes)
+        let assessment = try #require(try await client.request(.assess(sessionId: session, operations: [operation])).assessment)
+        try #require(assessment.decision != "deny")
+        var approved = command
+        approved.authorization = try #require(assessment.authorization)
+        return try await client.request(approved, onEvent: onEvent)
+    }
+
     private var executable: URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -41,7 +54,7 @@ struct SQLRoutineParserIntegrationTests {
             let connected = try await client.request(.connect(settings))
             let session = try #require(connected.sessionId)
             var results: [BackendMessage] = []
-            for statement in parsed.statements { results.append(try await client.request(.execute(sessionId: session, sql: statement.sql))) }
+            for statement in parsed.statements { results.append(try await approvedFixture(client, .execute(sessionId: session, sql: statement.sql))) }
             #expect(results[1].rows == [["one;two"]])
             #expect(results[3].rows == [["3"]])
             #expect(await client.shutdown().acknowledged)
@@ -81,11 +94,11 @@ struct SQLRoutineParserIntegrationTests {
             let id = try #require(connected.sessionId)
             session = id
             var results: [BackendMessage] = []
-            for statement in parsed.statements { results.append(try await client.request(.execute(sessionId: id, sql: statement.sql))) }
+            for statement in parsed.statements { results.append(try await approvedFixture(client, .execute(sessionId: id, sql: statement.sql))) }
             #expect(results[2].rows == [["one;two $$ three"]])
             #expect(await client.shutdown().acknowledged)
         } catch {
-            if let session { _ = try? await client.request(.execute(sessionId: session, sql: "DROP PROCEDURE IF EXISTS \(name)")) }
+            if let session { _ = try? await approvedFixture(client, .execute(sessionId: session, sql: "DROP PROCEDURE IF EXISTS \(name)")) }
             _ = await client.shutdown()
             throw error
         }

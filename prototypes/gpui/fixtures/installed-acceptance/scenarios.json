@@ -1,0 +1,1784 @@
+{
+  "schemaVersion": 1,
+  "registrySha256": "beb8ad978b692af7e5c6b9f1b5572f8472a3d4ac97b8463c090e4e59c76a197a",
+  "targets": [
+    "windows11-x64",
+    "ubuntu2404-x64-wayland",
+    "ubuntu2404-x64-x11"
+  ],
+  "scenarios": [
+    {
+      "id": "INSTALLED-F01",
+      "feature": "F01",
+      "frozenScenario": "PARITY-F01",
+      "capability": "Create/edit/connect/disconnect, Save versus Save and Connect, TLS/CA and policy controls",
+      "procedure": [
+        {
+          "action": "Create a PostgreSQL profile; choose a synthetic CA file and set explicit policy. Save, edit, Save and Connect, disconnect, then delete. Repeat for MySQL.",
+          "assertions": [
+            "Save stays disconnected.",
+            "Save and Connect connects once.",
+            "TLS/policy fields survive edits.",
+            "Cancel preserves the original profile."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F01"
+    },
+    {
+      "id": "INSTALLED-F02",
+      "feature": "F02",
+      "frozenScenario": "PARITY-F02",
+      "capability": "Stable profile/document IDs, selected profile/document and tab order",
+      "procedure": [
+        {
+          "action": "Create two profiles and three SQL tabs. Reorder tabs, select the middle tab/profile, restart, then remove the first profile.",
+          "assertions": [
+            "UUIDs and tab order survive.",
+            "selection follows stable identity rather than vector position.",
+            "every restored tab is disconnected."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F02"
+    },
+    {
+      "id": "INSTALLED-F03",
+      "feature": "F03",
+      "frozenScenario": "PARITY-F03",
+      "capability": "Explicit new-profile default, legacy defaults and environment/readonly fidelity",
+      "procedure": [
+        {
+          "action": "Create a new profile without touching policy. Reload an existing development/readonly profile; import each explicit environment/readonly pair and a legacy record.",
+          "assertions": [
+            "New product profile is unspecified/readOnly=false and verify-full TLS.",
+            "existing/imported explicit policy stays unchanged.",
+            "legacy rules stay format-specific."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F03"
+    },
+    {
+      "id": "INSTALLED-F04",
+      "feature": "F04",
+      "frozenScenario": "PARITY-F04",
+      "capability": "Credential-safe profile update/delete with rollback, empty/missing distinction and locked-store errors",
+      "procedure": [
+        {
+          "action": "Save a profile with a synthetic password, update it with keep/empty/replacement states, inject metadata failure, then inject credential delete and rollback failures.",
+          "assertions": [
+            "Missing differs from empty.",
+            "metadata failure restores the prior credential.",
+            "rollback failure is surfaced.",
+            "no password is written to JSON or diagnostics."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F04"
+    },
+    {
+      "id": "INSTALLED-F05",
+      "feature": "F05",
+      "frozenScenario": "PARITY-F05",
+      "capability": "Private versioned library, exact backups, migrations, corrupt/future-version preservation",
+      "procedure": [
+        {
+          "action": "Load legacy, corrupt and future-version library fixtures; attempt edits after failed load; inject an atomic-replace failure.",
+          "assertions": [
+            "Legacy exact-byte backup and IDs survive.",
+            "corrupt/future bytes remain untouched.",
+            "failed saves preserve the prior library and selected identity."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F05"
+    },
+    {
+      "id": "INSTALLED-F06",
+      "feature": "F06",
+      "frozenScenario": "PARITY-F06",
+      "capability": "Strict portable v2 export/v1 import, preview/select, new IDs, no secrets, disconnected result",
+      "procedure": [
+        {
+          "action": "Export both synthetic engine profiles. Inspect JSON, import v2 and v1, preview/select one and all, cancel once, then complete import. Try secret/unknown/duplicate keys and excessive depth/count/size.",
+          "assertions": [
+            "Export has no credentials/private keys.",
+            "strict invalid input is rejected.",
+            "accepted imports have fresh IDs and stay disconnected.",
+            "cancel changes nothing."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F06"
+    },
+    {
+      "id": "INSTALLED-F07",
+      "feature": "F07",
+      "frozenScenario": "PARITY-F07",
+      "capability": "Portable CA hint/remapping without weakening TLS; native CA file choice",
+      "procedure": [
+        {
+          "action": "Export a profile referencing a local CA; import on the other OS with the file missing. Remap using its native chooser, then roundtrip back to Mac. Cancel the remap once.",
+          "assertions": [
+            "POSIX/Windows path hints do not become invalid trusted paths.",
+            "explicit remap is required.",
+            "TLS is never downgraded.",
+            "cancellation leaves the library unchanged."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F07"
+    },
+    {
+      "id": "INSTALLED-F08",
+      "feature": "F08",
+      "frozenScenario": "PARITY-F08",
+      "capability": "Explicit bounded --connect-stdin launch, ordinary launch reads nothing, no SQL execution",
+      "procedure": [
+        {
+          "action": "Launch ordinarily with an unreadable/blocking stdin. Launch --connect-stdin with one synthetic payload; test 64 KiB overflow, five-second timeout and retry after failure.",
+          "assertions": [
+            "Ordinary launch reads nothing.",
+            "explicit launch connects once and executes no SQL.",
+            "bounds fail cleanly.",
+            "credentials never appear in argv/env/logs."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F08"
+    },
+    {
+      "id": "INSTALLED-F09",
+      "feature": "F09",
+      "frozenScenario": "PARITY-F09",
+      "capability": "Independent physical SQL sessions, transaction/SET/temp state, simultaneous profiles and isolated disconnect",
+      "procedure": [
+        {
+          "action": "Connect two SQL tabs on each engine. BEGIN/create temporary state/SET in A; query temporary state and transaction status in B; run both concurrently and disconnect only B.",
+          "assertions": [
+            "Physical sessions and state stay independent.",
+            "the active tab/profile cannot redirect a completion.",
+            "A and catalog remain connected after B closes."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F09"
+    },
+    {
+      "id": "INSTALLED-F10",
+      "feature": "F10",
+      "frozenScenario": "PARITY-F10",
+      "capability": "Catalog/completion service session isolated from SQL-tab and Apply sessions",
+      "procedure": [
+        {
+          "action": "BEGIN in SQL tab A, then browse catalog and request completion metadata. Stage and Apply a synthetic table edit. Inspect helper sessions.",
+          "assertions": [
+            "Catalog/completion use their service session.",
+            "Apply uses a fresh idle session.",
+            "A remains uncommitted with its original SET/temp state."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F10"
+    },
+    {
+      "id": "INSTALLED-F11",
+      "feature": "F11",
+      "frozenScenario": "PARITY-F11",
+      "capability": "Stop/timeout/progress/row status, terminal response and responsive bounded streaming",
+      "procedure": [
+        {
+          "action": "Execute a query larger than row/byte/result-set display bounds, hold chunk ACKs, request Stop under backpressure, and kill the owned helper in a second run.",
+          "assertions": [
+            "Progress stays bounded.",
+            "control messages and terminal delivery remain responsive.",
+            "partial completed results and authoritative transaction state survive.",
+            "no hang."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F11"
+    },
+    {
+      "id": "INSTALLED-F12",
+      "feature": "F12",
+      "frozenScenario": "PARITY-F12",
+      "capability": "Close scopes, open/failed transaction choices, repeated Quit and disconnect acknowledgement",
+      "procedure": [
+        {
+          "action": "Close a tab, profile, window and application with idle, open and failed transactions. Cancel, Roll Back and Commit independently; repeat Quit during commit/disconnect.",
+          "assertions": [
+            "Cancel preserves the session.",
+            "chosen resolution finishes once.",
+            "repeated Quit keeps the same decision.",
+            "process exits only after acknowledged disconnect."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F12"
+    },
+    {
+      "id": "INSTALLED-F13",
+      "feature": "F13",
+      "frozenScenario": "PARITY-F13",
+      "capability": "Stop and Continue, Apply/Discard/Cancel, inline draft/export/unknown close states",
+      "procedure": [
+        {
+          "action": "Close while a query runs, while inline edit/draft exists, during export and after unknown Apply. Choose Stop and Continue, Apply/Discard/Cancel as available.",
+          "assertions": [
+            "Safe default is Cancel.",
+            "each close scope resolves all affected work.",
+            "unknown outcome blocks blind apply/retry.",
+            "cancellation restores original context."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F13"
+    },
+    {
+      "id": "INSTALLED-F14",
+      "feature": "F14",
+      "frozenScenario": "PARITY-F14",
+      "capability": "Independent tab text/caret/selection/scroll/Undo, SQL line numbers/current line and exact plain-text input during app lifetime",
+      "procedure": [
+        {
+          "action": "Paste Unicode/CRLF and literal straight quotes/dashes into two SQL tabs. Set different caret/selection/scroll, edit and Undo in both; switch tabs and themes.",
+          "assertions": [
+            "Plain text stays exact.",
+            "no smart substitution/correction.",
+            "line numbers/current-line follow source.",
+            "each tab retains independent editing and Undo state."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F14"
+    },
+    {
+      "id": "INSTALLED-F15",
+      "feature": "F15",
+      "frozenScenario": "PARITY-F15",
+      "capability": "One source resolver for selection/current statement/script, highlights, commands and export",
+      "procedure": [
+        {
+          "action": "For each SQL corpus case, run a selection, caret statement (including just after semicolon), and entire script; invoke from toolbar/menu/keyboard and Run to File.",
+          "assertions": [
+            "One resolver chooses the same original range for all entry points.",
+            "selection has priority.",
+            "highlights and summary identify exact source."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F15"
+    },
+    {
+      "id": "INSTALLED-F16",
+      "feature": "F16",
+      "frozenScenario": "PARITY-F16",
+      "capability": "PostgreSQL/MySQL splitter, routine bodies, delimiters, diagnostics and client-command rejection",
+      "procedure": [
+        {
+          "action": "Execute parser corpus including PostgreSQL nested/dollar/atomic routines, MySQL DELIMITER, quoted/comment delimiters, malformed lexemes and rejected client commands.",
+          "assertions": [
+            "Only server statements are sent in order.",
+            "directives are removed.",
+            "unsupported client commands and unterminated lexemes block execution with source diagnostics."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F16"
+    },
+    {
+      "id": "INSTALLED-F17",
+      "feature": "F17",
+      "frozenScenario": "PARITY-F17",
+      "capability": "Whole-batch review, exact ordered grants, safe dialog default and context invalidation",
+      "procedure": [
+        {
+          "action": "Review a mixed script containing allowed/write/destructive/unknown operations. Approve once, then edit SQL, Stop, switch profile or force an error before remaining work.",
+          "assertions": [
+            "Review covers the exact ordered batch even if individual operations classify allowed.",
+            "Cancel is default.",
+            "context changes invalidate unconsumed grants."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F17"
+    },
+    {
+      "id": "INSTALLED-F18",
+      "feature": "F18",
+      "frozenScenario": "PARITY-F18",
+      "capability": "Sequential first-error-stop scripts, skipped states, statement results plus ordered multi-set results",
+      "procedure": [
+        {
+          "action": "Execute success, first-error and middle-error scripts plus MySQL fixture_procedure multi-results. Switch tabs while results arrive.",
+          "assertions": [
+            "Statements run sequentially until first error.",
+            "completed sets remain ordered.",
+            "remaining statements are skipped.",
+            "each result retains statement/tab identity."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F18"
+    },
+    {
+      "id": "INSTALLED-F19",
+      "feature": "F19",
+      "frozenScenario": "PARITY-F19",
+      "capability": "Original-source Unicode error navigation, execution fragment, active line number and success gutter clearing rules",
+      "procedure": [
+        {
+          "action": "Fail the second selected statement after non-BMP text and CRLF; navigate to error, correct it, rerun successfully, then edit the successful source.",
+          "assertions": [
+            "Error and success gutter positions use original UTF-16 source.",
+            "current line remains correct.",
+            "editing clears obsolete success marks."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F19"
+    },
+    {
+      "id": "INSTALLED-F20",
+      "feature": "F20",
+      "frozenScenario": "PARITY-F20",
+      "capability": "UTF-8 SQL Open/Save/Save As, per-document file binding and safe file failure/cancel",
+      "procedure": [
+        {
+          "action": "Open UTF-8 files with non-BMP/combining paths and CRLF, edit/save/save-as in two documents; cancel chooser and test invalid UTF-8/locked destination.",
+          "assertions": [
+            "Each tab retains its own file binding.",
+            "exact SQL and line endings survive.",
+            "cancellation/write failure leaves original binding/content/destination intact."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F20"
+    },
+    {
+      "id": "INSTALLED-F21",
+      "feature": "F21",
+      "frozenScenario": "PARITY-F21",
+      "capability": "One-second draft autosave, flush, versioned snapshots, disconnected restore, no live state persisted",
+      "procedure": [
+        {
+          "action": "Edit a draft, wait one second, close/restart and force flush at shutdown; inspect snapshot and test corrupt/future versions.",
+          "assertions": [
+            "Text/order/selection restore disconnected.",
+            "no session/results/credentials persist.",
+            "no SQL replays.",
+            "corrupt bytes remain recoverable."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F21"
+    },
+    {
+      "id": "INSTALLED-F22",
+      "feature": "F22",
+      "frozenScenario": "PARITY-F22",
+      "capability": "Per-statement history, 1,000/30-day retention, enable/disable/clear/reopen and clear drafts",
+      "procedure": [
+        {
+          "action": "Execute a three-statement script and failed/cancelled variants; inspect history, reopen entry, exceed 1000 entries/30 days, disable, clear history and drafts, restart.",
+          "assertions": [
+            "History is per statement with bounded retention.",
+            "preferences/clear persist.",
+            "reopening restores source without connecting or execution."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F22"
+    },
+    {
+      "id": "INSTALLED-F23",
+      "feature": "F23",
+      "frozenScenario": "PARITY-F23",
+      "capability": "Schemas, tables/views/functions/procedures/triggers and metadata detail groups with lazy retry/refresh",
+      "procedure": [
+        {
+          "action": "Connect both fixtures; lazily expand schemas/table/view/function/procedure/trigger and detail groups; inject failure, retry and Refresh.",
+          "assertions": [
+            "Every supported object/detail kind appears once.",
+            "retries work.",
+            "refresh replaces removed metadata without cross-profile mixing."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F23"
+    },
+    {
+      "id": "INSTALLED-F24",
+      "feature": "F24",
+      "frozenScenario": "PARITY-F24",
+      "capability": "Server catalog search across connected profiles independent of prior expansion",
+      "procedure": [
+        {
+          "action": "Search for an unexpanded synthetic object across two connected profiles; clear/change search during asynchronous replies.",
+          "assertions": [
+            "Search goes to the server independently of prior expansion.",
+            "stale/profile-mismatched replies cannot replace current matches."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F24"
+    },
+    {
+      "id": "INSTALLED-F25",
+      "feature": "F25",
+      "frozenScenario": "PARITY-F25",
+      "capability": "Structure/Definition/Open Data/Generate SELECT/adapter-quoted Copy Name and context actions",
+      "procedure": [
+        {
+          "action": "Invoke Structure, Definition, Open Data, Generate SELECT and Copy Name on table/view/routine with spaces/non-BMP names, using mouse and context-menu keyboard.",
+          "assertions": [
+            "Actions are context-appropriate.",
+            "names/SQL use adapter dialect quoting.",
+            "generated SQL opens without implicit execution.",
+            "details identify correct object."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F25"
+    },
+    {
+      "id": "INSTALLED-F26",
+      "feature": "F26",
+      "frozenScenario": "PARITY-F26",
+      "capability": "Dedicated table docs, 200-row pages, PK tie-breaks, server sorting and nine typed filter operators",
+      "procedure": [
+        {
+          "action": "Open the fixture table with over 1000 rows, page at 200 rows, sort tied values, then apply all nine typed filter operators including NULL and clear filters.",
+          "assertions": [
+            "Paging/sort/filter run on server.",
+            "PK tie-breaks give stable boundaries.",
+            "dedicated table document captures identity.",
+            "invalid values cannot launch."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F26"
+    },
+    {
+      "id": "INSTALLED-F27",
+      "feature": "F27",
+      "frozenScenario": "PARITY-F27",
+      "capability": "Ordered duplicate columns, exact values/metadata, bounded display, truncation and partial/multiple sets",
+      "procedure": [
+        {
+          "action": "Run duplicate-name/NULL/empty/literal NULL/exact numeric/binary query and routine multi-sets; exceed 1000 rows and 8 MiB; fail a later set.",
+          "assertions": [
+            "Columns retain ordinal/type/encoding metadata.",
+            "values stay distinct.",
+            "display bounds/truncation are explicit.",
+            "prior sets and partial error remain available."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F27"
+    },
+    {
+      "id": "INSTALLED-F28",
+      "feature": "F28",
+      "frozenScenario": "PARITY-F28",
+      "capability": "Cell/range/sparse-row selection, context copy, TSV and typed clipboard JSON",
+      "procedure": [
+        {
+          "action": "Select a cell, rectangle and sparse whole rows. Copy from keyboard/context menu; inspect TSV plus typed clipboard JSON, including duplicate names and all special values.",
+          "assertions": [
+            "Only intended cells/rows copy in source order.",
+            "JSON retains ordinals and typed NULL/binary.",
+            "TSV quoting/null marker is unambiguous.",
+            "row numbers are excluded."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F28"
+    },
+    {
+      "id": "INSTALLED-F29",
+      "feature": "F29",
+      "frozenScenario": "PARITY-F29",
+      "capability": "Retained widths/selection, row numbering, horizontal overflow, virtualization and focus",
+      "procedure": [
+        {
+          "action": "Load the 1000x32 grid, resize columns, select rows, scroll vertically/horizontally, switch away/back and change theme/DPI; inspect focus and row numbers.",
+          "assertions": [
+            "Widths/selection remain.",
+            "horizontal overflow and virtualization work.",
+            "row numbering stays fixed.",
+            "keyboard focus/selection remains visible."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F29"
+    },
+    {
+      "id": "INSTALLED-F30",
+      "feature": "F30",
+      "frozenScenario": "PARITY-F30",
+      "capability": "Row inspector, multiline/large/binary presentation and editable/read-only reasons",
+      "procedure": [
+        {
+          "action": "Open row inspector for NULL, empty, literal NULL, multiline, 1 MiB text and binary; toggle inspector and inspect editable/read-only reasons.",
+          "assertions": [
+            "Large/binary data is bounded and accurate.",
+            "special values are distinct.",
+            "edit affordances and explanations follow adapter metadata."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F30"
+    },
+    {
+      "id": "INSTALLED-F31",
+      "feature": "F31",
+      "frozenScenario": "PARITY-F31",
+      "capability": "Typed cell edits respecting adapter/type/PK/engine/privilege limits and NULL/DEFAULT semantics",
+      "procedure": [
+        {
+          "action": "Edit fixture nullable/default/text/numeric/binary cells; try generated, no-PK, view, restricted-privilege and MyISAM data.",
+          "assertions": [
+            "Permitted edits use typed values.",
+            "NULL/empty/text NULL/DEFAULT differ.",
+            "unsupported cells explain why and cannot silently change values."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F31"
+    },
+    {
+      "id": "INSTALLED-F32",
+      "feature": "F32",
+      "frozenScenario": "PARITY-F32",
+      "capability": "Local insert/update/delete drafts, original snapshots, markers, counts, Columns and Discard",
+      "procedure": [
+        {
+          "action": "Stage insert/update/delete, inspect original values/markers/counts/Columns, edit a value back to original, delete an inserted row, then Discard.",
+          "assertions": [
+            "Drafts remain local until Apply.",
+            "exact original snapshots and counts stay coherent.",
+            "reverting/discard restores content and selection safely."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F32"
+    },
+    {
+      "id": "INSTALLED-F33",
+      "feature": "F33",
+      "frozenScenario": "PARITY-F33",
+      "capability": "Helper-generated parameterized SQL preview of an immutable batch and exact review",
+      "procedure": [
+        {
+          "action": "Stage a mixed immutable batch; Preview and review helper-generated parameterized SQL; mutate draft/context while preview reply is delayed.",
+          "assertions": [
+            "Preview uses exact captured typed batch.",
+            "frontend generates no mutation SQL.",
+            "stale preview cannot authorize changed work."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F33"
+    },
+    {
+      "id": "INSTALLED-F34",
+      "feature": "F34",
+      "frozenScenario": "PARITY-F34",
+      "capability": "Fresh idle Apply session, locked snapshots and stale context revalidation",
+      "procedure": [
+        {
+          "action": "Keep a SQL tab transaction open; Preview/Apply in grid, attempt edits/navigation/profile mutation while snapshot locked, then deliver stale reply.",
+          "assertions": [
+            "Apply owns a fresh idle session.",
+            "original SQL transaction is untouched.",
+            "locked snapshot/context is revalidated and stale completion rejected."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F34"
+    },
+    {
+      "id": "INSTALLED-F35",
+      "feature": "F35",
+      "frozenScenario": "PARITY-F35",
+      "capability": "Atomic Apply, full original-row conflicts, metadata/constraint/deadlock rollback, Stop and reload",
+      "procedure": [
+        {
+          "action": "Apply a multi-row batch; use an observer to modify original rows or constraints/metadata; test deadlock and Stop during Apply.",
+          "assertions": [
+            "All writes commit atomically or roll back.",
+            "full-original conflicts fail safely.",
+            "failed/cancelled apply retains recoverable drafts.",
+            "reload is explicit."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F35"
+    },
+    {
+      "id": "INSTALLED-F36",
+      "feature": "F36",
+      "frozenScenario": "PARITY-F36",
+      "capability": "Unknown COMMIT outcome blocks retry/reapply; explicit verification/discard/reload and close handling",
+      "procedure": [
+        {
+          "action": "Inject lost COMMIT ACK for SQL and Apply. Try retry/reapply, close, explicit verification via independent observer, then discard/reload.",
+          "assertions": [
+            "Outcome stays unknown until explicitly resolved.",
+            "no automatic retry/duplicate write.",
+            "close preserves the uncertainty and recovery path."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F36"
+    },
+    {
+      "id": "INSTALLED-F37",
+      "feature": "F37",
+      "frozenScenario": "PARITY-F37",
+      "capability": "Export Loaded uses captured snapshot, discloses truncation and executes no SQL",
+      "procedure": [
+        {
+          "action": "Capture a truncated loaded result, start Export Loaded, then switch tabs/replace results; inspect helper request count.",
+          "assertions": [
+            "Export uses captured rows/metadata and discloses truncation.",
+            "no SQL executes.",
+            "cancelled/failed publication preserves destination."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "independent-export-bytes-and-counts"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F37"
+    },
+    {
+      "id": "INSTALLED-F38",
+      "feature": "F38",
+      "frozenScenario": "PARITY-F38",
+      "capability": "Exact JSON metadata/value arrays and CSV NULL collision/quoting/binary/duplicate-column fidelity",
+      "procedure": [
+        {
+          "action": "Export shared grid to JSON and CSV with default NULL marker, then choose collision-free marker; inspect Unicode/CRLF/binary/numeric/duplicate-column content.",
+          "assertions": [
+            "JSON uses ordered metadata/value arrays and exact strings.",
+            "CSV rejects marker collisions and quotes correctly.",
+            "NULL/empty/literal NULL stay distinct."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "independent-export-bytes-and-counts"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F38"
+    },
+    {
+      "id": "INSTALLED-F39",
+      "feature": "F39",
+      "frozenScenario": "PARITY-F39",
+      "capability": "Run to File executes once, exports all rows, JSON multi-set/CSV rejection, atomic destination and cancellation",
+      "procedure": [
+        {
+          "action": "Run to File once on the over-limit query and multi-result routine; test JSON/CSV, Stop, first/middle errors and locked replacement.",
+          "assertions": [
+            "Full rows export independently of display limit.",
+            "execution happens once.",
+            "JSON supports multi-set and CSV rejects ambiguity.",
+            "failed/cancelled export never publishes partial output."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "independent-export-bytes-and-counts"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F39"
+    },
+    {
+      "id": "INSTALLED-F40",
+      "feature": "F40",
+      "frozenScenario": "PARITY-F40",
+      "capability": "Separate offline helper LSP process, bounded framing, clean environment, versions/timeouts/fallback",
+      "procedure": [
+        {
+          "action": "Start offline completion with no DB; fragment/coalesce Content-Length frames, overflow/truncate, timeout/kill/restart the separate LSP process; inspect inherited environment.",
+          "assertions": [
+            "LSP is separate from DB helper sessions, bounded and sanitized.",
+            "credentials absent.",
+            "timeout/failure leaves plain editing/execution usable."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F40"
+    },
+    {
+      "id": "INSTALLED-F41",
+      "feature": "F41",
+      "frozenScenario": "PARITY-F41",
+      "capability": "Automatic paginated completion metadata after explicit connect, Refresh, profile/session isolation",
+      "procedure": [
+        {
+          "action": "Explicitly connect each fixture, paginate completion metadata, Refresh after adding/removing an object, then switch profiles during delayed metadata replies.",
+          "assertions": [
+            "Metadata loads only after explicit connect through service session.",
+            "all pages and FK/signatures arrive.",
+            "stale entries/replies are replaced without leakage."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F41"
+    },
+    {
+      "id": "INSTALLED-F42",
+      "feature": "F42",
+      "frozenScenario": "PARITY-F42",
+      "capability": "Clause/scope completion, CTE/subquery/LATERAL/aliases/projections, FK joins and match ranking/highlights",
+      "procedure": [
+        {
+          "action": "Run shared completion fixtures for CTE/subquery/correlated/LATERAL/alias/projection/ambiguous columns and FK JOIN/ON; inspect ranking and fuzzy UTF-16 highlights.",
+          "assertions": [
+            "Scope-correct suggestions, quoting, ranking, abbreviation/typo matching and highlighted spans match the Go oracle for both dialects."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F42"
+    },
+    {
+      "id": "INSTALLED-F43",
+      "feature": "F43",
+      "frozenScenario": "PARITY-F43",
+      "capability": "Automatic/manual popup, navigation/insertion/Escape, quoting, one Undo, IME and stale-reply safety",
+      "procedure": [
+        {
+          "action": "Type and manually invoke completion, navigate/accept with Tab and Return, dismiss Escape, Undo once; repeat in literal/comment and IME composition and with delayed stale replies.",
+          "assertions": [
+            "Popup appears only in valid context.",
+            "focus/caret remain correct.",
+            "insertion quotes safely and is one Undo.",
+            "stale/IME/literal replies cannot modify source."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F43"
+    },
+    {
+      "id": "INSTALLED-F44",
+      "feature": "F44",
+      "frozenScenario": "PARITY-F44",
+      "capability": "Function signature help/active arguments/overloads/nested-named-default-variadic calls and diagnostics",
+      "procedure": [
+        {
+          "action": "Run all shared signature cases including nested/SUBSTRING/named/default/variadic/overload/Unicode; type/change caret/Escape/Undo, refresh connected routine metadata and switch theme/DPI.",
+          "assertions": [
+            "Correct function/overload/active UTF-16 parameter and return type display.",
+            "stale diagnostics/help are rejected.",
+            "offline built-ins need no DB queries."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F44"
+    },
+    {
+      "id": "INSTALLED-F45",
+      "feature": "F45",
+      "frozenScenario": "PARITY-F45",
+      "capability": "Shared command registry, exact context capture, desktop menus and focus/modal gating",
+      "procedure": [
+        {
+          "action": "Invoke Run/Script/Stop/Run to File from toolbar/menu/keyboard while editor, grid, chooser and modal dialog have focus; switch document before delayed completion.",
+          "assertions": [
+            "One command registry captures exact context.",
+            "editing/protected shortcuts are not stolen.",
+            "focus/modal/busy gating is identical across entry points."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F45"
+    },
+    {
+      "id": "INSTALLED-F46",
+      "feature": "F46",
+      "frozenScenario": "PARITY-F46",
+      "capability": "Shortcut recording/rebinding/unbinding/reset/conflict checks and preference recovery",
+      "procedure": [
+        {
+          "action": "Record/rebind/unbind/reset execution shortcuts, provoke duplicate/protected-key conflicts, restart, and load corrupt preferences; repeat under non-Latin layout/AltGr.",
+          "assertions": [
+            "Explicit unbinding persists.",
+            "conflicts are rejected.",
+            "safe fallback recovers corruption.",
+            "menus/toolbar/keyboard stay synchronized using native keys."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F46"
+    },
+    {
+      "id": "INSTALLED-F47",
+      "feature": "F47",
+      "frozenScenario": "PARITY-F47",
+      "capability": "Persistent System/Lager/Porter, independent app/editor schemes, Follow App Appearance and previews",
+      "procedure": [
+        {
+          "action": "Select System/Lager/Porter and named app scheme; select independent editor scheme/Follow App Appearance, preview and restart.",
+          "assertions": [
+            "Preferences persist independently with safe fallback.",
+            "system changes update only following choices.",
+            "all screens/popups use intended palette."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F47"
+    },
+    {
+      "id": "INSTALLED-F48",
+      "feature": "F48",
+      "frozenScenario": "PARITY-F48",
+      "capability": "Bundled theme library and JSON/JSONC/TextMate/JetBrains imports, safe includes, durable storage/notices",
+      "procedure": [
+        {
+          "action": "Load bundled schemes and all shared imports including JSONC include/TextMate/JetBrains; delete source and reload; remove custom; test traversal/symlink/cycle/remote/XML entity/size attacks.",
+          "assertions": [
+            "Normalized colors/font/scope/alpha precedence match.",
+            "imports persist independently.",
+            "unsafe input is rejected and corrupt library preserved.",
+            "notices accompany bundled assets."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F48"
+    },
+    {
+      "id": "INSTALLED-F49",
+      "feature": "F49",
+      "frozenScenario": "PARITY-F49",
+      "capability": "Live theme updates preserve editing/execution/selection and readable full app surfaces",
+      "procedure": [
+        {
+          "action": "During active editor Undo/selection/scroll, result selection and query execution, switch app/editor light/dark/system choices and render every dialog/popup/settings screen.",
+          "assertions": [
+            "Live themes keep editing/execution state and readable text/icons/hover/focus/selection.",
+            "native light controls have correct contrast."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F49"
+    },
+    {
+      "id": "INSTALLED-F50",
+      "feature": "F50",
+      "frozenScenario": "PARITY-F50",
+      "capability": "Native file/CA dialogs, desktop keyboard/clipboard/IME, Unicode/CRLF paths, DPI/fonts/window conventions",
+      "procedure": [
+        {
+          "action": "Use native Open/Save/CA choosers and clipboard on Unicode/CRLF paths; type via IME/non-Latin/AltGr, move focus by keyboard, change fractional/mixed DPI and window bounds.",
+          "assertions": [
+            "Desktop conventions and exact text survive.",
+            "file/clipboard roundtrips succeed.",
+            "focus/selection/readability remain visible across displays."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F50"
+    },
+    {
+      "id": "INSTALLED-F51",
+      "feature": "F51",
+      "frozenScenario": "PARITY-F51",
+      "capability": "Real Credential Manager/Secret Service access, locked/missing/empty behavior and standard-user security",
+      "procedure": [
+        {
+          "action": "As standard user, create/read/update/delete a unique fixture credential in real native store; test missing/empty/locked/unavailable service and rollback failure.",
+          "assertions": [
+            "Credential Manager/Secret Service roundtrip succeeds privately.",
+            "failure is explicit.",
+            "no plaintext fallback, unrelated credential access or loss of existing password."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-credential-absence-and-roundtrip",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F51"
+    },
+    {
+      "id": "INSTALLED-F52",
+      "feature": "F52",
+      "frozenScenario": "PARITY-F52",
+      "capability": "UIA/Narrator and AT-SPI/Orca roles/values/focus for full editor/grid/dialog workflows",
+      "procedure": [
+        {
+          "action": "With Narrator/UIA or Orca/AT-SPI, navigate editor, virtualized grid, NULL/binary cells, inspector, menus, Settings and dialogs entirely by keyboard.",
+          "assertions": [
+            "Names/roles/values/actions/focus are announced correctly.",
+            "modal safe defaults and row/column position are operable.",
+            "rendering/headless tests do not substitute for this run."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F52"
+    },
+    {
+      "id": "INSTALLED-F53",
+      "feature": "F53",
+      "frozenScenario": "PARITY-F53",
+      "capability": "Helper lifecycle, matching executable, no Windows console, cancellation/backpressure/death recovery",
+      "procedure": [
+        {
+          "action": "Launch exact packaged helper, check protocol/version and no Windows console; saturate stream, Stop, kill only owned helper and retry/recover.",
+          "assertions": [
+            "Matching executable is used.",
+            "control/terminal traffic stays bounded.",
+            "helper death surfaces correct disconnected/unknown state.",
+            "unrelated processes remain untouched."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F53"
+    },
+    {
+      "id": "INSTALLED-F54",
+      "feature": "F54",
+      "frozenScenario": "PARITY-F54",
+      "capability": "Stable product ID/icons/version metadata, prototype migration and separate Mac SwiftUI product",
+      "procedure": [
+        {
+          "action": "Inspect candidate GUI/helper version/build/icons/identity; migrate a copied prototype library and credentials; launch old/new simultaneously; independently rebuild Mac SwiftUI.",
+          "assertions": [
+            "Stable identity retains IDs/credentials without data races.",
+            "GUI/helper metadata match.",
+            "Mac dev.dbeer.app/signing/release path remains independent."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F54"
+    },
+    {
+      "id": "INSTALLED-F55",
+      "feature": "F55",
+      "frozenScenario": "PARITY-F55",
+      "capability": "Supported runtime/GPU dependencies, packages/checksums/notices/signing policy and manual update",
+      "procedure": [
+        {
+          "action": "On clean standard-user desktops, verify archive/package checksum/notices/dependencies and signing/provenance policy, extract/install, launch without Go/Rust, then manually update.",
+          "assertions": [
+            "Documented Windows runtime/Linux glibc/GPU/Secret Service requirements suffice.",
+            "matching helper and notices present.",
+            "existing release archives are untouched."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F55"
+    },
+    {
+      "id": "INSTALLED-F56",
+      "feature": "F56",
+      "frozenScenario": "PARITY-F56",
+      "capability": "Clean install/update/remove, repeated-launch ownership and preserved profiles/UUIDs/credentials/drafts/history/settings",
+      "procedure": [
+        {
+          "action": "Install exact previous/candidate artifacts in an owned fixture; exercise repeated launch, preserve profiles/UUIDs/credentials/drafts/history/settings, restart/update/remove.",
+          "assertions": [
+            "State survives migration.",
+            "documents restore disconnected.",
+            "instance ownership prevents clobbering.",
+            "removal does not touch unrelated user data or processes."
+          ]
+        }
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip",
+        "actual-trusted-prior-upgrade",
+        "concurrent-exact-image-refusal",
+        "ordinary-restart-disconnected"
+      ],
+      "manualRequired": false,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F56"
+    },
+    {
+      "id": "INSTALLED-F57",
+      "feature": "F57",
+      "frozenScenario": "PARITY-F57",
+      "capability": "Both engine families/versions, real TLS, faults, native desktop and upgrade completed-run evidence",
+      "procedure": [
+        {
+          "action": "Run every required scenario on Windows 11 x64 and Ubuntu 24.04 x64 Wayland/X11 with PostgreSQL 16/17/18 and MySQL 8.0/8.4, TLS/fault/upgrade cases; audit summaries and skips.",
+          "assertions": [
+            "Every native column has exact artifact/build/session/engine evidence and completed-run summary.",
+            "no headless-derived UI pass.",
+            "Mac regression route remains green."
+          ]
+        }
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "proofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip",
+        "native-manual-observation"
+      ],
+      "manualRequired": true,
+      "preparedStatus": "pending-native-bindings-and-target-artifacts",
+      "automationRecipe": "F57"
+    }
+  ],
+  "policy": "Prepared procedures never count as executed native evidence; each engine and assertion must complete."
+}

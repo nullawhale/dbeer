@@ -11,6 +11,9 @@ struct GridLifecycleTests {
         var release: URL { directory.appendingPathComponent("release") }
         var changes: URL { directory.appendingPathComponent("changes") }
         var connections: URL { directory.appendingPathComponent("connections") }
+        var previewQuery: URL { directory.appendingPathComponent("preview-query") }
+        var cancelledQuery: URL { directory.appendingPathComponent("cancelled-query") }
+        var confirmations = 0
         init() throws { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
         func open() { FileManager.default.createFile(atPath: release.path, contents: Data()) }
         deinit { try? FileManager.default.removeItem(at: directory) }
@@ -34,14 +37,18 @@ struct GridLifecycleTests {
             kind = command['type']
             reply = {'requestId': command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=2)
+                reply.update(type='hello.ack', protocolVersion=4)
+            elif kind == 'operation.assess':
+                reply.update(type='operation.assessment', sessionId=command['sessionId'], queryId=command['queryId'],
+                             assessment={'decision':'confirm' if delay == 'apply-preview' else 'allow','policy':{'environment':'unspecified','readOnly':False},
+                             'operations':[{'kind':'read','statements':[]} for op in command['operations']], 'authorization':'test-grant'})
             elif kind == 'connect':
                 connections += 1
                 with (directory / 'connections').open('a') as recorded:
                     recorded.write('connect\\n')
                 if delay == 'apply-connect' and connections == 3:
                     wait()
-                reply.update(type='connect.result', engine='postgresql', capabilities=['execute','cancel','transactions','catalog'],
+                reply.update(type='connect.result', engine='postgresql', capabilities=['execute','cancel','transactions','catalog','gridEditing'],
                              sessionId='session-' + str(connections), transactionStatus='idle')
             elif kind in ['execute', 'catalog', 'changes.preview', 'changes.apply']:
                 session = command['sessionId']
@@ -52,6 +59,9 @@ struct GridLifecycleTests {
                 if kind.startswith('changes.'):
                     with (directory / 'changes').open('a') as recorded:
                         recorded.write(kind + '\\n')
+                if kind == 'changes.preview' and delay == 'apply-preview':
+                    (directory / 'preview-query').write_text(command['queryId'])
+                    wait()
                 columns = [{'index':0,'name':'id','engine':'postgresql','nativeType':'int8' if delay == 'metadata' and columns_calls > 1 else 'int4'},
                            {'index':1,'name':'label','engine':'postgresql','nativeType':'text'}]
                 rows = [['1','original']]
@@ -73,6 +83,8 @@ struct GridLifecycleTests {
                              transactionStatus='idle', columns=columns, rows=rows, commandTag='SELECT ' + str(len(rows)),
                              rowCount=len(rows), displayedRowCount=len(rows), truncated=False)
             elif kind == 'cancel':
+                if delay == 'apply-preview':
+                    (directory / 'cancelled-query').write_text(command['queryId'])
                 reply.update(type='cancel.ack', sessionId=command['sessionId'], queryId=command['queryId'], status='accepted')
             elif kind == 'disconnect':
                 if delay == 'disconnect':
@@ -98,7 +110,8 @@ struct GridLifecycleTests {
                            close: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = { _ in .discard }) async throws -> (ApplicationWorkspace, SQLDocument) {
         let client = helper(gate, delay: delay)
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
-            credentialStore: MemoryConnectionCredentialStore(), closeDecision: close, helperFactory: { client })
+            credentialStore: MemoryConnectionCredentialStore(), closeDecision: close,
+            executionDecision: { _ in gate.confirmations += 1; return true }, helperFactory: { client })
         await workspace.start()
         try #require(await workspace.library.saveConnection(name: "Lifecycle fixture",
             settings: ConnectionSettings(host: "localhost", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable")))
@@ -310,5 +323,29 @@ struct GridLifecycleTests {
             _ = try await workspace.ensureHelper()
             Issue.record("A shut down workspace reopened its helper.")
         } catch {}
+    }
+
+    @Test func stopDuringApplyPreviewCancelsItsActualQueryAndNeverConfirmsOrApplies() async throws {
+        let gate = try Gate()
+        let (workspace, document) = try await workspace(gate, delay: "apply-preview")
+        defer { gate.open(); Task { await workspace.shutdown() } }
+        await workspace.run(document)
+        let grid = try #require(document.grid)
+        grid.set(.null, row: 0, column: 1)
+        let applying = Task { await workspace.applyGrid(document) }
+        try await waitUntil { FileManager.default.fileExists(atPath: gate.entered.path) }
+        let previewID = try String(contentsOf: gate.previewQuery, encoding: .utf8)
+        #expect(grid.isApplying && grid.applyQueryID == previewID)
+        let stopping = Task { await workspace.stopGridApply(document) }
+        try await waitUntil { grid.cancelRequested }
+        gate.open()
+        await stopping.value
+        #expect(!(await applying.value))
+        #expect(try String(contentsOf: gate.cancelledQuery, encoding: .utf8) == previewID)
+        #expect(try String(contentsOf: gate.changes, encoding: .utf8) == "changes.preview\n")
+        #expect(gate.confirmations == 0)
+        #expect(document.grid === grid && grid.pendingCount == 1 && !grid.outcomeUnknown && grid.canEdit)
+        #expect(grid.error?.contains("cancelled") == true)
+        await workspace.shutdown()
     }
 }

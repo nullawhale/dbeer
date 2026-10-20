@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-expected-workflow-ordering-not-execution-plan",
+  "nativeObserved": false,
+  "selectorIntegrationReviewed": false,
+  "runtimeExecuted": false,
+  "preparation": [
+    {
+      "phase": "profile-defaults",
+      "actions": [
+        "Start actual previous in fresh owned root",
+        "Create one untouched profile per engine; capture before/after metadata-only UI Save UUID, never fixed UUID"
+      ],
+      "expected": [
+        "readonly=false,environment=unspecified,sslMode=verify-full",
+        "zero product DB connections",
+        "native password account absence proven after Save"
+      ],
+      "needs": [
+        "native-bindings",
+        "captured-uuid"
+      ]
+    },
+    {
+      "phase": "reserve-and-ui-write",
+      "actions": [
+        "Reserve original exact account only after true absence",
+        "Journal expected DB random password hash before UI Replace stored password and Save",
+        "Keep account/expected hash ownership through normal previous close and candidate handoff"
+      ],
+      "fragments": [
+        "credential-first-write-postgresql-nonempty",
+        "credential-first-write-mysql-nonempty"
+      ],
+      "expected": [
+        "exact native credential readback hash, nonempty",
+        "no metadata password/private key fields"
+      ],
+      "needs": [
+        "native-bindings"
+      ]
+    },
+    {
+      "phase": "explicit-connect-and-history",
+      "actions": [
+        "Set development/readonly, actual owned CA and localhost with verify-full",
+        "Save & Connect original profile once",
+        "Create three SQL documents with separately captured UUIDs",
+        "Execute fixed readonly statements explicitly to populate per-statement history",
+        "Disconnect all SQL/catalog/product sessions"
+      ],
+      "expected": [
+        "three original document IDs and exact source hashes",
+        "nonempty per-statement history with original document/profile IDs",
+        "observer product connection count zero on both engines"
+      ],
+      "needs": [
+        "fixed-inputs",
+        "source-state",
+        "session-observer"
+      ]
+    },
+    {
+      "phase": "all-settings-populated",
+      "actions": [
+        "Native Settings choose Lager app and native-dark editor independently",
+        "Import owned fixed library JSONC through native chooser/review/commit, preserving original Settings owner",
+        "Clear one execution shortcut through native control to create explicit unbound preference",
+        "Await actual latest appearance/library/shortcut publications"
+      ],
+      "expected": [
+        "appearance.json, themes.json, shortcuts.json all application-written",
+        "original SQL editors/text/selection/Undo/scroll and operation IDs unchanged",
+        "native UI defaults/keyboard not inferred from SetValue"
+      ],
+      "needs": [
+        "settings-oracle",
+        "native-manual"
+      ]
+    },
+    {
+      "phase": "upgrade-owner",
+      "actions": [
+        "Choose captured middle profile/document; reorder three documents",
+        "Capture populated typed state and exact owned credential hashes",
+        "Exercise exact previous/previous and previous/candidate competing launch refusal",
+        "Normal common close; await latest file/settings flush and original disconnect ACK",
+        "Launch exact candidate same data root; compare all captured original IDs/hashes",
+        "Exercise candidate/previous and candidate/candidate refusal",
+        "Ordinary restart through common close and compare source-only disconnected state"
+      ],
+      "expected": [
+        "exact populated typed state/credential preservation",
+        "both physical product connection counts zero after restart",
+        "unrelated file/process sentinel receipts unchanged"
+      ],
+      "needs": [
+        "lifecycle",
+        "source-state",
+        "package-evidence"
+      ]
+    }
+  ],
+  "settingsLibraryOrdering": [
+    {
+      "phase": "chooser",
+      "actions": [
+        "Capture original Settings entity/modal, library revision, preferences revision and selected editor-choice authority before native chooser",
+        "Dismiss/reopen/reload changes owner; late chooser callback cannot be relabeled as current"
+      ],
+      "expected": "No imported ID or preference mutation from chooser return/Cancel alone"
+    },
+    {
+      "phase": "parse-review",
+      "actions": [
+        "Preview fixed copied input on owned worker, retain original request and revision",
+        "Compare independently expected normalized colors/scopes",
+        "Cancel leaves all saved/current selectors and library unchanged",
+        "Reopen requires fresh modal native lifetime key and fresh request token"
+      ],
+      "expected": "Preview creates no durable ID or save reservation"
+    },
+    {
+      "phase": "explicit-recovery",
+      "actions": [
+        "For corrupt/future library only, user explicitly chooses recovery",
+        "Preserve exact original bounded bytes in exclusive backup before reserving recovery import",
+        "Ordinary import/retry cannot gain recovery authority"
+      ],
+      "expected": "Original recovery backup digest equals staged corruption; failed backup leaves source unchanged"
+    },
+    {
+      "phase": "commit",
+      "actions": [
+        "Accepted original Commit token synchronously reserves ordered library mutation before dispatch",
+        "Await actual Imported outcome; discover real committed imported ID from isolated library",
+        "Only then separately reserve editor-choice preference save if original editor-choice authority still current"
+      ],
+      "expected": "App choice unchanged; no selector change for Unchanged/Superseded/failed/late owner; committed library remains even if Settings closes"
+    },
+    {
+      "phase": "late-new-choice",
+      "actions": [
+        "Choose a newer independent editor while old import commit held",
+        "Deliver actual old publication terminal without refreshing old request revision"
+      ],
+      "expected": "New editor choice survives; committed theme catalog retained; obsolete automatic selection refused"
+    },
+    {
+      "phase": "remove",
+      "actions": [
+        "Capture actual committed custom ID",
+        "Reserve removal before dispatch; do not reset selectors from click/success text",
+        "On actual Removed(original ID), compare CURRENT latest preferences and reset only references to removed ID",
+        "Separately reserve latest appearance mutation, preserving newer unrelated app/editor choices"
+      ],
+      "expected": "Failed/Unchanged/Superseded removal never resets choices; removed unknown theme ID falls back safely"
+    },
+    {
+      "phase": "reload-close",
+      "actions": [
+        "Explicit Reload invalidates chooser/parse/review/reservations before reading saved authoritative bytes",
+        "Close awaits latest library AND appearance AND shortcut finalizers",
+        "A newer reservation invalidates older finalizer completion; no synthetic Saved from Superseded"
+      ],
+      "expected": "Pending/failed/ambiguous publication blocks claimed flush; readonly unchanged fallback creates no write reservation"
+    }
+  ],
+  "shortcutOrdering": [
+    {
+      "phase": "capture",
+      "actions": [
+        "Invoke real Record for original command/Settings owner",
+        "Use actual native synchronous key event with current marked/dead/AltGr evidence",
+        "IME/dead/unknown/priority/repeat/modifier-only events pass through and never bind; scratch Input text is not preference"
+      ],
+      "expected": "Native manual gate; semantic SetValue never simulates a recorded key"
+    },
+    {
+      "phase": "cancel",
+      "actions": [
+        "Escape cancels original capture while Settings stays open",
+        "Tab/Shift+Tab cancel and advance actual focus graph exactly once",
+        "Blur/deactivate/close/replacement invalidates original scope even if focus later returns"
+      ],
+      "expected": "Queued old event with original scope cannot revive on new revision/focus"
+    },
+    {
+      "phase": "save",
+      "actions": [
+        "Owner rechecks original modal/entity/current presentation and pending command focus",
+        "Validate candidate against CURRENT full preferences; reserve latest complete value synchronously",
+        "Update menus/toolbar/native matcher from that same accepted snapshot"
+      ],
+      "expected": "Explicit Unbound distinct from Default; older Published/Superseded never marks current revision Saved"
+    },
+    {
+      "phase": "recovery",
+      "actions": [
+        "Failed-load fallback stays readonly; no Retry write",
+        "Conflict requires explicit Reload",
+        "Explicit Recover Defaults first preserves exact corruption backup; successful recovery invalidates old reservations",
+        "Common close awaits only real latest writable reservation"
+      ],
+      "expected": "No silent corrupt overwrite or close trap from unchanged readonly fallback"
+    }
+  ],
+  "safety": {
+    "captures": "Never recapture a newer revision/owner to authorize an old callback; actual native selectors remain unobserved",
+    "credentials": "Fresh first-write fragments cannot implement same-account replacement; exact prior-hash journal API required",
+    "faults": "All real COMMIT/Apply lost-ACK and server exactly-once cases require effects/plan.json operation integration",
+    "cleanupOrder": [
+      "actual normal common close",
+      "successful exact GUI child exit",
+      "final typed snapshot",
+      "independent observers disconnect/shutdown",
+      "owned-child failure cleanup with failure record",
+      "conditional exact-hash credential cleanup",
+      "exact labeled owned DB cleanup"
+    ],
+    "noSessionEnd": "This corpus cannot trigger OS logout/session end; any native test requires separate explicit disposable-session authorization"
+  }
+}

@@ -12,14 +12,22 @@ extension FocusedValues {
     }
 }
 
+private enum WorkspaceChrome {
+    // Paired rows on either side of the split share their divider positions.
+    static let headerHeight: CGFloat = 36
+    static let toolbarHeight: CGFloat = 40
+}
+
 struct ApplicationWorkspaceView: View {
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var appearance: AppAppearance
     @Environment(\.colorScheme) private var colorScheme
     private var editing = SwiftUI.State<SavedConnection?>(initialValue: nil)
     private var deletion = SwiftUI.State<SavedConnection?>(initialValue: nil)
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
+        self.appearance = workspace.appearance
     }
 
     var body: some View {
@@ -27,6 +35,7 @@ struct ApplicationWorkspaceView: View {
             sidebar
             VStack(spacing: 0) {
                 documentBar
+                Divider()
                 if let error = workspace.error {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange).font(.callout).textSelection(.enabled)
@@ -38,7 +47,7 @@ struct ApplicationWorkspaceView: View {
                         .id(document.id)
                 } else {
                     VStack(spacing: 12) {
-                        Image(systemName: "doc.text").font(.largeTitle).foregroundStyle(.secondary)
+                        Image(systemName: "doc.text").font(.largeTitle).appSecondaryText()
                             .accessibilityHidden(true)
                         Button("New SQL Tab") { workspace.newDocument() }.controlHover()
                     }
@@ -48,6 +57,7 @@ struct ApplicationWorkspaceView: View {
             .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(AppPalette.background).tint(AppPalette.accent)
+        .applicationTheme(appearance: appearance)
         .focusEffectDisabled()
         .focusedSceneValue(\.focusCatalogSearch, focusCatalogSearch)
         .background(WorkspaceWindowCloseGuard(workspace: workspace).frame(width: 0, height: 0))
@@ -70,16 +80,20 @@ struct ApplicationWorkspaceView: View {
                 workspace.library.isConnectionEditorPresented = false
                 editing.wrappedValue = nil
             }
+            .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.inspection) { inspection in
             CatalogInspectionView(inspection: inspection) { workspace.inspection = nil }
+                .applicationTheme(appearance: appearance)
         }
         .sheet(isPresented: $workspace.isHistoryPresented) {
             SQLHistoryView(workspace: workspace)
+                .applicationTheme(appearance: appearance)
         }
         .sheet(isPresented: Binding(get: { workspace.importPreview != nil },
             set: { if !$0 { workspace.importPreview = nil } })) {
             ProfileImportView(workspace: workspace)
+                .applicationTheme(appearance: appearance)
         }
         .alert("Delete Connection?", isPresented: Binding(get: { deletion.wrappedValue != nil },
             set: { if !$0 { deletion.wrappedValue = nil } })) {
@@ -124,11 +138,13 @@ struct ApplicationWorkspaceView: View {
                 .help("New Connection")
                 .accessibilityLabel("New Connection")
                 .accessibilityIdentifier("newConnection")
-            }.padding(12)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: WorkspaceChrome.headerHeight)
             Divider()
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+                    .appSecondaryText()
                     .accessibilityHidden(true)
                 TextField("Search object names", text: $workspace.catalogSearch)
                     .textFieldStyle(.plain)
@@ -144,8 +160,9 @@ struct ApplicationWorkspaceView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 38)
-            .background(.primary.opacity(0.025))
+            .frame(maxWidth: .infinity)
+            .frame(height: WorkspaceChrome.toolbarHeight)
+            .background(AppPalette.isCustom ? AppPalette.panel : Color.primary.opacity(0.025))
             .task(id: workspace.catalogSearch) {
                 do { try await Task.sleep(for: .milliseconds(300)) }
                 catch { return }
@@ -165,7 +182,7 @@ struct ApplicationWorkspaceView: View {
             }
         }
         .frame(minWidth: 210, idealWidth: 260, maxWidth: 340)
-        .background(AppPalette.background)
+        .background(AppPalette.isCustom ? AppPalette.sidebar : AppPalette.background)
     }
 
     private func profileRow(_ profile: SavedConnection) -> some View {
@@ -197,9 +214,8 @@ struct ApplicationWorkspaceView: View {
                 .accessibilityIdentifier("newSQLTab")
         }
         .padding(ControlHoverAppearance.gap)
-        .frame(height: 32)
-        .background(.primary.opacity(0.025))
-        .overlay(alignment: .bottom) { Divider() }
+        .frame(height: WorkspaceChrome.headerHeight)
+        .background(AppPalette.isCustom ? AppPalette.panel : Color.primary.opacity(0.025))
     }
 }
 
@@ -257,14 +273,22 @@ struct DocumentTab: View {
     }
 }
 
-private struct SQLDocumentPane: View {
+struct SQLDocumentPane: View {
     @ObservedObject var document: SQLDocument
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var commands: AppCommandRegistry
+    @ObservedObject private var editorThemes: EditorThemeStore
+    @ObservedObject private var appearance: AppAppearance
+    @Environment(\.colorScheme) private var colorScheme
     private var resultSetIndex = SwiftUI.State(initialValue: 0)
+    private var showingFilters = SwiftUI.State(initialValue: false)
 
     init(document: SQLDocument, workspace: ApplicationWorkspace) {
         self.document = document
         self.workspace = workspace
+        self.commands = workspace.commands
+        self.editorThemes = workspace.editorThemes
+        self.appearance = workspace.appearance
     }
 
     var body: some View {
@@ -276,47 +300,81 @@ private struct SQLDocumentPane: View {
                         Text(profile.name).tag(Optional(profile.id))
                     }
                 }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(maxWidth: 220)
+                    .accessibilityIdentifier("documentConnection")
                     .disabled(document.runtime?.sessionId != nil || document.isRunning)
+                if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
+                   (document.runtime?.policy ?? profile.policy).readOnly {
+                    Text(profile.engine == .cassandra ? "Local RO" : "RO")
+                        .font(.caption2.weight(.regular)).foregroundStyle(.tertiary)
+                        .help(profile.engine == .cassandra ? "Local readonly; use restricted server roles for strict protection" : "Readonly")
+                        .accessibilityLabel(profile.engine == .cassandra ? "Local readonly" : "Readonly")
+                        .accessibilityIdentifier("documentReadOnly")
+                }
+                if document.table != nil, document.grid != nil {
+                    Button {
+                        showingFilters.wrappedValue.toggle()
+                    } label: {
+                        Label(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))",
+                            systemImage: "line.3.horizontal.decrease")
+                    }.controlHover().controlSize(.small)
+                        .disabled(!TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
+                        .accessibilityIdentifier("gridFilter")
+                        .popover(isPresented: showingFilters.projectedValue) {
+                            TableBrowseControls(document: document, workspace: workspace)
+                        }
+                }
                 Spacer()
-                Button("Stop") { Task { await workspace.stop(document) } }.controlHover()
-                    .disabled(!document.isRunning && document.grid?.isApplying != true)
+                Button("Stop") { commands.perform(.stop) }.controlHover()
+                    .disabled(!commands.canPerform(.stop))
+                    .help(commandHelp(.stop))
                 if document.table == nil {
-                    Button("Run Script") { Task { await workspace.runScript(document) } }.controlHover()
-                        .disabled(document.isRunning || document.profileID == nil)
-                        .help("Run all statements in order, stopping at the first error")
+                    Button("Run Script") { commands.perform(.runScript) }.controlHover()
+                        .disabled(!commands.canPerform(.runScript))
+                        .help(commandHelp(.runScript) + " · Run the entire document, stopping at the first error")
                     Menu("Run to File") {
-                        Button("JSON…") { Task { await workspace.runToFile(document, format: "json") } }
-                        Button("CSV…") { Task { await workspace.runToFile(document, format: "csv") } }
-                    }.fixedSize().controlHover().disabled(document.isRunning || document.profileID == nil)
+                        Button("JSON…") { commands.perform(.runToJSON) }
+                        Button("CSV…") { commands.perform(.runToCSV) }
+                    }.fixedSize().controlHover().disabled(!commands.canPerform(.runToJSON))
                         .accessibilityIdentifier("runToFile")
                 }
                 Button {
-                    Task { await workspace.run(document) }
-                } label: { Label(document.table == nil ? "Run" : "Refresh", systemImage: document.table == nil ? "play" : "arrow.clockwise") }.controlHover()
-                    .keyboardShortcut(.return, modifiers: .command)
+                    commands.perform(.runCurrent)
+                } label: {
+                    HStack(spacing: 6) {
+                        Label(document.table == nil ? "Run" : "Refresh", systemImage: document.table == nil ? "play" : "arrow.clockwise")
+                        if let shortcut = commands.shortcuts.shortcut(for: .runCurrent) {
+                            Text(shortcut.displayString).opacity(0.65)
+                        }
+                    }.fixedSize(horizontal: true, vertical: false)
+                }.controlHover()
                     .buttonStyle(.borderedProminent)
-                    .disabled(document.isRunning || document.grid?.isApplying == true || document.profileID == nil || document.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(!commands.canPerform(.runCurrent))
+                    .help(commandHelp(.runCurrent))
                     .accessibilityIdentifier("runQuery")
-            }.padding(12)
+            }
+            .padding(.horizontal, 12)
+            .frame(height: WorkspaceChrome.toolbarHeight)
             Divider()
             if document.table == nil {
                 VSplitView {
                     SQLEditorView(text: $document.text, editorState: workspace.editorState, documentID: document.id,
                         engine: workspace.library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql,
                         selectionChanged: { document.selection = $0 },
-                        onRunSelection: { selection in
-                            document.selection = selection
-                            Task { await workspace.run(document) }
+                        onCommandEvent: { event, selection in
+                            commands.handleKeyEvent(event, documentID: document.id, selection: selection)
                         }, completions: workspace.completions(profileID: document.profileID),
-                        errorPosition: document.errorPosition)
-                        .padding(12).frame(minHeight: 160, idealHeight: 240)
+                        languageService: workspace.editorState.languageService,
+                        completionContext: workspace.completionContext(profileID: document.profileID, keyspace: document.runtime?.currentKeyspace),
+                        errorPosition: document.errorPosition,
+                        editorTheme: effectiveEditorTheme,
+                        successfulExecutionRanges: document.successfulExecutionRanges)
+                        .frame(minHeight: 160, idealHeight: 240)
                     VStack(spacing: 0) {
                         executionBar
                         result
                     }.frame(minHeight: 180, maxHeight: .infinity)
                 }
             } else {
-                TableBrowseControls(document: document, workspace: workspace)
                 result.frame(maxHeight: .infinity)
             }
             Divider()
@@ -324,10 +382,21 @@ private struct SQLDocumentPane: View {
                 Text(document.runtime?.transactionLabel ?? "No session")
                 Spacer()
                 Text(document.runtime?.connectionSummary ?? "Session opens on first Run")
-            }.font(.caption).foregroundStyle(.secondary).padding(8)
+            }.font(.caption).appSecondaryText().padding(8)
         }
         .onChange(of: document.selectedExecution) { _, _ in resultSetIndex.wrappedValue = 0 }
         .onChange(of: document.isRunning) { _, value in if value { resultSetIndex.wrappedValue = 0 } }
+    }
+
+    private var effectiveEditorTheme: EditorTheme {
+        if editorThemes.selectedThemeID == EditorThemeStore.automaticID,
+           let theme = appearance.selectedColorTheme { return theme }
+        return editorThemes.effectiveTheme(isDark: colorScheme == .dark)
+    }
+
+    private func commandHelp(_ command: AppCommandID) -> String {
+        let title = commands.shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
+        return title + (commands.shortcuts.shortcut(for: command).map { " (\($0.displayString))" } ?? "")
     }
 
     private var displayedExecution: SQLExecution? {
@@ -346,6 +415,8 @@ private struct SQLDocumentPane: View {
             message.displayedRowCount = set.displayedRowCount
             message.truncated = set.truncated
             message.displayNotice = set.displayNotice
+            message.affectedRowCountKnown = set.affectedRowCountKnown
+            message.nextCursor = set.nextCursor
         }
         return message
     }
@@ -378,35 +449,44 @@ private struct SQLDocumentPane: View {
             VStack(alignment: .leading, spacing: 10) {
                 Label(failure.title, systemImage: "exclamationmark.circle").font(.headline)
                 Text(failure.message).textSelection(.enabled)
-                if let sqlState = failure.sqlState { Text("SQLSTATE \(sqlState)").foregroundStyle(.secondary) }
+                if let sqlState = failure.sqlState { Text("SQLSTATE \(sqlState)").appSecondaryText() }
                 if failure.outcomeUnknown { Text("The SQL outcome is unknown. Check the database before repeating this command.").foregroundStyle(.orange) }
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(20)
         } else if let result = displayedResult {
             VStack(spacing: 0) {
+                if displayedFailure?.outcomeUnknown == true || result.outcomeUnknown == true {
+                    Text("The write outcome is unknown. Check the database before repeating this command.")
+                        .font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(10)
+                }
                 if let failure = displayedFailure {
                     Label("\(failure.title): \(failure.message)", systemImage: "exclamationmark.circle")
                         .font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(10)
                 }
-                HStack {
-                    Text(result.commandTag ?? "Results").font(.headline)
-                    if let sets = result.resultSets, sets.count > 1 {
-                        Picker("Result Set", selection: resultSetIndex.projectedValue) {
-                            ForEach(sets.indices, id: \.self) { index in
-                                Text("\(index + 1) · \(sets[index].commandTag)").tag(index)
-                            }
-                        }.controlHover().frame(maxWidth: 240)
-                    }
-                    Spacer()
-                    Menu("Export Loaded") {
-                        Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
-                        Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
-                    }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true)
-                    Text("\(result.displayedRowCount ?? 0) rows shown")
-                    if let duration = result.durationMs { Text(String(format: "%.1f ms", duration)) }
-                }.font(.callout).padding(12)
+                if document.table == nil {
+                    HStack {
+                        let showsRows = result.columns?.isEmpty == false
+                        if !showsRows { Text(result.commandTag ?? "Results").font(.headline) }
+                        if let sets = result.resultSets, sets.count > 1 {
+                            Picker("Result Set", selection: resultSetIndex.projectedValue) {
+                                ForEach(sets.indices, id: \.self) { index in
+                                    Text("\(index + 1) · \(sets[index].commandTag)").tag(index)
+                                }
+                            }.controlHover().frame(maxWidth: 240)
+                        }
+                        Spacer()
+                        Menu("Export Loaded") {
+                            Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
+                            Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
+                        }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true)
+                        let shown = result.displayedRowCount ?? result.rows?.count ?? 0
+                        Text(result.affectedRowCountKnown == false && !showsRows ? "Affected rows unknown" : (showsRows ? "\(shown) from \(result.rowCount ?? Int64(shown)) rows shown" : "\(shown) rows shown"))
+                            .accessibilityIdentifier("queryRowCount")
+                        if let duration = result.durationMs { Text(String(format: "%.1f ms", duration)) }
+                    }.font(.callout).padding(12)
+                }
                 if let path = result.exportPath {
                     Text("Saved \(result.exportRowCount ?? 0) rows to \(path)")
-                        .font(.caption).foregroundStyle(.secondary).textSelection(.enabled).padding(8)
+                        .font(.caption).appSecondaryText().textSelection(.enabled).padding(8)
                 }
                 if result.truncated == true || result.displayNotice != nil {
                     Text(result.displayNotice ?? "Result truncated at 1000 rows or 8 MiB.")
@@ -415,11 +495,9 @@ private struct SQLDocumentPane: View {
                 Divider()
                 if let columns = result.columns, !columns.isEmpty {
                     if document.table != nil, let grid = document.grid {
-                        DataGridView(document: document, workspace: workspace, grid: grid).id(ObjectIdentifier(grid))
+                        DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
-                        Text("Query results are read only. Open a table from Connections to edit its data.")
-                            .font(.caption).foregroundStyle(.secondary).padding(8)
-                        ResultTableView(columns: columns, rows: result.rows ?? [])
+                        ResultTableView(columns: columns, rows: result.rows ?? [], documentID: document.id)
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }
             }
@@ -429,7 +507,7 @@ private struct SQLDocumentPane: View {
             Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Text("Run SQL to see its result").foregroundStyle(.secondary)
+            Text("Run SQL to see its result").appSecondaryText()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

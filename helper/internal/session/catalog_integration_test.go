@@ -2,12 +2,14 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/sqlcomplete"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -92,12 +94,66 @@ func TestPostgresCatalogObjectsDefinitionsAndQuotedBrowse(t *testing.T) {
 	exec("CREATE VIEW " + qualified("fixture_view") + " AS SELECT tenant,id,marker FROM " + qualified(object))
 	exec("CREATE FUNCTION " + qualified("overloaded") + "(integer) RETURNS integer LANGUAGE sql AS 'SELECT $1+1'")
 	exec("CREATE FUNCTION " + qualified("overloaded") + "(text) RETURNS text LANGUAGE sql AS 'SELECT $1'")
+	exec("CREATE FUNCTION " + qualified("signature_defaults") + "(input_value integer, scale integer DEFAULT 1) RETURNS bigint LANGUAGE sql AS 'SELECT input_value::bigint * scale'")
+	exec("CREATE FUNCTION " + qualified("signature_variadic") + "(VARIADIC input_values integer[]) RETURNS integer LANGUAGE sql AS 'SELECT COALESCE(array_length(input_values,1),0)'")
+	exec("CREATE FUNCTION " + qualified("signature_out") + "(IN input_value integer, OUT output_value text) LANGUAGE sql AS 'SELECT input_value::text'")
 	exec("CREATE PROCEDURE " + qualified("fixture_procedure") + "() LANGUAGE plpgsql AS $$BEGIN NULL; END$$")
 	exec("CREATE FUNCTION " + qualified("fixture_trigger_fn") + "() RETURNS trigger LANGUAGE plpgsql AS $$BEGIN RETURN NEW; END$$")
 	exec("CREATE TRIGGER fixture_trigger BEFORE UPDATE ON " + qualified(object) + " FOR EACH ROW EXECUTE FUNCTION " + qualified("fixture_trigger_fn") + "()")
 	service, sqlSession, data := h.connect(), h.connect(), h.connect()
 	response := h.catalog(service, protocol.CatalogRequest{Kind: "schemas"})
 	catalogFind(t, response, schema)
+	response = h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: schema})
+	row := catalogFind(t, response, object)
+	var completionColumns []string
+	if json.Unmarshal([]byte(catalogText(t, response, row, "columns")), &completionColumns) != nil || strings.Join(completionColumns, ",") != "tenant,id,marker,nullable,doubled" {
+		t.Fatal("completion snapshot lost column names or their order")
+	}
+	var completionKeys []struct {
+		TargetSchema string `json:"targetSchema"`
+		TargetTable  string `json:"targetTable"`
+		Columns      []struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
+		} `json:"columns"`
+	}
+	if json.Unmarshal([]byte(catalogText(t, response, row, "foreignKeys")), &completionKeys) != nil || len(completionKeys) != 1 || completionKeys[0].TargetSchema != schema || completionKeys[0].TargetTable != "parent" || len(completionKeys[0].Columns) != 1 || completionKeys[0].Columns[0].Source != "tenant" || completionKeys[0].Columns[0].Target != "tenant" {
+		t.Fatal("completion snapshot lost the foreign key")
+	}
+	catalogFind(t, response, "fixture_view")
+	catalogFind(t, response, "overloaded")
+	for _, check := range []struct {
+		name               string
+		count, parameters  int
+		result             string
+		optional, variadic bool
+	}{
+		{"overloaded", 2, 1, "", false, false},
+		{"signature_defaults", 1, 2, "bigint", true, false},
+		{"signature_variadic", 1, 1, "integer", false, true},
+		{"signature_out", 1, 1, "text", false, false},
+	} {
+		row := catalogFind(t, response, check.name)
+		var signatures []sqlcomplete.FunctionSignature
+		if json.Unmarshal([]byte(catalogText(t, response, row, "signatures")), &signatures) != nil || len(signatures) != check.count || len(signatures[0].Parameters) != check.parameters {
+			t.Fatal("completion lost an overload or included OUT arguments")
+		}
+		if check.result != "" && signatures[0].ReturnType != check.result {
+			t.Fatal("completion lost function return type")
+		}
+		last := signatures[0].Parameters[check.parameters-1]
+		if last.Optional != check.optional || last.Variadic != check.variadic {
+			t.Fatal("completion lost default or variadic metadata")
+		}
+	}
+	// Pagination must retain deterministic ordering and keep identifiers in
+	// parameters, even when a schema name resembles SQL.
+	if empty := h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: schema, Page: 1}); len(empty.Rows) != 0 {
+		t.Fatal("completion page repeated objects")
+	}
+	if empty := h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: "' OR 1=1 --"}); len(empty.Rows) != 0 {
+		t.Fatal("completion schema was interpreted as SQL")
+	}
 	for _, kind := range []string{"table", "view", "function", "procedure", "trigger"} {
 		response := h.catalog(service, protocol.CatalogRequest{Kind: "objects", Schema: schema, ObjectKind: kind})
 		if response.Type != "query.result" || len(response.Rows) == 0 {
@@ -148,7 +204,7 @@ func TestPostgresCatalogObjectsDefinitionsAndQuotedBrowse(t *testing.T) {
 		t.Fatal("catalog browse did not return exactly the first 200 rows")
 	}
 	response = h.catalog(service, protocol.CatalogRequest{Kind: "objects", Schema: schema, ObjectKind: "function"})
-	if len(response.Rows) != 3 {
+	if len(response.Rows) != 6 {
 		t.Fatal("slow SQL blocked catalog or an overloaded function disappeared")
 	}
 	h.send(protocol.Command{Type: "cancel", RequestID: h.id(), SessionID: sqlSession, QueryID: query.QueryID})
@@ -162,6 +218,10 @@ func TestPostgresCatalogObjectsDefinitionsAndQuotedBrowse(t *testing.T) {
 	// the service session and all other connections usable.
 	exec("CREATE ROLE " + pgx.Identifier{role}.Sanitize())
 	h.query(service, "SET ROLE "+pgx.Identifier{role}.Sanitize(), "idle")
+	response = h.catalog(service, protocol.CatalogRequest{Kind: "completion", Schema: schema})
+	if response.Type != "query.result" || len(response.Rows) != 0 {
+		t.Fatal("completion disclosed inaccessible objects")
+	}
 	response = h.catalog(service, protocol.CatalogRequest{Kind: "columns", Schema: schema, Object: object})
 	if response.Type != "error" || response.SQLState != "42501" || !response.Connected || response.Message != "Catalog information is unavailable or access was denied." {
 		t.Fatal("an inaccessible metadata branch was silently presented as empty")

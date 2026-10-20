@@ -56,7 +56,7 @@ struct ConnectionLibraryTests {
             kind = command['type']
             reply = {'requestId':command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=2)
+                reply.update(type='hello.ack', protocolVersion=4)
             elif kind == 'connect':
                 reply.update(type='connect.result', engine='postgresql', capabilities=['execute','cancel','transactions'], sessionId='library-session', transactionStatus='idle')
             elif kind == 'disconnect':

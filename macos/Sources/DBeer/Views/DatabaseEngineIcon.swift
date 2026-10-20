@@ -6,9 +6,13 @@ struct DatabaseEngineIcon: View {
     var size: CGFloat = 20
     var contentInset: CGFloat = 0
 
+    static func resourceURL(for engine: DatabaseEngine) -> URL? {
+        Bundle.module.url(forResource: "\(engine.rawValue)-logo", withExtension: "svg")
+    }
+
     private static let images: [DatabaseEngine: NSImage] = Dictionary(uniqueKeysWithValues:
         DatabaseEngine.allCases.compactMap { engine in
-            guard let url = Bundle.module.url(forResource: "\(engine.rawValue)-logo", withExtension: "svg"),
+            guard let url = resourceURL(for: engine),
                   let image = NSImage(contentsOf: url) else { return nil }
             return (engine, image)
         })
@@ -21,7 +25,7 @@ struct DatabaseEngineIcon: View {
     }
 
     private var sizedImage: NSImage {
-        let image = Self.images[engine]?.copy() as? NSImage ?? NSImage()
+        let image = Self.images[engine]?.copy() as? NSImage ?? NSImage(systemSymbolName: "cylinder.split.1x2", accessibilityDescription: engine.displayName) ?? NSImage()
         // Native menu labels use NSImage's intrinsic size instead of SwiftUI's frame.
         image.size = NSSize(width: size, height: size)
         guard contentInset > 0 else { return image }

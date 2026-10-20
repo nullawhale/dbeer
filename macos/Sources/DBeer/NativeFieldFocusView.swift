@@ -30,7 +30,7 @@ final class NativeFieldFocusView: NSView {
         guard isFocused else { return }
         let rect = bounds.insetBy(dx: ControlHoverAppearance.inset, dy: ControlHoverAppearance.inset)
         guard !rect.isEmpty else { return }
-        NSColor(AppPalette.accent).withAlphaComponent(0.45).setStroke()
+        AppPalette.nsColor(.accent).withAlphaComponent(0.45).setStroke()
         let path = NSBezierPath(roundedRect: rect,
             xRadius: ControlHoverAppearance.cornerRadius, yRadius: ControlHoverAppearance.cornerRadius)
         path.lineWidth = 1

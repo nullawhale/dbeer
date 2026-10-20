@@ -1,0 +1,281 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "file": "alpha-fonts.jsonc",
+      "name": "Shared JSONC https://example.invalid/a/*literal*/",
+      "appearance": "dark",
+      "colors": {
+        "editor.foreground": "#abc",
+        "editor.background": "#11223388",
+        "editorCursor.foreground": "#f008",
+        "editor.selectionBackground": "#1234"
+      },
+      "rules": [
+        {
+          "scopes": [],
+          "style": {
+            "foreground": "#abc",
+            "background": "#fff",
+            "fontStyle": "bold italic"
+          }
+        },
+        {
+          "scopes": [
+            "keyword",
+            "storage.type"
+          ],
+          "style": {
+            "foreground": "#1234",
+            "background": "#01020304",
+            "fontStyle": null
+          }
+        },
+        {
+          "scopes": [
+            "source.sql keyword.control"
+          ],
+          "style": {
+            "foreground": "#112233",
+            "background": null,
+            "fontStyle": ""
+          }
+        },
+        {
+          "scopes": [
+            "keyword - keyword.control"
+          ],
+          "style": {
+            "foreground": "#fff",
+            "background": null,
+            "fontStyle": null
+          }
+        },
+        {
+          "scopes": [
+            "(keyword | string)"
+          ],
+          "style": {
+            "foreground": "#000",
+            "background": null,
+            "fontStyle": null
+          }
+        }
+      ],
+      "styles": [
+        {
+          "scopes": [
+            "source.sql",
+            "keyword.control.sql"
+          ],
+          "foreground": "#112233",
+          "background": "#01020304",
+          "fontStyle": ""
+        },
+        {
+          "scopes": [
+            "source.sql",
+            "string.quoted.single.sql"
+          ],
+          "foreground": "#abc",
+          "background": "#fff",
+          "fontStyle": "bold italic"
+        }
+      ]
+    },
+    {
+      "file": "textmate.tmTheme",
+      "name": "Shared TextMate",
+      "appearance": "dark",
+      "colors": {
+        "editor.background": "#102030",
+        "editor.foreground": "#abc",
+        "editor.selectionBackground": "#1234",
+        "editorCursor.foreground": "#f008"
+      },
+      "rules": [
+        {
+          "scopes": [],
+          "style": {
+            "foreground": "#abc",
+            "background": "#102030",
+            "fontStyle": "bold"
+          }
+        },
+        {
+          "scopes": [
+            "keyword",
+            "string"
+          ],
+          "style": {
+            "foreground": "#12345678",
+            "background": null,
+            "fontStyle": "italic underline strikethrough"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "scopes": [
+            "source.sql",
+            "keyword.other.sql"
+          ],
+          "foreground": "#12345678",
+          "background": "#102030",
+          "fontStyle": "italic underline strikethrough"
+        }
+      ]
+    },
+    {
+      "file": "textmate-binary.tmTheme",
+      "name": "Shared TextMate",
+      "appearance": "dark",
+      "colors": {
+        "editor.background": "#102030",
+        "editor.foreground": "#abc",
+        "editor.selectionBackground": "#1234",
+        "editorCursor.foreground": "#f008"
+      },
+      "rules": [
+        {
+          "scopes": [],
+          "style": {
+            "foreground": "#abc",
+            "background": "#102030",
+            "fontStyle": "bold"
+          }
+        },
+        {
+          "scopes": [
+            "keyword",
+            "string"
+          ],
+          "style": {
+            "foreground": "#12345678",
+            "background": null,
+            "fontStyle": "italic underline strikethrough"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "scopes": [
+            "source.sql",
+            "keyword.other.sql"
+          ],
+          "foreground": "#12345678",
+          "background": "#102030",
+          "fontStyle": "italic underline strikethrough"
+        }
+      ]
+    },
+    {
+      "file": "jetbrains.icls",
+      "name": "Shared JetBrains",
+      "appearance": "dark",
+      "colors": {
+        "editor.background": "#102030",
+        "editor.foreground": "#abcdef",
+        "editorCursor.foreground": "#001234",
+        "editor.selectionBackground": "#11223388",
+        "editorError.foreground": "#ff0000"
+      },
+      "rules": [
+        {
+          "scopes": [
+            "keyword"
+          ],
+          "style": {
+            "foreground": "#12345678",
+            "background": null,
+            "fontStyle": "bold italic underline"
+          }
+        },
+        {
+          "scopes": [
+            "keyword.other.sql",
+            "keyword.control.sql"
+          ],
+          "style": {
+            "foreground": "#abcdef",
+            "background": null,
+            "fontStyle": ""
+          }
+        },
+        {
+          "scopes": [
+            "string.quoted.single.sql"
+          ],
+          "style": {
+            "foreground": "#12345678",
+            "background": null,
+            "fontStyle": "bold italic underline"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "scopes": [
+            "source.sql",
+            "keyword.control.sql"
+          ],
+          "foreground": "#abcdef",
+          "background": null,
+          "fontStyle": ""
+        },
+        {
+          "scopes": [
+            "source.sql",
+            "string.quoted.single.sql"
+          ],
+          "foreground": "#12345678",
+          "background": null,
+          "fontStyle": "bold italic underline"
+        }
+      ]
+    },
+    {
+      "file": "includes/theme.jsonc",
+      "name": "Shared Includes",
+      "appearance": "light",
+      "colors": {
+        "editor.background": "#fff",
+        "editor.foreground": "#fff",
+        "editor.selectionBackground": "#1234"
+      },
+      "rules": [
+        {
+          "scopes": [
+            "keyword"
+          ],
+          "style": {
+            "foreground": "#f00",
+            "background": null,
+            "fontStyle": "bold"
+          }
+        },
+        {
+          "scopes": [
+            "string"
+          ],
+          "style": {
+            "foreground": "#0f08",
+            "background": null,
+            "fontStyle": "italic"
+          }
+        }
+      ],
+      "styles": [
+        {
+          "scopes": [
+            "source.sql",
+            "string.quoted.single.sql"
+          ],
+          "foreground": "#0f08",
+          "background": null,
+          "fontStyle": "italic"
+        }
+      ]
+    }
+  ]
+}

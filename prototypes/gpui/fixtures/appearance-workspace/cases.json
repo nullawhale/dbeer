@@ -1,0 +1,87 @@
+{
+  "status": "prepared-not-run",
+  "targets": [
+    "Windows 11 x64",
+    "Ubuntu 24.04 x64 Wayland",
+    "Ubuntu 24.04 x64 X11"
+  ],
+  "automated_static_targets": [
+    "appearance_settings::tests",
+    "settings_view::tests",
+    "appearance::tests",
+    "close::native_tests"
+  ],
+  "native_cases": [
+    {
+      "id": "system-notification",
+      "steps": [
+        "Choose System and Follow App Appearance in Settings.",
+        "Change the actual OS color mode while Settings and an independent SQL tab remain open.",
+        "Observe application controls, SQL, retained preview, diagnostics and popup colors.",
+        "Choose Solarized Light for the application, change OS mode again and observe the named workbench palette remains active."
+      ],
+      "preserve": [
+        "appearance selector IDs",
+        "SQL source revision",
+        "text",
+        "caret",
+        "selection",
+        "scroll",
+        "Undo",
+        "grid selection",
+        "original query and transaction owner"
+      ],
+      "persistence": "OS changes reserve no appearance write."
+    },
+    {
+      "id": "independent-restart",
+      "steps": [
+        "Choose Porter for application and JetBrains Light for editor.",
+        "Close normally immediately after the second choice.",
+        "Restart with original imported theme sources removed.",
+        "Observe independent committed choices, resolved palettes and disconnected restored SQL."
+      ]
+    },
+    {
+      "id": "semantics-keyboard-dpi",
+      "selectors": [
+        {
+          "id": "dbeer.settings.application-theme",
+          "role": "ComboBox",
+          "name": "Application theme"
+        },
+        {
+          "id": "dbeer.settings.editor-color-scheme",
+          "role": "ComboBox",
+          "name": "Editor color scheme"
+        }
+      ],
+      "steps": [
+        "Inspect actual UIA or AT-SPI name, automation ID, value, disabled state, focus and actions.",
+        "Open with keyboard, navigate/filter, commit with Enter, dismiss with Escape, Tab through controls and Done.",
+        "Repeat at supported DPI and mixed monitor scales under opposite app/editor colors."
+      ],
+      "evidence": "Record real target properties; headless element IDs are not native acceptance."
+    },
+    {
+      "id": "load-failure-preview-repair",
+      "steps": [
+        "Use only an isolated owned test data directory.",
+        "Start with corrupt/future/duplicate-key appearance bytes, then open Settings.",
+        "Preview colors and close without edits or after preview-only edits. Verify original bytes remain unchanged and close succeeds.",
+        "Externally repair the file and explicitly Reload Saved Settings.",
+        "Verify the current preview is replaced and only later accepted changes may save."
+      ]
+    },
+    {
+      "id": "ordered-save-close-cancel",
+      "steps": [
+        "Rapidly alternate both selectors while retaining a running SQL operation and grid selection.",
+        "Inject supported isolated file-write failure or external conflict.",
+        "Observe fixed error, preview, Retry Saving or explicit Reload.",
+        "Close normally while the latest save is pending; only latest Published authorizes final removal.",
+        "Cancel close before completion and verify original SQL, helper/session/transaction and other owners remain retained."
+      ]
+    }
+  ]
+}

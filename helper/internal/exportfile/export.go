@@ -3,10 +3,14 @@
 package exportfile
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"hash"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,36 +21,61 @@ import (
 
 var ErrNullCollision = errors.New("A text value equals the CSV NULL marker. Choose another marker and explicitly run the export again.")
 var ErrMultipleResults = errors.New("CSV cannot represent multiple result sets. Choose JSON.")
+var ErrPublicationUnknown = errors.New("Export publication could not be verified. Inspect the destination; do not rerun SQL to recover the save.")
 var ErrIO = errors.New("The export file could not be written.")
 var ErrInvalidRequest = errors.New("Invalid export settings.")
 var ErrCancelled = errors.New("Export was cancelled before publishing.")
 
 type Writer struct {
-	file      *os.File
-	csv       *csv.Writer
-	request   protocol.ExportRequest
-	columns   []protocol.Column
-	current   int
-	sets      int
-	rows      int64
-	total     int64
-	open      bool
-	published atomic.Bool
-	failure   error
+	file          *os.File
+	csv           *csv.Writer
+	request       protocol.ExportRequest
+	columns       []protocol.Column
+	current       int
+	sets          int
+	rows          int64
+	total         int64
+	open          bool
+	published     atomic.Bool
+	failure       error
+	destination   *destination
+	temporaryInfo os.FileInfo
+	digest        hash.Hash
+	publishMu     sync.Mutex
 }
 
 func New(request protocol.ExportRequest) (*Writer, error) {
 	if !request.Valid() {
 		return nil, ErrInvalidRequest
 	}
-	file, err := os.CreateTemp(filepath.Dir(request.Path), ".dbeer-export-*")
+	destination, err := captureDestination(request.Path)
 	if err != nil {
 		return nil, ErrIO
 	}
-	writer := &Writer{file: file, request: request, current: -1}
+	if request.Destination != nil && !stampsMatch(destination.stamp, *request.Destination) {
+		destination.close()
+		return nil, ErrIO
+	}
+	file, err := createTemporary(filepath.Dir(request.Path))
+	if err != nil {
+		destination.close()
+		return nil, ErrIO
+	}
+	temporaryInfo, err := file.Stat()
+	if err != nil {
+		// Without retained identity no pathname is safe to unlink.
+		_ = file.Close()
+		destination.close()
+		return nil, ErrIO
+	}
+	writer := &Writer{file: file, request: request, current: -1, destination: destination, temporaryInfo: temporaryInfo, digest: sha256.New()}
+	if err := destination.lock(); err != nil {
+		writer.Abort()
+		return nil, ErrIO
+	}
 	if request.Format == "csv" {
-		writer.csv = csv.NewWriter(file)
-	} else if _, err = file.WriteString(`{"version":1,"resultSets":[`); err != nil {
+		writer.csv = csv.NewWriter(output{writer})
+	} else if err = writer.write([]byte(`{"version":1,"resultSets":[`)); err != nil {
 		writer.Abort()
 		return nil, ErrIO
 	}
@@ -64,10 +93,20 @@ func (writer *Writer) write(data []byte) error {
 	if writer.failure != nil {
 		return writer.failure
 	}
-	if _, err := writer.file.Write(data); err != nil {
+	if n, err := writer.file.Write(data); err != nil || n != len(data) {
 		return writer.fail(ErrIO)
 	}
+	_, _ = writer.digest.Write(data)
 	return nil
+}
+
+type output struct{ writer *Writer }
+
+func (sink output) Write(data []byte) (int, error) {
+	if err := sink.writer.write(data); err != nil {
+		return 0, err
+	}
+	return len(data), nil
 }
 
 func (writer *Writer) Begin(index int, columns []protocol.Column) error {
@@ -181,6 +220,9 @@ func (writer *Writer) Commit() error {
 }
 
 func (writer *Writer) CommitContext(ctx context.Context) error {
+	if writer.published.Load() {
+		return nil
+	}
 	if ctx.Err() != nil {
 		writer.Abort()
 		return ErrCancelled
@@ -207,6 +249,10 @@ func (writer *Writer) CommitContext(ctx context.Context) error {
 		writer.Abort()
 		return ErrIO
 	}
+	if !writer.validTemporary() {
+		writer.Abort()
+		return ErrIO
+	}
 	if writer.file.Close() != nil {
 		writer.Abort()
 		return ErrIO
@@ -215,18 +261,62 @@ func (writer *Writer) CommitContext(ctx context.Context) error {
 		writer.Abort()
 		return ErrCancelled
 	}
-	if os.Rename(writer.file.Name(), writer.request.Path) != nil {
-		writer.Abort()
+	writer.publishMu.Lock()
+	defer writer.publishMu.Unlock()
+	if ctx.Err() != nil {
+		writer.abortUnlocked()
+		return ErrCancelled
+	}
+	if err := writer.destination.publish(writer.file.Name()); err != nil {
+		writer.abortUnlocked()
+		if errors.Is(err, ErrPublicationUnknown) {
+			return ErrPublicationUnknown
+		}
 		return ErrIO
 	}
 	writer.published.Store(true)
+	writer.destination.close()
+	// A directory sync failure after observed publication must not be reported as SQL/save failure.
+	if parent, err := os.Open(filepath.Dir(writer.request.Path)); err == nil {
+		_ = parent.Sync()
+		_ = parent.Close()
+	}
 	return nil
 }
 
+func (writer *Writer) validTemporary() bool {
+	named, err := os.Lstat(writer.file.Name())
+	if err != nil || !named.Mode().IsRegular() || !os.SameFile(named, writer.temporaryInfo) {
+		return false
+	}
+	if _, err := writer.file.Seek(0, 0); err != nil {
+		return false
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, writer.file); err != nil {
+		return false
+	}
+	after, err := writer.file.Stat()
+	if err != nil || after.Size() != named.Size() || !after.ModTime().Equal(named.ModTime()) {
+		return false
+	}
+	return bytes.Equal(hash.Sum(nil), writer.digest.Sum(nil))
+}
+
 func (writer *Writer) Abort() {
-	if writer.file != nil && !writer.published.Load() {
+	writer.publishMu.Lock()
+	defer writer.publishMu.Unlock()
+	writer.abortUnlocked()
+}
+func (writer *Writer) abortUnlocked() {
+	if writer.destination != nil {
+		writer.destination.close()
+	}
+	if writer.file != nil {
 		_ = writer.file.Close()
-		_ = os.Remove(writer.file.Name())
+		if named, err := os.Lstat(writer.file.Name()); err == nil && os.SameFile(named, writer.temporaryInfo) {
+			_ = os.Remove(writer.file.Name())
+		}
 	}
 }
 

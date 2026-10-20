@@ -31,6 +31,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 	}
 	var unavailable bool
 	var metadataWarning bool
+	var browseNotice string
 	response := session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
 		var err error
 		switch request.Kind {
@@ -39,7 +40,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		case "name":
 			err = session.catalogName(collector, request)
 		case "select", "browse":
-			err = session.catalogSelect(collector, result, request)
+			err = session.catalogSelect(collector, result, request, &browseNotice)
 		default:
 			query, args := catalogQuery(request)
 			var loaded *wire.Result
@@ -66,7 +67,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		}
 		return err
 	}, sinks...)
-	if unavailable && response.Connected {
+	if unavailable && response.Connected && request.Kind != "browse" {
 		response.Type, response.Category, response.Message, response.SQLState = "query.result", "", "", ""
 		response.Columns, response.Rows = nil, [][]*string{}
 		response.RowCount, response.DisplayedRowCount = 0, 0
@@ -75,6 +76,9 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		response.Message = "Cannot load this MySQL catalog branch. Check object availability and permissions."
 	}
 	if response.Type == "query.result" && response.DisplayNotice == "" {
+		if request.Kind == "browse" {
+			response.DisplayNotice = browseNotice
+		}
 		if request.Kind == "definition" && len(response.Rows) == 0 {
 			response.DisplayNotice = "The object definition is unavailable with the current permissions."
 		}
@@ -210,7 +214,7 @@ func (session *Session) catalogDefinition(collector *collector, request protocol
 	return collectCatalogRows(collector, []string{"name", "definition"}, rows)
 }
 
-func (session *Session) catalogSelect(collector *collector, result *wire.Result, request protocol.CatalogRequest) error {
+func (session *Session) catalogSelect(collector *collector, result *wire.Result, request protocol.CatalogRequest, notice *string) error {
 	// Validate the relation even when it has no primary key, distinguishing a
 	// missing object from a legitimate view or a table without a key.
 	object, err := session.work.client.Execute(`SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=? LIMIT 1`, request.Schema, request.Object)
@@ -236,6 +240,9 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 		primaryKey = append(primaryKey, name)
 	}
 	keys.Close()
+	if request.Kind == "browse" && len(primaryKey) == 0 {
+		*notice = "This object has no primary key. No stable page order is guaranteed, even when data is unchanged; rows may repeat or be skipped between pages."
+	}
 	columns, err := session.work.client.Execute(`SELECT COLUMN_NAME,DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION LIMIT 4097`, request.Schema, request.Object)
 	if err != nil {
 		return err
@@ -297,8 +304,15 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 			if filter.Operator == "contains" {
 				predicates = append(predicates, "LOCATE(?, "+column+") > 0")
 			} else {
+				parameter, canonical, err := browseNumericParameter(kind, *filter.Value)
+				if err != nil {
+					return err
+				}
+				if parameter != "?" {
+					value = canonical
+				}
 				operator := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}[filter.Operator]
-				predicates = append(predicates, column+" "+operator+" ?")
+				predicates = append(predicates, column+" "+operator+" "+parameter)
 			}
 			args = append(args, value)
 		}
@@ -330,6 +344,26 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 func catalogQuery(request protocol.CatalogRequest) (string, []any) {
 	args := []any{request.Schema, request.Object}
 	switch request.Kind {
+	case "completion":
+		return `WITH objects AS (
+SELECT TABLE_NAME AS name, IF(TABLE_TYPE='VIEW','view','table') AS kind, TABLE_SCHEMA AS ` + "`schema`" + ` FROM information_schema.TABLES
+UNION ALL SELECT ROUTINE_NAME, 'function', ROUTINE_SCHEMA FROM information_schema.ROUTINES WHERE ROUTINE_TYPE='FUNCTION'
+), page AS (
+SELECT * FROM objects WHERE (?<>'' AND ` + "`schema`" + `=?) OR (?='' AND ` + "`schema`" + ` NOT IN ('information_schema','mysql','performance_schema','sys'))
+ORDER BY ` + "`schema`" + `,name,kind LIMIT 200 OFFSET ?
+)
+SELECT name,kind,` + "`schema`" + `,COALESCE((SELECT JSON_ARRAYAGG(c.COLUMN_NAME) FROM information_schema.COLUMNS c
+ WHERE c.TABLE_SCHEMA=page.` + "`schema`" + ` AND c.TABLE_NAME=page.name AND page.kind IN ('table','view')),JSON_ARRAY()) AS columns,
+COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT('name',fk.CONSTRAINT_NAME,'targetSchema',fk.UNIQUE_CONSTRAINT_SCHEMA,'targetTable',fk.REFERENCED_TABLE_NAME,
+ 'columns',(SELECT JSON_ARRAYAGG(JSON_OBJECT('source',k.COLUMN_NAME,'target',k.REFERENCED_COLUMN_NAME))
+ FROM information_schema.KEY_COLUMN_USAGE k WHERE k.CONSTRAINT_SCHEMA=fk.CONSTRAINT_SCHEMA AND k.CONSTRAINT_NAME=fk.CONSTRAINT_NAME AND k.TABLE_NAME=fk.TABLE_NAME)))
+ FROM information_schema.REFERENTIAL_CONSTRAINTS fk WHERE fk.CONSTRAINT_SCHEMA=page.` + "`schema`" + ` AND fk.TABLE_NAME=page.name AND page.kind='table'),JSON_ARRAY()) AS foreignKeys,
+COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT('returnType',r.DTD_IDENTIFIER,'parameters',
+ COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT('name',COALESCE(p.PARAMETER_NAME,''),'type',p.DTD_IDENTIFIER,'position',p.ORDINAL_POSITION))
+ FROM information_schema.PARAMETERS p WHERE p.SPECIFIC_SCHEMA=r.ROUTINE_SCHEMA AND p.SPECIFIC_NAME=r.SPECIFIC_NAME
+ AND p.ORDINAL_POSITION>0 AND p.PARAMETER_MODE IN ('IN','INOUT')),JSON_ARRAY())))
+ FROM information_schema.ROUTINES r WHERE page.kind='function' AND r.ROUTINE_SCHEMA=page.` + "`schema`" + ` AND r.ROUTINE_NAME=page.name AND r.ROUTINE_TYPE='FUNCTION'),JSON_ARRAY()) AS signatures
+FROM page ORDER BY ` + "`schema`" + `,name,kind`, []any{request.Schema, request.Schema, request.Schema, request.Page * 200}
 	case "search":
 		return `SELECT name,kind,` + "`schema`" + `,name AS identity FROM (
 SELECT TABLE_NAME AS name,IF(TABLE_TYPE='VIEW','view','table') AS kind,TABLE_SCHEMA AS ` + "`schema`" + ` FROM information_schema.TABLES

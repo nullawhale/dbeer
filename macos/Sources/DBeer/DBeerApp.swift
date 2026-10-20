@@ -10,7 +10,8 @@ struct DBeerApp: App {
             Group {
                 if let workspace = appDelegate.workspace {
                     ApplicationWorkspaceView(workspace: workspace)
-                } else { WorkspaceView(model: appDelegate.model) }
+                } else { WorkspaceView(model: appDelegate.model, editorThemes: appDelegate.editorThemes,
+                    appearance: appDelegate.appearance) }
             }
                 .frame(minWidth: 900, minHeight: 620)
                 .task { await appDelegate.start() }
@@ -25,7 +26,16 @@ struct DBeerApp: App {
         }
 
         Settings {
-            AppearanceSettingsView(appearance: appDelegate.appearance)
+            // Theme the panels so toolbar symbols retain native template rendering.
+            TabView {
+                AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
+                    .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                if let workspace = appDelegate.workspace {
+                    ShortcutSettingsView(store: workspace.commandShortcuts)
+                        .applicationTheme(appearance: appDelegate.appearance)
+                        .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+                }
+            }
         }
     }
 }
@@ -48,7 +58,13 @@ private struct ConnectionCommands: Commands {
 
 private struct WorkspaceCommands: Commands {
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var commands: AppCommandRegistry
     @FocusedValue(\.focusCatalogSearch) private var focusCatalogSearch
+
+    init(workspace: ApplicationWorkspace) {
+        self.workspace = workspace
+        self.commands = workspace.commands
+    }
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
@@ -72,16 +88,13 @@ private struct WorkspaceCommands: Commands {
                 .disabled(focusCatalogSearch == nil)
         }
         CommandMenu("Query") {
-            Button("Run Selection or Current Statement") {
-                if let document = workspace.selectedDocument { Task { await workspace.run(document) } }
-            }.keyboardShortcut(.return, modifiers: .command)
-                .disabled(workspace.selectedDocument?.isRunning == true || workspace.selectedDocument?.profileID == nil)
-            Button("Run Script") {
-                if let document = workspace.selectedDocument { Task { await workspace.runScript(document) } }
-            }.keyboardShortcut(.return, modifiers: [.command, .shift])
-                .disabled(workspace.selectedDocument?.isRunning == true || workspace.selectedDocument?.profileID == nil || workspace.selectedDocument?.table != nil)
-            Button("Stop") { if let document = workspace.selectedDocument { Task { await workspace.stop(document) } } }
-                .disabled(workspace.selectedDocument?.isRunning != true && workspace.selectedDocument?.grid?.isApplying != true)
+            commandItem(.runCurrent)
+            commandItem(.runScript)
+            Menu("Run to File") {
+                commandItem(.runToJSON)
+                commandItem(.runToCSV)
+            }
+            commandItem(.stop)
             Divider()
             Button("SQL History…") { workspace.isHistoryPresented = true }
         }
@@ -91,11 +104,20 @@ private struct WorkspaceCommands: Commands {
                 .disabled(workspace.library.savedConnections.isEmpty)
         }
     }
+
+    private func commandItem(_ command: AppCommandID) -> some View {
+        let shortcut = commands.shortcuts.shortcut(for: command)
+        let descriptor = commands.shortcuts.descriptors.first { $0.id == command }
+        return Button(descriptor?.title ?? command.rawValue) { commands.perform(command) }
+            .keyboardShortcut(shortcut.map { KeyboardShortcut($0.keyEquivalent, modifiers: $0.eventModifiers) })
+            .disabled(!commands.canPerform(command))
+    }
 }
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let appearance = AppAppearance()
+    let appearance: AppAppearance
+    let editorThemes: EditorThemeStore
     let buttonFocusPolicy = NativeButtonFocusPolicy()
     let model: WorkspaceModel
     let workspace: ApplicationWorkspace?
@@ -113,6 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
          terminationReply: (@MainActor (Bool) -> Void)? = nil) {
         self.model = model
         self.workspace = workspace
+        self.editorThemes = workspace?.editorThemes ?? EditorThemeStore()
+        self.appearance = workspace?.appearance ?? AppAppearance(editorThemes: self.editorThemes)
         self.terminationReply = terminationReply
         super.init()
     }

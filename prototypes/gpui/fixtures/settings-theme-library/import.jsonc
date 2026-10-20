@@ -1,0 +1,14 @@
+{
+  // Synthetic normalized-preview source. No helper or database is involved.
+  "name": "Library Preview Fixture",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#18232D",
+    "editor.foreground": "#FAF1DC",
+    "editor.selectionBackground": "#DDAA6633",
+  },
+  "tokenColors": [
+    { "scope": "keyword.control.sql", "settings": { "foreground": "#EDAB61", "fontStyle": "bold" } },
+    { "scope": "string.quoted.sql", "settings": { "foreground": "#83CEADCC", "fontStyle": "" } },
+  ],
+}

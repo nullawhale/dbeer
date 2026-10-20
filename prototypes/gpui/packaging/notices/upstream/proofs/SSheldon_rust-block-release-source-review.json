@@ -1,0 +1,59 @@
+{
+  "repository": "SSheldon/rust-block",
+  "revision": "47178790cfc9d4a8b092051d8b413b78bd31254a",
+  "archiveUrl": "https://codeload.github.com/SSheldon/rust-block/tar.gz/47178790cfc9d4a8b092051d8b413b78bd31254a",
+  "archiveSha256": "41307468f6ea30759b6397441af749aa23666863c894a6cfbd996cda0e4056d3",
+  "legalPaths": [],
+  "packageReviews": [
+    {
+      "name": "block",
+      "version": "0.1.6",
+      "manifestPath": "Cargo.toml",
+      "manifestSha256": "24df2f33b48c9e756a4f864f882c1ab07a159b6c2b790f45af2e8162499b6719",
+      "manifestPackage": {
+        "name": "block",
+        "version": "0.1.6",
+        "authors": [
+          "Steven Sheldon"
+        ],
+        "description": "Rust interface for Apple's C language extension of blocks.",
+        "keywords": [
+          "blocks",
+          "osx",
+          "ios",
+          "objective-c"
+        ],
+        "readme": "README.md",
+        "repository": "http://github.com/SSheldon/rust-block",
+        "documentation": "http://ssheldon.github.io/rust-objc/block/",
+        "license": "MIT",
+        "exclude": [
+          ".gitignore",
+          ".travis.yml",
+          "travis_install.sh",
+          "travis_test.sh",
+          "tests-ios/**"
+        ]
+      },
+      "comparedFiles": [
+        {
+          "path": "README.md",
+          "sha256": "01c56329fa14f48ea1c9c7986c3660c41beeff2477f61c2d36bd8e666b9fc562",
+          "upstreamSha256": "01c56329fa14f48ea1c9c7986c3660c41beeff2477f61c2d36bd8e666b9fc562"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "eb31678adf63b53109d9b94eba23699fd5f9ebfdb950f6e1a57ad51bb6a146fa",
+          "upstreamSha256": "eb31678adf63b53109d9b94eba23699fd5f9ebfdb950f6e1a57ad51bb6a146fa"
+        },
+        {
+          "path": "src/test_utils.rs",
+          "sha256": "271bd579b67e2440134227cf8ee52c1b8c22854eb0c7923b46306b51810c2cf1",
+          "upstreamSha256": "271bd579b67e2440134227cf8ee52c1b8c22854eb0c7923b46306b51810c2cf1"
+        }
+      ],
+      "mismatches": [],
+      "unavailableFiles": []
+    }
+  ]
+}

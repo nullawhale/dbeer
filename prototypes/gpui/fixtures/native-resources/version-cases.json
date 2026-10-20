@@ -1,0 +1,1 @@
+{"accepted":[{"build":"1","fixed":[0,2,0,1],"version":"0.2.0"},{"build":"65535","fixed":[65535,65535,65535,65535],"version":"65535.65535.65535"}],"rejected":[{"build":"65536","version":"0.2.0"},{"build":"18446744073709551615","version":"0.2.0"},{"build":"1","version":"65536.0.0"},{"build":"1","version":"0.65536.0"},{"build":"1","version":"0.2.65536"}],"schemaVersion":1}

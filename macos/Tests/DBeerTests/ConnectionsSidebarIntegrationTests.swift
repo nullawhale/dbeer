@@ -19,7 +19,7 @@ struct ConnectionsSidebarIntegrationTests {
         helper(gate: nil)
     }
 
-    private func helper(gate: URL?) -> BackendClient {
+    private func helper(gate: URL?, catalogGate: URL? = nil) -> BackendClient {
         BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
         import json, sys, time
         from pathlib import Path
@@ -28,9 +28,9 @@ struct ConnectionsSidebarIntegrationTests {
             reply = {'requestId': command['requestId']}
             kind = command['type']
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=2)
+                reply.update(type='hello.ack', protocolVersion=4)
             elif kind == 'connect':
-                if len(sys.argv) > 1:
+                if len(sys.argv) > 1 and sys.argv[1]:
                     deadline = time.monotonic() + 5
                     while not Path(sys.argv[1]).exists() and time.monotonic() < deadline:
                         time.sleep(.005)
@@ -39,6 +39,10 @@ struct ConnectionsSidebarIntegrationTests {
                 else:
                     reply.update(type='connect.result', engine='postgresql', capabilities=['execute','cancel','transactions','catalog'], sessionId='sidebar-test-session', transactionStatus='idle')
             elif kind == 'catalog':
+                if len(sys.argv) > 2 and sys.argv[2]:
+                    deadline = time.monotonic() + 5
+                    while not Path(sys.argv[2]).exists() and time.monotonic() < deadline:
+                        time.sleep(.005)
                 print(json.dumps({'type':'query.started', 'requestId':command['requestId'],
                     'sessionId':command['sessionId'], 'queryId':command['queryId']}), flush=True)
                 reply.update(type='query.result', sessionId=command['sessionId'], queryId=command['queryId'], transactionStatus='idle',
@@ -53,7 +57,7 @@ struct ConnectionsSidebarIntegrationTests {
             print(json.dumps(reply), flush=True)
             if kind == 'shutdown':
                 break
-        """] + (gate.map { [$0.path] } ?? []))
+        """, gate?.path ?? "", catalogGate?.path ?? ""])
     }
 
     private func window(for model: WorkspaceModel) -> NSWindow {
@@ -182,19 +186,20 @@ struct ConnectionsSidebarIntegrationTests {
         try png.write(to: destination.appendingPathComponent("\(name).png"))
     }
 
-    private func nativeTables(in view: NSView) -> [NSTableView] {
-        ((view as? NSTableView).map { [$0] } ?? []) + view.subviews.flatMap { nativeTables(in: $0) }
+    private func descendants<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
+        ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { descendants($0, of: type) }
     }
 
     private func contextMenu(for row: Int, in window: NSWindow) throws -> NSMenu {
         let content = try #require(window.contentView)
-        let list = try #require(nativeTables(in: content).first)
+        let list = try #require(descendants(content, of: NSTableView.self).first)
+        let region = try #require(descendants(content, of: CatalogContextMenuView.self).first)
         let rowRect = list.rect(ofRow: row)
         let location = list.convert(NSPoint(x: rowRect.midX, y: rowRect.midY), to: nil)
         let event = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: location,
             modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
-        let menu = try #require(list.menu(for: event))
+        let menu = try #require(region.menu(for: event))
         menu.update()
         return menu
     }
@@ -270,7 +275,7 @@ struct ConnectionsSidebarIntegrationTests {
         try await settle()
 
         let content = try #require(window.contentView)
-        let outline = try #require(nativeTables(in: content).first as? NSOutlineView)
+        let outline = try #require(descendants(content, of: NSTableView.self).first as? NSOutlineView)
         let firstItem = try #require(outline.item(atRow: 0))
         #expect(outline.isExpandable(firstItem))
         outline.expandItem(firstItem)
@@ -295,6 +300,95 @@ struct ConnectionsSidebarIntegrationTests {
         #expect(outline.numberOfRows == 2)
         window.attachedSheet?.endEditing(for: nil)
         if let sheet = window.attachedSheet { window.endSheet(sheet) }
+        await workspace.shutdown()
+    }
+
+    @Test func connectedStatusStaysInPlaceWhileDisclosureLoadsSchemas() async throws {
+        let gate = FileManager.default.temporaryDirectory.appendingPathComponent("dbeer-catalog-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: gate) }
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore(), helperFactory: { helper(gate: nil, catalogGate: gate) })
+        let settings = ConnectionSettings(host: "localhost", port: 5432, database: "fixture",
+            user: "fixture", password: "", sslMode: "disable")
+        try #require(await workspace.library.saveConnection(name: "Connected", settings: settings))
+        let profileID = try #require(workspace.library.selectedConnectionId)
+        await workspace.connectProfile(profileID)
+        try #require(workspace.services[profileID]?.connectionState == .connected)
+        let window = window(for: ApplicationWorkspaceView(workspace: workspace))
+        defer { window.close(); Task { await workspace.shutdown() } }
+        try await settle()
+        let content = try #require(window.contentView)
+        let outline = try #require(descendants(content, of: NSTableView.self).first as? NSOutlineView)
+        let item = try #require(outline.item(atRow: 0))
+        let policy = NativeButtonFocusPolicy()
+        policy.start()
+        policy.apply(to: window)
+
+        func statusCenter() throws -> NSPoint {
+            let rect = outline.rect(ofRow: 0)
+            let bitmap = try #require(outline.bitmapImageRepForCachingDisplay(in: rect))
+            outline.cacheDisplay(in: rect, to: bitmap)
+            var pixels: [NSPoint] = []
+            for y in 0..<bitmap.pixelsHigh {
+                for x in (bitmap.pixelsWide / 2)..<bitmap.pixelsWide {
+                    guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                          color.greenComponent > color.redComponent + 0.2,
+                          color.greenComponent > color.blueComponent + 0.1 else { continue }
+                    pixels.append(NSPoint(x: CGFloat(x), y: CGFloat(y)))
+                }
+            }
+            try #require(!pixels.isEmpty, "The connected status dot must stay visible.")
+            return NSPoint(x: pixels.map(\.x).reduce(0, +) / CGFloat(pixels.count),
+                y: pixels.map(\.y).reduce(0, +) / CGFloat(pixels.count))
+        }
+
+        let initial = try statusCenter()
+        outline.expandItem(item)
+        try await waitFor({ outline.isItemExpanded(item) }, "The profile did not expand.")
+        let loading = try statusCenter()
+        #expect(abs(initial.x - loading.x) < 1)
+        #expect(abs(initial.y - loading.y) < 1)
+        try Data().write(to: gate)
+        try await waitFor({ workspace.catalogRoots[profileID] != nil }, "The schema load did not finish.")
+        let loaded = try statusCenter()
+        #expect(abs(initial.x - loaded.x) < 1)
+        #expect(abs(initial.y - loaded.y) < 1)
+
+        func disclosureButton(in view: NSView) -> NSButton? {
+            if let button = view as? NSButton, button.title.isEmpty { return button }
+            return view.subviews.lazy.compactMap { disclosureButton(in: $0) }.first
+        }
+        // Sample real disclosure-button animations, rather than waiting for
+        // their final layout. Keep the row highlighted in captured frames.
+        for transition in 0..<4 {
+            let row = try #require(outline.rowView(atRow: 0, makeIfNecessary: true))
+            let feedback = try #require(CatalogRowHoverAnchor.feedback(containing: row))
+            feedback.isHovered = true
+            feedback.isKeyboardFocused = true
+            let button = try #require(disclosureButton(in: row))
+            button.performClick(nil)
+            for frame in 0..<12 {
+                try await Task.sleep(for: .milliseconds(16))
+                let center = try statusCenter()
+                #expect(abs(initial.x - center.x) < 1)
+                #expect(abs(initial.y - center.y) < 1)
+                let activeRow = try #require(outline.rowView(atRow: 0, makeIfNecessary: true))
+                let activeFeedback = try #require(CatalogRowHoverAnchor.feedback(containing: activeRow))
+                #expect(activeFeedback.isDescendant(of: activeRow))
+                let paint = activeFeedback.convert(activeFeedback.feedbackRect, to: outline)
+                let bounds = activeRow.convert(activeRow.bounds, to: outline)
+                #expect(bounds.contains(paint))
+                if frame == 2, let directory = ProcessInfo.processInfo.environment["DBEER_QA_OUTPUT_DIR"] {
+                    let rect = NSRect(x: 0, y: 0, width: outline.bounds.width, height: 150)
+                    let bitmap = try #require(outline.bitmapImageRepForCachingDisplay(in: rect))
+                    outline.cacheDisplay(in: rect, to: bitmap)
+                    let destination = URL(fileURLWithPath: directory, isDirectory: true)
+                    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+                    try bitmap.representation(using: .png, properties: [:])?.write(
+                        to: destination.appendingPathComponent("catalog-disclosure-transition-\(transition).png"))
+                }
+            }
+        }
         await workspace.shutdown()
     }
 
@@ -375,7 +469,7 @@ struct ConnectionsSidebarIntegrationTests {
             let first = try #require(model.savedConnections.first)
             #expect(first.name == "Local playground")
             #expect(model.selectedConnectionId == first.id)
-            let savedList = try #require(window.contentView.flatMap { nativeTables(in: $0).first })
+            let savedList = try #require(window.contentView.flatMap { descendants($0, of: NSTableView.self).first })
             #expect(savedList.numberOfRows == 2)
             let firstPasswordMatches = await vault.password(for: first.id) == firstPassword
             #expect(firstPasswordMatches)
@@ -405,7 +499,7 @@ struct ConnectionsSidebarIntegrationTests {
             // The real native List owns selection. Selecting another profile must
             // leave the live database fields and active session attached to Reporting.
             let content = try #require(window.contentView)
-            let list = try #require(nativeTables(in: content).first)
+            let list = try #require(descendants(content, of: NSTableView.self).first)
             #expect(list.numberOfRows == 3)
             list.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
             try await waitFor({ model.selectedConnectionId == first.id }, "Native sidebar selection did not select the saved profile.")

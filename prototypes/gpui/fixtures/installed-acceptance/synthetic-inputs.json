@@ -1,0 +1,15 @@
+{
+  "profileName": "DBeer disposable installed acceptance",
+  "plainText": "SELECT 1;\r\n-- synthetic editor input",
+  "scriptPostgresql": "SELECT 1 AS first; SELECT NULL AS value; SELECT 2 AS last;",
+  "scriptMysql": "CALL dbeer_parity_v1.fixture_procedure();",
+  "typedInsert": "synthetic inserted row",
+  "typedEmpty": "",
+  "typedLiteralNull": "NULL",
+  "typedExactNumber": "9007199254740993.123456789000000000",
+  "typedBinaryBase64": "AP8=",
+  "offlineCompletion": "SELECT COALESCE(",
+  "offlineSignature": "SELECT round(1.25, ",
+  "cancelPostgresql": "SELECT pg_sleep(30);",
+  "cancelMysql": "SELECT SLEEP(30);"
+}

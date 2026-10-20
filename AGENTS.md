@@ -2,6 +2,12 @@
 
 DBeer is a native SQL client for macOS 14+ on Apple Silicon, built with
 SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
+Current development targets only the native macOS SwiftUI/AppKit client and
+its shared Go helper. Windows/Linux GPUI feature development, paired builds,
+protocol compatibility updates and UI acceptance are deferred unless explicitly
+requested. The GPUI instructions below are retained for future reference;
+they are not required verification for current macOS work. GPUI on Mac is
+for development only.
 
 ## Repository map
 
@@ -9,6 +15,7 @@ SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
 - `macos/Tests/DBeerTests/`: Swift Testing suites, including native AppKit tests.
 - `macos/AcceptanceTests/`: XCTest UI acceptance for installed application archives.
 - `helper/`: Go helper, database adapters and framed protocol transport.
+- `prototypes/gpui/`: experimental Rust/GPUI Windows/Linux frontend and checks.
 - `protocol/fixtures/`: shared Swift/Go protocol and export fixtures.
 - `assets/`: database logo sources; SwiftPM resources link to these files.
 - `macos/Resources/`: app icons and accent colors, including checked-in `Assets.car`.
@@ -26,8 +33,10 @@ SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
   streaming backpressure and explicit handling of uncertain commit outcomes.
 - Preserve the distinction between SQL NULL, empty strings, text `NULL`, DEFAULT,
   exact numeric strings and binary values in editing, transport and exports.
-- Store passwords in Keychain. Profile transfer must exclude secrets and private
-  keys. Never log credentials, connection strings, SQL text or query results.
+- Store passwords in the platform credential store: macOS Keychain, Windows
+  Credential Manager, or Linux Secret Service. Profile transfer must exclude
+  secrets and private keys. Never log credentials, connection strings, SQL text
+  or query results.
 - Keep restored documents disconnected until the user explicitly connects or
   executes a query. Database edits require the existing preview/apply workflow.
 - Match native focus, keyboard navigation, hover behavior and light/dark themes
@@ -36,20 +45,37 @@ SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
   `build/`. Do not commit signing material or local connection settings.
 - Keep user-facing project documentation in English, following `README.md` and
   `INSTALL.md`. Update `CHANGELOG.md` when release behavior changes.
-- Do not add Cyrillic characters, including in test fixtures or commit messages.
+- Use English in code comments, test fixtures and commit messages.
+- Keep personal machine paths out of tracked files. Use repository-relative
+  paths or clearly synthetic examples instead.
 
 ## Build and verification
 
 - Build the signed app: `./scripts/build-app.sh`.
   Use `CONFIGURATION=debug` for a debug build. Output: `build/DBeer.app`.
-- Run Go race and native Swift tests: `./scripts/test.sh`. This builds the app
+- GPUI Windows/Linux paired builds use `./scripts/build-gpui-client.ps1 -Test -Package`
+  and `./scripts/build-gpui-client.sh --test --package` on native x64 builders.
+  Without options they compile only. Tests use separate unmarked artifacts;
+  `build/gpui/candidates/` contains immutable unsigned development candidates.
+  Keep the existing macOS CI job on SwiftUI. `./scripts/build-gpui-app.sh` builds
+  only the separate Mac development prototype.
+- GPUI focused checks: `./scripts/gpui-prototype.sh test --locked`,
+  `./scripts/gpui-prototype.sh clippy --locked --all-targets -- -D warnings`,
+  and `./scripts/gpui-prototype.sh fmt -- --check`. Use Rust 1.92+ (CI pins
+  1.99.1); do not claim Windows/Linux UI coverage from a headless build.
+- Default to focused checks for the changed behavior. Run selected native suites
+  with `./scripts/test.sh --filter SuiteName` (repeat `--filter` as needed).
+  This skips Go tests; theme/UI matrices run only if the filter selects them.
+  Do not run the full suite after every small edit. Use it for broad changes,
+  final verification of cross-cutting work, or an explicit request.
+- Run all Go race and native Swift tests: `./scripts/test.sh --all`. This builds the app
   and isolates test credentials in a temporary Keychain. Use this runner for
   AppKit tests; a plain `swift test` can exit before the suite completes.
 - Run helper-only tests: `./scripts/test-go.sh` (also supported on Linux).
 - Run isolated database integration: `./scripts/test-postgres.sh`,
   `./scripts/test-mysql.sh` and `./scripts/test-tls.sh` (Docker required).
 - Run both databases with the native suite:
-  `./scripts/test-postgres.sh ./scripts/test-mysql.sh ./scripts/test.sh --require-postgres`.
+  `./scripts/test-postgres.sh ./scripts/test-mysql.sh ./scripts/test.sh --all --require-postgres`.
 - Installed-archive acceptance: `./scripts/test-install-update.sh`; this needs
   full Xcode, Docker and the expected release archives. Read
   `macos/AcceptanceTests/README.md` before running it.

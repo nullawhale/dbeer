@@ -50,7 +50,7 @@ struct ConnectionEditorView: View {
                     }
                 }
                 Section("Connection") {
-                    TextField("Host", text: binding(\.host))
+                    TextField(draft.engine == .cassandra ? "Contact points" : "Host", text: binding(\.host))
                         .accessibilityIdentifier("Host")
                     TextField("Port", text: binding(\.port))
                         .accessibilityIdentifier("Port")
@@ -58,9 +58,19 @@ struct ConnectionEditorView: View {
                         Text("Enter a port from 1 to 65535.")
                             .font(.caption).foregroundStyle(.orange)
                     }
-                    TextField("Database", text: binding(\.database))
+                    TextField(draft.engine == .cassandra ? "Keyspace (optional)" : "Database", text: binding(\.database))
                         .accessibilityIdentifier("Database")
-                    TextField("User", text: binding(\.user))
+                    if draft.engine == .cassandra {
+                        TextField("Local datacenter (optional)", text: binding(\.localDatacenter))
+                            .accessibilityIdentifier("localDatacenter")
+                        Picker("Consistency", selection: binding(\.consistency)) {
+                            ForEach(CassandraSettings.consistencyLevels, id: \.self) { Text($0).tag($0) }
+                        }.frame(minHeight: 24).controlHover().connectionButtonFocus()
+                            .accessibilityIdentifier("cassandraConsistency")
+                        Text("Separate contact points with commas. Leave user and password empty for a cluster without authentication.")
+                            .font(.caption).appSecondaryText()
+                    }
+                    TextField(draft.engine == .cassandra ? "User (optional)" : "User", text: binding(\.user))
                         .accessibilityIdentifier("User")
                     SecureField("Password", text: binding(\.password))
                         .textContentType(.password)
@@ -70,7 +80,7 @@ struct ConnectionEditorView: View {
                             ProgressView().controlSize(.small)
                             Text("Reading saved password…")
                         }
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).appSecondaryText()
                     } else if passwordLoadFailedState.wrappedValue {
                         Button("Retry Reading Saved Password") {
                             passwordLoadAttemptState.wrappedValue = UUID()
@@ -79,10 +89,20 @@ struct ConnectionEditorView: View {
                         .accessibilityIdentifier("retryConnectionPassword")
                     } else {
                         Label("Passwords are saved in macOS Keychain", systemImage: "key")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).appSecondaryText()
                     }
                 }
                 Section("Security") {
+                    Picker("Environment", selection: Binding(get: { draft.policy.environment }, set: { draft.policy.environment = $0 })) {
+                        ForEach(ConnectionEnvironment.allCases) { environment in
+                            Text(environment.label).tag(environment)
+                        }
+                    }.frame(minHeight: 24).controlHover().connectionButtonFocus().accessibilityIdentifier("connectionEnvironment")
+                    Toggle("Readonly", isOn: Binding(get: { draft.policy.readOnly }, set: { draft.policy.readOnly = $0 }))
+                        .padding(.horizontal, 6)
+                        .frame(minHeight: 24).controlHover().accessibilityIdentifier("connectionReadOnly")
+                    Text(draft.engine == .cassandra ? "Local readonly blocks evaluated writes and unknown CQL in DBeer. It does not enable a server read mode. Use a server role with restricted permissions for strict protection." : "Readonly blocks evaluated writes and unknown SQL, and enables server read mode. Functions and database objects can hide side effects. Use restricted database privileges for strict protection.")
+                        .font(.caption).appSecondaryText()
                     Picker("TLS mode", selection: binding(\.sslMode)) {
                         ForEach(draft.engine.sslModes, id: \.self) { mode in
                             Text(mode).tag(mode)
@@ -98,15 +118,16 @@ struct ConnectionEditorView: View {
                         .accessibilityIdentifier("trustedCAFile")
                     if draft.sslMode == "disable" {
                         Text("TLS is disabled. Use this mode for a local test database.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).appSecondaryText()
                     }
                 }
                 if connection?.id == model.activeConnectionId, connection != nil {
                     Text("Changes apply the next time you connect.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).appSecondaryText()
                 }
             }
             .formStyle(.grouped)
+            .appFormSurface()
             .disabled(isBusy)
 
             if let error = validationState.wrappedValue ?? model.connectionsError {
@@ -140,7 +161,7 @@ struct ConnectionEditorView: View {
             }
             .padding(20)
         }
-        .frame(width: 520, height: 680)
+        .frame(width: 520, height: 780)
         .tint(AppPalette.accent)
         .focusEffectDisabled()
         .accessibilityElement(children: .contain)
@@ -168,7 +189,7 @@ struct ConnectionEditorView: View {
                 draft.selectEngine($0)
                 validationState.wrappedValue = nil
             })) {
-                ForEach(DatabaseEngine.allCases) { engine in
+                ForEach(DatabaseEngine.availableCases) { engine in
                     Text(engine.displayName).tag(engine)
                 }
             }.pickerStyle(.inline)
@@ -196,7 +217,7 @@ struct ConnectionEditorView: View {
 
     private func save(connectAfterSaving: Bool) {
         guard canSave, let settings = draft.settings else {
-            validationState.wrappedValue = "Enter a name, host, database, user, and a port from 1 to 65535."
+            validationState.wrappedValue = draft.engine == .cassandra ? "Enter a name, contact points, a valid port, and supported consistency. Authentication and keyspace are optional." : "Enter a name, host, database, user, and a port from 1 to 65535."
             return
         }
         let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -228,16 +249,22 @@ struct ConnectionDraft {
     var password = ""
     var sslMode: String
     var sslRootCert: String
+    var policy: ExecutionPolicy
+    var localDatacenter: String
+    var consistency: String
 
     init(connection: SavedConnection?) {
         name = connection?.name ?? ""
         engine = connection?.engine ?? .postgresql
-        host = connection?.host ?? "localhost"
+        host = connection?.contactPoints?.joined(separator: ", ") ?? connection?.host ?? "localhost"
         port = connection.map { String($0.port) } ?? String(engine.defaultPort)
         database = connection?.database ?? engine.defaultDatabase
         user = connection?.user ?? engine.defaultUser
         sslMode = connection?.sslMode ?? "verify-full"
         sslRootCert = connection?.sslRootCert ?? ""
+        policy = connection?.policy ?? ExecutionPolicy()
+        localDatacenter = connection?.localDatacenter ?? ""
+        consistency = connection?.consistency ?? "LOCAL_QUORUM"
     }
 
     mutating func selectEngine(_ next: DatabaseEngine) {
@@ -264,11 +291,16 @@ struct ConnectionDraft {
         let cleanedDatabase = database.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedUser = user.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let portNumber = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)),
-              (1...65_535).contains(portNumber), !cleanedHost.isEmpty, !cleanedDatabase.isEmpty,
-              !cleanedUser.isEmpty, engine.sslModes.contains(sslMode) else { return nil }
+              (1...65_535).contains(portNumber), !cleanedHost.isEmpty, (engine == .cassandra || !cleanedDatabase.isEmpty),
+              (engine == .cassandra || !cleanedUser.isEmpty), engine.sslModes.contains(sslMode) else { return nil }
         let rootCert = sslRootCert.trimmingCharacters(in: .whitespacesAndNewlines)
-        return ConnectionSettings(host: cleanedHost, port: portNumber, database: cleanedDatabase,
+        let points = engine == .cassandra ? CassandraSettings.contactPoints(cleanedHost) : []
+        let settings = ConnectionSettings(host: points.first ?? cleanedHost, port: portNumber, database: cleanedDatabase,
             user: cleanedUser, password: password, sslMode: sslMode,
-            sslRootCert: rootCert.isEmpty ? nil : rootCert, engine: engine)
+            sslRootCert: rootCert.isEmpty ? nil : rootCert, engine: engine, policy: policy,
+            contactPoints: engine == .cassandra ? points : nil,
+            localDatacenter: engine == .cassandra && !localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
+            consistency: engine == .cassandra ? consistency : nil)
+        return settings.hasValidNativeFields ? settings : nil
     }
 }

@@ -1,0 +1,10 @@
+[
+  {"name":"active marked text","marked":"active","dead":"clear","priority":false,"repeat":false,"alt":false,"outcome":"passThrough"},
+  {"name":"unknown marked text","marked":"unknown","dead":"clear","priority":false,"repeat":false,"alt":false,"outcome":"passThrough"},
+  {"name":"native dead key","marked":"clear","dead":"active","priority":false,"repeat":false,"alt":false,"outcome":"passThrough"},
+  {"name":"native evidence outside dispatch","marked":"clear","dead":"unknown","priority":false,"repeat":false,"alt":false,"outcome":"passThrough"},
+  {"name":"character priority","marked":"clear","dead":"clear","priority":true,"repeat":false,"alt":false,"outcome":"passThrough"},
+  {"name":"AltGr without priority flag","marked":"clear","dead":"clear","priority":false,"repeat":false,"alt":true,"outcome":"passThrough"},
+  {"name":"AltGr with priority flag","marked":"clear","dead":"clear","priority":true,"repeat":false,"alt":true,"outcome":"passThrough"},
+  {"name":"held shortcut key","marked":"clear","dead":"clear","priority":false,"repeat":true,"alt":false,"outcome":"repeat"}
+]

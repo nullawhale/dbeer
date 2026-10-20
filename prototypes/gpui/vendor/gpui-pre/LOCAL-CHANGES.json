@@ -1,0 +1,39 @@
+{
+  "upstream_package": "gpui-pre",
+  "version": "0.3.9",
+  "archive_sha256": "34f61c1cfd36fc9c436af09308c963822ae27a45a84feb21a77ba5c9e051f1c0",
+  "upstream_revision": "93d745668805029476e6d7fbb19652116fed51de",
+  "omitted": [],
+  "changes": [
+    {
+      "path": "Cargo.toml",
+      "upstream_sha256": "43ac0a636d1283313dbb48810ff32c0f6b55737824a886bd9fad37735ec0c56c",
+      "local_sha256": "b4db2a808522a4f229ae885251310ebbc4f715d379631022a8bb758e50b33df4"
+    },
+    {
+      "path": "Cargo.toml.orig",
+      "upstream_sha256": "def05c8c9f179920a5de537d59817155e2606ac2daa48aeacd88e5ae1846ec36",
+      "local_sha256": "5d670c2fb41e7797d9202d1b2b3f6790889e66cb882b8b42ef0c2c3626f1bde6"
+    },
+    {
+      "path": "build.rs",
+      "upstream_sha256": "8eff51e24e06289869c9a45f30cd8372fd7d50ec28f7a1e3b6e54adde8c6aa01",
+      "local_sha256": "ac1baf70f99740945ec2cb345cf7ffd1dfbb7afa87bf4f1fa2d2a0a762283aa3"
+    },
+    {
+      "path": "examples/text.rs",
+      "upstream_sha256": "3883e127027adf7b99a8c909eaba3cac4b31f1afd1f6591ab520918b3f9fa25e",
+      "local_sha256": "d6d9f9648ad3123df01ef98fcc61b772ca4223a1980d6e47a144cb4637a8ab00"
+    },
+    {
+      "path": "src/text_system/line_wrapper.rs",
+      "upstream_sha256": "58feea87a0f1e150d8d733886fe9601d5afcd37f91b00c80d6717d5e9b7272ed",
+      "local_sha256": "d2ad18ba99d7a6ee83ce0661896a139b2ece5cb9fb92c0f286f305477d7c5c64"
+    },
+    {
+      "path": "src/elements/div.rs",
+      "upstream_sha256": "f320948b8f90e36b7100ac3e0e061235d1e9422aeb323918e313f7d69980cfa9",
+      "local_sha256": "22b178f70278093a9fc5bb7f5559466e26137bc15d2fab47695873789d36c349"
+    }
+  ]
+}

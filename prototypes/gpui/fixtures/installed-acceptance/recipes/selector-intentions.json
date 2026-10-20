@@ -1,0 +1,337 @@
+{
+  "schemaVersion": 1,
+  "kind": "source-expected-semantic-intentions-not-selector-contract",
+  "nativeObserved": false,
+  "desktopTargets": [
+    "windows11-x64",
+    "ubuntu2404-x64-wayland",
+    "ubuntu2404-x64-x11"
+  ],
+  "selectors": {
+    "profiles.postgresql.edit": {
+      "semanticKey": "profiles.postgresql.edit",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.name": {
+      "semanticKey": "profiles.name",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "set-text"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.cancel": {
+      "semanticKey": "profiles.cancel",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "editor.original": {
+      "semanticKey": "editor.original",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "focus",
+        "set-text",
+        "assert",
+        "read-text-range",
+        "select-text-range"
+      ],
+      "requiresOriginalIdentity": true,
+      "secret": false
+    },
+    "profiles.add": {
+      "semanticKey": "profiles.add",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.engine.postgresql": {
+      "semanticKey": "profiles.engine.postgresql",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "select"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.host": {
+      "semanticKey": "profiles.host",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "set-text"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.port": {
+      "semanticKey": "profiles.port",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "set-text"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.database": {
+      "semanticKey": "profiles.database",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "set-text"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.user": {
+      "semanticKey": "profiles.user",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "set-text"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.tls.verify-full": {
+      "semanticKey": "profiles.tls.verify-full",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "select"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.ca.choose": {
+      "semanticKey": "profiles.ca.choose",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "chooser.path": {
+      "semanticKey": "chooser.path",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "set-text"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "chooser.accept": {
+      "semanticKey": "chooser.accept",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.policy.development": {
+      "semanticKey": "profiles.policy.development",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "select"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.policy.readonly": {
+      "semanticKey": "profiles.policy.readonly",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "select"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.save": {
+      "semanticKey": "profiles.save",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.password.replace": {
+      "semanticKey": "profiles.password.replace",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "select"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.password": {
+      "semanticKey": "profiles.password",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "set-text"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": true
+    },
+    "execution.run-current": {
+      "semanticKey": "execution.run-current",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": true,
+      "secret": false
+    },
+    "execution.stop-original": {
+      "semanticKey": "execution.stop-original",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": true,
+      "secret": false
+    },
+    "profiles.engine.mysql": {
+      "semanticKey": "profiles.engine.mysql",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "select"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "profiles.mysql.edit": {
+      "semanticKey": "profiles.mysql.edit",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "settings.shortcuts.open": {
+      "semanticKey": "settings.shortcuts.open",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    },
+    "shortcuts.recover-defaults": {
+      "semanticKey": "shortcuts.recover-defaults",
+      "nativeObserved": false,
+      "status": "source-intention-only",
+      "nativeId": null,
+      "rolesNamesHierarchy": "must be observed per exact native artifact",
+      "actionsRequested": [
+        "invoke"
+      ],
+      "requiresOriginalIdentity": false,
+      "secret": false
+    }
+  },
+  "windows": {
+    "profiles.postgresql.ca": {
+      "nativeObserved": false,
+      "lifetime": "new observed key for this one original chooser; never reuse after dismiss"
+    },
+    "profiles.mysql.ca": {
+      "nativeObserved": false,
+      "lifetime": "new observed key for this one original chooser; never reuse after dismiss"
+    }
+  },
+  "remainingSurfaces": [
+    "actual workspace Quit and each close scope/decision",
+    "profile import preview/remap/export and fresh modal lifetimes",
+    "original grid/row/cell/typed editor/preview/apply/unknown/recovery",
+    "catalog/search/browse/filter",
+    "file/open/save/loaded/full exports",
+    "Settings appearance/library import/commit/remove/reload/recovery",
+    "shortcut recorder/clear/reset/conflicts",
+    "completion/signature/diagnostic text/ranges/focus"
+  ],
+  "rule": "No role/name/nativeId guessed from GPUI ElementId; neither target binding nor reviewed execution plan."
+}

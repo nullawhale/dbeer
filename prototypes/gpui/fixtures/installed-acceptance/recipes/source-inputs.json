@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "kind": "pinned-fixed-source-inputs",
+  "corpusSha256": "fe04a11afa270cf9a43d454924b561b4785c0e24fb58dc97d0377b30f66b5bf8",
+  "sources": {
+    "shared-00": {
+      "path": "protocol/fixtures/sql-execution/v1.json",
+      "sha256": "2152425fff0fbc04349b2bc16597e2bd875130781d8e3298c30715f38b2f0f6d",
+      "size": 74790,
+      "filename": "shared-00.json"
+    },
+    "shared-01": {
+      "path": "protocol/fixtures/completion-matches.json",
+      "sha256": "8b1a825022fb7df0e1f8da28310ad987e159fe6bcb3790da52920279be44e7e7",
+      "size": 901,
+      "filename": "shared-01.json"
+    },
+    "shared-02": {
+      "path": "protocol/fixtures/signature-help.json",
+      "sha256": "2a0ed167c0af386a36710181dc60e23c98305035dbf45c846008fc89367863e4",
+      "size": 8096,
+      "filename": "shared-02.json"
+    },
+    "shared-03": {
+      "path": "protocol/fixtures/gpui-theme-parity/cases.json",
+      "sha256": "69ad78cea5dc737aac2f2c8a57927128ee33fe18de788c5cb40d46e4150fd5fc",
+      "size": 6565,
+      "filename": "shared-03.json"
+    },
+    "shared-04": {
+      "path": "protocol/fixtures/profile-transfer/legacy-v1.json",
+      "sha256": "c0d67816bb2c9f81c7c91f6b4ec65c0d10a298fea1e140dd9f0c4bf5776307a7",
+      "size": 885,
+      "filename": "shared-04.json"
+    },
+    "shared-05": {
+      "path": "protocol/fixtures/profile-transfer/mac-export-v2.json",
+      "sha256": "16de9772e83f7a7e03224f48c6d8ff69aca44e160dfe94d1a4439dacf2d0b56e",
+      "size": 1040,
+      "filename": "shared-05.json"
+    },
+    "shared-06": {
+      "path": "protocol/fixtures/profile-transfer/invalid/device-ca.json",
+      "sha256": "9160a616fa49f68aafec3f29f4a8bd89e87822b2c4558470126b39945e840274",
+      "size": 286,
+      "filename": "shared-06.json"
+    },
+    "shared-07": {
+      "path": "protocol/fixtures/profile-transfer/invalid/drive-relative-ca.json",
+      "sha256": "45dc9a60453c1dcf3d3a5a5bf733dcc0e075a03b827d82d95ec895cb5c77ad56",
+      "size": 277,
+      "filename": "shared-07.json"
+    },
+    "shared-08": {
+      "path": "protocol/fixtures/profile-transfer/invalid/duplicate-envelope.json",
+      "sha256": "5cdf831231a90f7bfb9a166fed9084da5a387ab0b304c667996656a10e9b8c4e",
+      "size": 309,
+      "filename": "shared-08.json"
+    },
+    "shared-09": {
+      "path": "protocol/fixtures/profile-transfer/invalid/duplicate-null-ca.json",
+      "sha256": "16db87fa8518e701a853867b6be60e6113af1860b5a06c5312671409a5ea046a",
+      "size": 316,
+      "filename": "shared-09.json"
+    },
+    "shared-10": {
+      "path": "protocol/fixtures/profile-transfer/invalid/duplicate-policy.json",
+      "sha256": "35839a262ee544202a0ff5ff896fa0e85cf820cebb1c7957290e6e1f10a11a1c",
+      "size": 319,
+      "filename": "shared-10.json"
+    },
+    "shared-11": {
+      "path": "protocol/fixtures/profile-transfer/invalid/duplicate-profile.json",
+      "sha256": "98361632e7fcdde145ea4c689d7889f669253a73036e99f3e6832d85958fec00",
+      "size": 319,
+      "filename": "shared-11.json"
+    },
+    "shared-12": {
+      "path": "protocol/fixtures/profile-transfer/invalid/excess-depth.json",
+      "sha256": "c796d03e42e36f392104d9ea0164a9b2fe18d0e806ad274e0ae496bf684aacb6",
+      "size": 61,
+      "filename": "shared-12.json"
+    },
+    "shared-13": {
+      "path": "protocol/fixtures/profile-transfer/invalid/fraction-port.json",
+      "sha256": "8d90408e6b17788aaa8180cd4f0f6ace4739d865db6ee92ad3d7313ddacf3415",
+      "size": 297,
+      "filename": "shared-13.json"
+    },
+    "shared-14": {
+      "path": "protocol/fixtures/profile-transfer/invalid/future-version.json",
+      "sha256": "2dd8ad23fe22843cdb09e13658bb00bbaa59c6ba1988db195950723af0493ba9",
+      "size": 296,
+      "filename": "shared-14.json"
+    },
+    "shared-15": {
+      "path": "protocol/fixtures/profile-transfer/invalid/invalid-engine.json",
+      "sha256": "4751f6a57e41d471582f32eccaaf019260a36e089553d876afc75febd721cc14",
+      "size": 291,
+      "filename": "shared-15.json"
+    },
+    "shared-16": {
+      "path": "protocol/fixtures/profile-transfer/invalid/invalid-environment.json",
+      "sha256": "c334baafad7cbca46fe68f27a04bf1f7e45b692a9a186441ef2708b1e96decf7",
+      "size": 290,
+      "filename": "shared-16.json"
+    },
+    "shared-17": {
+      "path": "protocol/fixtures/profile-transfer/invalid/invalid-tls.json",
+      "sha256": "05b127044f528c39c1e70327d31c014594a093aa44ea1abe797a8e4a99aa50ce",
+      "size": 292,
+      "filename": "shared-17.json"
+    },
+    "shared-18": {
+      "path": "protocol/fixtures/profile-transfer/invalid/missing-v2-policy.json",
+      "sha256": "82f12776f93dfd72e90f4b69dffaf071e7083cec5bd41f3d6ada94efea1c6935",
+      "size": 236,
+      "filename": "shared-18.json"
+    },
+    "shared-19": {
+      "path": "protocol/fixtures/profile-transfer/invalid/mysql-prefer.json",
+      "sha256": "aa0f69d5943e24f701bce2b359e66bb2ce304966cfb0dbbc8742e0f7a2630695",
+      "size": 285,
+      "filename": "shared-19.json"
+    },
+    "shared-20": {
+      "path": "protocol/fixtures/profile-transfer/invalid/null-policy.json",
+      "sha256": "cdb2e1ac08160678c5143102fb7b5e8143cfd2b339d0f116dd2923a5e64579a3",
+      "size": 252,
+      "filename": "shared-20.json"
+    },
+    "shared-21": {
+      "path": "protocol/fixtures/profile-transfer/invalid/overflow-port.json",
+      "sha256": "3af21d6b05eed6ab26547c52962a28a4984bce773ecb4b37ea0abf558d27b927",
+      "size": 296,
+      "filename": "shared-21.json"
+    },
+    "shared-22": {
+      "path": "protocol/fixtures/profile-transfer/invalid/partial-policy.json",
+      "sha256": "0c955e4f37dce6bb3db81af79f019ef83566bd7f19a9904e5b4348aa148745bb",
+      "size": 267,
+      "filename": "shared-22.json"
+    },
+    "shared-23": {
+      "path": "protocol/fixtures/profile-transfer/invalid/relative-ca.json",
+      "sha256": "ac555f0d4cdf258f61f885192d4e1aa76e2a7bc95350da59ef70b0e64a7aca2e",
+      "size": 275,
+      "filename": "shared-23.json"
+    },
+    "shared-24": {
+      "path": "protocol/fixtures/profile-transfer/invalid/secret-password.json",
+      "sha256": "234db9d02012684a94cb05b31c25f35ff788e79c641f36f353ecfc601ef80f2f",
+      "size": 325,
+      "filename": "shared-24.json"
+    },
+    "shared-25": {
+      "path": "protocol/fixtures/profile-transfer/invalid/secret-private-key.json",
+      "sha256": "35110cf92cf3f68e0fa4e854823235a88e75910b5fc3b1ca0a67302daa3aa6de",
+      "size": 327,
+      "filename": "shared-25.json"
+    },
+    "shared-26": {
+      "path": "protocol/fixtures/profile-transfer/invalid/trailing.json",
+      "sha256": "56f876c8aae7a4b410f01f3989d61e0c04f6276f3127fc0808ee21391d7cf5f3",
+      "size": 297,
+      "filename": "shared-26.json"
+    },
+    "shared-27": {
+      "path": "protocol/fixtures/profile-transfer/invalid/truncated.json",
+      "sha256": "9bfcd1e34c7f37738519584301c447751243224c50598ef74937946be203c182",
+      "size": 290,
+      "filename": "shared-27.json"
+    },
+    "shared-28": {
+      "path": "protocol/fixtures/profile-transfer/invalid/unknown-field.json",
+      "sha256": "cfe29955b5f766db530483faf04f7c8fd17277b8187fec1f8c5a349f694662f9",
+      "size": 316,
+      "filename": "shared-28.json"
+    },
+    "shared-29": {
+      "path": "protocol/fixtures/profile-transfer/invalid/unknown-id.json",
+      "sha256": "03ba38d7622974fa41fddf8ddf052718ef8ab0837d7b0468b9818e2e10f2d319",
+      "size": 317,
+      "filename": "shared-29.json"
+    },
+    "shared-30": {
+      "path": "protocol/fixtures/profile-transfer/invalid/unknown-policy.json",
+      "sha256": "c6960181ed1d14c8e3b278783e069f0c49ca721dc24e07fe0aa32ef234586a4a",
+      "size": 325,
+      "filename": "shared-30.json"
+    },
+    "shared-31": {
+      "path": "protocol/fixtures/profile-transfer/invalid/zero-port.json",
+      "sha256": "b0607ac9bea09c5bc33ae2751d392ea0db4b660c4954ad7bc0633dd6e9889f44",
+      "size": 292,
+      "filename": "shared-31.json"
+    },
+    "shared-32": {
+      "path": "prototypes/gpui/fixtures/settings-theme-library/import.jsonc",
+      "sha256": "44ce278a779eb1cdb36b22802a90366de08d09997d462824989a4d545faf7068",
+      "size": 498,
+      "filename": "shared-32.jsonc"
+    },
+    "shared-33": {
+      "path": "prototypes/gpui/fixtures/shortcut-settings/capture-safety.json",
+      "sha256": "d99cef24245139dcc01e62122071c4f80686eb617160f1f8f1eb778ef36debf4",
+      "size": 1089,
+      "filename": "shared-33.json"
+    }
+  }
+}

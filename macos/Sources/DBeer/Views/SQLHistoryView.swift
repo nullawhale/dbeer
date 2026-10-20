@@ -17,7 +17,7 @@ struct SQLHistoryView: View {
             }
             Toggle("Record executed SQL", isOn: $workspace.historyEnabled).controlHover()
             Text("Up to 1000 executions from the last 30 days, stored on this Mac.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).appSecondaryText()
             List(Array(workspace.history.reversed())) { entry in
                 VStack(alignment: .leading, spacing: 5) {
                     HStack {
@@ -25,7 +25,7 @@ struct SQLHistoryView: View {
                         Text(entry.date, style: .time)
                         Spacer()
                         Text(entry.outcome)
-                    }.font(.caption).foregroundStyle(.secondary)
+                    }.font(.caption).appSecondaryText()
                     Text(entry.sql).font(.system(.callout, design: .monospaced)).lineLimit(4).textSelection(.enabled)
                     Button {
                         workspace.newDocument(profileID: entry.profileID, text: entry.sql)

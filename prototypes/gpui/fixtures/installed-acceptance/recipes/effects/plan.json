@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "kind": "fixed-owned-effects-setup-and-fault-contract-source-only",
+  "installed": false,
+  "runtimeObserved": false,
+  "setup": {
+    "allowedAfter": "exact OwnedDatabases.create+setup receipts verified",
+    "sources": {
+      "postgresql": "postgresql.sql",
+      "mysql": "mysql.sql"
+    },
+    "ownership": "Check original record object is in owner.records, original exact containerId/current nonce label/local image/loopback endpoint; execute fixed source only over existing password-file stdin setup path, suppress all stdout/stderr",
+    "collision": "CREATE collisions refuse; no DROP, reset, truncate or adoption; every mutation case needs a fresh owned corpus lifetime",
+    "apiContract": "OwnedDatabases.setup_acceptance_effects(original_record), consumed by effects-setup; fixed pinned source only, one attempt per exact owner receipt, failed/interrupted state never replayed"
+  },
+  "observerQueries": {
+    "acceptance-effects": {
+      "sql": "SELECT case_id,commits FROM dbeer_parity_v1.acceptance_effects ORDER BY case_id",
+      "baselineRows": [
+        [
+          "apply-commit",
+          "0"
+        ],
+        [
+          "full-export",
+          "0"
+        ],
+        [
+          "sql-commit",
+          "0"
+        ]
+      ]
+    },
+    "acceptance-receipts": {
+      "sql": "SELECT case_id,statement_ordinal,marker FROM dbeer_parity_v1.acceptance_receipts ORDER BY case_id,statement_ordinal",
+      "baselineRows": [
+        [
+          "script-first-error",
+          "0",
+          "0"
+        ],
+        [
+          "script-middle-error",
+          "0",
+          "0"
+        ]
+      ]
+    },
+    "acceptance-apply": {
+      "sql": "SELECT id,label,exact_value,payload,computed_length FROM dbeer_parity_v1.acceptance_apply ORDER BY id",
+      "baselineRows": [
+        [
+          "1",
+          "before",
+          "1.000000000000000000",
+          "AP8=",
+          "6"
+        ],
+        [
+          "2",
+          "second",
+          "2.000000000000000000",
+          null,
+          "6"
+        ]
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "sql-lost-commit-ack",
+      "appliesTo": [
+        "F12",
+        "F13",
+        "F36"
+      ],
+      "input": "input-corpus.json queries.<engine>.lostSqlCommit",
+      "before": {
+        "sql-commit": 0
+      },
+      "afterRealServerCommit": {
+        "sql-commit": 1
+      },
+      "requiredFault": "Lose original COMMIT acknowledgment only after independently verified committed effect; exact session owner required",
+      "uiExpected": "unknown; no automatic retry; preserve original recovery path",
+      "afterRetryAttempts": {
+        "sql-commit": 1
+      }
+    },
+    {
+      "id": "apply-lost-commit-ack",
+      "appliesTo": [
+        "F33",
+        "F34",
+        "F35",
+        "F36"
+      ],
+      "input": "Native typed edit acceptance_apply original id=1 label before -> after; Preview then Apply exactly captured batch",
+      "before": {
+        "apply-commit": 0,
+        "label": "before"
+      },
+      "afterRealServerCommit": {
+        "apply-commit": 1,
+        "label": "after",
+        "computed_length": "5"
+      },
+      "requiredFault": "Lose actual apply commit acknowledgment after transactional trigger receipt committed",
+      "uiExpected": "unknown with original immutable batch; no reapply",
+      "afterRetryAttempts": {
+        "apply-commit": 1
+      }
+    },
+    {
+      "id": "full-export-exactly-once",
+      "appliesTo": [
+        "F39"
+      ],
+      "input": "input-corpus.json queries.<engine>.fullExportOnce",
+      "before": {
+        "full-export": 0
+      },
+      "afterSuccessOrPublicationFailure": {
+        "full-export": 1
+      },
+      "rowCounts": {
+        "postgresql": 1205,
+        "mysql": 1005
+      },
+      "requiredFaults": [
+        "normal",
+        "late Stop after sqlCompleted",
+        "locked replacement after SQL completed",
+        "first/middle script error separate receipt cases"
+      ],
+      "notes": [
+        "Do not use success file row count as execution-count oracle",
+        "MySQL procedure has data SELECT plus terminal OK status set; independent metadata/order oracle must include it, and CSV must reject multiset ambiguity",
+        "Base read-only duplicate query exact-byte oracle is separate from this effect routine until exact routine metadata is bound"
+      ]
+    },
+    {
+      "id": "script-order-stop-on-error",
+      "appliesTo": [
+        "F15",
+        "F16",
+        "F17",
+        "F18",
+        "F22"
+      ],
+      "expectedAddedReceipts": {
+        "script-success": [
+          [
+            "1",
+            "11"
+          ],
+          [
+            "2",
+            "22"
+          ],
+          [
+            "3",
+            "33"
+          ]
+        ],
+        "script-first-error": [],
+        "script-middle-error": [
+          [
+            "1",
+            "11"
+          ]
+        ]
+      },
+      "preserveSeedOrdinalZero": true,
+      "requires": "original statement/tab hash trace plus independent exact receipt rows; no positive-only count check"
+    }
+  ],
+  "faultEvidenceRequired": [
+    "exact artifacts/native target/run nonce/owned session",
+    "physical before/after counter and typed hash",
+    "proof acknowledgment boundary was lost after commit, not rollback or fake success",
+    "unknown original native state and refused retry",
+    "one explicit verification/discard/reload resolution",
+    "successful normal shutdown and conditional owned cleanup"
+  ],
+  "unsupportedNeverPass": [
+    "missing setup/query allow-list",
+    "absent effect rows or zero selected cases",
+    "missing one engine",
+    "no observed server commit boundary",
+    "fake-helper-only lost ACK",
+    "forced process termination treated as rollback"
+  ]
+}

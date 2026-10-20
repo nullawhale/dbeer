@@ -1,0 +1,84 @@
+{
+  "columns": [
+    {
+      "index": 0,
+      "name": "x",
+      "typeOid": 25,
+      "engine": "postgresql",
+      "nativeType": "text"
+    },
+    {
+      "index": 1,
+      "name": "x",
+      "typeOid": 1700,
+      "engine": "postgresql",
+      "nativeType": "numeric"
+    },
+    {
+      "index": 2,
+      "name": "bytes",
+      "typeOid": 17,
+      "engine": "postgresql",
+      "nativeType": "bytea",
+      "encoding": "base64"
+    }
+  ],
+  "rows": [
+    [
+      null,
+      "9007199254740993.123456789",
+      "AP8="
+    ],
+    [
+      "",
+      "NULL",
+      null
+    ],
+    [
+      "é, \"😀\"\r\n世界",
+      "",
+      "AA=="
+    ],
+    [
+      "\\N",
+      "-0.000000000000000001",
+      ""
+    ]
+  ],
+  "draftValues": [
+    {
+      "kind": "null"
+    },
+    {
+      "kind": "text",
+      "value": ""
+    },
+    {
+      "kind": "text",
+      "value": "NULL"
+    },
+    {
+      "kind": "default"
+    },
+    {
+      "kind": "binary",
+      "value": "AP8="
+    }
+  ],
+  "rowCount": 10000,
+  "truncated": true,
+  "displayRows": 1000,
+  "displayBytes": 8388608,
+  "maximumResultSets": 1024,
+  "stress": {
+    "rows": 1000,
+    "columns": 32,
+    "editorStatements": 1000,
+    "largeTextBytes": 1048576
+  },
+  "paths": [
+    "fixtures/SQL 😀.sql",
+    "fixtures/é/世界.sql"
+  ],
+  "clipboardNullMarker": "\\N"
+}

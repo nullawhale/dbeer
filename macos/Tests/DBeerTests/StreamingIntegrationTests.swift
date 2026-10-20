@@ -6,6 +6,19 @@ import Testing
 /// acknowledgements, rather than an adapter or a scripted helper substitute.
 @Suite(.serialized)
 struct StreamingIntegrationTests {
+    /// These adapter fixtures explicitly approve their exact SQL and export
+    /// destination; they do not change the application's confirmation behavior.
+    private func approvedFixture(_ client: BackendClient, _ command: BackendCommand,
+                                 onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        let session = try #require(command.sessionId)
+        let operation = OperationRequest(type: command.type, sql: command.sql, export: command.export, changes: command.changes)
+        let assessment = try #require(try await client.request(.assess(sessionId: session, operations: [operation])).assessment)
+        try #require(assessment.decision != "deny")
+        var approved = command
+        approved.authorization = try #require(assessment.authorization)
+        return try await client.request(approved, onEvent: onEvent)
+    }
+
     private var executable: URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -44,7 +57,7 @@ struct StreamingIntegrationTests {
         do {
             try await client.start()
             let session = try #require(try await client.request(.connect(settings(engine))).sessionId)
-            let bounded = try await client.request(.execute(sessionId: session, sql: numbers(engine, count: 1_107)))
+            let bounded = try await approvedFixture(client, .execute(sessionId: session, sql: numbers(engine, count: 1_107)))
             #expect(bounded.rows?.count == 1_000)
             #expect(bounded.displayedRowCount == 1_000 && bounded.rowCount == 1_107 && bounded.truncated == true)
             #expect(bounded.streamed == nil)
@@ -53,21 +66,21 @@ struct StreamingIntegrationTests {
             let exactSQL = engine == .postgresql
                 ? "SELECT 9007199254740993.123456789::numeric AS duplicate, decode('00ff','hex') AS duplicate, NULL::text AS absent, ''::text AS empty"
                 : "SELECT CAST('9007199254740993.123456789' AS DECIMAL(30,9)) AS duplicate, _binary X'00FF' AS duplicate, NULL AS absent, '' AS `empty`"
-            let exact = try await client.request(.execute(sessionId: session, sql: exactSQL))
+            let exact = try await approvedFixture(client, .execute(sessionId: session, sql: exactSQL))
             #expect(exact.rows == [["9007199254740993.123456789", "AP8=", nil, ""]])
             #expect(exact.columns?.map(\.name) == ["duplicate", "duplicate", "absent", "empty"])
             #expect(exact.columns?[1].encoding == "base64")
 
             let exportSQL: String
             if engine == .postgresql {
-                _ = try await client.request(.execute(sessionId: session, sql: "CREATE TEMPORARY TABLE dbeer_export_once (value integer)"))
+                _ = try await approvedFixture(client, .execute(sessionId: session, sql: "CREATE TEMPORARY TABLE dbeer_export_once (value integer)"))
                 exportSQL = "INSERT INTO dbeer_export_once SELECT generate_series(1,1503) RETURNING value"
             } else {
-                _ = try await client.request(.execute(sessionId: session, sql: "SET @dbeer_export_once = 0"))
+                _ = try await approvedFixture(client, .execute(sessionId: session, sql: "SET @dbeer_export_once = 0"))
                 exportSQL = "SELECT @dbeer_export_once := @dbeer_export_once + 1 AS value FROM (\(numbers(engine, count: 1_503))) AS source_rows"
             }
             let path = directory.appendingPathComponent("all.json")
-            let exported = try await client.request(.runToFile(sessionId: session, sql: exportSQL,
+            let exported = try await approvedFixture(client, .runToFile(sessionId: session, sql: exportSQL,
                 export: ExportRequest(path: path.path, format: "json")))
             #expect(exported.exportPath == path.path && exported.exportRowCount == 1_503)
             let document = try JSONDecoder().decode(ExportDocument.self, from: Data(contentsOf: path))
@@ -75,7 +88,7 @@ struct StreamingIntegrationTests {
             #expect(document.resultSets.first?.rows.count == 1_503)
             #expect(document.resultSets.first?.metadata.rowCount == 1_503)
             #expect(document.resultSets.first?.metadata.truncated == false)
-            let counter = try await client.request(.execute(sessionId: session,
+            let counter = try await approvedFixture(client, .execute(sessionId: session,
                 sql: engine == .postgresql ? "SELECT count(*) FROM dbeer_export_once" : "SELECT @dbeer_export_once"))
             #expect(counter.rows == [["1503"]])
 
@@ -88,7 +101,7 @@ struct StreamingIntegrationTests {
                 ? "SELECT n,pg_sleep(0.01) FROM generate_series(1,1503) AS n"
                 : "SELECT n FROM (\(numbers(engine, count: 1_503))) AS source_rows WHERE SLEEP(0.01 + n * 0)=0"
             let execution = Task {
-                try await client.request(.runToFile(sessionId: session, queryId: query, sql: slow,
+                try await approvedFixture(client, .runToFile(sessionId: session, queryId: query, sql: slow,
                     export: ExportRequest(path: preserved.path, format: "json")), onEvent: {
                         if $0.type == "query.started" { started.continuation.yield(()) }
                     })
@@ -125,8 +138,8 @@ struct StreamingIntegrationTests {
             try await client.start()
             let id = try #require(try await client.request(.connect(settings(.mysql))).sessionId)
             session = id
-            _ = try await client.request(.execute(sessionId: id, sql: "CREATE PROCEDURE \(name)() BEGIN SELECT CAST('9007199254740993.123456789' AS DECIMAL(30,9)) AS duplicate, _binary X'00FF' AS duplicate; SELECT NULL AS absent, '' AS `empty`; END"))
-            let reply = try await client.request(.execute(sessionId: id, sql: "CALL \(name)()"))
+            _ = try await approvedFixture(client, .execute(sessionId: id, sql: "CREATE PROCEDURE \(name)() BEGIN SELECT CAST('9007199254740993.123456789' AS DECIMAL(30,9)) AS duplicate, _binary X'00FF' AS duplicate; SELECT NULL AS absent, '' AS `empty`; END"))
+            let reply = try await approvedFixture(client, .execute(sessionId: id, sql: "CALL \(name)()"))
             let sets = try #require(reply.resultSets)
             let tables = sets.filter { !$0.columns.isEmpty }
             try #require(tables.count == 2)
@@ -136,10 +149,10 @@ struct StreamingIntegrationTests {
             #expect(tables[1].rows == [[nil, ""]])
             #expect(reply.rows == tables[0].rows && reply.columns == tables[0].columns)
             #expect(sets.last?.columns.isEmpty == true)
-            _ = try await client.request(.execute(sessionId: id, sql: "DROP PROCEDURE \(name)"))
+            _ = try await approvedFixture(client, .execute(sessionId: id, sql: "DROP PROCEDURE \(name)"))
             #expect(await client.shutdown().acknowledged)
         } catch {
-            if let session { _ = try? await client.request(.execute(sessionId: session, sql: "DROP PROCEDURE IF EXISTS \(name)")) }
+            if let session { _ = try? await approvedFixture(client, .execute(sessionId: session, sql: "DROP PROCEDURE IF EXISTS \(name)")) }
             _ = await client.shutdown()
             throw error
         }

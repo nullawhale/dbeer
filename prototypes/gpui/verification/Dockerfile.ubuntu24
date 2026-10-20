@@ -1,0 +1,23 @@
+# Compile-only environment. Build with --platform=linux/amd64 using this
+# directory alone as context. Never COPY the checkout, build/, .git or settings.
+FROM rust:1.99.1-bookworm AS rust
+FROM golang:1.27.1-bookworm AS golang
+FROM ubuntu:24.04
+LABEL app.dbeer.purpose="gpui-compile-only" app.dbeer.desktop-acceptance="not-run"
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates gcc g++ clang cmake pkg-config git python3 openssl \
+    libfontconfig-dev libwayland-dev libwebkit2gtk-4.1-dev libxkbcommon-x11-dev \
+    libx11-xcb-dev libssl-dev libzstd-dev libasound2-dev libdbus-1-dev \
+    vulkan-validationlayers libvulkan1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=rust /usr/local/cargo /usr/local/cargo
+COPY --from=rust /usr/local/rustup /usr/local/rustup
+COPY --from=golang /usr/local/go /usr/local/go
+ENV PATH="/usr/local/cargo/bin:/usr/local/go/bin:${PATH}" \
+    RUSTUP_HOME=/usr/local/rustup RUSTUP_TOOLCHAIN=1.99.1 \
+    CARGO_HOME=/work/build/gpui/cargo CARGO_TARGET_DIR=/work/build/gpui/task30-linux-target \
+    GOCACHE=/work/build/.cache/go GOMODCACHE=/work/build/.cache/go-mod
+WORKDIR /work
+# No GUI/unit/DB/credential/clipboard commands in the image or default command.
+CMD ["cargo", "check", "--locked", "--all-targets", "--manifest-path", "prototypes/gpui/Cargo.toml"]

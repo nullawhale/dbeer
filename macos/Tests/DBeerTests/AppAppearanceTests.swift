@@ -102,7 +102,7 @@ struct AppAppearanceTests {
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         workspace.isReleasedWhenClosed = false
         workspace.contentView = NSHostingView(rootView: WorkspaceView(model: WorkspaceModel()))
-        let settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 170),
+        let settings = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 650, height: 540),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         settings.isReleasedWhenClosed = false
         settings.contentView = NSHostingView(rootView: AppearanceSettingsView(appearance: appearance))

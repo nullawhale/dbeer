@@ -1,0 +1,24 @@
+{
+  "name": "Parity Paper",
+  "type": "light",
+  "colors": {
+    "editor.background": "#fcfcfc",
+    "editor.foreground": "#17202a",
+    "editor.selectionBackground": "#ccddee80"
+  },
+  "tokenColors": [
+    {
+      "scope": "keyword",
+      "settings": {
+        "foreground": "#7b235e",
+        "fontStyle": "bold italic"
+      }
+    },
+    {
+      "scope": "string",
+      "settings": {
+        "foreground": "#28551e"
+      }
+    }
+  ]
+}

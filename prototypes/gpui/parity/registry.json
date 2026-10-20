@@ -1,0 +1,3198 @@
+{
+  "schemaVersion": 1,
+  "baselineID": "swiftui-working-tree-v1",
+  "requiredFeatures": 57,
+  "platformPolicy": {
+    "macos": "SwiftUI/AppKit product; GPUI development only",
+    "targets": [
+      "windows11-x64",
+      "ubuntu2404-x64-wayland",
+      "ubuntu2404-x64-x11"
+    ]
+  },
+  "features": [
+    {
+      "id": "F01",
+      "capability": "Create/edit/connect/disconnect, Save versus Save and Connect, TLS/CA and policy controls",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; native CA chooser and complete lifecycle acceptance missing",
+      "owner": "GPUI profiles implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/connections.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "5–6",
+      "scenario_ids": [
+        "PARITY-F01"
+      ],
+      "test_ids": [
+        "SWIFT-ConnectionLibraryTests",
+        "SWIFT-WorkspaceConnectionTests",
+        "SWIFT-ConnectionsSidebarIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F02",
+      "capability": "Stable profile/document IDs, selected profile/document and tab order",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; selected profile not persisted; vector indices must not become storage identities",
+      "owner": "GPUI workspace implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3, 5, 13",
+      "scenario_ids": [
+        "PARITY-F02"
+      ],
+      "test_ids": [
+        "SWIFT-ConnectionLibraryTests",
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F03",
+      "capability": "Explicit new-profile default, legacy defaults and environment/readonly fidelity",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Different defaults today; must resolve and preserve imported values",
+      "owner": "GPUI profiles implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/connections.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "1, 5–7",
+      "scenario_ids": [
+        "PARITY-F03"
+      ],
+      "test_ids": [
+        "SWIFT-ExecutionPolicyTests",
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-ProfileTransferTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F04",
+      "capability": "Credential-safe profile update/delete with rollback, empty/missing distinction and locked-store errors",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; delete and Swift-style credential rollback after failed metadata commit missing",
+      "owner": "GPUI profiles implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/connections.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "5–6",
+      "scenario_ids": [
+        "PARITY-F04"
+      ],
+      "test_ids": [
+        "SWIFT-ConnectionLibraryTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F05",
+      "capability": "Private versioned library, exact backups, migrations, corrupt/future-version preservation",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; prototype format exists without full upgrade lifecycle",
+      "owner": "GPUI profiles implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/connections.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "5",
+      "scenario_ids": [
+        "PARITY-F05"
+      ],
+      "test_ids": [
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-ConnectionLibraryTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F06",
+      "capability": "Strict portable v2 export/v1 import, preview/select, new IDs, no secrets, disconnected result",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI profiles implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/connections.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "7",
+      "scenario_ids": [
+        "PARITY-F06"
+      ],
+      "test_ids": [
+        "SWIFT-ProfileTransferTests",
+        "SWIFT-ProfileImportIntegrationTests",
+        "SWIFT-ProfileExportPresentationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F07",
+      "capability": "Portable CA hint/remapping without weakening TLS; native CA file choice",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing; existing Swift transfer validator accepts POSIX paths only",
+      "owner": "GPUI profiles implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/connections.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "6–7",
+      "scenario_ids": [
+        "PARITY-F07"
+      ],
+      "test_ids": [
+        "SWIFT-ProfileTransferTests",
+        "SWIFT-ProfileImportIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F08",
+      "capability": "Explicit bounded --connect-stdin launch, ordinary launch reads nothing, no SQL execution",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI profiles implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R2",
+          "R3",
+          "R6"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/connections.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "6",
+      "scenario_ids": [
+        "PARITY-F08"
+      ],
+      "test_ids": [
+        "SWIFT-StartupConnectionTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F09",
+      "capability": "Independent physical SQL sessions, transaction/SET/temp state, simultaneous profiles and isolated disconnect",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial implementation; full target/race acceptance missing",
+      "owner": "GPUI sessions implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/backend.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3, 6, 11",
+      "scenario_ids": [
+        "PARITY-F09"
+      ],
+      "test_ids": [
+        "SWIFT-ApplicationWorkspaceTests",
+        "SWIFT-WorkspaceQueryTests",
+        "SWIFT-BackendMultiplexingTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F10",
+      "capability": "Catalog/completion service session isolated from SQL-tab and Apply sessions",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; completion metadata lifecycle missing",
+      "owner": "GPUI sessions implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/backend.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 14, 23",
+      "scenario_ids": [
+        "PARITY-F10"
+      ],
+      "test_ids": [
+        "SWIFT-SQLCompletionCatalogTests",
+        "SWIFT-GridLifecycleTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F11",
+      "capability": "Stop/timeout/progress/row status, terminal response and responsive bounded streaming",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; script/apply/export phases and native target coverage missing",
+      "owner": "GPUI transport implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/backend.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 10–11, 19, 21",
+      "scenario_ids": [
+        "PARITY-F11"
+      ],
+      "test_ids": [
+        "SWIFT-StreamingTransportTests",
+        "SWIFT-StreamingIntegrationTests",
+        "SWIFT-HelperProcessTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F12",
+      "capability": "Close scopes, open/failed transaction choices, repeated Quit and disconnect acknowledgement",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; full Windows/Linux close acceptance and reference running-work choice missing",
+      "owner": "GPUI close implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "11, 22",
+      "scenario_ids": [
+        "PARITY-F12"
+      ],
+      "test_ids": [
+        "SWIFT-WorkspaceCloseTests",
+        "SWIFT-AppTerminationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F13",
+      "capability": "Stop and Continue, Apply/Discard/Cancel, inline draft/export/unknown close states",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing beyond basic transaction close; current running-query close automatically requests Stop",
+      "owner": "GPUI close implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "11, 22",
+      "scenario_ids": [
+        "PARITY-F13"
+      ],
+      "test_ids": [
+        "SWIFT-WorkspaceCloseTests",
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-AppTerminationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F14",
+      "capability": "Independent tab text/caret/selection/scroll/Undo, SQL line numbers/current line and exact plain-text input during app lifetime",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; toolkit behavior and prevention of smart quote/dash/correction/rich-text substitution need verification",
+      "owner": "GPUI editor implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3, 9, 13, 16",
+      "scenario_ids": [
+        "PARITY-F14"
+      ],
+      "test_ids": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F15",
+      "capability": "One source resolver for selection/current statement/script, highlights, commands and export",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing; current Run sends full editor buffer",
+      "owner": "GPUI editor implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "8–10, 21",
+      "scenario_ids": [
+        "PARITY-F15"
+      ],
+      "test_ids": [
+        "SWIFT-SQLScriptParserTests",
+        "SWIFT-WorkspaceCommandTests",
+        "SWIFT-SQLExecutionSuccessTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F16",
+      "capability": "PostgreSQL/MySQL splitter, routine bodies, delimiters, diagnostics and client-command rejection",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing; syntax highlighting is not a splitter",
+      "owner": "GPUI editor implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "8",
+      "scenario_ids": [
+        "PARITY-F16"
+      ],
+      "test_ids": [
+        "SWIFT-SQLScriptParserTests",
+        "SWIFT-SQLRoutineParserIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F17",
+      "capability": "Whole-batch review, exact ordered grants, safe dialog default and context invalidation",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial single-execute approval; scripts/changes/export orchestration missing",
+      "owner": "GPUI policy implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 10, 18–19, 21",
+      "scenario_ids": [
+        "PARITY-F17"
+      ],
+      "test_ids": [
+        "SWIFT-ExecutionPolicyTests",
+        "SWIFT-ExecutionPolicyIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F18",
+      "capability": "Sequential first-error-stop scripts, skipped states, statement results plus ordered multi-set results",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing script model; one execution's result sets are partially supported",
+      "owner": "GPUI execution implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3–4, 10",
+      "scenario_ids": [
+        "PARITY-F18"
+      ],
+      "test_ids": [
+        "SWIFT-WorkspaceQueryTests",
+        "SWIFT-SQLRoutineParserIntegrationTests",
+        "SWIFT-StreamingIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F19",
+      "capability": "Original-source Unicode error navigation, execution fragment, active line number and success gutter clearing rules",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing beyond generic query errors",
+      "owner": "GPUI editor implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3, 8, 10",
+      "scenario_ids": [
+        "PARITY-F19"
+      ],
+      "test_ids": [
+        "SWIFT-SQLExecutionSuccessTests",
+        "SWIFT-SQLEditorTests",
+        "SWIFT-SQLLSPCodecTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F20",
+      "capability": "UTF-8 SQL Open/Save/Save As, per-document file binding and safe file failure/cancel",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI documents implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "12",
+      "scenario_ids": [
+        "PARITY-F20"
+      ],
+      "test_ids": [
+        "SWIFT-ApplicationWorkspaceTests",
+        "SWIFT-SQLDocumentStoreTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F21",
+      "capability": "One-second draft autosave, flush, versioned snapshots, disconnected restore, no live state persisted",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI documents implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "5, 13",
+      "scenario_ids": [
+        "PARITY-F21"
+      ],
+      "test_ids": [
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F22",
+      "capability": "Per-statement history, 1,000/30-day retention, enable/disable/clear/reopen and clear drafts",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI documents implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R3",
+          "R4",
+          "R5",
+          "R6",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "13",
+      "scenario_ids": [
+        "PARITY-F22"
+      ],
+      "test_ids": [
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F23",
+      "capability": "Schemas, tables/views/functions/procedures/triggers and metadata detail groups with lazy retry/refresh",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial schemas/tables/views only",
+      "owner": "GPUI catalog implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 14",
+      "scenario_ids": [
+        "PARITY-F23"
+      ],
+      "test_ids": [
+        "SWIFT-CatalogContextMenuTests",
+        "SWIFT-SQLCompletionCatalogTests",
+        "SWIFT-WorkspaceConnectionTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F24",
+      "capability": "Server catalog search across connected profiles independent of prior expansion",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing; current search only filters loaded names locally",
+      "owner": "GPUI catalog implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "14",
+      "scenario_ids": [
+        "PARITY-F24"
+      ],
+      "test_ids": [
+        "SWIFT-CatalogContextMenuTests",
+        "SWIFT-SQLCompletionCatalogTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F25",
+      "capability": "Structure/Definition/Open Data/Generate SELECT/adapter-quoted Copy Name and context actions",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial Generate SELECT only",
+      "owner": "GPUI catalog implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "14–15",
+      "scenario_ids": [
+        "PARITY-F25"
+      ],
+      "test_ids": [
+        "SWIFT-CatalogContextMenuTests",
+        "SWIFT-CatalogCopyNameIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F26",
+      "capability": "Dedicated table docs, 200-row pages, PK tie-breaks, server sorting and nine typed filter operators",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing; local result sorting/filtering is different behavior",
+      "owner": "GPUI browse implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 15",
+      "scenario_ids": [
+        "PARITY-F26"
+      ],
+      "test_ids": [
+        "SWIFT-TableBrowseNavigationTests",
+        "SWIFT-GridIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F27",
+      "capability": "Ordered duplicate columns, exact values/metadata, bounded display, truncation and partial/multiple sets",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial foundation; full statement/error/presentation acceptance missing",
+      "owner": "GPUI results implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 10, 16",
+      "scenario_ids": [
+        "PARITY-F27"
+      ],
+      "test_ids": [
+        "SWIFT-ProtocolFixtureTests",
+        "SWIFT-BackendClientTests",
+        "SWIFT-StreamingTransportTests",
+        "SWIFT-ResultTableTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F28",
+      "capability": "Cell/range/sparse-row selection, context copy, TSV and typed clipboard JSON",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial toolkit selection; current Copy Rows copies all visible rows as text",
+      "owner": "GPUI results implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "16",
+      "scenario_ids": [
+        "PARITY-F28"
+      ],
+      "test_ids": [
+        "SWIFT-ResultGridCopyTests",
+        "SWIFT-ResultGridRowNumberTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F29",
+      "capability": "Retained widths/selection, row numbering, horizontal overflow, virtualization and focus",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; target-native interaction/presentation acceptance missing",
+      "owner": "GPUI results implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3, 16, 29",
+      "scenario_ids": [
+        "PARITY-F29"
+      ],
+      "test_ids": [
+        "SWIFT-ResultGridRowNumberTests",
+        "SWIFT-ResultGridFocusTests",
+        "SWIFT-GridPresentationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F30",
+      "capability": "Row inspector, multiline/large/binary presentation and editable/read-only reasons",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI grid implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R7",
+          "R8"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "16–17",
+      "scenario_ids": [
+        "PARITY-F30"
+      ],
+      "test_ids": [
+        "SWIFT-GridPresentationIntegrationTests",
+        "SWIFT-GridColumnEditingTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F31",
+      "capability": "Typed cell edits respecting adapter/type/PK/engine/privilege limits and NULL/DEFAULT semantics",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI grid implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "17",
+      "scenario_ids": [
+        "PARITY-F31"
+      ],
+      "test_ids": [
+        "SWIFT-GridDraftTests",
+        "SWIFT-GridColumnEditingTests",
+        "SWIFT-GridIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F32",
+      "capability": "Local insert/update/delete drafts, original snapshots, markers, counts, Columns and Discard",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI grid implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "17",
+      "scenario_ids": [
+        "PARITY-F32"
+      ],
+      "test_ids": [
+        "SWIFT-GridDraftTests",
+        "SWIFT-GridPresentationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F33",
+      "capability": "Helper-generated parameterized SQL preview of an immutable batch and exact review",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI grid implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 18",
+      "scenario_ids": [
+        "PARITY-F33"
+      ],
+      "test_ids": [
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-ExecutionPolicyIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F34",
+      "capability": "Fresh idle Apply session, locked snapshots and stale context revalidation",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI grid implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3–4, 18–19",
+      "scenario_ids": [
+        "PARITY-F34"
+      ],
+      "test_ids": [
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-GridIntegrationTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F35",
+      "capability": "Atomic Apply, full original-row conflicts, metadata/constraint/deadlock rollback, Stop and reload",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI grid implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "19",
+      "scenario_ids": [
+        "PARITY-F35"
+      ],
+      "test_ids": [
+        "SWIFT-GridIntegrationTests",
+        "SWIFT-GridLifecycleTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F36",
+      "capability": "Unknown COMMIT outcome blocks retry/reapply; explicit verification/discard/reload and close handling",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial query-unknown protection; Apply and complete close flow missing",
+      "owner": "GPUI grid implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "11, 19, 22",
+      "scenario_ids": [
+        "PARITY-F36"
+      ],
+      "test_ids": [
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-WorkspaceCloseTests",
+        "SWIFT-WorkspaceQueryTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F37",
+      "capability": "Export Loaded uses captured snapshot, discloses truncation and executes no SQL",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI export implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "20",
+      "scenario_ids": [
+        "PARITY-F37"
+      ],
+      "test_ids": [
+        "SWIFT-ResultExportTests",
+        "SWIFT-WorkspaceQueryTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F38",
+      "capability": "Exact JSON metadata/value arrays and CSV NULL collision/quoting/binary/duplicate-column fidelity",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing export encoders/UI",
+      "owner": "GPUI export implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "20",
+      "scenario_ids": [
+        "PARITY-F38"
+      ],
+      "test_ids": [
+        "SWIFT-ResultExportTests",
+        "SWIFT-ParityBaselineTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F39",
+      "capability": "Run to File executes once, exports all rows, JSON multi-set/CSV rejection, atomic destination and cancellation",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI export implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R8",
+          "R9",
+          "R10",
+          "R11"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "4, 21",
+      "scenario_ids": [
+        "PARITY-F39"
+      ],
+      "test_ids": [
+        "SWIFT-StreamingIntegrationTests",
+        "SWIFT-ResultExportTests",
+        "SWIFT-WorkspaceCommandTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F40",
+      "capability": "Separate offline helper LSP process, bounded framing, clean environment, versions/timeouts/fallback",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing client integration; existing Go service reusable",
+      "owner": "GPUI language implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "23",
+      "scenario_ids": [
+        "PARITY-F40"
+      ],
+      "test_ids": [
+        "SWIFT-SQLLSPCodecTests",
+        "SWIFT-SQLLanguageServiceTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F41",
+      "capability": "Automatic paginated completion metadata after explicit connect, Refresh, profile/session isolation",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI language implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "14, 23",
+      "scenario_ids": [
+        "PARITY-F41"
+      ],
+      "test_ids": [
+        "SWIFT-SQLCompletionCatalogTests",
+        "SWIFT-SQLLanguageServiceTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F42",
+      "capability": "Clause/scope completion, CTE/subquery/LATERAL/aliases/projections, FK joins and match ranking/highlights",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing UI/context integration; algorithms already Go",
+      "owner": "GPUI language implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "24",
+      "scenario_ids": [
+        "PARITY-F42"
+      ],
+      "test_ids": [
+        "SWIFT-SQLLanguageServiceTests",
+        "SWIFT-SQLEditorTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F43",
+      "capability": "Automatic/manual popup, navigation/insertion/Escape, quoting, one Undo, IME and stale-reply safety",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI language implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "24, 29",
+      "scenario_ids": [
+        "PARITY-F43"
+      ],
+      "test_ids": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-SQLLanguageServiceTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F44",
+      "capability": "Function signature help/active arguments/overloads/nested-named-default-variadic calls and diagnostics",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI language implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "23–25",
+      "scenario_ids": [
+        "PARITY-F44"
+      ],
+      "test_ids": [
+        "SWIFT-ParityBaselineTests",
+        "SWIFT-SQLLanguageServiceTests",
+        "SWIFT-SQLEditorTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F45",
+      "capability": "Shared command registry, exact context capture, desktop menus and focus/modal gating",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial static bindings/toolbars only",
+      "owner": "GPUI commands implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3, 9",
+      "scenario_ids": [
+        "PARITY-F45"
+      ],
+      "test_ids": [
+        "SWIFT-WorkspaceCommandTests",
+        "SWIFT-AppShortcutTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F46",
+      "capability": "Shortcut recording/rebinding/unbinding/reset/conflict checks and preference recovery",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing",
+      "owner": "GPUI commands implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "28",
+      "scenario_ids": [
+        "PARITY-F46"
+      ],
+      "test_ids": [
+        "SWIFT-AppShortcutTests",
+        "SWIFT-WorkspaceCommandTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F47",
+      "capability": "Persistent System/Lager/Porter, independent app/editor schemes, Follow App Appearance and previews",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial forced-dark startup plus nonpersistent toggle",
+      "owner": "GPUI theme implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "26",
+      "scenario_ids": [
+        "PARITY-F47"
+      ],
+      "test_ids": [
+        "SWIFT-AppAppearanceTests",
+        "SWIFT-AppearanceThemeSettingsTests",
+        "SWIFT-ApplicationColorThemeTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F48",
+      "capability": "Bundled theme library and JSON/JSONC/TextMate/JetBrains imports, safe includes, durable storage/notices",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing beyond a basic palette",
+      "owner": "GPUI theme implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "27",
+      "scenario_ids": [
+        "PARITY-F48"
+      ],
+      "test_ids": [
+        "SWIFT-EditorThemeTests",
+        "SWIFT-JetBrainsEditorThemeTests",
+        "SWIFT-ParityBaselineTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F49",
+      "capability": "Live theme updates preserve editing/execution/selection and readable full app surfaces",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial; target-native/full-library checks missing",
+      "owner": "GPUI theme implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R4",
+          "R12",
+          "R13",
+          "R14"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "26–27, 29",
+      "scenario_ids": [
+        "PARITY-F49"
+      ],
+      "test_ids": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-ApplicationThemeIntegrationTests",
+        "SWIFT-NativeThemeContrastTests",
+        "SWIFT-GridPresentationIntegrationTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F50",
+      "capability": "Native file/CA dialogs, desktop keyboard/clipboard/IME, Unicode/CRLF paths, DPI/fonts/window conventions",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial abstractions; complete native workflows unverified",
+      "owner": "GPUI platform implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/platform.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "2, 6–7, 9, 12, 16, 20, 29",
+      "scenario_ids": [
+        "PARITY-F50"
+      ],
+      "test_ids": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-ApplicationFocusAuditTests",
+        "SWIFT-ResultGridFocusTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F51",
+      "capability": "Real Credential Manager/Secret Service access, locked/missing/empty behavior and standard-user security",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Adapters exist; complete native credential and failure roundtrips unverified",
+      "owner": "GPUI platform implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/platform.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "2, 5–6, 29",
+      "scenario_ids": [
+        "PARITY-F51"
+      ],
+      "test_ids": [
+        "SWIFT-ConnectionLibraryTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F52",
+      "capability": "UIA/Narrator and AT-SPI/Orca roles/values/focus for full editor/grid/dialog workflows",
+      "status": "open",
+      "prototype_status": "unverified",
+      "gap_at_freeze": "Unverified; must pass early feasibility and final native acceptance",
+      "owner": "GPUI platform implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/platform.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "2, 29",
+      "scenario_ids": [
+        "PARITY-F52"
+      ],
+      "test_ids": [
+        "SWIFT-ApplicationFocusAuditTests",
+        "SWIFT-ResultGridFocusTests",
+        "SWIFT-ResultGridRowNumberTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F53",
+      "capability": "Helper lifecycle, matching executable, no Windows console, cancellation/backpressure/death recovery",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial portable foundation; full operation and installed coverage missing",
+      "owner": "GPUI platform implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/platform.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "2–4, 11, 30–32",
+      "scenario_ids": [
+        "PARITY-F53"
+      ],
+      "test_ids": [
+        "SWIFT-HelperProcessTests",
+        "SWIFT-BackendMultiplexingTests",
+        "SWIFT-StreamingTransportTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F54",
+      "capability": "Stable product ID/icons/version metadata, prototype migration and separate Mac SwiftUI product",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Development identities only",
+      "owner": "GPUI delivery implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/platform.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "31",
+      "scenario_ids": [
+        "PARITY-F54"
+      ],
+      "test_ids": [
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-HelperProcessTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F55",
+      "capability": "Supported runtime/GPU dependencies, packages/checksums/notices/signing policy and manual update",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "CI development archives only",
+      "owner": "GPUI delivery implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/platform.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "31",
+      "scenario_ids": [
+        "PARITY-F55"
+      ],
+      "test_ids": [
+        "SWIFT-HelperProcessTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F56",
+      "capability": "Clean install/update/remove, repeated-launch ownership and preserved profiles/UUIDs/credentials/drafts/history/settings",
+      "status": "open",
+      "prototype_status": "missing",
+      "gap_at_freeze": "Missing installed Windows/Linux acceptance",
+      "owner": "GPUI delivery implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/platform.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "3, 5, 7, 13, 31–32",
+      "scenario_ids": [
+        "PARITY-F56"
+      ],
+      "test_ids": [
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "engines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    },
+    {
+      "id": "F57",
+      "capability": "Both engine families/versions, real TLS, faults, native desktop and upgrade completed-run evidence",
+      "status": "open",
+      "prototype_status": "partial",
+      "gap_at_freeze": "Partial headless/local foundations; full target matrix missing",
+      "owner": "GPUI verification implementer (role; no individual assigned)",
+      "implementation_reference": {
+        "baseline": "swiftui-working-tree-v1",
+        "reference_groups": [
+          "R1",
+          "R11",
+          "R14",
+          "R15"
+        ],
+        "prototype_paths": [
+          "prototypes/gpui/src/live.rs"
+        ],
+        "parity_revision": null
+      },
+      "plan_tasks": "1–2, 30–32",
+      "scenario_ids": [
+        "PARITY-F57"
+      ],
+      "test_ids": [
+        "SWIFT-ParityBaselineTests",
+        "SWIFT-ProtocolFixtureTests",
+        "SWIFT-BackendClientTests"
+      ],
+      "engines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "results": {
+        "windows11-x64": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-wayland": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        },
+        "ubuntu2404-x64-x11": {
+          "status": "not-run",
+          "artifact": null,
+          "summary": null,
+          "accepted_equivalent": null
+        }
+      }
+    }
+  ]
+}

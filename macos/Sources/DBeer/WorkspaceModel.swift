@@ -48,9 +48,11 @@ final class WorkspaceModel: ObservableObject {
         let message: String
         let sqlState: String?
         let outcomeUnknown: Bool
+        var sqlNotExecuted: Bool = false
 
         var title: String {
-            switch category {
+            if sqlNotExecuted { return "Not executed" }
+            return switch category {
             case "cancelled": "Query cancelled"
             case "timeout": "Query timed out"
             case "connection", "transport": "Connection lost"
@@ -71,6 +73,12 @@ final class WorkspaceModel: ObservableObject {
     @Published var password = ""
     @Published var sslMode = "verify-full"
     @Published var sslRootCert = ""
+    @Published var policy = ExecutionPolicy()
+    @Published var contactPoints: [String]?
+    @Published var localDatacenter: String?
+    @Published var consistency: String?
+    @Published private(set) var currentKeyspace: String?
+    @Published private(set) var capabilities: Set<String> = []
     @Published var sql = "SELECT 1 AS id, 'hello'::text AS name;"
 
     @Published private(set) var state: HelperState = .starting
@@ -135,6 +143,7 @@ final class WorkspaceModel: ObservableObject {
     var transactionLabel: String {
         switch transactionStatus {
         case .idle: "Idle"
+        case .unsupported: "Not supported"
         case .transaction: "In transaction"
         case .failedTransaction: "Failed transaction"
         case nil: "No session"
@@ -147,8 +156,16 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var connectionSummary: String {
-        sessionId == nil ? connectionState.label : "\(user)@\(host):\(port)/\(database)"
+        guard sessionId != nil else { return connectionState.label }
+        if engine == .cassandra {
+            return "\(host):\(port)/\(currentKeyspace ?? database) · \(consistency ?? "LOCAL_QUORUM")"
+        }
+        return "\(user)@\(host):\(port)/\(database)"
     }
+
+    var supportsGridEditing: Bool { capabilities.contains("gridEditing") }
+    var usesCursorPagination: Bool { capabilities.contains("cursorPagination") }
+    var readOnlyScope: String { capabilities.contains("localReadOnly") ? "Local readonly" : "Readonly" }
 
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil,
                sharedHelper: BackendClient? = nil) async {
@@ -185,7 +202,7 @@ final class WorkspaceModel: ObservableObject {
     private func openConnection(savedProfileId: UUID?) async {
         guard canConnect else { return }
         guard let portNumber = Int(port), (1...65535).contains(portNumber),
-              !host.isEmpty, !database.isEmpty, !user.isEmpty else {
+              !host.isEmpty, (engine == .cassandra || (!database.isEmpty && !user.isEmpty)) else {
             errorMessage = "Enter a host, database, user, and a port from 1 to 65535."
             return
         }
@@ -195,7 +212,12 @@ final class WorkspaceModel: ObservableObject {
         }
         let settings = ConnectionSettings(host: host, port: portNumber, database: database,
             user: user, password: password, sslMode: sslMode,
-            sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine)
+            sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine, policy: policy,
+            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency)
+        guard settings.hasValidNativeFields else {
+            errorMessage = "Enter valid connection settings for the selected database engine."
+            return
+        }
         let connectingProfileId = savedConnections.first { $0.id == selectedConnectionId && $0.matches(settings) }?.id
         clearQueryFeedback()
         connectionState = .connecting
@@ -214,6 +236,8 @@ final class WorkspaceModel: ObservableObject {
             guard !stopping, case .ready = state else { return }
             sessionId = reply.sessionId
             transactionStatus = reply.transactionStatus
+            capabilities = Set(reply.capabilities ?? [])
+            currentKeyspace = reply.currentKeyspace ?? (engine == .cassandra ? database : nil)
             connectionState = .connected
             let connectedSession = reply.sessionId
             // A saved profile already owns these credentials. Reconnecting must
@@ -313,8 +337,7 @@ final class WorkspaceModel: ObservableObject {
             connectionsError = "Enter a connection name with 1 to 128 characters."
             return false
         }
-        guard !settings.host.isEmpty, !settings.database.isEmpty, !settings.user.isEmpty,
-              (1...65535).contains(settings.port), settings.engine.sslModes.contains(settings.sslMode) else {
+        guard settings.hasValidNativeFields else {
             connectionsError = "Enter a host, database, user, valid port, and supported TLS mode."
             return false
         }
@@ -435,6 +458,10 @@ final class WorkspaceModel: ObservableObject {
         password = settings.password
         sslMode = settings.sslMode
         sslRootCert = settings.sslRootCert ?? ""
+        policy = settings.policy
+        contactPoints = settings.contactPoints
+        localDatacenter = settings.localDatacenter
+        consistency = settings.consistency
     }
 
     private func finishConnectionMutation() {
@@ -460,19 +487,21 @@ final class WorkspaceModel: ObservableObject {
         let existing = savedConnections.first { $0.id == preferredId }
             ?? savedConnections.first { $0.id == selectedConnectionId && $0.matches(settings) }
             ?? savedConnections.first { $0.matches(settings) }
-        let saved = await saveConnection(name: existing?.name ?? settings.database,
+        let saved = await saveConnection(name: existing?.name ?? (settings.database.isEmpty ? settings.host : settings.database),
             settings: settings, id: existing?.id)
         return saved ? selectedConnectionId : existing?.id
     }
 
-    func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil) async {
+    func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil,
+             authorization: String? = nil) async {
         guard canRun, let sessionId, let helper else { return }
         let queryId = UUID().uuidString
         let generation = helperGeneration
-        let command: BackendCommand
+        var command: BackendCommand
         if let catalog { command = .catalog(sessionId: sessionId, queryId: queryId, request: catalog) }
         else if let export { command = .runToFile(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql, export: export) }
         else { command = .execute(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql) }
+        command.authorization = authorization
         clearQueryFeedback()
         latestQueryId = queryId
         activeQueryId = queryId
@@ -489,6 +518,7 @@ final class WorkspaceModel: ObservableObject {
             }
             guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
             result = reply
+            if let keyspace = reply.currentKeyspace { currentKeyspace = keyspace }
             queryFailure = nil
             if case .ready = state { transactionStatus = reply.transactionStatus }
             else { preserveConfirmedOutcome() }
@@ -504,12 +534,13 @@ final class WorkspaceModel: ObservableObject {
             finishQuery()
         } catch let error as BackendRemoteError {
             guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
+            if let keyspace = error.reply.currentKeyspace { currentKeyspace = keyspace }
             queryErrorPosition = error.reply.errorPosition
             if error.reply.resultSets?.isEmpty == false { result = error.reply }
             queryDurationMs = error.reply.durationMs ?? elapsedMilliseconds()
             queryFailure = QueryFailure(category: error.reply.category ?? "sql",
                 message: error.reply.message ?? error.localizedDescription,
-                sqlState: error.reply.sqlState, outcomeUnknown: error.reply.outcomeUnknown == true)
+                sqlState: error.reply.sqlState, outcomeUnknown: error.reply.outcomeUnknown == true, sqlNotExecuted: error.reply.sqlNotExecuted == true)
             showRemoteFailure(error)
             if case .failed = state, error.reply.outcomeUnknown != true { preserveConfirmedOutcome() }
             finishQuery()
@@ -588,6 +619,8 @@ final class WorkspaceModel: ObservableObject {
         sessionId = nil
         activeConnectionId = nil
         transactionStatus = nil
+        currentKeyspace = nil
+        capabilities = []
         connectionState = .disconnected
     }
 

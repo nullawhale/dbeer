@@ -1,8 +1,7 @@
 name: CI
 
+# Automatic CI is temporarily paused. Restore push and pull_request to resume.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -96,4 +95,175 @@ jobs:
           test "$(uname -m)" = arm64
           swift --version
       - name: Build app and run fixtures, native tests and isolated Keychain
-        run: ./scripts/with-test-keychain.sh --ci-signing ./scripts/test.sh
+        run: ./scripts/with-test-keychain.sh --ci-signing ./scripts/test.sh --all
+
+  gpui-linux:
+    name: DBeer native candidate and headless proof / Ubuntu x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      RUSTUP_TOOLCHAIN: '1.99.1'
+      CARGO_HOME: ${{ github.workspace }}/build/gpui/cargo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/gpui/target
+      GOCACHE: ${{ github.workspace }}/build/.cache/go
+      GOMODCACHE: ${{ github.workspace }}/build/.cache/go-mod
+    steps:
+      - uses: actions/checkout@v6
+      - name: Reserve disk for native Rust verification
+        if: runner.environment == 'github-hosted'
+        # This disposable Linux job does not build Android software.
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          df -h "$GITHUB_WORKSPACE"
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install native GPUI dependencies
+        # GPUI Kit 0.7.3 / Ubuntu 24.04: https://gpui-kit.com/docs/installation/
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ clang cmake pkg-config libfontconfig-dev \
+            libwayland-dev libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
+            libssl-dev libzstd-dev libasound2-dev libdbus-1-dev dbus-daemon \
+            vulkan-validationlayers libvulkan1
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy,rust-docs
+          rustc --version
+          cargo --version
+          test "$(rustc -vV | sed -n 's/^host: //p')" = x86_64-unknown-linux-gnu
+          sysroot="$(rustc --print sysroot)"
+          test -r "$sysroot/share/doc/rust/COPYRIGHT-library.html"
+          test -r "$sysroot/share/doc/rust/licenses/Apache-2.0.txt"
+          test -r "$(go env GOROOT)/LICENSE"
+          test -r "$(go env GOROOT)/PATENTS"
+      - uses: actions/cache@v6
+        with:
+          path: |
+            build/gpui/cargo/registry
+            build/gpui/cargo/git
+            build/.cache/go
+            build/.cache/go-mod
+          key: gpui-linux-x64-rust-1.99.1-${{ hashFiles('prototypes/gpui/**/Cargo.lock', 'helper/go.sum') }}
+      - name: Provision locked dependencies before isolated offline verification
+        shell: bash
+        run: |
+          python -B prototypes/gpui/packaging/prepare-go-cache.py
+          cargo fetch --locked --manifest-path prototypes/gpui/Cargo.toml
+          cargo fetch --locked --manifest-path prototypes/gpui/verification/fault-helper/Cargo.toml
+          patches=()
+          for crate in gpui-pre gpui-base gpui-component gpui-pre-linux; do
+            patches+=(--config "patch.crates-io.$crate.path = '$GITHUB_WORKSPACE/prototypes/gpui/vendor/$crate'")
+          done
+          cargo fetch --locked --manifest-path prototypes/gpui/vendor/gpui-base/Cargo.toml "${patches[@]}"
+          cargo fetch --locked --manifest-path prototypes/gpui/vendor/gpui-component/Cargo.toml "${patches[@]}"
+          if [ "$RUNNER_OS" = Linux ]; then cargo fetch --locked --manifest-path prototypes/gpui/verification/pre-linux-unit/Cargo.toml "${patches[@]}"; fi
+      - name: Check formatting
+        run: ./scripts/gpui-prototype.sh fmt -- --check
+      - name: Run isolated unmarked verification and prepare paired unsigned candidate
+        run: ./scripts/build-gpui-client.sh --test --package
+      - name: Check Rust warnings
+        run: ./scripts/gpui-prototype.sh clippy --locked --release --all-targets -- -D warnings
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dbeer-gpui-linux-x86_64
+          path: |
+            build/gpui/candidates/*linux-x86_64.candidate/*
+            build/gpui/product-builds/*/BUILD-RESULT.json
+            build/gpui/task30-runs/*/completed.json
+          if-no-files-found: error
+          retention-days: 14
+
+  gpui-windows:
+    name: DBeer native candidate and headless proof / Windows x64
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      RUSTUP_TOOLCHAIN: '1.99.1-x86_64-pc-windows-msvc'
+      CARGO_HOME: ${{ github.workspace }}/build/gpui/cargo
+      CARGO_TARGET_DIR: ${{ github.workspace }}/build/gpui/target
+      GOCACHE: ${{ github.workspace }}/build/.cache/go
+      GOMODCACHE: ${{ github.workspace }}/build/.cache/go-mod
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify native MSVC and CMake toolchain
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw 'Visual Studio C++ Build Tools are required.' }
+          cmake --version
+          if ($LASTEXITCODE -ne 0) { throw 'CMake is required.' }
+      - name: Install pinned MSVC Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.99.1-x86_64-pc-windows-msvc --profile minimal --component clippy,rust-docs
+          if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain installation failed.' }
+          rustc --version
+          cargo --version
+          $sysroot = (& rustc --print sysroot).Trim()
+          $goroot = (& go env GOROOT).Trim()
+          foreach ($notice in @(
+            (Join-Path $sysroot 'share/doc/rust/COPYRIGHT-library.html'),
+            (Join-Path $sysroot 'share/doc/rust/licenses/Apache-2.0.txt'),
+            (Join-Path $goroot 'LICENSE'), (Join-Path $goroot 'PATENTS')
+          )) {
+            if (-not (Test-Path -LiteralPath $notice -PathType Leaf)) { throw 'Original toolchain runtime notices are required.' }
+          }
+      - uses: actions/cache@v6
+        with:
+          path: |
+            build/gpui/cargo/registry
+            build/gpui/cargo/git
+            build/.cache/go
+            build/.cache/go-mod
+          key: gpui-windows-x64-rust-1.99.1-${{ hashFiles('prototypes/gpui/**/Cargo.lock', 'helper/go.sum') }}
+      - name: Provision locked dependencies before isolated offline verification
+        shell: bash
+        run: |
+          python -B prototypes/gpui/packaging/prepare-go-cache.py
+          cargo fetch --locked --manifest-path prototypes/gpui/Cargo.toml
+          cargo fetch --locked --manifest-path prototypes/gpui/verification/fault-helper/Cargo.toml
+          patches=()
+          for crate in gpui-pre gpui-base gpui-component gpui-pre-linux; do
+            patches+=(--config "patch.crates-io.$crate.path = '$GITHUB_WORKSPACE/prototypes/gpui/vendor/$crate'")
+          done
+          cargo fetch --locked --manifest-path prototypes/gpui/vendor/gpui-base/Cargo.toml "${patches[@]}"
+          cargo fetch --locked --manifest-path prototypes/gpui/vendor/gpui-component/Cargo.toml "${patches[@]}"
+          if [ "$RUNNER_OS" = Linux ]; then cargo fetch --locked --manifest-path prototypes/gpui/verification/pre-linux-unit/Cargo.toml "${patches[@]}"; fi
+      - name: Run isolated unmarked verification and prepare paired unsigned candidate
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $installation) { throw 'Visual Studio C++ Build Tools are required.' }
+          Import-Module (Join-Path $installation 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $installation -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+          ./scripts/build-gpui-client.ps1 -Test -Package
+      - name: Check Rust warnings
+        shell: pwsh
+        run: |
+          cargo clippy --locked --release --all-targets --manifest-path prototypes/gpui/Cargo.toml -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Clippy failed.' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dbeer-gpui-windows-x86_64
+          path: |
+            build/gpui/candidates/*windows-x86_64.candidate/*
+            build/gpui/product-builds/*/BUILD-RESULT.json
+            build/gpui/task30-runs/*/completed.json
+          if-no-files-found: error
+          retention-days: 14

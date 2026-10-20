@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>name</key>
+	<string>Shared TextMate</string>
+	<key>settings</key>
+	<array>
+		<dict>
+			<key>settings</key>
+			<dict>
+				<key>background</key>
+				<string>#102030</string>
+				<key>foreground</key>
+				<string>#abc</string>
+				<key>selection</key>
+				<string>#1234</string>
+				<key>caret</key>
+				<string>#f008</string>
+				<key>fontStyle</key>
+				<string>bold</string>
+			</dict>
+		</dict>
+		<dict>
+			<key>scope</key>
+			<string>keyword, string</string>
+			<key>settings</key>
+			<dict>
+				<key>foreground</key>
+				<string>#12345678</string>
+				<key>fontStyle</key>
+				<string>italic underline strikethrough</string>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

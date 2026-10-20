@@ -23,12 +23,14 @@ extension EnvironmentValues {
 }
 
 extension View {
+    @MainActor
     func controlHover() -> some View {
         modifier(ControlHover(usesNativeAlignment: true))
     }
 }
 
 extension Toggle {
+    @MainActor
     func controlHover() -> some View {
         // The checkbox and its SwiftUI label form one clickable target.
         modifier(ControlHover(usesNativeAlignment: false))
@@ -200,7 +202,7 @@ class ControlFeedbackView: ControlCursorView {
         let rect = feedbackRect
         let path = NSBezierPath(roundedRect: rect,
             xRadius: ControlHoverAppearance.cornerRadius, yRadius: ControlHoverAppearance.cornerRadius)
-        let accent = NSColor(AppPalette.accent)
+        let accent = AppPalette.nsColor(.accent)
         if isHovered {
             accent.withAlphaComponent(ControlHoverAppearance.fillOpacity).setFill()
             path.fill()

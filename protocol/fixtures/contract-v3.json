@@ -1,0 +1,974 @@
+{
+  "version": 3,
+  "commands": [
+    {
+      "type": "catalog",
+      "requestId": "catalog-schemas",
+      "sessionId": "contract-session",
+      "queryId": "catalog-schemas-query",
+      "catalog": {
+        "kind": "schemas"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-objects",
+      "sessionId": "contract-session",
+      "queryId": "catalog-objects-query",
+      "catalog": {
+        "kind": "objects",
+        "schema": "public",
+        "objectKind": "function"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-search",
+      "sessionId": "contract-session",
+      "queryId": "catalog-search-query",
+      "catalog": {
+        "kind": "search",
+        "schema": "public",
+        "search": "Order"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-columns",
+      "sessionId": "contract-session",
+      "queryId": "catalog-columns-query",
+      "catalog": {
+        "kind": "columns",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-keys",
+      "sessionId": "contract-session",
+      "queryId": "catalog-keys-query",
+      "catalog": {
+        "kind": "keys",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-indexes",
+      "sessionId": "contract-session",
+      "queryId": "catalog-indexes-query",
+      "catalog": {
+        "kind": "indexes",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-constraints",
+      "sessionId": "contract-session",
+      "queryId": "catalog-constraints-query",
+      "catalog": {
+        "kind": "constraints",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-triggers",
+      "sessionId": "contract-session",
+      "queryId": "catalog-triggers-query",
+      "catalog": {
+        "kind": "triggers",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-definition",
+      "sessionId": "contract-session",
+      "queryId": "catalog-definition-query",
+      "catalog": {
+        "kind": "definition",
+        "schema": "public",
+        "object": "calculate",
+        "objectKind": "function",
+        "identity": "7824"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-name",
+      "sessionId": "contract-session",
+      "queryId": "catalog-name-query",
+      "catalog": {
+        "kind": "name",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-select",
+      "sessionId": "contract-session",
+      "queryId": "catalog-select-query",
+      "catalog": {
+        "kind": "select",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table"
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-completion",
+      "sessionId": "contract-session",
+      "queryId": "catalog-completion-query",
+      "catalog": {
+        "kind": "completion",
+        "page": 1
+      },
+      "stream": true
+    },
+    {
+      "type": "catalog",
+      "requestId": "catalog-browse",
+      "sessionId": "contract-session",
+      "queryId": "catalog-browse-query",
+      "catalog": {
+        "kind": "browse",
+        "schema": "public",
+        "object": "Order Items",
+        "objectKind": "table",
+        "page": 2,
+        "sort": [
+          {
+            "column": "id",
+            "direction": "desc"
+          },
+          {
+            "column": "label",
+            "direction": "asc"
+          }
+        ],
+        "filters": [
+          {
+            "column": "id",
+            "operator": "eq",
+            "value": "9007199254740993"
+          },
+          {
+            "column": "id",
+            "operator": "ne",
+            "value": "9007199254740993"
+          },
+          {
+            "column": "id",
+            "operator": "lt",
+            "value": "9007199254740993"
+          },
+          {
+            "column": "id",
+            "operator": "lte",
+            "value": "9007199254740993"
+          },
+          {
+            "column": "id",
+            "operator": "gt",
+            "value": "9007199254740993"
+          },
+          {
+            "column": "id",
+            "operator": "gte",
+            "value": "9007199254740993"
+          },
+          {
+            "column": "label",
+            "operator": "contains",
+            "value": "%_\\世界 🌍"
+          },
+          {
+            "column": "payload",
+            "operator": "eq",
+            "value": "AP8="
+          },
+          {
+            "column": "label",
+            "operator": "isNull"
+          },
+          {
+            "column": "label",
+            "operator": "isNotNull"
+          }
+        ]
+      },
+      "stream": true
+    },
+    {
+      "type": "changes.preview",
+      "requestId": "preview",
+      "sessionId": "contract-session",
+      "queryId": "preview-query",
+      "changes": {
+        "schema": "public",
+        "table": "Order Items",
+        "columns": [
+          {
+            "name": "id",
+            "engine": "postgresql",
+            "nativeType": "bigint"
+          },
+          {
+            "name": "label",
+            "engine": "postgresql",
+            "nativeType": "text"
+          },
+          {
+            "name": "payload",
+            "engine": "postgresql",
+            "nativeType": "bytea"
+          }
+        ],
+        "changes": [
+          {
+            "kind": "update",
+            "original": [
+              {
+                "kind": "text",
+                "value": "9007199254740993"
+              },
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "binary",
+                "value": "AP8="
+              }
+            ],
+            "values": [
+              {
+                "column": "label",
+                "value": {
+                  "kind": "text",
+                  "value": ""
+                }
+              }
+            ]
+          },
+          {
+            "kind": "insert",
+            "values": [
+              {
+                "column": "id",
+                "value": {
+                  "kind": "default"
+                }
+              },
+              {
+                "column": "label",
+                "value": {
+                  "kind": "text",
+                  "value": "NULL"
+                }
+              },
+              {
+                "column": "payload",
+                "value": {
+                  "kind": "binary",
+                  "value": ""
+                }
+              }
+            ]
+          },
+          {
+            "kind": "delete",
+            "original": [
+              {
+                "kind": "text",
+                "value": "9223372036854775807"
+              },
+              {
+                "kind": "text",
+                "value": "世界 🌍\r\nline"
+              },
+              {
+                "kind": "binary",
+                "value": "AP8="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "changes.apply",
+      "requestId": "apply",
+      "sessionId": "contract-session",
+      "queryId": "apply-query",
+      "changes": {
+        "schema": "public",
+        "table": "Order Items",
+        "columns": [
+          {
+            "name": "id",
+            "engine": "postgresql",
+            "nativeType": "bigint"
+          },
+          {
+            "name": "label",
+            "engine": "postgresql",
+            "nativeType": "text"
+          },
+          {
+            "name": "payload",
+            "engine": "postgresql",
+            "nativeType": "bytea"
+          }
+        ],
+        "changes": [
+          {
+            "kind": "update",
+            "original": [
+              {
+                "kind": "text",
+                "value": "9007199254740993"
+              },
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "binary",
+                "value": "AP8="
+              }
+            ],
+            "values": [
+              {
+                "column": "label",
+                "value": {
+                  "kind": "text",
+                  "value": ""
+                }
+              }
+            ]
+          },
+          {
+            "kind": "insert",
+            "values": [
+              {
+                "column": "id",
+                "value": {
+                  "kind": "default"
+                }
+              },
+              {
+                "column": "label",
+                "value": {
+                  "kind": "text",
+                  "value": "NULL"
+                }
+              },
+              {
+                "column": "payload",
+                "value": {
+                  "kind": "binary",
+                  "value": ""
+                }
+              }
+            ]
+          },
+          {
+            "kind": "delete",
+            "original": [
+              {
+                "kind": "text",
+                "value": "9223372036854775807"
+              },
+              {
+                "kind": "text",
+                "value": "世界 🌍\r\nline"
+              },
+              {
+                "kind": "binary",
+                "value": "AP8="
+              }
+            ]
+          }
+        ]
+      },
+      "authorization": "exact-ordered-grant"
+    },
+    {
+      "type": "execute",
+      "requestId": "export-json",
+      "sessionId": "contract-session",
+      "queryId": "export-json-query",
+      "sql": "SELECT 1;",
+      "stream": true,
+      "export": {
+        "path": "/fixture/result.json",
+        "format": "json"
+      },
+      "authorization": "exact-export-grant"
+    },
+    {
+      "type": "execute",
+      "requestId": "export-csv",
+      "sessionId": "contract-session",
+      "queryId": "export-csv-query",
+      "sql": "SELECT 1;",
+      "stream": true,
+      "export": {
+        "path": "/fixture/result.csv",
+        "format": "csv",
+        "nullMarker": "\\N"
+      }
+    },
+    {
+      "type": "operation.assess",
+      "requestId": "batch",
+      "sessionId": "contract-session",
+      "queryId": "batch-query",
+      "operations": [
+        {
+          "type": "execute",
+          "sql": "SELECT 1;",
+          "export": {
+            "path": "/fixture/result.json",
+            "format": "json"
+          }
+        },
+        {
+          "type": "changes.apply",
+          "changes": {
+            "schema": "public",
+            "table": "Order Items",
+            "columns": [
+              {
+                "name": "id",
+                "engine": "postgresql",
+                "nativeType": "bigint"
+              },
+              {
+                "name": "label",
+                "engine": "postgresql",
+                "nativeType": "text"
+              },
+              {
+                "name": "payload",
+                "engine": "postgresql",
+                "nativeType": "bytea"
+              }
+            ],
+            "changes": [
+              {
+                "kind": "update",
+                "original": [
+                  {
+                    "kind": "text",
+                    "value": "9007199254740993"
+                  },
+                  {
+                    "kind": "null"
+                  },
+                  {
+                    "kind": "binary",
+                    "value": "AP8="
+                  }
+                ],
+                "values": [
+                  {
+                    "column": "label",
+                    "value": {
+                      "kind": "text",
+                      "value": ""
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "insert",
+                "values": [
+                  {
+                    "column": "id",
+                    "value": {
+                      "kind": "default"
+                    }
+                  },
+                  {
+                    "column": "label",
+                    "value": {
+                      "kind": "text",
+                      "value": "NULL"
+                    }
+                  },
+                  {
+                    "column": "payload",
+                    "value": {
+                      "kind": "binary",
+                      "value": ""
+                    }
+                  }
+                ]
+              },
+              {
+                "kind": "delete",
+                "original": [
+                  {
+                    "kind": "text",
+                    "value": "9223372036854775807"
+                  },
+                  {
+                    "kind": "text",
+                    "value": "世界 🌍\r\nline"
+                  },
+                  {
+                    "kind": "binary",
+                    "value": "AP8="
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "stream.ack",
+      "requestId": "ack",
+      "sessionId": "contract-session",
+      "queryId": "ack-query",
+      "sequence": 1
+    }
+  ],
+  "responses": [
+    {
+      "type": "query.result",
+      "requestId": "ordered-results",
+      "sessionId": "contract-session",
+      "queryId": "ordered-results-query",
+      "durationMs": 1.25,
+      "transactionStatus": "idle",
+      "columns": [
+        {
+          "index": 0,
+          "name": "x",
+          "engine": "postgresql",
+          "nativeType": "text"
+        },
+        {
+          "index": 1,
+          "name": "x",
+          "engine": "postgresql",
+          "nativeType": "text"
+        },
+        {
+          "index": 2,
+          "name": "precise",
+          "engine": "postgresql",
+          "nativeType": "numeric"
+        },
+        {
+          "index": 3,
+          "name": "payload",
+          "engine": "postgresql",
+          "nativeType": "bytea",
+          "encoding": "base64"
+        }
+      ],
+      "rows": [
+        [
+          null,
+          "",
+          "9007199254740993.123456789",
+          "AP8="
+        ],
+        [
+          "NULL",
+          "世界 🌍\r\nline",
+          null,
+          ""
+        ]
+      ],
+      "commandTag": "SELECT 2",
+      "rowCount": 2,
+      "displayedRowCount": 2,
+      "truncated": false,
+      "resultSets": [
+        {
+          "columns": [
+            {
+              "index": 0,
+              "name": "x",
+              "engine": "postgresql",
+              "nativeType": "text"
+            },
+            {
+              "index": 1,
+              "name": "x",
+              "engine": "postgresql",
+              "nativeType": "text"
+            },
+            {
+              "index": 2,
+              "name": "precise",
+              "engine": "postgresql",
+              "nativeType": "numeric"
+            },
+            {
+              "index": 3,
+              "name": "payload",
+              "engine": "postgresql",
+              "nativeType": "bytea",
+              "encoding": "base64"
+            }
+          ],
+          "rows": [
+            [
+              null,
+              "",
+              "9007199254740993.123456789",
+              "AP8="
+            ],
+            [
+              "NULL",
+              "世界 🌍\r\nline",
+              null,
+              ""
+            ]
+          ],
+          "commandTag": "SELECT 2",
+          "rowCount": 2,
+          "displayedRowCount": 2,
+          "truncated": false
+        },
+        {
+          "columns": [],
+          "rows": [],
+          "commandTag": "UPDATE 1",
+          "rowCount": 1,
+          "displayedRowCount": 0,
+          "truncated": false
+        }
+      ]
+    },
+    {
+      "type": "query.chunk",
+      "requestId": "partial",
+      "sessionId": "contract-session",
+      "queryId": "partial-query",
+      "sequence": 1,
+      "resultIndex": 0,
+      "columns": [
+        {
+          "index": 0,
+          "name": "x",
+          "engine": "postgresql",
+          "nativeType": "text"
+        },
+        {
+          "index": 1,
+          "name": "x",
+          "engine": "postgresql",
+          "nativeType": "text"
+        },
+        {
+          "index": 2,
+          "name": "precise",
+          "engine": "postgresql",
+          "nativeType": "numeric"
+        },
+        {
+          "index": 3,
+          "name": "payload",
+          "engine": "postgresql",
+          "nativeType": "bytea",
+          "encoding": "base64"
+        }
+      ],
+      "rows": [
+        [
+          null,
+          "",
+          "9007199254740993.123456789",
+          "AP8="
+        ],
+        [
+          "NULL",
+          "世界 🌍\r\nline",
+          null,
+          ""
+        ]
+      ]
+    },
+    {
+      "type": "error",
+      "requestId": "partial",
+      "sessionId": "contract-session",
+      "queryId": "partial-query",
+      "category": "sql",
+      "message": "Synthetic second result failure.",
+      "connected": true,
+      "outcomeUnknown": false,
+      "transactionStatus": "failedTransaction",
+      "sqlState": "42601",
+      "errorPosition": 1,
+      "streamed": true,
+      "resultSets": [
+        {
+          "columns": [
+            {
+              "index": 0,
+              "name": "x",
+              "engine": "postgresql",
+              "nativeType": "text"
+            },
+            {
+              "index": 1,
+              "name": "x",
+              "engine": "postgresql",
+              "nativeType": "text"
+            },
+            {
+              "index": 2,
+              "name": "precise",
+              "engine": "postgresql",
+              "nativeType": "numeric"
+            },
+            {
+              "index": 3,
+              "name": "payload",
+              "engine": "postgresql",
+              "nativeType": "bytea",
+              "encoding": "base64"
+            }
+          ],
+          "rows": [],
+          "commandTag": "SELECT 2",
+          "rowCount": 2,
+          "displayedRowCount": 2,
+          "truncated": false
+        }
+      ]
+    },
+    {
+      "type": "query.result",
+      "requestId": "export-json",
+      "sessionId": "contract-session",
+      "queryId": "export-json-query",
+      "durationMs": 1.25,
+      "transactionStatus": "idle",
+      "columns": [],
+      "rows": [],
+      "commandTag": "SELECT 2",
+      "rowCount": 2,
+      "displayedRowCount": 2,
+      "truncated": false,
+      "streamed": true,
+      "resultSets": [
+        {
+          "columns": [
+            {
+              "index": 0,
+              "name": "x",
+              "engine": "postgresql",
+              "nativeType": "text"
+            },
+            {
+              "index": 1,
+              "name": "x",
+              "engine": "postgresql",
+              "nativeType": "text"
+            },
+            {
+              "index": 2,
+              "name": "precise",
+              "engine": "postgresql",
+              "nativeType": "numeric"
+            },
+            {
+              "index": 3,
+              "name": "payload",
+              "engine": "postgresql",
+              "nativeType": "bytea",
+              "encoding": "base64"
+            }
+          ],
+          "rows": [],
+          "commandTag": "SELECT 2",
+          "rowCount": 2,
+          "displayedRowCount": 2,
+          "truncated": false
+        }
+      ],
+      "exportPath": "/fixture/result.json",
+      "exportFormat": "json",
+      "exportRowCount": 1301
+    },
+    {
+      "type": "query.result",
+      "requestId": "catalog-columns",
+      "sessionId": "contract-session",
+      "queryId": "catalog-columns-query",
+      "durationMs": 1.25,
+      "transactionStatus": "idle",
+      "columns": [
+        {
+          "index": 0,
+          "name": "name"
+        },
+        {
+          "index": 1,
+          "name": "nativeType"
+        },
+        {
+          "index": 2,
+          "name": "nullable"
+        },
+        {
+          "index": 3,
+          "name": "default"
+        },
+        {
+          "index": 4,
+          "name": "generated"
+        },
+        {
+          "index": 5,
+          "name": "primaryKey"
+        },
+        {
+          "index": 6,
+          "name": "editable"
+        },
+        {
+          "index": 7,
+          "name": "editReason"
+        }
+      ],
+      "rows": [
+        [
+          "id",
+          "bigint",
+          "false",
+          null,
+          "identity by default",
+          "1",
+          "true",
+          ""
+        ],
+        [
+          "label",
+          "text",
+          "true",
+          "'NULL'::text",
+          "",
+          "0",
+          "true",
+          ""
+        ],
+        [
+          "payload",
+          "bytea",
+          "true",
+          null,
+          "",
+          "0",
+          "false",
+          "UPDATE privilege is unavailable."
+        ]
+      ],
+      "commandTag": "SELECT 3",
+      "rowCount": 3,
+      "displayedRowCount": 3,
+      "truncated": false
+    },
+    {
+      "type": "query.result",
+      "requestId": "preview",
+      "sessionId": "contract-session",
+      "queryId": "preview-query",
+      "durationMs": 1.25,
+      "transactionStatus": "idle",
+      "columns": [
+        {
+          "index": 0,
+          "name": "operation"
+        },
+        {
+          "index": 1,
+          "name": "sql"
+        },
+        {
+          "index": 2,
+          "name": "parameters"
+        }
+      ],
+      "rows": [
+        [
+          "update",
+          "UPDATE \"public\".\"Order Items\" SET \"label\"=$1 WHERE \"id\"=$2",
+          "[{\"kind\": \"text\", \"value\": \"\"}, {\"kind\": \"text\", \"value\": \"9007199254740993\"}]"
+        ],
+        [
+          "insert",
+          "INSERT INTO \"public\".\"Order Items\" (\"label\",\"payload\") VALUES ($1,$2)",
+          "[{\"kind\": \"text\", \"value\": \"NULL\"}, {\"kind\": \"binary\", \"value\": \"\"}]"
+        ],
+        [
+          "delete",
+          "DELETE FROM \"public\".\"Order Items\" WHERE \"id\"=$1",
+          "[{\"kind\": \"text\", \"value\": \"9223372036854775807\"}]"
+        ]
+      ],
+      "commandTag": "PREVIEW 3",
+      "rowCount": 3,
+      "displayedRowCount": 3,
+      "truncated": false
+    },
+    {
+      "type": "query.result",
+      "requestId": "apply",
+      "sessionId": "contract-session",
+      "queryId": "apply-query",
+      "durationMs": 1.25,
+      "transactionStatus": "idle",
+      "columns": [],
+      "rows": [],
+      "commandTag": "APPLY 3",
+      "rowCount": 3,
+      "displayedRowCount": 0,
+      "truncated": false
+    },
+    {
+      "type": "error",
+      "requestId": "apply-unknown",
+      "sessionId": "contract-session",
+      "queryId": "apply-unknown-query",
+      "category": "connection",
+      "message": "The synthetic commit acknowledgement was lost.",
+      "connected": false,
+      "outcomeUnknown": true
+    }
+  ]
+}

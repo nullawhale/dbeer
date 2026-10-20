@@ -9,6 +9,8 @@ let package = Package(
         .executableTarget(name: "DBeer", resources: [
             .copy("Resources/postgresql-logo.svg"),
             .copy("Resources/mysql-logo.svg"),
+            .copy("Resources/cassandra-logo.svg"),
+            .copy("Resources/EditorThemes"),
         ]),
         .testTarget(name: "DBeerTests", dependencies: ["DBeer"]),
     ]

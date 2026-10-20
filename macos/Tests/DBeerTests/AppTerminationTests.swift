@@ -13,7 +13,7 @@ struct AppTerminationTests {
         def send(message):
             print(json.dumps(message), flush=True)
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':2})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':4})
         command = read()
         send({'type':'connect.result','engine':'postgresql','capabilities':['execute','cancel','transactions'],'requestId':command['requestId'],'sessionId':'closing-session','transactionStatus':'idle'})
         execute = read()

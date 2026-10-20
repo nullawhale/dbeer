@@ -88,11 +88,23 @@ struct ApplicationFocusAuditTests {
                 try await Task.sleep(for: .milliseconds(100))
                 host.layoutSubtreeIfNeeded()
                 policy.apply(to: window)
+                if ["workspace", "connection", "filters"].contains(name) {
+                    // Grouped Forms materialize their native fields lazily.
+                    for _ in 0..<80 {
+                        let ready = descendants(host, of: NSTextField.self).contains {
+                            $0.isEditable && $0.isEnabled && !$0.isHiddenOrHasHiddenAncestor && !$0.visibleRect.isEmpty
+                        }
+                        if ready { break }
+                        try await Task.sleep(for: .milliseconds(25))
+                        host.layoutSubtreeIfNeeded()
+                        policy.apply(to: window)
+                    }
+                }
                 let fields = descendants(host, of: NSTextField.self).filter {
                     $0.isEditable && $0.isEnabled && !$0.isHiddenOrHasHiddenAncestor && !$0.visibleRect.isEmpty
                 }
                 if ["workspace", "connection", "filters"].contains(name) {
-                    #expect(!fields.isEmpty, "Missing real fields in \(name)")
+                    #expect(!fields.isEmpty, "Missing real fields in \(name)/\(theme)")
                 }
                 for field in fields {
                     try await focus(field, in: window)

@@ -3,14 +3,19 @@ import SwiftUI
 
 struct WorkspaceView: View {
     @ObservedObject var model: WorkspaceModel
+    @ObservedObject private var editorThemes: EditorThemeStore
+    @ObservedObject private var appearance: AppAppearance
     @Environment(\.colorScheme) private var colorScheme
     // Use property-wrapper storage on the CLT-only Swift toolchain.
     private var editingConnectionState = SwiftUI.State<SavedConnection?>(initialValue: nil)
-    private let amber = AppPalette.accent
-    private let graphite = AppPalette.background
+    private var amber: Color { AppPalette.accent }
+    private var graphite: Color { AppPalette.background }
 
-    init(model: WorkspaceModel) {
+    init(model: WorkspaceModel, editorThemes: EditorThemeStore? = nil, appearance: AppAppearance? = nil) {
         self.model = model
+        let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
+        self.editorThemes = themes
+        self.appearance = appearance ?? AppAppearance(editorThemes: themes)
     }
 
     var body: some View {
@@ -42,6 +47,7 @@ struct WorkspaceView: View {
         }
         .background(graphite)
         .tint(amber)
+        .applicationTheme(appearance: appearance)
         .focusEffectDisabled()
         .toolbar {
             #if compiler(>=6.2)
@@ -61,6 +67,7 @@ struct WorkspaceView: View {
                 model.isConnectionEditorPresented = false
                 editingConnectionState.wrappedValue = nil
             }
+            .applicationTheme(appearance: appearance)
         }
     }
 
@@ -130,12 +137,18 @@ struct WorkspaceView: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
             Divider()
-            SQLEditorView(text: $model.sql, isEditable: !model.isExecuting)
-                .padding(12)
-                .background(Color(nsColor: .textBackgroundColor))
+            SQLEditorView(text: $model.sql, isEditable: !model.isExecuting,
+                editorTheme: effectiveEditorTheme)
+                .background(AppPalette.panel)
                 .accessibilityLabel("SQL editor")
                 .accessibilityIdentifier("sqlEditor")
         }
+    }
+
+    private var effectiveEditorTheme: EditorTheme {
+        if editorThemes.selectedThemeID == EditorThemeStore.automaticID,
+           let theme = appearance.selectedColorTheme { return theme }
+        return editorThemes.effectiveTheme(isDark: colorScheme == .dark)
     }
 
     private var results: some View {
@@ -143,23 +156,23 @@ struct WorkspaceView: View {
             HStack(spacing: 10) {
                 Text(model.queryFailure == nil ? "Results" : "Error").font(.headline)
                 Text("Read only")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).appSecondaryText()
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 4))
                 Spacer()
                 if model.isExecuting {
                     ProgressView().controlSize(.small)
-                    Text(model.queryPhase.label).font(.callout).foregroundStyle(.secondary)
+                    Text(model.queryPhase.label).font(.callout).appSecondaryText()
                     elapsedTime
                 } else if let result = model.result {
                     Text("\(result.displayedRowCount ?? 0) shown")
-                        .font(.callout).foregroundStyle(.secondary)
+                        .font(.callout).appSecondaryText()
                     Text("·").foregroundStyle(.tertiary)
                     Text(duration(result.durationMs ?? 0))
-                        .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                        .font(.callout.monospacedDigit()).appSecondaryText()
                 } else if let milliseconds = model.queryDurationMs {
                     Text(duration(milliseconds))
-                        .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                        .font(.callout.monospacedDigit()).appSecondaryText()
                 }
             }
             .padding(.horizontal, 18)
@@ -209,7 +222,7 @@ struct WorkspaceView: View {
                 Text(failure.message).textSelection(.enabled)
                 if let sqlState = failure.sqlState {
                     Text("SQLSTATE \(sqlState)")
-                        .font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
+                        .font(.system(.callout, design: .monospaced)).appSecondaryText()
                         .textSelection(.enabled)
                 }
                 if failure.outcomeUnknown {
@@ -220,7 +233,7 @@ struct WorkspaceView: View {
                     Divider()
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Failed transaction", systemImage: "exclamationmark.circle").foregroundStyle(amber)
-                        Text("Run ROLLBACK to restore the session.").foregroundStyle(.secondary)
+                        Text("Run ROLLBACK to restore the session.").appSecondaryText()
                     }
                 }
             }
@@ -240,7 +253,7 @@ struct WorkspaceView: View {
         VStack(spacing: 12) {
             Image(systemName: symbol).font(.system(size: 30, weight: .light)).foregroundStyle(amber.opacity(0.8))
             Text(title).font(.title3.weight(.medium))
-            Text(message).font(.callout).foregroundStyle(.secondary)
+            Text(message).font(.callout).appSecondaryText()
                 .multilineTextAlignment(.center).textSelection(.enabled)
         }
     }
@@ -261,7 +274,7 @@ struct WorkspaceView: View {
             }
         }
         .font(.caption)
-        .foregroundStyle(.secondary)
+        .appSecondaryText()
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
         .background(.primary.opacity(0.02))
@@ -270,7 +283,7 @@ struct WorkspaceView: View {
     private var elapsedTime: some View {
         TimelineView(.periodic(from: .now, by: 0.1)) { context in
             Text(duration(model.elapsedMilliseconds(at: context.date)))
-                .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                .font(.callout.monospacedDigit()).appSecondaryText()
         }
     }
 

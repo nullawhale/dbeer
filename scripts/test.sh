@@ -3,23 +3,64 @@ set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 build_root="$repo_root/build"
+usage() {
+    cat <<'USAGE'
+Usage: scripts/test.sh --filter pattern [--filter pattern ...] [--require-postgres]
+       scripts/test.sh --all [--require-postgres]
+
+  --filter pattern    Run matching native Swift tests only (regular expression).
+  --all               Explicitly run the full Go race and native Swift suites.
+  --require-postgres  Fail if DBEER_TEST_DSN is missing.
+
+Examples:
+  ./scripts/test.sh --filter SQLScriptParserTests
+  ./scripts/test.sh --filter 'SQLEditorTests/executionHighlight'
+  ./scripts/test.sh --all
+
+No tests run without an explicit scope. Theme checks run when selected or with --all.
+USAGE
+}
+original_arguments=("$@")
+run_all=0
+swift_filters=()
+require_postgres="${DBEER_REQUIRE_POSTGRES:-0}"
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --all) run_all=1; shift ;;
+        --filter)
+            if [[ "$#" -lt 2 || -z "$2" || "$2" == --* ]]; then
+                printf '%s\n' '--filter requires a nonempty pattern.' >&2
+                exit 2
+            fi
+            swift_filters+=(--filter "$2")
+            shift 2
+            ;;
+        --require-postgres) require_postgres=1; shift ;;
+        --help|-h) usage; exit 0 ;;
+        *) usage >&2; exit 2 ;;
+    esac
+done
+if [[ "$run_all" == 0 && "${#swift_filters[@]}" == 0 ]]; then
+    usage >&2
+    exit 2
+fi
+if [[ "$run_all" == 1 && "${#swift_filters[@]}" -gt 0 ]]; then
+    printf '%s\n' 'Choose either --all or --filter, not both.' >&2
+    exit 2
+fi
 if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
     printf 'Native DBeer tests require an Apple Silicon Mac; use scripts/test-go.sh on Linux.\n' >&2
     exit 1
 fi
-for argument in "$@"; do
-    [[ "$argument" == --require-postgres ]] || {
-        printf 'Usage: %s [--require-postgres]\n' "$0" >&2; exit 2;
-    }
-done
-if [[ "${DBEER_REQUIRE_POSTGRES:-0}" == 1 || "${1:-}" == --require-postgres ]]; then
+if [[ "$require_postgres" == 1 ]]; then
+    export DBEER_REQUIRE_POSTGRES=1
     if [[ -z "${DBEER_TEST_DSN:-}" ]]; then
         printf 'PostgreSQL is required, but DBEER_TEST_DSN is missing. No tests were run.\n' >&2
         exit 1
     fi
 fi
 if [[ -z "${DBEER_TEST_KEYCHAIN_PATH:-}" ]]; then
-    exec "$repo_root/scripts/with-test-keychain.sh" "$0" "$@"
+    exec "$repo_root/scripts/with-test-keychain.sh" "$0" "${original_arguments[@]}"
 fi
 
 mkdir -p "$build_root/.cache"
@@ -47,7 +88,12 @@ fi
 # The real-process lifecycle test needs the bundled helper.
 "$repo_root/scripts/build-app.sh"
 
-"$repo_root/scripts/test-go.sh" "$@"
+if [[ "$run_all" == 1 ]]; then
+    printf 'Running full Go race and native Swift suites (--all).\n'
+    "$repo_root/scripts/test-go.sh"
+else
+    printf 'Running selected native Swift tests; Go suite is skipped.\n'
+fi
 
 # Discover/build without running AppKit in SwiftPM's async-main test host.
 # Swift's CFMainExecutor may exit(0) after AppKit stops the main run loop
@@ -63,6 +109,7 @@ if ! "$swift_binary" test --disable-sandbox --disable-xctest --enable-swift-test
 fi
 swift_bin="$("$swift_binary" build --disable-sandbox --cache-path "$build_root/.cache/swiftpm" \
     --package-path "$repo_root/macos" --scratch-path "$build_root/swift" --show-bin-path)"
+"$repo_root/scripts/prepare-swift-resources.sh" "$swift_bin/DBeer_DBeer.bundle"
 test_bundle=""
 bundle_count=0
 for candidate in "$swift_bin"/*.xctest/Contents/MacOS/*; do
@@ -115,9 +162,13 @@ export PACKAGE_RESOURCE_BUNDLE_PATH="$swift_bin"
 
 swift_results="$(mktemp "$build_root/.swift-results.XXXXXX")"
 trap 'rm -f "$swift_results"' EXIT
-"$native_host" 2>&1 | tee "$swift_results"
+if [[ "$run_all" == 1 ]]; then
+    "$native_host" 2>&1 | tee "$swift_results"
+else
+    "$native_host" "${swift_filters[@]}" 2>&1 | tee "$swift_results"
+fi
 # Exit status alone must never turn an incomplete test run into a green CI job.
-if ! grep -Eq 'Test run with [0-9]+ tests? .*passed after' "$swift_results"; then
-    printf 'Swift Testing exited without its completed-run summary. The run is incomplete.\n' >&2
+if ! grep -Eq 'Test run with [1-9][0-9]* tests? .*passed after' "$swift_results"; then
+    printf 'Swift Testing did not report a completed nonempty run. Check the filter and test output.\n' >&2
     exit 1
 fi

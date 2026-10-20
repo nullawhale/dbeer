@@ -3,6 +3,7 @@ module dbeer/helper
 go 1.27.1
 
 require (
+	github.com/apache/cassandra-gocql-driver/v2 v2.1.2
 	github.com/go-mysql-org/go-mysql v1.16.0
 	github.com/jackc/pgx/v5 v5.10.0
 )
@@ -21,5 +22,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
+	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
