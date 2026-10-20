@@ -209,7 +209,7 @@ Only this UI runner requires full Xcode and control of a separate application; D
 
 After verification on the owner's machine, run `./scripts/package-release.sh`. It builds the application with the persistent signature, verifies signing, and creates `build/releases/DBeer-<version>-<build>-macos-arm64.zip` and .zip.sha256. The archive includes the [license](LICENSE), changelog and [installation instructions](INSTALL.md). Existing releases are not overwritten, CI signatures are rejected, and nothing is published.
 
-The current local macOS prerelease is **0.2.0, build 7**. It uses the native SwiftUI/AppKit client and bundled Go helper; Windows/Linux GPUI candidates are outside this release. Packaging creates local files and does not publish a GitHub release.
+The current local macOS prerelease is **0.2.0, build 8**. It uses the native SwiftUI/AppKit client and bundled Go helper; Windows/Linux GPUI candidates are outside this release. Packaging creates local files and does not publish a GitHub release.
 
 The previous **0.1.0** internal release passed installation and update acceptance from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived that release's required second-Mac check. This evidence does not cover the 0.2.0 prerelease. Finder/Gatekeeper and installation on a clean second device have not been verified.
 

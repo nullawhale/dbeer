@@ -2,13 +2,14 @@
 
 DBeer requires macOS 14+ on Apple Silicon. Running a packaged application does not require Go, Swift, or the source code.
 
-The current local prerelease is **0.2.0, build 7**, for the native macOS client
+The current local prerelease is **0.2.0, build 8**, for the native macOS client
 and bundled Go helper. It includes PostgreSQL, MySQL and Apache Cassandra support.
 The numeric application version is 0.2.0; this archive remains a prerelease.
 Installed-archive update acceptance for this version is pending. The earlier
 0.1.0 acceptance results below apply only to those older archives.
-Automated native editor completion and signature-help checks have unresolved
-intermittent failures; the full native UI suite has not passed for this prerelease.
+The full local Go race and native Swift runners completed successfully for build 8;
+native database integration cases without configured fixtures were skipped.
+Earlier intermittent editor completion and signature-help failures remain tracked.
 
 1. Obtain the ZIP archive and its `.sha256` file from the project owner. In Terminal, change to the download directory and run `shasum -a 256 -c DBeer-<version>-<build>-macos-arm64.zip.sha256`, substituting the downloaded filename. The result must be `OK`.
 2. Extract the ZIP and move `DBeer.app` to `Applications`. When updating, quit the running DBeer instance before replacing the application.

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 prerelease — build 8 — 2026-10-20
+
+This prerelease targets the native macOS client and bundled Go helper.
+The full local Go race and native Swift runners completed successfully for this
+build; native database integration cases without configured fixtures were skipped.
+Earlier intermittent editor completion and signature-help failures remain tracked.
+Installed-archive acceptance for 0.2.0 remains pending.
+
+- Connected Cassandra profiles expose a Cluster Nodes snapshot with node addresses, driver status, datacenters, racks and host IDs. Refresh reads the driver's current observations; statuses describe this connection's view rather than cluster-wide health.
+- Plain Cassandra fault-injection tests now intercept connections to discovered peers as well as contact points, preserving real node addresses and requiring exactly one lost write acknowledgement without retrying the write.
+
 ## 0.2.0 prerelease — build 7 — 2026-10-20
 
 This local prerelease targets the native macOS client and bundled Go helper.
@@ -10,8 +21,6 @@ have intermittent failures. Installed-archive acceptance for this version is pen
 - DBeer is now licensed under GNU GPL version 3 only (GPL-3.0-only). The license text is included in macOS application bundles and release ZIP archives.
 
 - Cassandra table grids show pinned, color-coded partition labels with key tooltips. Clicking a label selects every loaded row in that partition, including nonadjacent and offscreen rows. The status beside Apply counts partitions in pending edits, and atomic Apply is disabled when edits span partitions or a partition key is unavailable. Labels are local to the loaded page and stay out of copied/exported data.
-
-- Connected Cassandra profiles expose a Cluster Nodes snapshot with node addresses, driver status, datacenters, racks and host IDs. Refresh reads the driver's current observations; statuses describe this connection's view rather than cluster-wide health.
 
 - Connection environments now appear beside the profile name in the macOS sidebar, retaining their muted gray styling.
 
