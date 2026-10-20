@@ -63,7 +63,7 @@ class PairedBuildCases(unittest.TestCase):
     def test_source_identity_covers_every_literal_embedded_rust_input(self):
         inputs = set(build.core.source_files())
         for source in (HERE.parent / 'src').rglob('*.rs'):
-            text = source.read_text()
+            text = source.read_text(encoding='utf-8')
             for relative in re.findall(r'include_(?:str|bytes)!\(\s*"([^"\n]+)"', text):
                 embedded = (source.parent / relative).resolve()
                 with self.subTest(source=source.name, embedded=relative):
@@ -100,6 +100,14 @@ class PairedBuildCases(unittest.TestCase):
         with mock.patch.object(build.core, 'new_identity', return_value=dict(self.identity, sourceSha256='b' * 64)):
             with self.assertRaises(build.Refused):
                 build.assert_frozen(self.identity)
+
+    def test_failed_child_reports_only_its_fixed_phase_without_retaining_diagnostics(self):
+        process = mock.Mock(returncode=1)
+        with mock.patch.object(build.subprocess, 'run', return_value=process) as child:
+            with self.assertRaisesRegex(build.Refused, '^Go helper compilation failed\\.$'):
+                build.run(['owned-build-child', 'private-input'], {}, phase='Go helper compilation')
+        self.assertIs(child.call_args.kwargs['stdout'], build.subprocess.DEVNULL)
+        self.assertIs(child.call_args.kwargs['stderr'], build.subprocess.DEVNULL)
 
     def test_static_pair_validation_never_launches_old_or_unmarked_binaries(self):
         elf = bytearray(64)

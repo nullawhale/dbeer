@@ -110,6 +110,11 @@ struct ExecutionPolicyTests {
     }
 
     @Test func nativeReturnAndEscapeCancelWholeWorkspaceScriptWithoutSendingSQL() async throws {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        for _ in 0..<20 where !NSApplication.shared.isActive {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        try #require(NSApplication.shared.isActive)
         for (characters, keyCode) in [("\r", UInt16(36)), ("\u{1b}", UInt16(53))] {
             let fixture = try Fixture()
             let (workspace, document) = try await setup(fixture, decide: ExecutionConfirmation.present)
@@ -148,7 +153,7 @@ struct ExecutionPolicyTests {
             eventTimer.invalidate()
             fallback.invalidate()
             if let error = captured.error { throw error }
-            #expect(captured.cancelIsDefault && !captured.fallbackUsed)
+            #expect(captured.cancelIsDefault && !captured.fallbackUsed, "Key code \(keyCode) must cancel through the native event")
             #expect(fixture.commands.isEmpty)
             #expect(document.executions.allSatisfy { $0.status == "Not executed" })
             await workspace.shutdown()

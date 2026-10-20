@@ -87,12 +87,12 @@ enum ExecutionConfirmation {
         runModal(makeAlert(confirmation)) == .alertFirstButtonReturn
     }
 
-    /// AppKit gives a button one key equivalent. Cancel owns Return as the
-    /// safe default; preserve the native Escape action for this modal only.
+    /// Cancel owns Return as the safe default. Route both cancellation keys
+    /// here even when AppKit initially focuses the selectable SQL preview.
     @MainActor static func runModal(_ alert: NSAlert) -> NSApplication.ModalResponse {
         let monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let consumed = MainActor.assumeIsolated {
-                guard NSApp.modalWindow === alert.window, event.keyCode == 53,
+                guard NSApp.modalWindow === alert.window, [36, 53, 76].contains(event.keyCode),
                       event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else { return false }
                 alert.buttons[1].performClick(nil)
                 return true

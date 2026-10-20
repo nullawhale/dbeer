@@ -110,6 +110,12 @@ jobs:
       GOMODCACHE: ${{ github.workspace }}/build/.cache/go-mod
     steps:
       - uses: actions/checkout@v6
+      - name: Reserve disk for native Rust verification
+        if: runner.environment == 'github-hosted'
+        # This disposable Linux job does not build Android software.
+        run: |
+          sudo rm -rf /usr/local/lib/android
+          df -h "$GITHUB_WORKSPACE"
       - uses: actions/setup-go@v6
         with:
           go-version-file: helper/go.mod
@@ -164,6 +170,7 @@ jobs:
       - name: Check Rust warnings
         run: ./scripts/gpui-prototype.sh clippy --locked --release --all-targets -- -D warnings
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: dbeer-gpui-linux-x86_64
           path: |
@@ -252,6 +259,7 @@ jobs:
           cargo clippy --locked --release --all-targets --manifest-path prototypes/gpui/Cargo.toml -- -D warnings
           if ($LASTEXITCODE -ne 0) { throw 'Clippy failed.' }
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
           name: dbeer-gpui-windows-x86_64
           path: |

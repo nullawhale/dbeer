@@ -39,6 +39,11 @@ private struct ShortcutSettingsRow: View {
     let descriptor: AppCommandDescriptor
     private var errorState = SwiftUI.State<String?>(initialValue: nil)
 
+    init(store: AppShortcutStore, descriptor: AppCommandDescriptor) {
+        self.store = store
+        self.descriptor = descriptor
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {

@@ -267,6 +267,10 @@ struct SQLLanguageServiceTests {
         await missing.shutdown()
         let slow = helper(completion: "time.sleep(10)")
         slow.update(documentID: id, text: "SEL", engine: .postgresql, context: .empty)
+        // Measure the unresponsive request after the fixture's process and
+        // initialization handshake are ready, independently of CI startup load.
+        for _ in 0..<200 where !slow.isAvailable { try await Task.sleep(for: .milliseconds(20)) }
+        try #require(slow.isAvailable)
         let clock = ContinuousClock()
         let start = clock.now
         #expect(await slow.completion(documentID: id, offset: 3).isEmpty)

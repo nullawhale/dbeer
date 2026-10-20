@@ -94,6 +94,12 @@ struct ControlSegmentPickerTests {
             window.contentView = hosting
             window.makeKeyAndOrderFront(nil)
             defer { window.close() }
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            for _ in 0..<20 where !window.isKeyWindow {
+                try await Task.sleep(for: .milliseconds(25))
+                window.makeKey()
+            }
+            try #require(window.isKeyWindow)
             try await Task.sleep(for: .milliseconds(100))
             NativeButtonFocusPolicy().apply(to: window)
             let targets = regions(in: hosting).sorted {

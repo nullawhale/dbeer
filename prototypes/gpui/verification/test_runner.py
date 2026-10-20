@@ -26,6 +26,19 @@ def private_temporary():
 
 
 class ProofTests(unittest.TestCase):
+    def test_report_publication_retains_current_user_privacy_and_preserves_existing_record(self):
+        with private_temporary() as root:
+            report = root / 'completed.json'
+            value = {'status': 'owned-fixture'}
+            run.write_json(report, value)
+            run.verify_private(report, directory=False)
+            original = report.read_bytes()
+            with self.assertRaises(FileExistsError):
+                run.write_json(report, {'status': 'replacement'})
+            self.assertEqual(report.read_bytes(), original)
+            self.assertEqual(json.loads(original), value)
+            self.assertEqual(list(root.iterdir()), [report])
+
     def child(self, output, code=0, kind='rust'):
         process = mock.Mock()
         process.stdout = io.BytesIO(output)
@@ -95,7 +108,9 @@ class ProofTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=run.REPO / 'build') as directory:
             with mock.patch.dict(os.environ, {'DBEER_TEST_DSN': 'private-value', 'DBEER_GPUI_TLS_MANIFEST': 'private-path',
                                              'DBEER_PRODUCT_BUILD_IDENTITY':'private-identity','PGPASSWORD':'private-password',
-                                             'RUSTFLAGS':'private-flags','GOFLAGS':'private-link-flags'}):
+                                             'RUSTFLAGS':'private-flags','GOFLAGS':'private-link-flags',
+                                             'CARGO_PROFILE_DEV_DEBUG':'2', 'CARGO_PROFILE_TEST_DEBUG':'2',
+                                             'CARGO_INCREMENTAL':'1'}):
                 environment = run.clean_environment(Path(directory))
                 self.assertFalse('DBEER_TEST_DSN' in environment, 'Inherited DB setting was retained.')
                 self.assertFalse('DBEER_GPUI_TLS_MANIFEST' in environment, 'Inherited TLS setting was retained.')
@@ -103,6 +118,9 @@ class ProofTests(unittest.TestCase):
                 self.assertFalse('private-' in json.dumps(environment), 'Inherited compiler, identity or DB fixture value was retained.')
                 self.assertEqual(environment['CARGO_TARGET_DIR'], str(run.REPO / 'build/gpui/verification-target'))
                 self.assertEqual(environment['CARGO_NET_OFFLINE'], 'true')
+                self.assertEqual(environment['CARGO_PROFILE_DEV_DEBUG'], '0')
+                self.assertEqual(environment['CARGO_PROFILE_TEST_DEBUG'], '0')
+                self.assertEqual(environment['CARGO_INCREMENTAL'], '0')
 
     def test_summary_count_must_match_actual_assertion_rows(self):
         summary = b'test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out;\n'
@@ -198,6 +216,15 @@ class ProofTests(unittest.TestCase):
 
     def test_matrix_static_references_are_real(self):
         self.assertEqual(run.validate()['nativeAcceptance']['cells'], 171)
+
+    def test_matrix_validation_reads_utf8_sources_under_windows_legacy_encoding(self):
+        original = Path.read_text
+        def legacy_read(path, *args, **kwargs):
+            if not args and kwargs.get('encoding') is None:
+                kwargs['encoding'] = 'cp1252'
+            return original(path, *args, **kwargs)
+        with mock.patch.object(Path, 'read_text', legacy_read):
+            self.assertEqual(run.validate()['nativeAcceptance']['cells'], 171)
 
     def test_required_go_database_assertions_cannot_pass_via_skip_or_duplicate(self):
         required = ['dbeer/helper/internal/postgres/TestRequired']
@@ -518,7 +545,7 @@ class DependencyGraphTests(unittest.TestCase):
         with self.fixture() as (root, path, review):
             pre = review['unitGraphs'][0]
             lock = root / pre['lock']
-            lock.write_text(lock.read_text() + 'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+            lock.write_text(lock.read_text(encoding='utf-8') + 'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
                             'checksum = "' + 'a' * 64 + '"\n')
             pre['lockSha256'] = run.sha(lock)
             pre['graphDelta'] = dependency_inputs.graph_delta(root / 'prototypes/gpui/Cargo.lock', lock)
@@ -540,7 +567,7 @@ class PublicElementUnitTests(unittest.TestCase):
             yield root
 
     def test_actual_public_writer_adaptation_matches_reviewed_original_unit(self):
-        expected = json.loads((run.HERE / 'dependency-inputs.json').read_text())['publicElementUnit']
+        expected = json.loads((run.HERE / 'dependency-inputs.json').read_text(encoding='utf-8'))['publicElementUnit']
         with self.fixture() as root:
             self.assertEqual(dependency_inputs.public_element_unit(root), expected)
             self.assertEqual(expected['testTarget'], 'maintained_pre_disabled')
@@ -549,11 +576,11 @@ class PublicElementUnitTests(unittest.TestCase):
     def test_changed_assertion_or_private_access_cannot_inherit_original_proof(self):
         with self.fixture() as root:
             path = root / dependency_inputs.PUBLIC_ELEMENT_SOURCE
-            original = path.read_text()
+            original = path.read_text(encoding='utf-8')
             for changed in (original.replace('assert!(node.is_disabled());', 'assert!(!node.is_disabled());'),
                             original.replace('disabled.write_a11y_info', 'disabled.interactivity().write_a11y_info'),
                             original + '\n#[test]\nfn unrelated() {}\n'):
-                path.write_text(changed)
+                path.write_text(changed, encoding='utf-8')
                 with self.assertRaises(ValueError):
                     dependency_inputs.public_element_unit(root)
 
@@ -561,10 +588,10 @@ class PublicElementUnitTests(unittest.TestCase):
         with self.fixture() as root:
             before = dependency_inputs.public_element_unit(root)
             source = root / dependency_inputs.DIV_SOURCE
-            original = source.read_text()
-            source.write_text(original + '\n// unreviewed source drift\n')
+            original = source.read_text(encoding='utf-8')
+            source.write_text(original + '\n// unreviewed source drift\n', encoding='utf-8')
             self.assertNotEqual(dependency_inputs.public_element_unit(root), before)
-            source.write_text(original.replace('assert!(node.is_disabled());', 'assert!(!node.is_disabled());'))
+            source.write_text(original.replace('assert!(node.is_disabled());', 'assert!(!node.is_disabled());'), encoding='utf-8')
             with self.assertRaises(ValueError):
                 dependency_inputs.public_element_unit(root)
 

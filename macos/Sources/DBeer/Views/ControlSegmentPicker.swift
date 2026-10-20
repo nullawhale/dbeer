@@ -55,6 +55,7 @@ struct ControlSegmentPicker<Value: Hashable>: View {
                     }
                     .controlHover()
                     .environment(\.controlKeyboardFocus, focusedChoice == choice.value)
+                    .focusable()
                     .focusEffectDisabled()
                     .focused($focusedChoice, equals: choice.value)
                     .accessibilityLabel(choice.title)

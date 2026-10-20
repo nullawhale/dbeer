@@ -109,6 +109,7 @@ if ! "$swift_binary" test --disable-sandbox --disable-xctest --enable-swift-test
 fi
 swift_bin="$("$swift_binary" build --disable-sandbox --cache-path "$build_root/.cache/swiftpm" \
     --package-path "$repo_root/macos" --scratch-path "$build_root/swift" --show-bin-path)"
+"$repo_root/scripts/prepare-swift-resources.sh" "$swift_bin/DBeer_DBeer.bundle"
 test_bundle=""
 bundle_count=0
 for candidate in "$swift_bin"/*.xctest/Contents/MacOS/*; do

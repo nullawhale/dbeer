@@ -21,7 +21,7 @@ def public_element_unit(repo):
     delegates to that same writer; only that access and unused local mutability
     differ. No production logic is copied into this integration target.
     """
-    original = (repo / DIV_SOURCE).read_text()
+    original = (repo / DIV_SOURCE).read_text(encoding='utf-8')
     matches = re.findall(r'^    #\[test\]\n    fn ' + DISABLED_UNIT + r'\(\) \{\n.*?^    \}\n', original, re.M | re.S)
     if len(matches) != 1:
         raise ValueError('The exact original maintained Div unit is required once.')
@@ -31,7 +31,7 @@ def public_element_unit(repo):
         adapted = adapted.replace('let mut ' + local + ' =', 'let ' + local + ' =')
     expected = '//! Faithful public Element-path alternative for the maintained Div disabled unit.\n'
     expected += 'use gpui_kit::{Element, InteractiveElement, StatefulInteractiveElement, accesskit, div};\n\n' + adapted
-    if (repo / PUBLIC_ELEMENT_SOURCE).read_text() != expected:
+    if (repo / PUBLIC_ELEMENT_SOURCE).read_text(encoding='utf-8') != expected:
         raise ValueError('Public Element integration differs from the exact original unit adaptation.')
     return {'kind': 'faithful-public-element-integration', 'manifest': 'prototypes/gpui/Cargo.toml',
             'lock': 'prototypes/gpui/Cargo.lock', 'testTarget': 'maintained_pre_disabled', 'test': DISABLED_UNIT,
@@ -52,7 +52,7 @@ def lock_packages(path):
     # Cargo's generated lock format has bounded quoted ASCII identity fields.
     # Dependency arrays remain bound by the exact complete lock-file digest.
     result = {}
-    for block in re.findall(r'^\[\[package\]\]\n(.*?)(?=^\[\[|\Z)', Path(path).read_text(), re.M | re.S):
+    for block in re.findall(r'^\[\[package\]\]\n(.*?)(?=^\[\[|\Z)', Path(path).read_text(encoding='utf-8'), re.M | re.S):
         fields = re.findall(r'^(name|version|source|checksum) = "([^"\n]+)"$', block, re.M)
         row = dict(fields)
         if len(row) != len(fields) or not {'name', 'version'} <= set(row):
@@ -101,12 +101,12 @@ def verify_provenance(repo):
     for crate in ('gpui-pre', 'gpui-base', 'gpui-component'):
         root = repo / 'prototypes/gpui/vendor' / crate
         original = {}
-        for line in (root / 'UPSTREAM.sha256').read_text().splitlines():
+        for line in (root / 'UPSTREAM.sha256').read_text(encoding='utf-8').splitlines():
             checksum, relative = line.split('  ', 1)
             if not re.fullmatch('[0-9a-f]{64}', checksum) or relative in original:
                 raise ValueError('Upstream source digest inventory is invalid.')
             original[relative] = checksum
-        audit = json.loads((root / 'LOCAL-CHANGES.json').read_text())
+        audit = json.loads((root / 'LOCAL-CHANGES.json').read_text(encoding='utf-8'))
         changed = {row['path']: row for row in audit['changes']}
         omitted = {item.split(' (', 1)[0] for item in audit['omitted']}
         if len(changed) != len(audit['changes']) or audit['upstream_package'] != crate:
@@ -124,7 +124,7 @@ def verify_provenance(repo):
 
 def verify_dependency_review(repo):
     path = repo / 'prototypes/gpui/verification/dependency-inputs.json'
-    review = json.loads(path.read_text())
+    review = json.loads(path.read_text(encoding='utf-8'))
     expected = {crate: 'prototypes/gpui/vendor/' + crate for crate in CRATES}
     if (review['schemaVersion'] != 1 or review['patches'] != expected
             or review['files'] != source_inputs(repo) or review['testsExecuted'] is not False):

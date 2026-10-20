@@ -53,12 +53,13 @@ def build_environment(root):
     return environment
 
 
-def run(command, environment, *, cwd=None, output=None):
+def run(command, environment, *, cwd=None, output=None, phase='Native build or metadata preparation', verification=False):
     """Retain metadata only; child diagnostics cannot become application evidence."""
     if output is None:
         result = subprocess.run(command, cwd=cwd or core.ROOT, env=environment,
-                                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL, check=False)
+                                stdin=subprocess.DEVNULL,
+                                stdout=None if verification else subprocess.DEVNULL,
+                                stderr=None if verification else subprocess.DEVNULL, check=False)
     else:
         with output.open('xb') as stream:
             result = subprocess.run(command, cwd=cwd or core.ROOT, env=environment,
@@ -66,7 +67,7 @@ def run(command, environment, *, cwd=None, output=None):
                                     stderr=subprocess.DEVNULL, check=False)
         output.chmod(0o600)
     if result.returncode != 0:
-        raise Refused('A required native build or metadata preparation step failed.')
+        raise Refused(phase + ' failed.')
 
 
 def native_toolchains(target, environment):
@@ -116,7 +117,10 @@ def execute(args):
         command = ['pwsh', '-NoProfile', '-File'] if os.name == 'nt' else ['bash']
         command += [str(core.ROOT / 'scripts' / wrapper), '--final-integration',
                     '--all-headless', '--self-checks']
-        run(command, dict(os.environ))
+        # This runner emits only fixed statuses and sanitized proof metadata;
+        # its collectors never forward raw compiler, application or DB output.
+        run(command, dict(os.environ), phase='Isolated headless verification (see build/gpui/task30-runs)',
+            verification=True)
     builds = core.safe(core.ROOT / 'build/gpui/product-builds', directory=True, missing=True)
     builds.mkdir(parents=True, exist_ok=True, mode=0o700)
     root = Path(tempfile.mkdtemp(prefix='product-', dir=builds))
@@ -138,27 +142,29 @@ def execute(args):
     if args.target.startswith('windows'):
         run([sys.executable, '-B', str(HERE / 'native-resources/generate.py'),
              'generate', '--identity', str(root / 'BUILD-IDENTITY.json'),
-             '--output', str(root / 'native-resources')], environment)
+             '--output', str(root / 'native-resources')], environment, phase='Windows resource generation')
         environment['DBEER_PRODUCT_NATIVE_RESOURCES'] = str(root / 'native-resources')
     assert_frozen(identity)
     run(['go', 'build', '-trimpath', '-buildvcs=false', '-ldflags', go_link_flags(identity),
-         '-o', str(helper), './cmd/dbeer-core'], environment, cwd=core.ROOT / 'helper')
+         '-o', str(helper), './cmd/dbeer-core'], environment, cwd=core.ROOT / 'helper', phase='Go helper compilation')
     assert_frozen(identity)
     cargo_arguments = ['--locked', '--target', target,
                        '--manifest-path', str(core.ROOT / 'prototypes/gpui/Cargo.toml')]
     if args.target.startswith('windows'):
         cargo_arguments += ['--features', 'product-windows-resources']
-    run(['cargo', 'build', *cargo_arguments, '--release', '--bin', 'dbeer-gpui'], environment)
+    run(['cargo', 'build', *cargo_arguments, '--release', '--bin', 'dbeer-gpui'], environment,
+        phase='Rust frontend compilation')
     assert_frozen(identity)
     verify_pair(gui, helper, identity)
     if args.target.startswith('windows'):
         run(['cargo', 'tree', *cargo_arguments, '--edges', 'features', '--invert', 'gpui-pre'],
-            environment, output=root / 'windows-manifest-features.txt')
+            environment, output=root / 'windows-manifest-features.txt', phase='Windows feature inspection')
         if b'windows-manifest-provided-by-host' not in core.bounded(root / 'windows-manifest-features.txt'):
             raise Refused('The product host-manifest feature is missing from the actual Windows graph.')
         run([sys.executable, '-B', str(HERE / 'native-resources/generate.py'),
              'verify-native-pe', '--identity', str(root / 'BUILD-IDENTITY.json'),
-             '--inputs', str(root / 'native-resources'), '--gui', str(gui)], environment)
+             '--inputs', str(root / 'native-resources'), '--gui', str(gui)], environment,
+            phase='Windows resource verification')
     result = {'schemaVersion': 1, 'identity': identity, 'status': 'compiled-only',
               'runtimeAcceptance': 'not-run',
               'toolchains': toolchains,
@@ -168,7 +174,7 @@ def execute(args):
     if args.package:
         run(['cargo', 'metadata', '--locked', '--all-features', '--format-version', '1',
              '--manifest-path', str(core.ROOT / 'prototypes/gpui/Cargo.toml')], environment,
-            output=root / 'cargo-metadata.json')
+            output=root / 'cargo-metadata.json', phase='Cargo notice metadata preparation')
         cache_spec = importlib.util.spec_from_file_location('dbeer_public_dependency_cache', HERE / 'prepare-go-cache.py')
         cache = importlib.util.module_from_spec(cache_spec)
         cache_spec.loader.exec_module(cache)
@@ -201,7 +207,11 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (Refused, OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+    except Refused as error:
+        # Refusals contain fixed diagnostics only; never expose child output.
+        print('DBeer paired native build refused: ' + str(error) + ' Existing candidates are preserved.', file=sys.stderr)
+        sys.exit(2)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         print('DBeer paired native build refused unsafe, unsupported, changed or incomplete inputs. '
               'Existing candidates are preserved.', file=sys.stderr)
         sys.exit(2)

@@ -58,6 +58,10 @@ swift_bin="$(swift build --disable-sandbox --cache-path "$build_root/.cache/swif
     --package-path "$repo_root/macos" --scratch-path "$build_root/swift" \
     --configuration "$configuration" -debug-info-format none --show-bin-path)"
 cp "$swift_bin/DBeer" "$app/Contents/MacOS/DBeer"
+"$repo_root/scripts/prepare-swift-resources.sh" "$swift_bin/DBeer_DBeer.bundle"
+# Replace the generated bundle so an earlier SwiftPM build cannot leave links
+# at the copy destination or retain resources from a different bundle layout.
+rm -rf -- "$app/Contents/Resources/DBeer_DBeer.bundle"
 cp -R "$swift_bin/DBeer_DBeer.bundle" "$app/Contents/Resources/"
 
 cat > "$app/Contents/Info.plist" <<PLIST

@@ -36,6 +36,13 @@ SUMMARY = re.compile(r'^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (
 SWIFT = re.compile(r'Test run with ([1-9][0-9]*) tests? .*passed after')
 TEST = re.compile(r'^test ([a-zA-Z0-9_:]+) \.\.\. (ok|FAILED|ignored(?:,.*)?)$')
 NATIVE_OWNERSHIP = None
+CURRENT_PHASE = 'startup'
+
+
+def phase(name):
+    global CURRENT_PHASE
+    CURRENT_PHASE = name
+    print('Verification phase: ' + name + '.', flush=True)
 
 
 def ownership_module():
@@ -73,7 +80,11 @@ def strict_json(path):
 def write_json(path, value):
     # Atomically publish a new complete record; never overwrite prior evidence.
     data = (json.dumps(value, indent=2, sort_keys=True) + '\n').encode()
-    descriptor, temporary = tempfile.mkstemp(prefix='.' + Path(path).name + '.', dir=Path(path).parent)
+    if os.name == 'nt':
+        temporary = Path(path).with_name('.' + Path(path).name + '.' + uuid.uuid4().hex)
+        descriptor = windows_create_private_path(temporary, directory=False)
+    else:
+        descriptor, temporary = tempfile.mkstemp(prefix='.' + Path(path).name + '.', dir=Path(path).parent)
     try:
         with os.fdopen(descriptor, 'wb') as stream:
             stream.write(data)
@@ -116,7 +127,7 @@ def verify_private(path, directory=True):
     return (metadata.st_dev, metadata.st_ino)
 
 
-def windows_create_private_directory(path):
+def windows_create_private_path(path, *, directory=True):
     # Set owner and protected inheritable DACL AT creation, before any fixture
     # bytes exist. DataDirectory's Unix mode is not Windows ACL evidence.
     pointer, dword = ctypes.c_void_p, ctypes.c_uint32
@@ -131,6 +142,8 @@ def windows_create_private_directory(path):
     class SecurityAttributes(ctypes.Structure):
         _fields_ = [('length', dword), ('descriptor', pointer), ('inherit', ctypes.c_int)]
     kernel.CreateDirectoryW.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(SecurityAttributes)]
+    kernel.CreateFileW.argtypes = [ctypes.c_wchar_p, dword, dword, ctypes.POINTER(SecurityAttributes), dword, dword, pointer]
+    kernel.CreateFileW.restype = pointer
     token, sid_text, descriptor = pointer(), pointer(), pointer()
     try:
         if not advapi.OpenProcessToken(pointer(-1), 8, ctypes.byref(token)):
@@ -148,8 +161,21 @@ def windows_create_private_directory(path):
         if not advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, ctypes.byref(descriptor), None):
             raise ValueError('Cannot construct private directory DACL.')
         attributes = SecurityAttributes(ctypes.sizeof(SecurityAttributes), descriptor, False)
-        if not kernel.CreateDirectoryW(str(path), ctypes.byref(attributes)):
-            raise ValueError('Cannot reserve private directory.')
+        if directory:
+            if not kernel.CreateDirectoryW(str(path), ctypes.byref(attributes)):
+                raise ValueError('Cannot reserve private directory.')
+        else:
+            # Elevated Windows tokens can otherwise give new files an
+            # Administrators owner, even inside a current-user-owned directory.
+            handle = kernel.CreateFileW(str(path), 0x40000000, 0, ctypes.byref(attributes), 1, 0x80, None)
+            if handle == pointer(-1).value:
+                raise ValueError('Cannot reserve private report file.')
+            import msvcrt
+            try:
+                return msvcrt.open_osfhandle(handle, os.O_WRONLY | os.O_BINARY)
+            except (OSError, ValueError):
+                kernel.CloseHandle(handle)
+                raise
     finally:
         if descriptor: kernel.LocalFree(descriptor)
         if sid_text: kernel.LocalFree(sid_text)
@@ -164,7 +190,7 @@ def private_directory(path):
            for p in [path, *path.parents] if p != REPO.parent and REPO in (p, *p.parents)):
         raise ValueError('Symlinked private run ancestors are refused.')
     if os.name == 'nt':
-        windows_create_private_directory(path)
+        windows_create_private_path(path)
     else:
         path.mkdir(mode=0o700)
     verify_private(path)
@@ -237,6 +263,10 @@ def clean_environment(root):
         private_directory(root / name)
     env.update({'CI': '1', 'CARGO_HOME': str(REPO / 'build/gpui/cargo'),
                 'CARGO_TARGET_DIR': str(REPO / 'build/gpui/verification-target'),
+                # Standalone vendor test manifests otherwise use full debug
+                # symbols and incremental caches, exhausting hosted disks.
+                # Debug assertions and overflow checks remain enabled.
+                'CARGO_PROFILE_DEV_DEBUG': '0', 'CARGO_PROFILE_TEST_DEBUG': '0', 'CARGO_INCREMENTAL': '0',
                 'GOCACHE': str(REPO / 'build/.cache/go'),
                 'GOMODCACHE': str(REPO / 'build/.cache/go-mod'),
                 'DBEER_GPUI_TEST_ROOT': str(root / 'fixtures'),
@@ -260,7 +290,7 @@ def host_identity():
              'pythonBits': 64 if sys.maxsize > 2**32 else 32, 'coverageLayer': 'headless',
              'desktopAcceptance': False, 'container': Path('/.dockerenv').exists()}
     if value['os'] == 'Linux' and Path('/etc/os-release').is_file():
-        fields = dict(re.findall(r'^([A-Z_]+)="?([^\n"]+)', Path('/etc/os-release').read_text(), re.M))
+        fields = dict(re.findall(r'^([A-Z_]+)="?([^\n"]+)', Path('/etc/os-release').read_text(encoding='utf-8'), re.M))
         value['distribution'] = fields.get('ID', 'unknown')
         value['distributionVersion'] = fields.get('VERSION_ID', 'unknown')
     return value
@@ -590,11 +620,11 @@ def verify_unit_review(stage):
     original = REPO / review['originalManifest']
     manifest = REPO / stage['manifest']
     expected = '# Verification-only relocated manifest. All library/test source remains the actual vendor source.\n'
-    expected += original.read_text().replace('path = "src/gpui_linux.rs"', 'path = "../../vendor/gpui-pre-linux/src/gpui_linux.rs"')
+    expected += original.read_text(encoding='utf-8').replace('path = "src/gpui_linux.rs"', 'path = "../../vendor/gpui-pre-linux/src/gpui_linux.rs"')
     source_root = REPO / review['sourceRoot']
     source = {path.relative_to(REPO / 'prototypes/gpui').as_posix(): sha(path)
               for path in sorted(source_root.rglob('*')) if path.is_file() and not path.is_symlink()}
-    if (review['schemaVersion'] != 1 or manifest.read_text() != expected
+    if (review['schemaVersion'] != 1 or manifest.read_text(encoding='utf-8') != expected
             or sha(original) != review['originalManifestSha256'] or sha(manifest) != review['manifestSha256']
             or sha(manifest.with_name('Cargo.lock')) != review['lockSha256']
             or sha(REPO / 'prototypes/gpui/Cargo.lock') != review['rootLockSha256']
@@ -720,7 +750,7 @@ def validate():
                 raise ValueError('Missing prepared behavior assertion.')
         for suite in case['swiftBehaviorSuites']:
             swift_sources = (REPO / 'macos/Tests/DBeerTests').glob('*.swift')
-            if not any(re.search(r'\b(?:struct|class)\s+' + re.escape(suite) + r'\b', p.read_text()) for p in swift_sources):
+            if not any(re.search(r'\b(?:struct|class)\s+' + re.escape(suite) + r'\b', p.read_text(encoding='utf-8')) for p in swift_sources):
                 raise ValueError('Missing Swift behavior suite.')
         for path in case.get('fixtures', []):
             if not (REPO / path).is_file():
@@ -728,7 +758,7 @@ def validate():
     for stage in matrix['sharedStages']:
         for name in stage['requiredTests']:
             match = re.fullmatch(r'dbeer/helper/([A-Za-z0-9_/]+)/((?:Test)[A-Za-z0-9_]+)', name)
-            if not match or not any(re.search(r'\bfunc\s+' + re.escape(match[2]) + r'\b', path.read_text())
+            if not match or not any(re.search(r'\bfunc\s+' + re.escape(match[2]) + r'\b', path.read_text(encoding='utf-8'))
                                     for path in (REPO / 'helper' / match[1]).glob('*_test.go')):
                 raise ValueError('Required Go database assertion is absent from its exact package.')
     if (matrix['nativeAcceptance']['features'] != 57 or matrix['nativeAcceptance']['assertions'] != 190
@@ -739,7 +769,7 @@ def validate():
         raise ValueError('Invalid disposable fault plan.')
     if set(faults['caseIds']) - seen:
         raise ValueError('Fault plan references an unknown behavior group.')
-    peer = (HERE / 'fault-helper/src/main.rs').read_text()
+    peer = (HERE / 'fault-helper/src/main.rs').read_text(encoding='utf-8')
     for mode in faults['portablePeer']['previewModes'] + faults['portablePeer']['runToFileModes']:
         # success/mutated-target intentionally use the common successful peer
         # terminal: the product test changes the destination for mutated-target.
@@ -750,7 +780,7 @@ def validate():
         raise ValueError('All thirteen portable fault assertions are required.')
     for name in critical:
         path = 'preview/tests.rs' if name.startswith('preview::tests::fault_helper::') else 'run_to_file/tests.rs'
-        if not re.search(r'\bfn\s+' + re.escape(name.rsplit('::', 1)[-1]) + r'\b', (REPO / 'prototypes/gpui/src' / path).read_text()):
+        if not re.search(r'\bfn\s+' + re.escape(name.rsplit('::', 1)[-1]) + r'\b', (REPO / 'prototypes/gpui/src' / path).read_text(encoding='utf-8')):
             raise ValueError('Missing converted portable fault assertion.')
     for stage in matrix['rustStages']:
         if stage['id'] in ('default', 'native-smoke') and not set(critical) <= set(stage.get('requiredTests', [])):
@@ -775,6 +805,7 @@ def main():
     parser.add_argument('--swift', action='store_true')
     parser.add_argument('--self-checks', action='store_true', help='Run prepared runner/portable-peer safety suites in the controlled environment.')
     args = parser.parse_args()
+    phase('reviewed-inputs')
     matrix = validate()
     if args.validate:
         if any((args.final_integration, args.stage, args.all_headless, args.database_pair, args.shared_go, args.swift, args.self_checks)):
@@ -789,15 +820,19 @@ def main():
     selected = [s for s in stages if (args.all_headless and s.get('includedInAll', True)) or s['id'] in args.stage]
     if set(args.stage) - {s['id'] for s in stages}:
         parser.error('Unknown stage identity.')
+    phase('native-host')
     host = native_preflight() if selected or args.database_pair or args.self_checks else host_identity()
     if args.swift and host['os'] != 'Darwin':
         parser.error('Swift product verification requires the supported macOS runner.')
+    phase('private-run-directory')
     OUTPUT.mkdir(parents=True, exist_ok=True)
     root = OUTPUT / uuid.uuid4().hex
     private_directory(root)
+    phase('isolated-environment')
     env = clean_environment(root)
     env['RUSTUP_TOOLCHAIN'] = matrix['rustToolchain']
     env['RUSTUP_AUTO_INSTALL'] = '0'
+    phase('source-inventory')
     ledger = {'schemaVersion': 1, 'runNonce': root.name, 'startedAt': now(), 'host': host,
               'sourceInventory': source_contract.capture(REPO), 'stages': [], 'nativeAcceptance': matrix['nativeAcceptance'],
               'status': 'running', 'privateRoot': str(root), 'cleanup': 'owned-resources-only',
@@ -806,12 +841,14 @@ def main():
               'fixtureRootIdentity': list(verify_private(root / 'fixtures')),
               'finalSnapshotObligations': matrix['finalSnapshotObligations']}
     ledger['sourceSha256'] = ledger['sourceInventory']['sourceSha256']
+    phase('request-record')
     write_json(root / 'request.json', ledger)
     success = False
     try:
         if selected or args.database_pair or args.self_checks:
             # Read installed names only; the runner does not install/download a
             # toolchain. RUSTUP_AUTO_INSTALL=0 also applies to every later child.
+            phase('native-helper')
             toolchains = subprocess.run(['rustup', 'toolchain', 'list'], env=env, stdin=subprocess.DEVNULL,
                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30, check=False)
             if toolchains.returncode or not any(line.split()[0].startswith(matrix['rustToolchain'] + '-') for line in toolchains.stdout.decode('ascii', errors='replace').splitlines() if line.split()):
@@ -828,6 +865,7 @@ def main():
             ledger['helper'] = {**helper_identity, 'buildCommand': ['go', 'build', '-trimpath', '-o', str(helper), './cmd/dbeer-core'], 'buildMode': 'unmarked-development-tests'}
             fixture_env = env.copy()
             fixture_env['CARGO_TARGET_DIR'] = str(REPO / 'build/gpui/task30-fault-target')
+            phase('fault-helper')
             fixture_command = ['cargo', 'build', '--locked', '--message-format=json', '--manifest-path', str(HERE / 'fault-helper/Cargo.toml')]
             fixture_result = collect(fixture_command, fixture_env, 1200, kind='cargo-bin')
             write_json(root / 'fault-peer-build.json', fixture_result)
@@ -839,12 +877,16 @@ def main():
             env['DBEER_GPUI_FAULT_HELPER_SHA256'] = fault_identity['sha256']
             ledger['faultHelper'] = {**fault_identity, 'buildCommand': fixture_command}
             verify_fixture_environment(env)
+        phase('selected-tests')
         success = True
         for stage in selected:
             if host['os'] not in stage['hosts']:
                 ledger['stages'].append({'id': stage['id'], 'layer': stage['layer'], 'status': 'skipped', 'reason': 'host-not-applicable'})
                 continue
-            if not execute_rust(stage, env, ledger, root):
+            phase('rust-' + stage['id'])
+            passed = execute_rust(stage, env, ledger, root)
+            print('Verification stage ' + stage['id'] + ': ' + ('passed.' if passed else 'failed.'), flush=True)
+            if not passed:
                 success = False
         if args.database_pair:
             from owned_databases import run_pair
@@ -916,6 +958,7 @@ def main():
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except (OSError, ValueError, KeyError, json.JSONDecodeError):
-        print('Verification configuration is invalid; no tests accepted.', file=sys.stderr)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        print('Verification configuration is invalid in phase ' + CURRENT_PHASE +
+              ' (' + type(error).__name__ + '); no tests accepted.', file=sys.stderr)
         sys.exit(2)

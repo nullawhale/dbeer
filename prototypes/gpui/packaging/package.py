@@ -30,6 +30,7 @@ if sys.version_info < (3, 11):
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[3]
+LINUX_OS_RELEASE = Path('/etc/os-release')
 APP_ID = 'app.dbeer.DBeer'
 CAPABILITY = 'capturedExportV1'
 CONTRACT = 'gpui-v3-captured-export-v1'
@@ -297,7 +298,9 @@ def native(target):
         if sys.platform != 'linux':
             raise Refused('Ubuntu packages must be prepared on Ubuntu.')
         values = {}
-        for line in bounded(Path('/etc/os-release'), 8192).decode().splitlines():
+        # OS metadata commonly links to /usr/lib/os-release. Resolve this one
+        # fixed system path; package inputs still reject symlinks in safe().
+        for line in bounded(LINUX_OS_RELEASE.resolve(), 8192).decode('utf-8').splitlines():
             if '=' in line:
                 key, value = line.split('=', 1)
                 values[key] = value.strip('"')

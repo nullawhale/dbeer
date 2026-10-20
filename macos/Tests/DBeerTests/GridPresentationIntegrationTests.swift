@@ -369,6 +369,7 @@ struct GridPresentationIntegrationTests {
         let fixture = fixture()
         let (window, content) = host(fixture, width: 600)
         defer { window.close() }
+        descendants(content, of: NSScrollView.self).forEach { $0.scrollerStyle = .legacy }
         try await settle(content)
         #expect(!elements(in: content).contains { $0.identifier == "gridRowDetails" })
         #expect(!elements(in: content).contains { $0.identifier == "gridRowInspector" })
@@ -388,7 +389,8 @@ struct GridPresentationIntegrationTests {
         let editor = try #require(field.currentEditor() as? NSTextView)
         #expect(window.firstResponder === editor)
         let editorFrame = field.convert(field.bounds, to: table)
-        #expect(table.visibleRect.contains(editorFrame))
+        #expect(table.visibleRect.contains(editorFrame),
+            "table=\(table.frame), clip=\(String(describing: table.enclosingScrollView?.contentView.bounds))")
         let header = try #require(table.headerView)
         let headerFrame = table.convert(header.headerRect(ofColumn: column), from: header)
         #expect(abs(headerFrame.minX - table.rect(ofColumn: column).minX) < 1,

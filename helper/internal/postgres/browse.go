@@ -16,11 +16,12 @@ type browseColumn struct {
 	name    string
 	primary int
 	binary  bool
+	numeric bool
 }
 
 func browseSQL(ctx context.Context, conn *pgx.Conn, command protocol.Command) (string, [][]byte, string, *protocol.Response) {
 	request := command.Catalog
-	rows, err := conn.Query(ctx, `SELECT a.attname::text,COALESCE((SELECT key.ordinality FROM pg_catalog.pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality) WHERE i.indrelid=c.oid AND i.indisprimary AND key.attnum=a.attnum),0),a.atttypid=17
+	rows, err := conn.Query(ctx, `SELECT a.attname::text,COALESCE((SELECT key.ordinality FROM pg_catalog.pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality) WHERE i.indrelid=c.oid AND i.indisprimary AND key.attnum=a.attnum),0),a.atttypid=17,a.atttypid IN (20,21,23,700,701,1700)
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 WHERE n.nspname::text=$1::text AND c.relname::text=$2::text ORDER BY a.attnum`, request.Schema, request.Object)
 	if err != nil {
@@ -33,7 +34,7 @@ WHERE n.nspname::text=$1::text AND c.relname::text=$2::text ORDER BY a.attnum`, 
 	var primary []browseColumn
 	for rows.Next() {
 		var column browseColumn
-		if rows.Scan(&column.name, &column.primary, &column.binary) != nil {
+		if rows.Scan(&column.name, &column.primary, &column.binary, &column.numeric) != nil {
 			rows.Close()
 			response := protocol.ErrorResponse(command, "result", "Table metadata could not be decoded.")
 			response.Connected, response.TransactionStatus = true, transactionStatus(conn)
@@ -108,6 +109,11 @@ WHERE n.nspname::text=$1::text AND c.relname::text=$2::text ORDER BY a.attnum`, 
 				where = append(where, "strpos("+quoted+"::text,"+parameter+"::text)>0")
 			}
 		} else if operator, ok := operators[filter.Operator]; ok {
+			// Keep fractional and out-of-range operands exact instead of asking
+			// PostgreSQL to parse them as the column's narrower integer type.
+			if column.numeric {
+				parameter += "::numeric"
+			}
 			where = append(where, quoted+" "+operator+" "+parameter)
 		} else {
 			return "", nil, "", invalid()

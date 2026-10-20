@@ -2,6 +2,14 @@
 
 ## Next release — unreleased
 
+- Fixed PostgreSQL numeric table filters rejecting fractional operands for integer columns. Native macOS filter and shortcut settings views also build with Swift 6.1.
+
+- macOS app packaging materializes database logo resources before signing, including SwiftPM 6.1 bundles that preserve source symlinks.
+
+- Improved segmented-control keyboard focus and kept inline grid editors fully visible after opening row details on older macOS versions.
+
+- Catalog menus avoid the native blue row outline on older AppKit versions. Return and Escape cancel SQL review even when the preview has focus, and timed-out completion requests return before helper process cleanup.
+
 - GPUI keyboard commands preserve native editing and composition, including Return/Shift+Return, shortcut recorder Tab navigation and exact Run shortcut modifiers.
 
 - Offline completion keeps its current request during harmless refreshes; source changes, replacement and close cancel only the original owned request.

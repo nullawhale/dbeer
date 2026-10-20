@@ -55,7 +55,9 @@ func TestPostgresTypedTableBrowsePagesFiltersAndMissingObject(t *testing.T) {
 	}{
 		{"part", "eq", "2", 1}, {"part", "ne", "2", 200}, {"part", "lt", "2", 1}, {"part", "lte", "2", 2}, {"part", "gt", "200", 1}, {"part", "gte", "200", 2},
 		{"txt", "contains", "%_' OR 1=1 --", 200}, {"nullable", "isNull", "", 200}, {"txt", "isNotNull", "", 200},
-		{"n", "eq", "9007199254740993.000000000000000001", 200}, {"n", "eq", "9007199254740993.000000000000000002", 1}, {"n", "gt", "9007199254740993.000000000000000001", 1}, {"part", "eq", "2.000000000000000001", 0}, {"rounded_n", "lt", "1.234", 200}, {"rounded_n", "eq", "1.234", 0}, {"n", "eq", "0", 0}, {"txt", "eq", "x' OR 1=1 --", 0},
+		{"n", "eq", "9007199254740993.000000000000000001", 200}, {"n", "eq", "9007199254740993.000000000000000002", 1}, {"n", "gt", "9007199254740993.000000000000000001", 1},
+		{"part", "eq", "2.000000000000000001", 0}, {"part", "lt", "2.000000000000000001", 2}, {"part", "gt", "200.999999999999999999", 1}, {"part", "eq", "9223372036854775808", 0},
+		{"rounded_n", "lt", "1.234", 200}, {"rounded_n", "eq", "1.234", 0}, {"n", "eq", "0", 0}, {"txt", "eq", "x' OR 1=1 --", 0},
 		{"special", "eq", "", 1}, {"special", "eq", "NULL", 1}, {"b", "eq", "AP8=", 200},
 	}
 	for _, item := range cases {
@@ -67,7 +69,7 @@ func TestPostgresTypedTableBrowsePagesFiltersAndMissingObject(t *testing.T) {
 		request.Filters = []protocol.CatalogFilter{filter}
 		response := h.catalog(service, request)
 		if response.Type != "query.result" || len(response.Rows) != item.count {
-			t.Fatalf("typed browse operator %s failed", item.operator)
+			t.Fatalf("typed browse %s/%s returned %s with %d rows; want query.result with %d rows", item.column, item.operator, response.Type, len(response.Rows), item.count)
 		}
 	}
 	limit := "200"

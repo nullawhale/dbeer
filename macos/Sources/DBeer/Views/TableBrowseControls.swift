@@ -8,6 +8,11 @@ struct TableBrowseControls: View {
     private var filterOperator = SwiftUI.State(initialValue: "eq")
     private var filterValue = SwiftUI.State(initialValue: "")
 
+    init(document: SQLDocument, workspace: ApplicationWorkspace) {
+        self.document = document
+        self.workspace = workspace
+    }
+
     private var columns: [String] { document.tableColumns.compactMap { $0["name"] } }
     private var operators: [(String, String)] {
         [("=", "eq"), ("≠", "ne"), ("<", "lt"), ("≤", "lte"), (">", "gt"), ("≥", "gte"),

@@ -186,19 +186,20 @@ struct ConnectionsSidebarIntegrationTests {
         try png.write(to: destination.appendingPathComponent("\(name).png"))
     }
 
-    private func nativeTables(in view: NSView) -> [NSTableView] {
-        ((view as? NSTableView).map { [$0] } ?? []) + view.subviews.flatMap { nativeTables(in: $0) }
+    private func descendants<T: NSView>(_ view: NSView, of type: T.Type) -> [T] {
+        ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { descendants($0, of: type) }
     }
 
     private func contextMenu(for row: Int, in window: NSWindow) throws -> NSMenu {
         let content = try #require(window.contentView)
-        let list = try #require(nativeTables(in: content).first)
+        let list = try #require(descendants(content, of: NSTableView.self).first)
+        let region = try #require(descendants(content, of: CatalogContextMenuView.self).first)
         let rowRect = list.rect(ofRow: row)
         let location = list.convert(NSPoint(x: rowRect.midX, y: rowRect.midY), to: nil)
         let event = try #require(NSEvent.mouseEvent(with: .rightMouseDown, location: location,
             modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
             windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
-        let menu = try #require(list.menu(for: event))
+        let menu = try #require(region.menu(for: event))
         menu.update()
         return menu
     }
@@ -274,7 +275,7 @@ struct ConnectionsSidebarIntegrationTests {
         try await settle()
 
         let content = try #require(window.contentView)
-        let outline = try #require(nativeTables(in: content).first as? NSOutlineView)
+        let outline = try #require(descendants(content, of: NSTableView.self).first as? NSOutlineView)
         let firstItem = try #require(outline.item(atRow: 0))
         #expect(outline.isExpandable(firstItem))
         outline.expandItem(firstItem)
@@ -317,7 +318,7 @@ struct ConnectionsSidebarIntegrationTests {
         defer { window.close(); Task { await workspace.shutdown() } }
         try await settle()
         let content = try #require(window.contentView)
-        let outline = try #require(nativeTables(in: content).first as? NSOutlineView)
+        let outline = try #require(descendants(content, of: NSTableView.self).first as? NSOutlineView)
         let item = try #require(outline.item(atRow: 0))
         let policy = NativeButtonFocusPolicy()
         policy.start()
@@ -468,7 +469,7 @@ struct ConnectionsSidebarIntegrationTests {
             let first = try #require(model.savedConnections.first)
             #expect(first.name == "Local playground")
             #expect(model.selectedConnectionId == first.id)
-            let savedList = try #require(window.contentView.flatMap { nativeTables(in: $0).first })
+            let savedList = try #require(window.contentView.flatMap { descendants($0, of: NSTableView.self).first })
             #expect(savedList.numberOfRows == 2)
             let firstPasswordMatches = await vault.password(for: first.id) == firstPassword
             #expect(firstPasswordMatches)
@@ -498,7 +499,7 @@ struct ConnectionsSidebarIntegrationTests {
             // The real native List owns selection. Selecting another profile must
             // leave the live database fields and active session attached to Reporting.
             let content = try #require(window.contentView)
-            let list = try #require(nativeTables(in: content).first)
+            let list = try #require(descendants(content, of: NSTableView.self).first)
             #expect(list.numberOfRows == 3)
             list.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
             try await waitFor({ model.selectedConnectionId == first.id }, "Native sidebar selection did not select the saved profile.")

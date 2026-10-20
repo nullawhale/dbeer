@@ -314,7 +314,9 @@ final class SQLLanguageService {
         default:
             isAvailable = false
             for id in Array(diagnosticValues.keys) { publish([], documentID: id) }
-            await transport.shutdown()
+            // A timed-out request must return before process cleanup. An
+            // unresponsive server can also stall the graceful shutdown reply.
+            Task { [transport] in await transport.shutdown() }
         }
     }
 

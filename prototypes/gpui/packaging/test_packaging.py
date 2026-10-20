@@ -44,6 +44,25 @@ class OwnedFixture(unittest.TestCase):
 
 
 class MetadataCases(OwnedFixture):
+    def test_ubuntu_system_release_link_is_resolved_without_relaxing_package_inputs(self):
+        release = self.write('usr/lib/os-release', b'ID=ubuntu\nVERSION_ID="24.04"\n')
+        link = self.root / 'etc/os-release'
+        link.parent.mkdir()
+        try:
+            link.symlink_to('../usr/lib/os-release')
+        except OSError:
+            self.skipTest('Standard-user symlink fixture unavailable.')
+        with mock.patch.object(pack.platform, 'machine', return_value='x86_64'), \
+                mock.patch.object(pack.sys, 'platform', 'linux'), \
+                mock.patch.dict(os.environ, {}, clear=True), \
+                mock.patch.object(pack, 'LINUX_OS_RELEASE', link):
+            pack.native('linux-x86_64-gnu')
+            release.write_bytes(b'ID=ubuntu\nVERSION_ID="26.04"\n')
+            with self.assertRaises(pack.Refused):
+                pack.native('linux-x86_64-gnu')
+        with self.assertRaises(pack.Refused):
+            pack.safe(link)
+
     def test_build_identity_file_requires_exact_canonical_sorted_ascii_and_one_lf(self):
         canonical = pack.json_bytes(self.identity)
         self.assertEqual(pack.canonical_identity(canonical, 'linux-x86_64-gnu'), self.identity)
