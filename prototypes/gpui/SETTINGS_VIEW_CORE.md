@@ -146,7 +146,7 @@ These cases are prepared code; they have not run and are not native evidence.
 Owned Rust/fixture paths are at **SOURCE FREEZE** for shared declaration/checking.
 Scoped rustfmt and rustfmt --check completed with exit 0 on these five owned Rust
 files. An explicit scan of all eight owned source/docs/fixture files found zero
-trailing-whitespace/Cyrillic/final-newline issues, and the additive JSON fixture
+trailing-whitespace/final-newline issues, and the additive JSON fixture
 parsed successfully. Logs are under ignored `build/gpui/task26-settings-*`.
 The Task 24 writer
 had already started checks on a frozen module set, so it intentionally left

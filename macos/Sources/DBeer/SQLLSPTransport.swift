@@ -210,13 +210,16 @@ actor SQLLSPTransport {
                         // One delivery at a time bounds both actor mailbox and
                         // notification work even when the child floods stdout.
                         let delivered = DispatchSemaphore(value: 0)
-                        Task { await self?.receive(message); delivered.signal() }
+                        Task { @Sendable [weak self, message, delivered] in
+                            await self?.receive(message)
+                            delivered.signal()
+                        }
                         delivered.wait()
                     }
                 }
                 try framer.finish()
             } catch { /* Transport failures are deliberately content-free. */ }
-            Task { await self?.fail() }
+            Task { @Sendable [weak self] in await self?.fail() }
         }
         do {
             _ = try await request(method: "initialize", params: .object([

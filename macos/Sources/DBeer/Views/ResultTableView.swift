@@ -694,10 +694,11 @@ struct ResultTableView: NSViewRepresentable {
             inlineTextChanged = false
             editingCell = cell
             inlineEditor = field
-            inlineViewportSize = table.visibleRect.size
+            inlineViewportSize = nil
             table.addSubview(field)
             if window.makeFirstResponder(field) { field.currentEditor()?.selectAll(nil) }
             field.delegate = self
+            layoutInlineEditor()
             refreshInlineEditorColors()
         }
 
@@ -730,8 +731,28 @@ struct ResultTableView: NSViewRepresentable {
                 // Opening row details changes the viewport after the editor
                 // starts. Keep its column visible without resetting selection.
                 inlineViewportSize = table.visibleRect.size
+                let naturalWidth = table.tableColumns.reduce(0) { $0 + $1.width + table.intercellSpacing.width }
+                if table.frame.width < naturalWidth { table.frame.size.width = naturalWidth }
                 table.scrollRowToVisible(cell.row)
                 table.scrollColumnToVisible(cell.column)
+                // Column scrolling can leave the trailing edge clipped after
+                // the ruler and inspector resize the viewport. Reveal the cell.
+                table.scrollToVisible(table.frameOfCell(atColumn: cell.column, row: cell.row))
+                if let scroll = table.enclosingScrollView {
+                    let target = table.frameOfCell(atColumn: cell.column, row: cell.row)
+                    let visible = table.visibleRect
+                    let delta: CGFloat
+                    if target.width <= visible.width, target.maxX > visible.maxX {
+                        delta = target.maxX - visible.maxX
+                    } else if target.minX < visible.minX {
+                        delta = target.minX - visible.minX
+                    } else { delta = 0 }
+                    if delta != 0 {
+                        let clip = scroll.contentView
+                        clip.scroll(to: NSPoint(x: clip.bounds.minX + delta, y: clip.bounds.minY))
+                        scroll.reflectScrolledClipView(clip)
+                    }
+                }
             }
             let frame = table.frameOfCell(atColumn: cell.column, row: cell.row).insetBy(dx: 1, dy: 0)
             if field.frame != frame { field.frame = frame }

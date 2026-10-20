@@ -683,6 +683,10 @@ struct SQLEditorTests {
                 storage.text = "SELECT * FROM "
                 coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
                     languageService: language, completionContext: context)
+                // Replacing the whole fixture source starts an independent
+                // document scenario, without the previous undone completion.
+                editor.breakUndoCoalescing()
+                editor.undoManager?.removeAllActions()
                 editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
                 editor.insertText(typed, replacementRange: editor.selectedRange())
                 let original = storage.text
@@ -699,6 +703,11 @@ struct SQLEditorTests {
             storage.text = "SELECT  FROM orders o"
             coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
                 languageService: language, completionContext: context)
+            // This scenario replaces the entire fixture outside NSTextView.
+            // Its Undo history starts at that source, independently of the
+            // preceding scenarios' insertions and undone completions.
+            editor.breakUndoCoalescing()
+            editor.undoManager?.removeAllActions()
             editor.setSelectedRange(NSRange(location: 7, length: 0))
             editor.insertText("co", replacementRange: editor.selectedRange())
             for _ in 0..<100 where !coordinator.visibleCompletionLabels.contains("COUNT") {

@@ -7,6 +7,11 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct AppShortcutTests {
+    private final class KeyLoopButton: NSButton {
+        override var acceptsFirstResponder: Bool { true }
+        override var canBecomeKeyView: Bool { true }
+    }
+
     private func defaults() -> (UserDefaults, String) {
         let name = "dev.dbeer.shortcut-tests.\(UUID().uuidString)"
         return (UserDefaults(suiteName: name)!, name)
@@ -311,7 +316,9 @@ struct AppShortcutTests {
         let store = AppShortcutStore(defaults: defaults)
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 350, height: 150))
         let recorder = ShortcutRecorderButton(frame: NSRect(x: 20, y: 70, width: 145, height: 26))
-        let next = NSButton(title: "Next", target: nil, action: nil)
+        // Standard button eligibility depends on the user's Keyboard
+        // Navigation setting. This fixture explicitly participates in Tab.
+        let next = KeyLoopButton(title: "Next", target: nil, action: nil)
         next.frame = NSRect(x: 190, y: 70, width: 80, height: 26)
         recorder.nextKeyView = next
         next.nextKeyView = recorder

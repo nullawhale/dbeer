@@ -189,7 +189,7 @@ class PublicationCases(unittest.TestCase):
         original_spec = build.importlib.util.spec_from_file_location
         def module_spec(name, path):
             return cache_spec if Path(path).name == 'prepare-go-cache.py' else original_spec(name, path)
-        def compile_only(command, environment, *, cwd=None, output=None):
+        def compile_only(command, environment, *, cwd=None, output=None, phase=None, verification=False):
             if output is not None:
                 output.write_bytes(b'{}')
             if command[:2] == ['go', 'build']:

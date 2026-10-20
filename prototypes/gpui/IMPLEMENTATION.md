@@ -223,8 +223,8 @@ Windows unverified publication returns explicit `PublicationUnknown`, cannot
 advance `latest_saved` and cannot authorize normal close.
 
 Actual command/deletion/commit/recovery/normal-close finalizer regressions remain
-unrun. The scoped six-file Rust formatting check and eight-file whitespace/no-
-Cyrillic audit completed; combined all-target checks, Clippy and root formatting
+unrun. The scoped six-file Rust formatting check and eight-file whitespace
+audit completed; combined all-target checks, Clippy and root formatting
 remain delegated to the aggregate owner after S1/S2 and Q9 release. S1 supersedes
 the earlier Q receipt only for the authorized test-only synthetic-store fixture
 exposure in `connections.rs`. No production connection behavior changes. Task 2,
@@ -1189,8 +1189,8 @@ Final static evidence for this frozen declared scope completed with exit 0:
 
 - Default and native-smoke all-target cargo check --locked --offline.
 - Default and native-smoke all-target Clippy --locked --offline -- -D warnings.
-- cargo fmt -- --check; tracked git diff --check; new owned-source whitespace and
-  Cyrillic scans. The existing block 0.1.6 future-incompatibility notice remains.
+- cargo fmt -- --check; tracked git diff --check; new owned-source whitespace
+  scans. The existing block 0.1.6 future-incompatibility notice remains.
 - Host Go exportfile/protocol/session test binaries compiled with go test -c;
   host helper built. Windows amd64 exportfile test binary cross-compiled and the
   complete Windows helper cross-built. No binary was executed.
@@ -1334,7 +1334,7 @@ Final Task 22 static evidence completed with exit 0 for this exact declared scop
 - Default and native-smoke `check --locked --offline --all-targets`.
 - Default and native-smoke `clippy --locked --offline --all-targets -- -D warnings`.
 - `fmt -- --check`, tracked `git diff --check`, and explicit source/Cargo/docs
-  trailing-whitespace/Cyrillic scans (134 files, zero findings).
+  trailing-whitespace scans (134 files, zero findings).
 - Cargo.lock includes the exact local gpui-component/gpui-base 0.7.3 path patches;
   accessibility/session_end and frozen product_identity are included in root
   compilation. No vendor dependency unit-target rerun is claimed.

@@ -303,8 +303,8 @@ manifest XML, RC/manifest placeholder absence and owned-text whitespace checks
 completed. Static inputs for the then-current VERSION 0.1.0 / BUILD_NUMBER 6 were
 prepared under `build/gpui/native-resource-static-preparation-v1`; they are local
 review output and must be regenerated after final source freeze. The source
-SVG/PNG/ICNS have no git diff, the output path is ignored, and the owned text
-contains no Cyrillic characters. These checks do not prove an RC compile, MSVC
+SVG/PNG/ICNS have no git diff, and the output path is ignored.
+These checks do not prove an RC compile, MSVC
 link or Windows run. A later
 native writer must also verify 100/125/150/175/200% scales, mixed-monitor moves,
 maximized/restored windows, IME/caret/popups, dialogs, light/dark taskbar and

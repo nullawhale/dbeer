@@ -212,8 +212,8 @@ stale menu restoration, monotonic publications and closed-owner event refusal.
 These cases do not claim real native chooser or persistence integration.
 
 Completed independent checks: rustfmt parsed/formatted only the owned module
-tree, dedicated fixture structure inspection, owned-file whitespace and Cyrillic
-scans. No runtime Rust/Swift/Go/DB/UI/credential/clipboard test or probe ran. At
+tree, dedicated fixture structure inspection, owned-file whitespace scans.
+No runtime Rust/Swift/Go/DB/UI/credential/clipboard test or probe ran. At
 source freeze this module was not declared/typechecked; the sole shared writer
 owns declaration and coordinated all-target checks. A later compile/Clippy
 summary must be recorded separately and cannot be inferred from rustfmt.
