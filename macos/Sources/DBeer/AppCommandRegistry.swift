@@ -114,7 +114,10 @@ struct AppCommandInvocation {
                   workspace.library.savedConnections.first(where: { $0.id == document.profileID }) == invocation.profile else { return }
             if let handler { await handler(document) }
             else if command == .runCurrent {
-                if document.table != nil { await workspace.run(document) }
+                if document.table != nil {
+                    if TableBrowseNavigation.isCassandra(document: document, workspace: workspace) { document.resetTablePaging() }
+                    await workspace.run(document)
+                }
                 else if let fragment = invocation.fragment { await workspace.runResolved(document, fragment: fragment) }
             } else if command == .runScript, let fragment = invocation.fragment {
                 await workspace.runResolved(document, fragment: fragment, script: true)

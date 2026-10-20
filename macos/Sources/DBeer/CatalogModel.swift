@@ -37,7 +37,7 @@ final class CatalogNode: ObservableObject, Identifiable {
 
     var isExpandable: Bool {
         kind == .schema || kind == .group || kind == .detailGroup ||
-            (kind == .object && ["table", "view"].contains(objectKind))
+            (kind == .object && ["table", "view", "type"].contains(objectKind))
     }
 
     var symbol: String {

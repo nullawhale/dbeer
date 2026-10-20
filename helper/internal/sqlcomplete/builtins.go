@@ -10,6 +10,46 @@ func builtinSignatures(name, engine string) []FunctionSignature {
 	sig := func(result string, parameters ...FunctionParameter) FunctionSignature {
 		return FunctionSignature{Parameters: parameters, ReturnType: result}
 	}
+	if engine == "cassandra" {
+		switch name {
+		case "COUNT":
+			return []FunctionSignature{sig("bigint", p("expression", "column / *"))}
+		case "SUM", "AVG":
+			return []FunctionSignature{sig("same as value", p("value", "numeric"))}
+		case "MIN", "MAX":
+			return []FunctionSignature{sig("same as value", p("value", "sortable"))}
+		case "TOKEN":
+			return []FunctionSignature{sig("partitioner token", variadic(p("partition_key", "partition key component")))}
+		case "TTL":
+			return []FunctionSignature{sig("int", p("column", "non-primary-key column"))}
+		case "WRITETIME":
+			return []FunctionSignature{sig("bigint", p("column", "non-primary-key column"))}
+		case "UUID":
+			return []FunctionSignature{sig("uuid")}
+		case "NOW", "CURRENT_TIMEUUID", "CURRENTTIMEUUID":
+			return []FunctionSignature{sig("timeuuid")}
+		case "CURRENT_TIMESTAMP", "CURRENTTIMESTAMP":
+			return []FunctionSignature{sig("timestamp")}
+		case "CURRENT_DATE", "CURRENTDATE":
+			return []FunctionSignature{sig("date")}
+		case "CURRENT_TIME", "CURRENTTIME":
+			return []FunctionSignature{sig("time")}
+		case "TO_DATE", "TODATE":
+			return []FunctionSignature{sig("date", p("value", "timeuuid / timestamp"))}
+		case "TO_TIMESTAMP", "TOTIMESTAMP":
+			return []FunctionSignature{sig("timestamp", p("value", "timeuuid / date"))}
+		case "TO_UNIX_TIMESTAMP", "TOUNIXTIMESTAMP":
+			return []FunctionSignature{sig("bigint", p("value", "timeuuid / timestamp / date"))}
+		case "MIN_TIMEUUID", "MAX_TIMEUUID", "MINTIMEUUID", "MAXTIMEUUID":
+			return []FunctionSignature{sig("timeuuid", p("value", "timestamp"))}
+		case "TOJSON":
+			return []FunctionSignature{sig("text", p("value", "any"))}
+		case "FROMJSON":
+			return []FunctionSignature{sig("column type", p("value", "text"))}
+		default:
+			return nil
+		}
+	}
 	common := map[string][]FunctionSignature{
 		"COUNT":    {sig("bigint", p("expression", "any / *"))},
 		"MIN":      {sig("same as value", p("value", "sortable"))},

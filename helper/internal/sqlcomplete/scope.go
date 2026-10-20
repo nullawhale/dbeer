@@ -309,6 +309,9 @@ func (a *analysis) resolve(candidate *source, ctes []*binding) {
 		}
 	}
 	for _, entry := range a.context.Catalog {
+		if a.context.Engine == "cassandra" && candidate.schema.value == "" && a.context.Keyspace != "" && entry.Schema != a.context.Keyspace {
+			continue
+		}
 		if entry.Kind != "function" && identifierEqual(candidate.name, entry.Name, a.context.Engine) && (candidate.schema.value == "" || identifierEqual(candidate.schema, entry.Schema, a.context.Engine)) {
 			candidate.entries = append(candidate.entries, entry)
 			candidate.columns = append(candidate.columns, entry.Columns...)

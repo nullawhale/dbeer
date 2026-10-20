@@ -84,6 +84,7 @@ final class GridDraft: ObservableObject {
     let reference: TableReference
     let columns: [ResultColumn]
     let metadata: [[String: String]]
+    let partitionMarkers: [GridPartitionMarker?]?
     @Published var rows: [GridRow] {
         didSet { cachedPresentation = nil }
     }
@@ -98,6 +99,7 @@ final class GridDraft: ObservableObject {
     @Published var notice: String?
     @Published var preview: BackendMessage?
     var policyReadOnly = false
+    var supportsEditing = true
     var applySessionID: String?
     var applyQueryID: String?
     var cancelRequested = false
@@ -110,21 +112,32 @@ final class GridDraft: ObservableObject {
         let loadedColumns = result.columns ?? []
         columns = loadedColumns
         let byName = Dictionary(metadata.compactMap { record in record["name"].map { ($0, record) } }, uniquingKeysWith: { _, last in last })
-        self.metadata = columns.map { byName[$0.name] ?? [:] }
-        rows = (result.rows ?? []).map { row in
+        let alignedMetadata = columns.map { byName[$0.name] ?? [:] }
+        self.metadata = alignedMetadata
+        let loadedRows = (result.rows ?? []).map { row in
             let values = row.enumerated().map { index, value -> ChangeValue in
                 guard let value else { return .null }
                 return ChangeValue(kind: loadedColumns.indices.contains(index) && loadedColumns[index].encoding == "base64" ? "binary" : "text", value: value)
             }
             return GridRow(original: values, values: values)
         }
+        rows = loadedRows
+        partitionMarkers = GridPartitions.markers(columns: loadedColumns, metadata: alignedMetadata, rows: loadedRows)
     }
 
     var editableColumns: IndexSet {
         IndexSet(metadata.indices.filter { metadata[$0]["editable"] == "true" })
     }
 
+    var isCassandra: Bool { columns.first?.engine == .cassandra }
+    var supportsRowInsertionAndDeletion: Bool { !isCassandra }
+    var editingNotice: String? {
+        guard isCassandra, supportsEditing else { return nil }
+        return "Apply saves all pending rows atomically within one partition. If any original value changed, no rows are saved. Rows from different partitions cannot be applied together. A timeout can leave the whole batch outcome unknown. Updated cells use the table's default TTL; existing cell TTLs are not preserved."
+    }
+
     var readOnlyReason: String? {
+        if !supportsEditing { return "Grid editing is not supported by this database engine." }
         if policyReadOnly { return "Readonly is enabled for this connection." }
         if reference.kind != "table" { return "Views are read only." }
         if !metadata.contains(where: { (Int($0["primaryKey"] ?? "0") ?? 0) > 0 }) { return "This table has no primary key." }
@@ -147,6 +160,19 @@ final class GridDraft: ObservableObject {
     var valueKinds: [[String]] { presentation.valueKinds }
     var deletedRows: IndexSet { presentation.deletedRows }
     var modifiedCells: Set<ResultGridCell> { presentation.modifiedCells }
+    var partitionStatus: GridPartitionStatus? {
+        guard let partitionMarkers else { return nil }
+        let pending = rows.indices.filter { rows[$0].isInserted || rows[$0].isDeleted || !rows[$0].assignments.isEmpty }
+        guard !pending.isEmpty else { return nil }
+        var groups: [Int: GridPartitionMarker] = [:]
+        for row in pending {
+            guard partitionMarkers.indices.contains(row), let marker = partitionMarkers[row] else { return .unavailable }
+            groups[marker.number] = marker
+        }
+        if groups.count == 1, let marker = groups.values.first { return .single(marker) }
+        return .multiple(groups.count)
+    }
+    var canApply: Bool { canEdit && partitionStatus?.allowsApply != false }
 
     func value(row: Int, column: Int) -> ChangeValue? {
         guard rows.indices.contains(row), rows[row].values.indices.contains(column) else { return nil }
@@ -156,6 +182,10 @@ final class GridDraft: ObservableObject {
     func set(_ value: ChangeValue, row: Int, column: Int) {
         guard canEdit, rows.indices.contains(row), rows[row].values.indices.contains(column),
               editableColumns.contains(column), !rows[row].isDeleted else { return }
+        if isCassandra {
+            guard value.kind != "default" else { return }
+        }
+        error = nil
         rows[row].values[column] = value
         if rows[row].original?[column] == value { rows[row].assignments[column] = nil }
         else { rows[row].assignments[column] = value }
@@ -164,14 +194,14 @@ final class GridDraft: ObservableObject {
     }
 
     func insert() {
-        guard canEdit else { return }
+        guard canEdit, supportsRowInsertionAndDeletion else { return }
         rows.append(GridRow(original: nil, values: columns.map { _ in .default }))
         selectedRows = IndexSet(integer: rows.count - 1)
         preview = nil
     }
 
     func deleteSelected() {
-        guard canEdit else { return }
+        guard canEdit, supportsRowInsertionAndDeletion else { return }
         for row in selectedRows.sorted(by: >) where rows.indices.contains(row) {
             if rows[row].isInserted { rows.remove(at: row) }
             else { rows[row].isDeleted = true }

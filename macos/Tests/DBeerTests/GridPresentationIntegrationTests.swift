@@ -183,6 +183,89 @@ struct GridPresentationIntegrationTests {
         try png.write(to: directory.appendingPathComponent(name + ".png"))
     }
 
+    private func partitionFixture() -> Fixture {
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(), credentialStore: MemoryConnectionCredentialStore())
+        let reference = TableReference(schema: "shop", name: "orders", kind: "table")
+        let names = ["customer_id", "year", "order_id", "status", "amount"]
+        let columns = names.enumerated().map { ResultColumn(index: $0.offset, name: $0.element, engine: .cassandra, nativeType: $0.offset < 3 ? "int" : "text") }
+        let result = BackendMessage(type: "query.result", requestId: "partition-presentation", columns: columns, rows: [
+            ["10", "2026", "101", "paid", "120.00"], ["10", "2026", "102", "shipped", "89.50"],
+            ["20", "2026", "103", "new", "45.00"], ["10", "2026", "104", "paid", "60.00"],
+            ["20", "2026", "105", "new", "32.00"], ["10", "2026", "106", "pending", "25.00"],
+        ], commandTag: "SELECT", rowCount: 6, displayedRowCount: 6)
+        let metadata = names.enumerated().map { index, name in
+            ["name": name, "nativeType": columns[index].nativeType, "primaryKey": index < 3 ? "\(index + 1)" : "0",
+             "partitionKeyPosition": index < 2 ? "\(index + 1)" : "0", "editable": index < 3 ? "false" : "true"]
+        }
+        let grid = GridDraft(reference: reference, result: result, metadata: metadata)
+        let document = workspace.newDocument()
+        document.title = "orders"
+        document.table = reference
+        document.tableColumns = metadata
+        document.attachGrid(grid)
+        document.executions = [SQLExecution(sql: "", range: NSRange(location: 0, length: 0), status: "Completed", result: result)]
+        return Fixture(workspace: workspace, document: document, grid: grid, result: result)
+    }
+
+    @Test func partitionMarkersAndApplyStatusFollowPendingRowsInBothAppearances() async throws {
+        let fixture = partitionFixture()
+        for (row, amount) in [(0, "125.00"), (1, "90.00"), (3, "65.00")] {
+            fixture.grid.set(ChangeValue(kind: "text", value: amount), row: row, column: 4)
+        }
+        let (window, content) = host(fixture)
+        defer { window.close() }
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            fixture.presentation.scheme = name == "dark" ? .dark : .light
+            window.appearance = NSAppearance(named: appearance)
+            try await settle(content)
+            let table = try #require(descendants(content, of: ResultGridTableView.self).first)
+            let ruler = try #require(table.enclosingScrollView?.verticalRulerView as? ResultGridRowNumberRuler)
+            #expect(table.numberOfColumns == 5 && ruler.ruleThickness >= 120)
+            #expect(ruler.partitionMarker(forRow: 0)?.label == "P1" && ruler.partitionMarker(forRow: 3)?.label == "P1")
+            #expect(ruler.partitionMarker(forRow: 2)?.label == "P2")
+            #expect(try element("gridApply", in: content).enabled)
+            let status = try element("gridPartitionStatus", in: content)
+            #expect(status.label == "1 partition · P1" || status.value == "1 partition · P1")
+            try capture(content, name: "grid-partitions-\(name)")
+        }
+        let table = try #require(descendants(content, of: ResultGridTableView.self).first)
+        let ruler = try #require(table.enclosingScrollView?.verticalRulerView as? ResultGridRowNumberRuler)
+        let rect = ruler.rect(forRow: 2)
+        let point = ruler.convert(NSPoint(x: rect.maxX - 44, y: rect.midY), to: nil)
+        let hit = content.hitTest(content.superview?.convert(point, from: nil) ?? point)
+        #expect(hit === ruler)
+        for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            window.sendEvent(try #require(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 1, clickCount: 1, pressure: 1)))
+        }
+        try await settle(content)
+        #expect(table.selectedRowIndexes == IndexSet([2, 4]))
+        #expect(fixture.grid.selectedRows == IndexSet([2, 4]))
+        let selectedStatus = try element("gridPartitionStatus", in: content)
+        #expect(selectedStatus.label == "1 partition · P1" || selectedStatus.value == "1 partition · P1")
+        fixture.grid.set(ChangeValue(kind: "text", value: "46.00"), row: 2, column: 4)
+        try await settle(content)
+        let mixedStatus = try element("gridPartitionStatus", in: content)
+        #expect(mixedStatus.label == "2 partitions" || mixedStatus.value == "2 partitions")
+        #expect(try !element("gridApply", in: content).enabled)
+        try capture(content, name: "grid-partitions-mixed-dark")
+        #expect(!(await fixture.workspace.applyGrid(fixture.document)))
+        #expect(fixture.grid.pendingCount == 4 && fixture.grid.error?.contains("one partition") == true)
+        fixture.grid.set(ChangeValue(kind: "text", value: "45.00"), row: 2, column: 4)
+        try await settle(content)
+        #expect(try element("gridApply", in: content).enabled)
+        window.setContentSize(NSSize(width: 600, height: 620))
+        try await settle(content)
+        let apply = try #require(element("gridApply", in: content).frame)
+        let status = try #require(element("gridPartitionStatus", in: content).frame)
+        let frame = window.convertToScreen(content.bounds)
+        #expect(apply.minX >= frame.minX && apply.maxX <= frame.maxX + 1)
+        #expect(status.minX >= frame.minX && status.maxX <= apply.minX)
+        try capture(content, name: "grid-partitions-compact-dark")
+        await fixture.workspace.shutdown()
+    }
+
     @Test func filterLivesBesideConnectionAboveTheGridAndRowActionsStayBelow() async throws {
         let fixture = fixture()
         let (window, content) = host(fixture)

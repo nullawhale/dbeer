@@ -33,6 +33,9 @@ type Statement struct {
 // failure makes the whole input unknown, so a partially scanned script can
 // never be authorized as a sequence of reads.
 func Classify(engine, sql string) []Statement {
+	if engine == "cassandra" {
+		return classifyCQLScript(sql)
+	}
 	if engine == "postgresql" {
 		engine = "postgres"
 	}
@@ -98,7 +101,11 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 			l.pos++
 			continue
 		}
-		if c == '-' && l.has("--") && (l.engine == "postgres" || l.pos+2 == len(l.sql) || isSpace(l.sql[l.pos+2])) {
+		if c == '-' && l.has("--") && (l.engine == "postgres" || l.engine == "cassandra" || l.pos+2 == len(l.sql) || isSpace(l.sql[l.pos+2])) {
+			l.lineComment()
+			continue
+		}
+		if l.engine == "cassandra" && l.has("//") {
 			l.lineComment()
 			continue
 		}
@@ -112,7 +119,7 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 			}
 			continue
 		}
-		if c == ')' || c == ']' {
+		if c == ')' || c == ']' || c == '}' && l.engine == "cassandra" {
 			if c != close {
 				return nil, false
 			}
@@ -121,12 +128,14 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 		}
 		t := token{start: l.pos}
 		switch {
-		case c == '(' || c == '[':
+		case c == '(' || c == '[' || c == '{' && l.engine == "cassandra":
 			t.kind, t.text = group, string(c)
 			l.pos++
 			end := byte(')')
 			if c == '[' {
 				end = ']'
+			} else if c == '{' {
+				end = '}'
 			}
 			var ok bool
 			t.children, ok = l.scan(end, depth+1)
@@ -149,7 +158,7 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 			if !l.quoted('\'', true) {
 				return nil, false
 			}
-		case c == '$' && l.engine == "postgres":
+		case c == '$' && (l.engine == "postgres" || l.engine == "cassandra"):
 			delimiter := l.dollarDelimiter()
 			if delimiter == "" {
 				t.kind, t.text = symbol, "$"
@@ -237,7 +246,7 @@ func (l *lexer) quoted(quote byte, escaped bool) bool {
 	for l.pos < len(l.sql) {
 		c := l.sql[l.pos]
 		l.pos++
-		if c == '\\' {
+		if c == '\\' && l.engine != "cassandra" {
 			// Session SQL modes affect backslash interpretation. Only explicit
 			// PostgreSQL E strings have a stable escape grammar here.
 			if !escaped || l.pos == len(l.sql) {

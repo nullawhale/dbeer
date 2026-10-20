@@ -37,7 +37,7 @@ struct GridLifecycleTests {
             kind = command['type']
             reply = {'requestId': command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=3)
+                reply.update(type='hello.ack', protocolVersion=4)
             elif kind == 'operation.assess':
                 reply.update(type='operation.assessment', sessionId=command['sessionId'], queryId=command['queryId'],
                              assessment={'decision':'confirm' if delay == 'apply-preview' else 'allow','policy':{'environment':'unspecified','readOnly':False},
@@ -48,7 +48,7 @@ struct GridLifecycleTests {
                     recorded.write('connect\\n')
                 if delay == 'apply-connect' and connections == 3:
                     wait()
-                reply.update(type='connect.result', engine='postgresql', capabilities=['execute','cancel','transactions','catalog'],
+                reply.update(type='connect.result', engine='postgresql', capabilities=['execute','cancel','transactions','catalog','gridEditing'],
                              sessionId='session-' + str(connections), transactionStatus='idle')
             elif kind in ['execute', 'catalog', 'changes.preview', 'changes.apply']:
                 session = command['sessionId']

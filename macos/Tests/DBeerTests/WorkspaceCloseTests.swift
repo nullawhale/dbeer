@@ -15,7 +15,7 @@ struct WorkspaceCloseTests {
             kind = command['type']
             reply = {'requestId':command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=3)
+                reply.update(type='hello.ack', protocolVersion=4)
             elif kind == 'operation.assess':
                 reply.update(type='operation.assessment', sessionId=command['sessionId'], queryId=command['queryId'],
                              assessment={'decision':'allow','policy':{'environment':'unspecified','readOnly':False},

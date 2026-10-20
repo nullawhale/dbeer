@@ -49,5 +49,13 @@ type ConnectionError struct {
 func (err *ConnectionError) Error() string { return err.Message }
 
 func Capabilities(engine string) []string {
-	return []string{"execute", "cancel", "transactions", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment"}
+	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment"}
+	switch engine {
+	case "cassandra":
+		return append(common, "localReadOnly", "cursorPagination", "gridEditing")
+	case "", "postgresql", "mysql":
+		return append(common, "transactions", "gridEditing", "serverReadOnly")
+	default:
+		return nil
+	}
 }

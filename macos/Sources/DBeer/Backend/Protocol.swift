@@ -1,21 +1,25 @@
 import Foundation
 
 enum BackendProtocol {
-    static let version = 3
+    static let version = 4
     static let maxFrameBytes = 16 * 1_024 * 1_024
 }
 
 enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
-    case postgresql, mysql
+    case postgresql, mysql, cassandra
 
+    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra]
     var id: String { rawValue }
-    var displayName: String { self == .postgresql ? "PostgreSQL" : "MySQL" }
-    var defaultPort: Int { self == .postgresql ? 5432 : 3306 }
-    var defaultDatabase: String { self == .postgresql ? "postgres" : "mysql" }
-    var defaultUser: String { self == .postgresql ? "postgres" : "root" }
+    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra" } }
+    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042 } }
+    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra: "" } }
+    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra: "" } }
     var sslModes: [String] {
-        self == .postgresql ? ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"] :
-            ["disable", "require", "verify-ca", "verify-full"]
+        switch self {
+        case .postgresql: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
+        case .mysql: ["disable", "require", "verify-ca", "verify-full"]
+        case .cassandra: ["verify-full", "disable"]
+        }
     }
 }
 
@@ -29,10 +33,14 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     var sslMode: String
     var sslRootCert: String?
     var policy: ExecutionPolicy
+    var contactPoints: [String]?
+    var localDatacenter: String?
+    var consistency: String?
 
     init(host: String, port: Int, database: String, user: String, password: String,
          sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql,
-         policy: ExecutionPolicy = ExecutionPolicy()) {
+         policy: ExecutionPolicy = ExecutionPolicy(), contactPoints: [String]? = nil,
+         localDatacenter: String? = nil, consistency: String? = nil) {
         self.engine = engine
         self.host = host
         self.port = port
@@ -42,10 +50,13 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
         self.sslMode = sslMode
         self.sslRootCert = sslRootCert
         self.policy = policy
+        self.contactPoints = contactPoints
+        self.localDatacenter = localDatacenter
+        self.consistency = consistency ?? (engine == .cassandra ? "LOCAL_QUORUM" : nil)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, host, port, database, user, password, sslMode, sslRootCert, policy
+        case engine, host, port, database, user, password, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency
     }
 
     init(from decoder: Decoder) throws {
@@ -59,6 +70,9 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
         sslMode = try values.decode(String.self, forKey: .sslMode)
         sslRootCert = try values.decodeIfPresent(String.self, forKey: .sslRootCert)
         policy = try values.decodeIfPresent(ExecutionPolicy.self, forKey: .policy) ?? ExecutionPolicy()
+        contactPoints = try values.decodeIfPresent([String].self, forKey: .contactPoints)
+        localDatacenter = try values.decodeIfPresent(String.self, forKey: .localDatacenter)
+        consistency = try values.decodeIfPresent(String.self, forKey: .consistency) ?? (engine == .cassandra ? "LOCAL_QUORUM" : nil)
     }
 }
 
@@ -72,6 +86,7 @@ struct CatalogRequest: Codable, Sendable, Equatable {
     var identity: String?
     var search: String?
     var page: Int?
+    var cursor: String?
     var sort: [CatalogSort]?
     var filters: [CatalogFilter]?
 }
@@ -111,9 +126,13 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     var displayedRowCount: Int = 0
     var truncated: Bool = false
     var displayNotice: String?
+    var affectedRowCountKnown: Bool?
+    var nextCursor: String?
+
+    static func validCursor(_ value: String) -> Bool { BackendMessage.validID(value) && !value.contains("\0") }
 
     func valid(streamed: Bool = false) -> Bool {
-        rowCount >= 0 && displayedRowCount >= 0 &&
+        (nextCursor == nil || Self.validCursor(nextCursor!)) && rowCount >= 0 && displayedRowCount >= 0 &&
             (streamed ? rows.isEmpty : displayedRowCount == rows.count) &&
             columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
                 ($0.element.encoding == nil || $0.element.encoding == "base64") } &&
@@ -197,7 +216,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
 }
 
 enum TransactionStatus: String, Codable, Sendable {
-    case idle, transaction, failedTransaction
+    case idle, transaction, failedTransaction, unsupported
 }
 
 struct ResultColumn: Codable, Sendable, Equatable {
@@ -249,6 +268,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var protocolVersion: Int?
     var buildIdentity: GPUIProductBuildIdentity?
     var engine: DatabaseEngine?
+    var currentKeyspace: String?
     var capabilities: [String]?
     var sessionId: String?
     var queryId: String?
@@ -261,6 +281,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var displayedRowCount: Int?
     var truncated: Bool?
     var displayNotice: String?
+    var affectedRowCountKnown: Bool?
+    var nextCursor: String?
     var status: String?
     var category: String?
     var message: String?
@@ -273,6 +295,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var exportPath: String?
     var exportFormat: String?
     var exportRowCount: Int64?
+    var appliedChangeCount: Int?
     var connected: Bool?
     var outcomeUnknown: Bool?
     var sqlCompleted: Bool?
@@ -284,6 +307,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
         if let sessionId, !Self.validID(sessionId) { throw BackendTransportError(.invalidMessage) }
         if let queryId, !Self.validID(queryId) { throw BackendTransportError(.invalidMessage) }
+        if let nextCursor, !QueryResultSet.validCursor(nextCursor) { throw BackendTransportError(.invalidMessage) }
+        if let appliedChangeCount, !(0...1000).contains(appliedChangeCount) || !["query.result", "error"].contains(type) {
+            throw BackendTransportError(.invalidMessage)
+        }
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
@@ -317,7 +344,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         default: valid = false
         }
         guard sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
-              sqlCompleted != true || (type == "error" && outcomeUnknown != true && ["notPublished", "unknown"].contains(exportPublication)),
+              sqlCompleted != true || (type == "error" && outcomeUnknown != true),
               exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }
     }
 

@@ -170,7 +170,7 @@ func functionSignatures(name, schema token, context Context) []FunctionSignature
 	}
 	// An explicitly qualified user function must never acquire a built-in's
 	// signature just because its name has the same spelling.
-	builtinSchema := context.Engine != "mysql" && identifierEqual(schema, "pg_catalog", context.Engine)
+	builtinSchema := context.Engine == "cassandra" && identifierEqual(schema, "system", context.Engine) || context.Engine != "mysql" && context.Engine != "cassandra" && identifierEqual(schema, "pg_catalog", context.Engine)
 	if schema.value == "" && !catalogMatch || builtinSchema {
 		if name.kind == wordToken || context.Engine == "mysql" || name.value == strings.ToLower(name.value) {
 			values = append(values, builtinSignatures(strings.ToUpper(name.value), context.Engine)...)

@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-// Additional v3 fixtures exercise the existing contract needed by all frontends.
+// Additional v4 fixtures exercise the existing contract needed by all frontends.
 // Export destinations are lexical fixtures, remapped for native path semantics;
 // parsing never executes SQL, publishes a file or opens a database connection.
-func TestSharedV3OperationContract(t *testing.T) {
-	data, err := os.ReadFile("../../../protocol/fixtures/contract-v3.json")
+func TestSharedV4OperationContract(t *testing.T) {
+	data, err := os.ReadFile("../../../protocol/fixtures/contract-v4.json")
 	if err != nil {
 		t.Fatal("cannot read shared contract fixtures")
 	}
@@ -53,6 +53,9 @@ func TestSharedV3OperationContract(t *testing.T) {
 			t.Fatalf("command fixture %d failed the existing parser", index)
 		}
 		kinds[command.Type] = true
+		if command.RequestID == "cassandra-grid-preview" && (command.Changes.Columns[0].Engine != "cassandra" || command.Changes.Changes[0].Original[2].Kind != "binary") {
+			t.Fatal("lost Cassandra snapshot engine or binary value")
+		}
 		if command.Type == "changes.apply" && (len(command.Changes.Changes) != 3 || command.Authorization == "") {
 			t.Fatal("lost typed change batch or authorization")
 		}

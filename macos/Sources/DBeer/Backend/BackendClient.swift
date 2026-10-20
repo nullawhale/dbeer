@@ -376,6 +376,7 @@ actor BackendClient {
                 result.commandTag = first.commandTag; result.rowCount = first.rowCount
                 result.displayedRowCount = first.displayedRowCount
                 result.truncated = first.truncated; result.displayNotice = first.displayNotice
+                result.affectedRowCountKnown = first.affectedRowCountKnown; result.nextCursor = first.nextCursor
             } else {
                 result.columns = []; result.rows = []; result.displayedRowCount = 0
             }

@@ -20,29 +20,47 @@ extension ApplicationWorkspace {
         guard canStartOperation(document, forClosing: forClosing), !document.isRunning,
               let grid = document.grid, grid.pendingCount > 0, !grid.isApplying,
               !grid.outcomeUnknown, !grid.policyReadOnly else { return false }
+        if let status = grid.partitionStatus, !status.allowsApply {
+            grid.error = status.help
+            return false
+        }
         grid.isApplying = true
         grid.cancelRequested = false
         grid.error = nil
         grid.notice = nil
+        let request = grid.request()
         defer {
             grid.isApplying = false
             grid.applySessionID = nil
             grid.applyQueryID = nil
         }
         do {
-            let reply = try await performChanges(document, grid: grid, request: grid.request(), apply: true, forClosing: forClosing)
+            let reply = try await performChanges(document, grid: grid, request: request, apply: true, forClosing: forClosing)
+            if grid.isCassandra, reply.appliedChangeCount != request.changes.count {
+                throw BackendTransportError(.invalidMessage, outcomeUnknown: true)
+            }
             document.attachGrid(nil)
             grid.isApplying = false
+            if grid.isCassandra { document.resetTablePaging() }
             if !forClosing { await run(document) }
             document.grid?.notice = reply.commandTag ?? "Changes applied."
             return true
         } catch {
-            if let remote = error as? BackendRemoteError { grid.outcomeUnknown = remote.reply.outcomeUnknown == true }
+            if let remote = error as? BackendRemoteError {
+                grid.outcomeUnknown = remote.reply.outcomeUnknown == true
+                if grid.isCassandra {
+                    grid.preview = nil
+                    if let count = remote.reply.appliedChangeCount, count != 0 { grid.outcomeUnknown = true }
+                }
+            }
             if let transport = error as? BackendTransportError { grid.outcomeUnknown = transport.outcomeUnknown }
             grid.error = error.localizedDescription
             if grid.outcomeUnknown {
-                grid.error = "The commit outcome is unknown. Review the data in a new tab, then discard local changes and reload before applying further changes."
+                grid.error = grid.isCassandra
+                    ? "The atomic write outcome is unknown. The whole batch may have been applied. Review the data in a new tab, then discard local changes and reload before applying further changes."
+                    : "The write outcome is unknown. Review the data in a new tab, then discard local changes and reload before applying further changes."
             }
+            if grid.isCassandra { document.resetTablePaging() }
             return false
         }
     }
@@ -82,7 +100,8 @@ extension ApplicationWorkspace {
         }
         let boundSettings = ConnectionSettings(host: runtime.host, port: boundPort, database: runtime.database,
             user: runtime.user, password: "", sslMode: runtime.sslMode,
-            sslRootCert: runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert, engine: runtime.engine, policy: runtime.policy)
+            sslRootCert: runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert, engine: runtime.engine, policy: runtime.policy,
+            contactPoints: runtime.contactPoints, localDatacenter: runtime.localDatacenter, consistency: runtime.consistency)
         func validateConnectionBinding() throws {
             guard document.profileID == profileID, document.runtime === runtime, document.grid === grid,
                   runtime.connectionState == .connected, runtime.sessionId == boundSessionID,
@@ -92,6 +111,8 @@ extension ApplicationWorkspace {
                   runtime.engine == boundSettings.engine, runtime.host == boundSettings.host,
                   Int(runtime.port) == boundSettings.port, runtime.database == boundSettings.database,
                   runtime.user == boundSettings.user, runtime.sslMode == boundSettings.sslMode,
+                  runtime.contactPoints == boundSettings.contactPoints, runtime.localDatacenter == boundSettings.localDatacenter,
+                  runtime.consistency == boundSettings.consistency, runtime.policy == boundSettings.policy,
                   (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == boundSettings.sslRootCert else {
                 throw ChangesClientError(message: "The profile changed after this table was loaded. Reconnect the profile and reload the table before previewing or applying changes.")
             }
@@ -134,9 +155,10 @@ extension ApplicationWorkspace {
                       canStartOperation(document, forClosing: forClosing) else {
                     throw ChangesClientError(message: "The changes operation was cancelled or changed before confirmation.")
                 }
-                let generatedPreview = preview.catalogRecords.map { record in
+                let generatedSQL = preview.catalogRecords.map { record in
                     (record["sql"] ?? "") + "\nParameters: " + (record["parameters"] ?? "")
                 }.joined(separator: "\n\n")
+                let generatedPreview = [grid.editingNotice, generatedSQL].compactMap { $0 }.joined(separator: "\n\n")
                 guard let authorization = try await authorizeOperations([OperationRequest(type: "changes.apply", changes: request)],
                     sessionID: sessionID, profile: profile, client: client, generatedPreview: generatedPreview) else {
                     throw ChangesClientError(message: "Apply was cancelled before execution.")

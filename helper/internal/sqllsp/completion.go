@@ -24,7 +24,7 @@ type completionData struct {
 }
 
 func complete(text string, offset int, context configuration) []completionItem {
-	values := sqlcomplete.Complete(text, offset, sqlcomplete.Context{Engine: context.Engine, Catalog: context.Catalog})
+	values := sqlcomplete.Complete(text, offset, sqlcomplete.Context{Engine: context.Engine, Catalog: context.Catalog, Keyspace: context.Keyspace})
 	items := make([]completionItem, 0, len(values))
 	for _, value := range values {
 		item := completionItem{Label: value.Label, InsertText: value.InsertText, Kind: value.Kind, Detail: value.Detail,

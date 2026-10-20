@@ -10,15 +10,19 @@ final class ResultGridRowNumberRuler: NSRulerView {
         didSet { if hoveredRow != oldValue { needsDisplay = true } }
     }
     private var isSelectingRows = false
+    var partitionMarkers: [GridPartitionMarker?]?
+    private var numberWidth: CGFloat = 40
+    private let selectionHelp = "Select rows. Shift-click to select a range; Command-click to toggle individual rows."
 
     override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     init(scrollView: NSScrollView, table: ResultGridTableView) {
         self.table = table
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = table
         ruleThickness = 40
-        toolTip = "Select rows. Shift-click to select a range; Command-click to toggle individual rows."
+        toolTip = selectionHelp
         setAccessibilityLabel("Row numbers")
         scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled),
@@ -29,14 +33,64 @@ final class ResultGridRowNumberRuler: NSRulerView {
 
     func updateRowCount() {
         let number = String(max(1, table?.numberOfRows ?? 0)) as NSString
-        let width = max(40, ceil(number.size(withAttributes: [.font: font]).width) + 20)
+        numberWidth = max(40, ceil(number.size(withAttributes: [.font: font]).width) + 20)
+        let width = numberWidth + (partitionMarkers == nil ? 0 : 88)
         if ruleThickness != width { ruleThickness = width }
+        setAccessibilityLabel(partitionMarkers == nil ? "Row numbers" : "Row numbers and partitions")
+        window?.invalidateCursorRects(for: self)
         needsDisplay = true
     }
 
     @objc private func scrolled() {
         hoveredRow = nil
+        toolTip = selectionHelp
+        window?.invalidateCursorRects(for: self)
         needsDisplay = true
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+
+    func partitionMarker(forRow row: Int) -> GridPartitionMarker? {
+        guard let partitionMarkers, partitionMarkers.indices.contains(row) else { return nil }
+        return partitionMarkers[row]
+    }
+
+    private func rows(in marker: GridPartitionMarker) -> IndexSet {
+        guard let partitionMarkers, let table else { return [] }
+        return IndexSet(partitionMarkers.indices.prefix(table.numberOfRows).filter {
+            partitionMarkers[$0]?.number == marker.number
+        })
+    }
+
+    @discardableResult
+    private func selectPartition(at row: Int) -> Bool {
+        guard let marker = partitionMarker(forRow: row), let table else { return false }
+        table.selectPartitionRows(rows(in: marker))
+        return true
+    }
+
+    private func partitionRect(forRow row: Int) -> NSRect {
+        var rect = rect(forRow: row)
+        rect.origin.x = numberWidth
+        rect.size.width = max(0, bounds.width - numberWidth)
+        return rect.intersection(dataRect)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard partitionMarkers != nil else { return }
+        for row in visibleRows where partitionMarker(forRow: row) != nil {
+            let rect = partitionRect(forRow: row)
+            if !rect.isEmpty { addCursorRect(rect, cursor: .pointingHand) }
+        }
+    }
+
+    private func partitionColor(_ marker: GridPartitionMarker) -> NSColor {
+        let colors: [NSColor] = [.systemBlue, .systemOrange, .systemTeal, .systemPurple, .systemPink, .systemIndigo]
+        return colors[(marker.number - 1) % colors.count]
     }
 
     private var visibleRows: Range<Int> {
@@ -86,8 +140,20 @@ final class ResultGridRowNumberRuler: NSRulerView {
             let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foreground]
             let number = String(row + 1) as NSString
             let size = number.size(withAttributes: attributes)
-            number.draw(at: NSPoint(x: bounds.maxX - size.width - 10, y: rowRect.midY - size.height / 2),
+            number.draw(at: NSPoint(x: numberWidth - size.width - 10, y: rowRect.midY - size.height / 2),
                 withAttributes: attributes)
+            if partitionMarkers != nil {
+                let marker = partitionMarker(forRow: row)
+                if let marker {
+                    let color = partitionColor(marker)
+                    color.setFill()
+                    NSRect(x: numberWidth, y: rowRect.minY, width: 3, height: rowRect.height).fill()
+                    NSBezierPath(ovalIn: NSRect(x: numberWidth + 13, y: rowRect.midY - 4, width: 8, height: 8)).fill()
+                }
+                let label = (marker?.label ?? "—") as NSString
+                let labelSize = label.size(withAttributes: attributes)
+                label.draw(at: NSPoint(x: numberWidth + 28, y: rowRect.midY - labelSize.height / 2), withAttributes: attributes)
+            }
             border.setFill()
             NSRect(x: 0, y: rowRect.maxY - 1, width: bounds.width, height: 1).fill()
         }
@@ -95,6 +161,17 @@ final class ResultGridRowNumberRuler: NSRulerView {
         border.setFill()
         if dataRect.minY > bounds.minY {
             NSRect(x: bounds.minX, y: dataRect.minY - 1, width: bounds.width, height: 1).fill()
+            if partitionMarkers != nil {
+                let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                    .foregroundColor: AppPalette.isCustom ? AppPalette.nsColor(.text) : NSColor.labelColor]
+                let title = "Partition" as NSString
+                let size = title.size(withAttributes: attributes)
+                title.draw(at: NSPoint(x: numberWidth + 8, y: (bounds.minY + dataRect.minY - size.height) / 2), withAttributes: attributes)
+            }
+        }
+        if partitionMarkers != nil {
+            border.setFill()
+            NSRect(x: numberWidth - 1, y: rect.minY, width: 1, height: rect.height).fill()
         }
         NSRect(x: bounds.maxX - 1, y: rect.minY, width: 1, height: rect.height).fill()
     }
@@ -122,6 +199,7 @@ final class ResultGridRowNumberRuler: NSRulerView {
     override func mouseDown(with event: NSEvent) {
         isSelectingRows = false
         guard let row = row(at: event) else { return }
+        if convert(event.locationInWindow, from: nil).x >= numberWidth, selectPartition(at: row) { return }
         isSelectingRows = true
         table?.selectRowNumber(row, modifiers: event.modifierFlags)
     }
@@ -151,14 +229,24 @@ final class ResultGridRowNumberRuler: NSRulerView {
         hoverTracking = tracking
     }
 
-    override func mouseEntered(with event: NSEvent) { hoveredRow = row(at: event) }
-    override func mouseMoved(with event: NSEvent) { hoveredRow = row(at: event) }
-    override func mouseExited(with event: NSEvent) { hoveredRow = nil }
+    private func updateHover(with event: NSEvent) {
+        hoveredRow = row(at: event)
+        let point = convert(event.locationInWindow, from: nil)
+        let help: String
+        if partitionMarkers != nil, point.x >= numberWidth, let hoveredRow {
+            help = partitionMarker(forRow: hoveredRow)?.help ?? "A complete partition key is unavailable for this row."
+        } else { help = selectionHelp }
+        if toolTip != help { toolTip = help }
+    }
+
+    override func mouseEntered(with event: NSEvent) { updateHover(with: event) }
+    override func mouseMoved(with event: NSEvent) { updateHover(with: event) }
+    override func mouseExited(with event: NSEvent) { hoveredRow = nil; toolTip = selectionHelp }
 
     override func accessibilityChildren() -> [Any]? {
-        visibleRows.compactMap { row -> NSAccessibilityElement? in
+        visibleRows.flatMap { row -> [NSAccessibilityElement] in
             let visibleRect = rect(forRow: row).intersection(dataRect)
-            guard !visibleRect.isEmpty else { return nil }
+            guard !visibleRect.isEmpty else { return [] }
             let element = ResultGridRowNumberAccessibilityElement { [weak table] in
                 guard let table, row < table.numberOfRows else { return false }
                 table.selectRowNumber(row)
@@ -168,10 +256,27 @@ final class ResultGridRowNumberRuler: NSRulerView {
             element.setAccessibilityRole(.button)
             element.setAccessibilityLabel("Select row \(row + 1)")
             element.setAccessibilitySelected(table?.selectedRowIndexes.contains(row) == true)
+            element.setAccessibilityHelp(selectionHelp)
+            var numberRect = visibleRect
+            numberRect.size.width = numberWidth
             if let window {
-                element.setAccessibilityFrame(window.convertToScreen(convert(visibleRect, to: nil)))
+                element.setAccessibilityFrame(window.convertToScreen(convert(numberRect, to: nil)))
             }
-            return element
+            guard let marker = partitionMarker(forRow: row) else { return [element] }
+            let partition = ResultGridRowNumberAccessibilityElement { [weak self] in
+                self?.selectPartition(at: row) ?? false
+            }
+            partition.setAccessibilityParent(self)
+            partition.setAccessibilityRole(.button)
+            partition.setAccessibilityLabel("Select all loaded rows in partition \(marker.label)")
+            partition.setAccessibilityValue(marker.label)
+            partition.setAccessibilityHelp(marker.help)
+            partition.setAccessibilityIdentifier("gridPartitionMarker-\(row)")
+            partition.setAccessibilitySelected(rows(in: marker).isSubset(of: table?.selectedRowIndexes ?? []))
+            if let window {
+                partition.setAccessibilityFrame(window.convertToScreen(convert(partitionRect(forRow: row), to: nil)))
+            }
+            return [element, partition]
         }
     }
 }

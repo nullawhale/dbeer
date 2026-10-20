@@ -20,9 +20,9 @@ struct ResultGridRowNumberTests {
     }
 
     private func mouse(_ ruler: ResultGridRowNumberRuler, row: Int, modifiers: NSEvent.ModifierFlags = [],
-                       type: NSEvent.EventType = .leftMouseDown, clickCount: Int = 1) throws -> NSEvent {
+                       type: NSEvent.EventType = .leftMouseDown, clickCount: Int = 1, partition: Bool = false) throws -> NSEvent {
         let rect = ruler.rect(forRow: row)
-        let point = ruler.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        let point = ruler.convert(NSPoint(x: partition ? rect.maxX - 44 : 20, y: rect.midY), to: nil)
         return try #require(NSEvent.mouseEvent(with: type, location: point, modifierFlags: modifiers,
             timestamp: 0, windowNumber: ruler.window?.windowNumber ?? 0, context: nil,
             eventNumber: 1, clickCount: clickCount, pressure: 1))
@@ -109,6 +109,115 @@ struct ResultGridRowNumberTests {
         #expect(number.accessibilityLabel() == "Select row 26")
         #expect(number.accessibilityPerformPress())
         #expect(table.selectedRowIndexes == IndexSet(integer: 25))
+    }
+
+    @Test func partitionGutterStaysOutsideCopiedDataAndSelectionDoesNotReloadCells() throws {
+        let board = NSPasteboard(name: NSPasteboard.Name("dev.dbeer.tests.partition-gutter.\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let coordinator = ResultTableView.Coordinator(pasteboard: board)
+        let scroll = coordinator.makeScrollView()
+        let rows: [[String?]] = [["1", "first"], ["2", "second"], ["3", "third"]]
+        let one = GridPartitionMarker(number: 1, keyDescription: "tenant = one")
+        let two = GridPartitionMarker(number: 2, keyDescription: "tenant = two")
+        coordinator.partitionMarkers = [one, two, one]
+        coordinator.update(columns: columns, rows: rows, in: scroll)
+        let window = host(scroll)
+        defer { window.close() }
+        let table = try #require(scroll.documentView as? ResultGridTableView)
+        let ruler = try #require(scroll.verticalRulerView as? ResultGridRowNumberRuler)
+        let first = try #require(table.view(atColumn: 0, row: 0, makeIfNecessary: true))
+        let width = ruler.ruleThickness
+        #expect(width >= 120 && table.numberOfColumns == 2)
+        ruler.mouseDown(with: try mouse(ruler, row: 0))
+        ruler.mouseDown(with: try mouse(ruler, row: 2, modifiers: .command))
+        coordinator.update(columns: columns, rows: rows, in: scroll)
+        #expect(table.view(atColumn: 0, row: 0, makeIfNecessary: false) === first)
+        #expect(table.selectedRowIndexes == IndexSet([0, 2]))
+        table.copy(nil)
+        #expect(board.string(forType: .string) == "1\tfirst\n3\tthird")
+        let payload = try JSONDecoder().decode(ResultClipboardPayload.self, from: #require(board.data(forType: ResultTableView.clipboardType)))
+        #expect(payload.columns == columns && payload.sourceColumnIndices == [0, 1])
+        let children = try #require(ruler.accessibilityChildren() as? [NSAccessibilityElement])
+        let marker = try #require(children.first { $0.accessibilityIdentifier() == "gridPartitionMarker-0" })
+        #expect(marker.accessibilityValue() as? String == "P1")
+        #expect(marker.accessibilityHelp()?.contains("tenant = one") == true)
+        ruler.mouseMoved(with: try mouse(ruler, row: 0, type: .mouseMoved, partition: true))
+        #expect(ruler.toolTip?.contains("tenant = one") == true)
+        let fixedFrame = ruler.convert(ruler.bounds, to: nil)
+        table.tableColumns.forEach { $0.width = 500 }
+        coordinator.update(columns: columns, rows: rows, in: scroll)
+        table.scroll(NSPoint(x: 200, y: 0))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        scroll.layoutSubtreeIfNeeded()
+        #expect(table.visibleRect.minX > 0 && ruler.convert(ruler.bounds, to: nil) == fixedFrame)
+        #expect(ruler.partitionMarker(forRow: 2) == one)
+        coordinator.partitionMarkers = nil
+        coordinator.update(columns: columns, rows: rows, in: scroll)
+        #expect(ruler.ruleThickness < width)
+    }
+
+    @Test func partitionClickSelectsSparseLoadedGroupWithoutScrollingOrReloading() throws {
+        let board = NSPasteboard(name: NSPasteboard.Name("dev.dbeer.tests.partition-selection.\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        let coordinator = ResultTableView.Coordinator(pasteboard: board)
+        let scroll = coordinator.makeScrollView()
+        let rows = (0..<80).map { [String($0), "value \($0)"] as [String?] }
+        let one = GridPartitionMarker(number: 1, keyDescription: "tenant = one")
+        let two = GridPartitionMarker(number: 2, keyDescription: "tenant = two")
+        coordinator.partitionMarkers = rows.indices.map { $0 == 22 ? nil : ($0.isMultiple(of: 3) ? one : two) }
+        coordinator.update(columns: columns, rows: rows, in: scroll)
+        let window = host(scroll)
+        defer { window.close() }
+        let table = try #require(scroll.documentView as? ResultGridTableView)
+        let ruler = try #require(scroll.verticalRulerView as? ResultGridRowNumberRuler)
+        table.tableColumns.forEach { $0.width = 500 }
+        coordinator.update(columns: columns, rows: rows, in: scroll)
+        table.scroll(NSPoint(x: 300, y: table.rect(ofRow: 20).minY))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        scroll.layoutSubtreeIfNeeded()
+        let visibleRect = table.visibleRect
+        let firstView = try #require(table.view(atColumn: 0, row: 21, makeIfNecessary: true))
+        var publications: [IndexSet] = []
+        coordinator.onSelectedRows = { selected in
+            publications.append(selected)
+            coordinator.update(columns: columns, rows: rows, in: scroll)
+        }
+        let group = IndexSet(rows.indices.filter { $0.isMultiple(of: 3) })
+        ruler.mouseDown(with: try mouse(ruler, row: 21, partition: true))
+        ruler.mouseDragged(with: try mouse(ruler, row: 24, type: .leftMouseDragged, partition: true))
+        ruler.mouseUp(with: try mouse(ruler, row: 24, type: .leftMouseUp, partition: true))
+        #expect(table.selectedRowIndexes == group)
+        #expect(table.selectsWholeRows && table.cellSelection?.columnRange == 0...1)
+        #expect(publications == [group])
+        #expect(window.firstResponder === table)
+        #expect(table.visibleRect == visibleRect)
+        #expect(table.view(atColumn: 0, row: 21, makeIfNecessary: false) === firstView)
+        table.copy(nil)
+        let payload = try JSONDecoder().decode(ResultClipboardPayload.self, from: #require(board.data(forType: ResultTableView.clipboardType)))
+        #expect(payload.sourceRows == Array(group) && payload.sourceColumnIndices == [0, 1])
+        let children = try #require(ruler.accessibilityChildren() as? [NSAccessibilityElement])
+        let marker = try #require(children.first { $0.accessibilityIdentifier() == "gridPartitionMarker-23" })
+        let number = try #require(children.first { $0.accessibilityLabel() == "Select row 24" })
+        #expect(marker.accessibilityFrame().minX >= number.accessibilityFrame().maxX)
+        #expect(marker.accessibilityLabel() == "Select all loaded rows in partition P2")
+        #expect(marker.accessibilityPerformPress())
+        #expect(table.selectedRowIndexes == IndexSet(rows.indices.filter { !$0.isMultiple(of: 3) && $0 != 22 }))
+        #expect(publications.count == 2)
+        // Unknown keys never group unrelated rows together.
+        ruler.mouseDown(with: try mouse(ruler, row: 22, partition: true))
+        #expect(table.selectedRowIndexes == IndexSet(integer: 22))
+        // A partition click finishes the current inline draft before selecting.
+        var commits: [String] = []
+        coordinator.editableColumns = IndexSet(integer: 1)
+        coordinator.onCommitCell = { _, value in commits.append(value) }
+        coordinator.beginInlineEdit(ResultGridCell(row: 23, column: 1))
+        let editor = try #require(table.subviews.compactMap { $0 as? NSTextField }
+            .first { $0.identifier?.rawValue == "inlineGridCellEditor" })
+        let fieldEditor = try #require(editor.currentEditor())
+        fieldEditor.string = "updated"
+        ruler.mouseDown(with: try mouse(ruler, row: 21, partition: true))
+        #expect(commits == ["updated"] && editor.superview == nil)
+        #expect(table.selectedRowIndexes == group && window.firstResponder === table)
     }
 
     @Test func numberingResizesWithLoadedRowsAndRendersInLightAndDark() throws {

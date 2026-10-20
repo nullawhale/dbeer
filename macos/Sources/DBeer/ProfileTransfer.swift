@@ -48,6 +48,9 @@ enum ProfileTransfer {
         let sslMode: String
         let sslRootCert: String?
         var policy: ExecutionPolicy?
+        var contactPoints: [String]?
+        var localDatacenter: String?
+        var consistency: String?
 
         init(_ saved: SavedConnection) {
             name = saved.name
@@ -59,12 +62,16 @@ enum ProfileTransfer {
             sslMode = saved.sslMode
             sslRootCert = saved.sslRootCert
             policy = saved.policy
+            contactPoints = saved.contactPoints
+            localDatacenter = saved.localDatacenter
+            consistency = saved.consistency
         }
 
         func imported() -> ImportedProfile {
             ImportedProfile(profile: SavedConnection(id: UUID(), name: name, settings: ConnectionSettings(
                 host: host, port: port, database: database, user: user, password: "", sslMode: sslMode,
-                sslRootCert: sslRootCert, engine: engine, policy: policy ?? ExecutionPolicy())))
+                sslRootCert: sslRootCert, engine: engine, policy: policy ?? ExecutionPolicy(), contactPoints: contactPoints,
+                localDatacenter: localDatacenter, consistency: consistency)))
         }
     }
 
@@ -87,8 +94,8 @@ enum ProfileTransfer {
             }
             var uniqueKeys = UniqueJSONKeys(data)
             try uniqueKeys.validate()
-            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy"]
-            let required = permitted.subtracting(["sslRootCert", "policy"])
+            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency"]
+            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency"])
             guard raw.allSatisfy({ Set($0.keys).isSubset(of: permitted) && required.isSubset(of: Set($0.keys)) }) else {
                 throw ProfileTransferError.invalid
             }
@@ -121,10 +128,10 @@ enum ProfileTransfer {
     private static func validate(_ profiles: [Profile]) throws {
         guard !profiles.isEmpty, profiles.count <= maxProfiles,
               profiles.allSatisfy({ profile in
-                  let fields = [profile.name, profile.host, profile.database, profile.user]
+                  let fields = [profile.name, profile.host] + (profile.engine == .cassandra ? [] : [profile.database, profile.user])
                   return fields.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                       !$0.contains("\0") && $0.utf8.count <= 1_024 } && profile.name.count <= 128 &&
-                      (1...65_535).contains(profile.port) && profile.engine.sslModes.contains(profile.sslMode) &&
+                      profile.imported().profile.settings(password: "").hasValidNativeFields &&
                       (profile.sslRootCert.map { validCAHint($0) } ?? true)
               }) else { throw ProfileTransferError.invalid }
     }

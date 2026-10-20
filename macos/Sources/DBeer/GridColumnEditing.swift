@@ -15,14 +15,14 @@ struct GridColumnEditing {
         nativeType = metadata["nativeType"] ?? column.nativeType
         isEditable = metadata["editable"] == "true"
         allowsNull = isEditable && metadata["nullable"] != "false"
-        allowsDefault = isEditable
+        allowsDefault = isEditable && column.engine != .cassandra
         isBinary = column.encoding == "base64"
 
         // Catalog types can include sizes (varchar(255)) or modifiers. OIDs
         // identify PostgreSQL's built-in text types even when their names vary.
         let type = nativeType.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let base = String(type.prefix { $0 != "(" }).trimmingCharacters(in: .whitespaces)
-        let stringTypes: Set<String> = ["char", "character", "bpchar", "name", "varchar", "character varying",
+        let stringTypes: Set<String> = ["ascii", "char", "character", "bpchar", "name", "varchar", "character varying",
             "text", "tinytext", "mediumtext", "longtext"]
         let postgresText = column.engine == .postgresql && [18, 19, 25, 1042, 1043].contains(column.typeOid)
         allowsEmptyString = isEditable && !isBinary && (postgresText || stringTypes.contains(base))
