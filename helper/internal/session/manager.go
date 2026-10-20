@@ -397,7 +397,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 		}
 		tx := ""
 		if physical != nil && err == nil {
-			if policy.ReadOnly {
+			if policy.ReadOnly && engine != "cassandra" {
 				readOnly, ok := physical.(adapter.ReadOnlySession)
 				if !ok {
 					err = errors.New("adapter has no readonly mode")
@@ -481,8 +481,12 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else if stopping {
 					outgoing = append(outgoing, protocol.ErrorResponse(pending, "cancelled", "Connection attempt was cancelled."))
 				} else {
-					outgoing = append(outgoing, protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id,
-						Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus})
+					response := protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id, Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus}
+					if current, ok := physical.(interface{ CurrentKeyspace() string }); ok {
+						keyspace := current.CurrentKeyspace()
+						response.CurrentKeyspace = &keyspace
+					}
+					outgoing = append(outgoing, response)
 				}
 			} else {
 				response := completed.response

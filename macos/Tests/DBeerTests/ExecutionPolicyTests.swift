@@ -31,7 +31,7 @@ struct ExecutionPolicyTests {
                 kind = c['type']
                 r = {'requestId':c['requestId']}
                 if kind == 'hello':
-                    r.update(type='hello.ack', protocolVersion=3)
+                    r.update(type='hello.ack', protocolVersion=4)
                 elif kind == 'connect':
                     if sys.argv[3] == 'delay' and not policies:
                         Path(sys.argv[1]).with_name('entered').touch()

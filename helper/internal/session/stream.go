@@ -173,11 +173,11 @@ func (sink *streamSink) End(index int, summary protocol.ResultSet) error {
 	set.summary = summary
 	set.summary.Columns, set.summary.Rows = set.columns, nil
 	set.summary.DisplayedRowCount = set.sent
-	set.summary.Truncated = set.dropped || int64(set.sent) < set.seen
+	set.summary.Truncated = summary.Truncated && strings.Contains(summary.DisplayNotice, "Cassandra") || set.dropped || int64(set.sent) < set.seen
 	if summary.Truncated && !set.summary.Truncated {
 		set.summary.DisplayNotice = strings.TrimSpace(strings.ReplaceAll(set.summary.DisplayNotice, "Result display is limited to 1000 rows and 8 MiB. The command completed in full.", ""))
 	}
-	if set.summary.Truncated {
+	if set.summary.Truncated && !strings.Contains(set.summary.DisplayNotice, "Cassandra") {
 		set.summary.DisplayNotice = "Result display is limited to 1000 rows and 8 MiB. The command completed in full."
 	}
 	return err
@@ -199,8 +199,15 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 			if notice != "" && !strings.Contains(set.summary.DisplayNotice, notice) {
 				set.summary.DisplayNotice = strings.TrimSpace(set.summary.DisplayNotice + " " + notice)
 			}
-			response.DisplayedRowCount, response.Truncated = set.summary.DisplayedRowCount, set.summary.Truncated
+			response.DisplayedRowCount = set.summary.DisplayedRowCount
+			if response.TransactionStatus == "unsupported" {
+				response.Truncated = response.Truncated || set.summary.Truncated
+			} else {
+				response.Truncated = set.summary.Truncated
+			}
 			response.DisplayNotice = set.summary.DisplayNotice
+			response.NextCursor = set.summary.NextCursor
+			response.AffectedRowCountKnown = set.summary.AffectedRowCountKnown
 			first = false
 		}
 		response.ResultSets = append(response.ResultSets, set.summary)
@@ -212,22 +219,31 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 type fanoutSink []adapter.ResultSink
 
 func (sinks fanoutSink) Begin(index int, columns []protocol.Column) error {
+	var first error
 	for _, sink := range sinks {
-		_ = sink.Begin(index, columns)
+		if err := sink.Begin(index, columns); err != nil && first == nil {
+			first = err
+		}
 	}
-	return nil
+	return first
 }
 func (sinks fanoutSink) Row(index int, row []*string) error {
+	var first error
 	for _, sink := range sinks {
-		_ = sink.Row(index, row)
+		if err := sink.Row(index, row); err != nil && first == nil {
+			first = err
+		}
 	}
-	return nil
+	return first
 }
 func (sinks fanoutSink) End(index int, summary protocol.ResultSet) error {
+	var first error
 	for _, sink := range sinks {
-		_ = sink.End(index, summary)
+		if err := sink.End(index, summary); err != nil && first == nil {
+			first = err
+		}
 	}
-	return nil
+	return first
 }
 
 // Full export progress has no display budget and grants no stream credit or completion.

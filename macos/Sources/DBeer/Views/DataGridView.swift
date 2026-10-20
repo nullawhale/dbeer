@@ -18,6 +18,7 @@ struct DataGridView: View {
     }
 
     private var canNavigate: Bool { TableBrowseNavigation.isEnabled(document: document, workspace: workspace) }
+    private var usesCursors: Bool { document.runtime?.usesCursorPagination == true }
     private var canEdit: Bool { grid.canEdit && !document.isRunning && !workspace.isClosing }
     private var canPreview: Bool {
         (grid.pendingCount > 0 || grid.hasInlineDraft) && !grid.isApplying && !grid.isPreviewing && !document.isRunning &&
@@ -28,11 +29,13 @@ struct DataGridView: View {
         VStack(spacing: 0) {
             if let reason = grid.readOnlyReason {
                 Text("Read only: \(reason)").font(.caption).appSecondaryText().padding(8)
+            } else if let notice = grid.editingNotice {
+                Text(notice).font(.caption).appSecondaryText().padding(8)
             }
             if grid.isApplying { ProgressView("Applying changes…").controlSize(.small).padding(8) }
             if grid.outcomeUnknown {
                 HStack {
-                    Text("Commit outcome unknown. Verify data before making further changes.").foregroundStyle(.orange)
+                    Text("Write outcome unknown. Verify data before making further changes.").foregroundStyle(.orange)
                     Button("Review Data in New Tab") { Task { await workspace.reviewGridData(document) } }.controlHover()
                 }.font(.callout).padding(8)
             }
@@ -62,7 +65,7 @@ struct DataGridView: View {
             } cancel: { editing.wrappedValue = nil }
         }
         .sheet(isPresented: Binding(get: { grid.preview != nil }, set: { if !$0 { grid.preview = nil } })) {
-            GridSQLPreviewView(result: grid.preview) { grid.preview = nil }
+            GridSQLPreviewView(result: grid.preview, editingNotice: grid.editingNotice) { grid.preview = nil }
         }
     }
 
@@ -76,6 +79,7 @@ struct DataGridView: View {
         view.selectedRows = grid.selectedRows
         view.onInlineDraftChanged = { grid.hasInlineDraft = $0 }
         view.dataIdentity = presentation
+        view.partitionMarkers = grid.partitionMarkers
         view.onCoordinatorReady = { [weak grid] coordinator in
             grid?.commitEditing = { [weak coordinator] in coordinator?.finishInlineEdit() }
         }
@@ -84,7 +88,9 @@ struct DataGridView: View {
             view.onCommitCell = { cell, text in
                 grid.set(ChangeValue(kind: "text", value: text), row: cell.row, column: cell.column)
             }
-            view.onDeleteRows = { finishEditing(); grid.deleteSelected() }
+            if grid.supportsRowInsertionAndDeletion {
+                view.onDeleteRows = { finishEditing(); grid.deleteSelected() }
+            }
             view.onSetCellValue = { cell, value in grid.set(value, row: cell.row, column: cell.column) }
             let policies = grid.columns.indices.map { GridColumnEditing(column: grid.columns[$0], metadata: grid.metadata[$0]) }
             view.canSetNullColumns = IndexSet(policies.indices.filter { policies[$0].allowsNull })
@@ -107,27 +113,29 @@ struct DataGridView: View {
 
     private var navigationToolbar: some View {
         HStack(spacing: 6) {
-            Button("Insert Row") { finishEditing(); grid.insert() }.controlHover().disabled(!canEdit)
-                .accessibilityIdentifier("gridInsertRow")
-            Button("Delete Selected") { finishEditing(); grid.deleteSelected() }.controlHover()
-                .disabled(!canEdit || grid.selectedRows.isEmpty).accessibilityIdentifier("gridDeleteRows")
+            if grid.supportsEditing && grid.supportsRowInsertionAndDeletion {
+                Button("Insert Row") { finishEditing(); grid.insert() }.controlHover().disabled(!canEdit)
+                    .accessibilityIdentifier("gridInsertRow")
+                Button("Delete Selected") { finishEditing(); grid.deleteSelected() }.controlHover()
+                    .disabled(!canEdit || grid.selectedRows.isEmpty).accessibilityIdentifier("gridDeleteRows")
+            }
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
                 .popover(isPresented: showingColumns.projectedValue) { columnDetails }
             Spacer(minLength: 4)
-            ControlIconButton(systemName: "chevron.left") {
-                guard canNavigate, document.page > 0 else { return }
-                document.page -= 1
-                Task { await workspace.run(document) }
-            }.disabled(!canNavigate || document.page == 0)
-                .help("Previous page").accessibilityLabel("Previous page").accessibilityIdentifier("tablePreviousPage")
+            if !usesCursors {
+                ControlIconButton(systemName: "chevron.left") {
+                    guard canNavigate, document.page > 0 else { return }
+                    document.page -= 1
+                    Task { await workspace.run(document) }
+                }.disabled(!canNavigate || document.page == 0)
+                    .help("Previous page").accessibilityLabel("Previous page").accessibilityIdentifier("tablePreviousPage")
+            }
             Text("Page \(document.page + 1)").font(.caption).monospacedDigit().fixedSize()
                 .help("200 rows per page").accessibilityIdentifier("tablePage")
             ControlIconButton(systemName: "chevron.right") {
-                guard canNavigate, grid.rows.count >= 200 else { return }
-                document.page += 1
-                Task { await workspace.run(document) }
-            }.disabled(!canNavigate || grid.rows.count < 200)
+                TableBrowseNavigation.nextPage(document: document, workspace: workspace)
+            }.disabled(!canNavigate || (usesCursors ? document.tableNextCursor == nil : grid.rows.count < 200))
                 .help("Next page").accessibilityLabel("Next page").accessibilityIdentifier("tableNextPage")
         }
         .font(.callout).controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)
@@ -155,16 +163,34 @@ struct DataGridView: View {
             } else if let duration = result?.durationMs {
                 Text(String(format: "%.1f ms", duration)).font(.caption).fixedSize().appSecondaryText()
             }
+            if let status = grid.partitionStatus {
+                Label {
+                    Text(status.label).foregroundStyle(.primary)
+                } icon: {
+                    Image(systemName: status.allowsApply ? "checkmark" : "exclamationmark.triangle")
+                        .foregroundStyle(status.allowsApply ? Color.green : Color.orange)
+                }
+                    .font(.caption).fixedSize()
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background((status.allowsApply ? Color.green : Color.orange).opacity(0.1), in: RoundedRectangle(cornerRadius: 4))
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke((status.allowsApply ? Color.green : Color.orange).opacity(0.6)))
+                    .help(status.help).accessibilityElement(children: .ignore)
+                    .accessibilityLabel(status.label).accessibilityHint(status.help)
+                    .accessibilityIdentifier("gridPartitionStatus")
+            }
             if canPreview {
                 Button("Preview SQL") { finishEditing(); Task { await workspace.previewGrid(document) } }.controlHover()
                     .accessibilityIdentifier("gridPreviewSQL")
             }
-            Button("Discard") { finishEditing(); Task { await workspace.discardGrid(document) } }.controlHover()
-                .disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || grid.isApplying || grid.isReloading || document.isRunning || grid.isClosing || workspace.isClosing)
-                .accessibilityIdentifier("gridDiscard")
-            Button("Apply") { finishEditing(); Task { await workspace.applyGrid(document) } }.controlHover()
-                .buttonStyle(.borderedProminent).disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || !canEdit)
-                .accessibilityIdentifier("gridApply")
+            if grid.supportsEditing {
+                Button("Discard") { finishEditing(); Task { await workspace.discardGrid(document) } }.controlHover()
+                    .disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || grid.isApplying || grid.isReloading || document.isRunning || grid.isClosing || workspace.isClosing)
+                    .accessibilityIdentifier("gridDiscard")
+                Button("Apply") { finishEditing(); Task { await workspace.applyGrid(document) } }.controlHover()
+                    .buttonStyle(.borderedProminent).disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || !canEdit || (!grid.hasInlineDraft && !grid.canApply))
+                    .help(grid.partitionStatus?.help ?? "Apply pending changes")
+                    .accessibilityIdentifier("gridApply")
+            }
         }
         .font(.callout).controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)
         .accessibilityElement(children: .contain).accessibilityIdentifier("gridChangesToolbar")
@@ -298,6 +324,7 @@ private struct GridCellEditor: View {
 
 private struct GridSQLPreviewView: View {
     let result: BackendMessage?
+    let editingNotice: String?
     let close: () -> Void
 
     var body: some View {
@@ -307,7 +334,7 @@ private struct GridSQLPreviewView: View {
                 Spacer()
                 Button("Done", action: close).controlHover().keyboardShortcut(.cancelAction)
             }
-            Text("Values are bound as parameters. Apply locks and verifies the original rows in a separate transaction.")
+            Text(editingNotice ?? "Values are bound as parameters. Apply locks and verifies the original rows in a separate transaction.")
                 .font(.callout).appSecondaryText()
             ScrollView([.vertical, .horizontal]) {
                 VStack(alignment: .leading, spacing: 18) {

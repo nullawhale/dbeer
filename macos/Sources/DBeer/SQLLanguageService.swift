@@ -33,11 +33,15 @@ struct SQLCompletionRelation: Equatable, Sendable {
     var columns: [String] = []
     var foreignKeys: [SQLCompletionForeignKey] = []
     var signatures: [SQLFunctionSignature] = []
+    var partitionKeys: [String] = []
+    var clusteringColumns: [String] = []
+    var staticColumns: [String] = []
 }
 
 struct SQLCompletionContext: Equatable, Sendable {
     var profileID: UUID?
     var catalog: [SQLCompletionRelation]
+    var keyspace: String? = nil
     static let empty = SQLCompletionContext(profileID: nil, catalog: [])
 }
 
@@ -379,7 +383,8 @@ final class SQLLanguageService {
                         try await self.transport.notify(method: "workspace/didChangeConfiguration", params: .object([
                             "settings": .object(["dbeer": .object([
                                 "uri": .string(document.uri), "engine": .string(document.engine.rawValue),
-                                "catalog": .array(Self.boundedCatalog(document.context.catalog))
+                                "catalog": .array(Self.boundedCatalog(document.context.catalog)),
+                                "keyspace": .string(document.context.keyspace ?? "")
                             ])])
                         ]))
                         self.sentContexts[document.uri] = document.context
@@ -439,7 +444,7 @@ final class SQLLanguageService {
         var result: [SQLLSPJSON] = []
         for relation in catalog {
             guard result.count < 2_048 else { break }
-            guard ["table", "view", "function"].contains(relation.kind), !relation.name.isEmpty,
+            guard ["table", "view", "function", "type"].contains(relation.kind), !relation.name.isEmpty,
                   relation.name.utf8.count <= 1_024, relation.schema.utf8.count <= 1_024 else { continue }
             let entryBytes = 128 + 6 * (relation.schema.utf8.count + relation.name.utf8.count + relation.kind.utf8.count)
             guard entryBytes <= remainingBytes else { break }
@@ -483,9 +488,24 @@ final class SQLLanguageService {
                             "optional": .bool(parameter.optional ?? false), "variadic": .bool(parameter.variadic ?? false)])
                     })]))
             }
+            func keyNames(_ names: [String]) -> SQLLSPJSON {
+                var values: [SQLLSPJSON] = []
+                for name in names.prefix(2_000) where relation.columns.contains(name) {
+                    let bytes = 8 + 6 * name.utf8.count
+                    guard bytes <= remainingBytes, remainingKeyColumns > 0 else { break }
+                    remainingBytes -= bytes
+                    remainingKeyColumns -= 1
+                    values.append(.string(name))
+                }
+                return .array(values)
+            }
+            let partitionKeys = keyNames(relation.partitionKeys)
+            let clusteringColumns = keyNames(relation.clusteringColumns)
+            let staticColumns = keyNames(relation.staticColumns)
             result.append(.object(["schema": .string(relation.schema), "name": .string(relation.name),
                                    "kind": .string(relation.kind), "columns": .array(columns), "foreignKeys": .array(foreignKeys),
-                                   "signatures": .array(signatures)]))
+                                   "signatures": .array(signatures), "partitionKeys": partitionKeys,
+                                   "clusteringColumns": clusteringColumns, "staticColumns": staticColumns]))
         }
         return result
     }

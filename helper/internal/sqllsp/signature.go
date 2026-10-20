@@ -20,7 +20,7 @@ type signatureResult struct {
 }
 
 func signatureHelp(text string, offset int, context configuration) *signatureResult {
-	help := sqlcomplete.Signatures(text, offset, sqlcomplete.Context{Engine: context.Engine, Catalog: context.Catalog})
+	help := sqlcomplete.Signatures(text, offset, sqlcomplete.Context{Engine: context.Engine, Catalog: context.Catalog, Keyspace: context.Keyspace})
 	if help == nil {
 		return nil
 	}

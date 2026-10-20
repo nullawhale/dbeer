@@ -13,6 +13,9 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     var sslMode: String
     var sslRootCert: String?
     var policy: ExecutionPolicy
+    var contactPoints: [String]?
+    var localDatacenter: String?
+    var consistency: String?
 
     init(id: UUID = UUID(), name: String, settings: ConnectionSettings) {
         self.id = id
@@ -25,10 +28,13 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         sslMode = settings.sslMode
         sslRootCert = settings.sslRootCert
         policy = settings.policy
+        contactPoints = settings.contactPoints
+        localDatacenter = settings.localDatacenter
+        consistency = settings.consistency
     }
 
     fileprivate enum CodingKeys: String, CodingKey {
-        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy
+        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency
     }
 
     init(from decoder: Decoder) throws {
@@ -43,16 +49,21 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         sslMode = try values.decode(String.self, forKey: .sslMode)
         sslRootCert = try values.decodeIfPresent(String.self, forKey: .sslRootCert)
         policy = try values.decodeIfPresent(ExecutionPolicy.self, forKey: .policy) ?? ExecutionPolicy()
+        contactPoints = try values.decodeIfPresent([String].self, forKey: .contactPoints)
+        localDatacenter = try values.decodeIfPresent(String.self, forKey: .localDatacenter)
+        consistency = try values.decodeIfPresent(String.self, forKey: .consistency) ?? (engine == .cassandra ? "LOCAL_QUORUM" : nil)
     }
 
     func settings(password: String) -> ConnectionSettings {
         ConnectionSettings(host: host, port: port, database: database, user: user,
-            password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine, policy: policy)
+            password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine, policy: policy, contactPoints: contactPoints,
+            localDatacenter: localDatacenter, consistency: consistency)
     }
 
     func matches(_ settings: ConnectionSettings) -> Bool {
         engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
-            user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert && policy == settings.policy
+            user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert && policy == settings.policy &&
+            contactPoints == settings.contactPoints && localDatacenter == settings.localDatacenter && consistency == settings.consistency
     }
 }
 
@@ -184,8 +195,7 @@ actor FileConnectionLibraryStore: ConnectionLibraryStore {
         guard Set(library.connections.map(\.id)).count == library.connections.count,
               library.connections.allSatisfy({
                   !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 128 &&
-                      !$0.host.isEmpty && !$0.database.isEmpty && !$0.user.isEmpty &&
-                      (1...65_535).contains($0.port) && $0.engine.sslModes.contains($0.sslMode)
+                      $0.settings(password: "").hasValidNativeFields
               }) else { throw ConnectionLibraryError.load }
     }
 

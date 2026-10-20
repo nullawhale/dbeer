@@ -571,7 +571,7 @@ struct SQLEditorView: NSViewRepresentable {
             let input = completionInput(text: snapshot.text, offset: offset)
             guard explicit || offset > 0 else { return }
             let fallback = localCompletions(prefix: input.prefix, quoted: input.quoted).map { label in
-                let quote = engine == .postgresql ? "\"" : "`"
+                let quote = engine == .mysql ? "`" : "\""
                 let quoted = label.hasPrefix(quote)
                 let prefix = quoted ? input.prefix.replacingOccurrences(of: quote, with: quote + quote) : input.prefix
                 let source = label as NSString
@@ -696,18 +696,18 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func localCompletions(prefix: String, quoted: Bool = false) -> [String] {
             let matches: (String) -> Bool = { $0.lowercased().hasPrefix(prefix.lowercased()) }
-            let keywords = quoted ? [] : SQLScriptParser.keywords.filter(matches)
-            let reserved = Set(SQLScriptParser.keywords)
+            let keywords = quoted ? [] : SQLScriptParser.keywords(for: engine).filter(matches)
+            let reserved = Set(SQLScriptParser.keywords(for: engine))
             let identifiers = completionCandidates.filter(matches).map { name in
                 let units = Array(name.utf16)
                 let safe = !units.isEmpty && units.enumerated().allSatisfy { offset, unit in
                     (65...90).contains(unit) || (97...122).contains(unit) || unit == 95 ||
-                        (offset > 0 && ((48...57).contains(unit) || unit == 36))
+                        (offset > 0 && ((48...57).contains(unit) || (engine != .cassandra && unit == 36)))
                 }
                 let needsQuotes = quoted || !safe || reserved.contains(name.uppercased()) ||
-                    (engine == .postgresql && name != name.lowercased())
+                    (engine != .mysql && name != name.lowercased())
                 guard needsQuotes else { return name }
-                let quote = engine == .postgresql ? "\"" : "`"
+                let quote = engine == .mysql ? "`" : "\""
                 return quote + name.replacingOccurrences(of: quote, with: quote + quote) + quote
             }
             return Array(Set(keywords + identifiers))

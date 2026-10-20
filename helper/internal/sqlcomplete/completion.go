@@ -93,7 +93,9 @@ func Complete(text string, offset int, context Context) []Item {
 	}
 	r.clause, r.table = r.position()
 	r.qualified = len(r.before) >= 2 && punct(r.before[len(r.before)-1], ".")
-	if r.qualified {
+	if context.Engine == "cassandra" {
+		r.cql()
+	} else if r.qualified {
 		r.members()
 	} else {
 		r.unqualified()

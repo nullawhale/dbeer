@@ -64,6 +64,9 @@ struct LandingScreenshotTests {
                    "Run scripts/capture-screenshots.sh to capture the landing gallery."))
     func captureRealPostgresWorkspace() async throws {
         let environment = ProcessInfo.processInfo.environment
+        let appearance = environment["DBEER_CAPTURE_APPEARANCE"] ?? "dark"
+        try #require(["light", "dark"].contains(appearance))
+        let isDark = appearance == "dark"
         let url = try #require(URLComponents(string: environment["DBEER_TEST_DSN"] ?? ""))
         let directory = URL(fileURLWithPath: try #require(environment["DBEER_QA_OUTPUT_DIR"]), isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -81,12 +84,13 @@ struct LandingScreenshotTests {
         query.title = "Beer inventory"
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
-        let icon = repository.appendingPathComponent("macos/Resources/AppIconDark.icns")
+        let icon = repository.appendingPathComponent("macos/Resources/\(isDark ? "AppIconDark" : "AppIcon").icns")
         application.applicationIconImage = NSImage(contentsOf: icon)
         for name in ["ToolbarIcon", "ToolbarIconDark"] {
             NSImage(contentsOf: repository.appendingPathComponent("macos/Resources/\(name).svg"))?.setName(name)
         }
-        let content = NSHostingView(rootView: ApplicationWorkspaceView(workspace: workspace).preferredColorScheme(.dark))
+        let content = NSHostingView(rootView: ApplicationWorkspaceView(workspace: workspace)
+            .preferredColorScheme(isDark ? .dark : .light))
         let window = NSWindow(contentRect: NSRect(x: 60, y: 60, width: 1280, height: 800),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false)
@@ -94,7 +98,7 @@ struct LandingScreenshotTests {
         window.title = "DBeer"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
         window.contentView = content
         window.makeKeyAndOrderFront(nil)
         application.activate(ignoringOtherApps: true)

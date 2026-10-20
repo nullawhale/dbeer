@@ -304,10 +304,10 @@ struct SQLDocumentPane: View {
                     .disabled(document.runtime?.sessionId != nil || document.isRunning)
                 if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
                    (document.runtime?.policy ?? profile.policy).readOnly {
-                    Text("RO")
+                    Text(profile.engine == .cassandra ? "Local RO" : "RO")
                         .font(.caption2.weight(.regular)).foregroundStyle(.tertiary)
-                        .help("Readonly")
-                        .accessibilityLabel("Readonly")
+                        .help(profile.engine == .cassandra ? "Local readonly; use restricted server roles for strict protection" : "Readonly")
+                        .accessibilityLabel(profile.engine == .cassandra ? "Local readonly" : "Readonly")
                         .accessibilityIdentifier("documentReadOnly")
                 }
                 if document.table != nil, document.grid != nil {
@@ -364,7 +364,7 @@ struct SQLDocumentPane: View {
                             commands.handleKeyEvent(event, documentID: document.id, selection: selection)
                         }, completions: workspace.completions(profileID: document.profileID),
                         languageService: workspace.editorState.languageService,
-                        completionContext: workspace.completionContext(profileID: document.profileID),
+                        completionContext: workspace.completionContext(profileID: document.profileID, keyspace: document.runtime?.currentKeyspace),
                         errorPosition: document.errorPosition,
                         editorTheme: effectiveEditorTheme,
                         successfulExecutionRanges: document.successfulExecutionRanges)
@@ -415,6 +415,8 @@ struct SQLDocumentPane: View {
             message.displayedRowCount = set.displayedRowCount
             message.truncated = set.truncated
             message.displayNotice = set.displayNotice
+            message.affectedRowCountKnown = set.affectedRowCountKnown
+            message.nextCursor = set.nextCursor
         }
         return message
     }
@@ -452,6 +454,10 @@ struct SQLDocumentPane: View {
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(20)
         } else if let result = displayedResult {
             VStack(spacing: 0) {
+                if displayedFailure?.outcomeUnknown == true || result.outcomeUnknown == true {
+                    Text("The write outcome is unknown. Check the database before repeating this command.")
+                        .font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(10)
+                }
                 if let failure = displayedFailure {
                     Label("\(failure.title): \(failure.message)", systemImage: "exclamationmark.circle")
                         .font(.callout).foregroundStyle(.orange).textSelection(.enabled).padding(10)
@@ -473,7 +479,7 @@ struct SQLDocumentPane: View {
                             Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
                         }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true)
                         let shown = result.displayedRowCount ?? result.rows?.count ?? 0
-                        Text(showsRows ? "\(shown) from \(result.rowCount ?? Int64(shown)) rows shown" : "\(shown) rows shown")
+                        Text(result.affectedRowCountKnown == false && !showsRows ? "Affected rows unknown" : (showsRows ? "\(shown) from \(result.rowCount ?? Int64(shown)) rows shown" : "\(shown) rows shown"))
                             .accessibilityIdentifier("queryRowCount")
                         if let duration = result.durationMs { Text(String(format: "%.1f ms", duration)) }
                     }.font(.callout).padding(12)

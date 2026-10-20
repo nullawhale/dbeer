@@ -10,6 +10,16 @@ struct SQLCompletionCatalog {
         SQLCompletionContext(profileID: profileID, catalog: profileID.flatMap { profiles[$0] } ?? [])
     }
 
+    private func decodeNames(_ text: String?) -> [String] {
+        guard let text else { return [] }
+        return Array(((try? JSONDecoder().decode([String].self, from: Data(text.utf8))) ?? []).prefix(2_000))
+    }
+
+    private func orderedKeys(_ records: [[String: String]], key: String) -> [String] {
+        records.filter { (Int($0[key] ?? "0") ?? 0) > 0 }
+            .sorted { (Int($0[key] ?? "0") ?? 0) < (Int($1[key] ?? "0") ?? 0) }.compactMap { $0["name"] }
+    }
+
     mutating func remove(profileID: UUID) { profiles[profileID] = nil }
 
     mutating func record(_ records: [[String: String]], request: CatalogRequest, profileID: UUID) {
@@ -18,7 +28,7 @@ struct SQLCompletionCatalog {
         case "completion":
             relations = records.prefix(Self.limit).compactMap { record in
                 guard let schema = record["schema"], let name = record["name"],
-                      let kind = record["kind"], ["table", "view", "function"].contains(kind) else { return nil }
+                      let kind = record["kind"], ["table", "view", "function", "type"].contains(kind) else { return nil }
                 let columns = record["columns"].flatMap { value in
                     try? JSONDecoder().decode([String].self, from: Data(value.utf8))
                 } ?? []
@@ -29,7 +39,9 @@ struct SQLCompletionCatalog {
                     try? JSONDecoder().decode([SQLFunctionSignature].self, from: Data(value.utf8))
                 } ?? []
                 return SQLCompletionRelation(schema: schema, name: name, kind: kind, columns: Array(columns.prefix(2_000)),
-                    foreignKeys: Array(keys.prefix(64)), signatures: Array(signatures.prefix(32)))
+                    foreignKeys: Array(keys.prefix(64)), signatures: Array(signatures.prefix(32)),
+                    partitionKeys: decodeNames(record["partitionKeys"]), clusteringColumns: decodeNames(record["clusteringColumns"]),
+                    staticColumns: decodeNames(record["staticColumns"]))
             }
         case "schemas":
             let names = Set(records.compactMap { $0["name"] })
@@ -42,7 +54,7 @@ struct SQLCompletionCatalog {
             for record in records.prefix(Self.limit) {
                 guard let name = record["name"], let schema = record["schema"] ?? request.schema,
                       let kind = record["kind"] ?? request.objectKind,
-                      ["table", "view", "function"].contains(kind) else { continue }
+                      ["table", "view", "function", "type"].contains(kind) else { continue }
                 if !relations.contains(where: { $0.schema == schema && $0.name == name && $0.kind == kind }),
                    relations.count < Self.limit {
                     relations.append(SQLCompletionRelation(schema: schema, name: name, kind: kind))
@@ -52,7 +64,10 @@ struct SQLCompletionCatalog {
             guard let schema = request.schema, let name = request.object,
                   let kind = request.objectKind, ["table", "view"].contains(kind) else { return }
             let relation = SQLCompletionRelation(schema: schema, name: name, kind: kind,
-                columns: Array(records.prefix(2_000).compactMap { $0["name"] }))
+                columns: Array(records.prefix(2_000).compactMap { $0["name"] }),
+                partitionKeys: orderedKeys(records, key: "partitionKeyPosition"),
+                clusteringColumns: orderedKeys(records, key: "clusteringPosition"),
+                staticColumns: records.filter { $0["static"] == "true" }.compactMap { $0["name"] })
             if let index = relations.firstIndex(where: { $0.schema == schema && $0.name == name && $0.kind == kind }) {
                 var updated = relation
                 updated.foreignKeys = relations[index].foreignKeys

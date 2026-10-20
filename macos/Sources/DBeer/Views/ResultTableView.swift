@@ -72,21 +72,29 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
     }
 
     func setRowsExternally(_ rows: IndexSet) {
+        // External model updates must not publish selection back to SwiftUI.
+        if let copyCoordinator { copyCoordinator.synchronizeSelection { setWholeRowSelection(rows) } }
+        else { setWholeRowSelection(rows) }
+    }
+
+    func selectPartitionRows(_ rows: IndexSet) {
+        guard !rows.isEmpty, numberOfColumns > 0 else { return }
+        copyCoordinator?.finishInlineEdit()
+        window?.makeFirstResponder(self)
+        // Publish the sparse group once, without scrolling to its first/last row.
+        setWholeRowSelection(rows)
+    }
+
+    private func setWholeRowSelection(_ rows: IndexSet) {
         let validRows = rows.intersection(IndexSet(integersIn: 0..<numberOfRows))
-        let apply = {
-            self.contextCell = nil
-            self.selectsWholeRows = true
-            if let first = validRows.first, let last = validRows.last, self.numberOfColumns > 0 {
-                self.cellSelection = ResultGridSelection(anchor: ResultGridCell(row: first, column: 0),
-                    focus: ResultGridCell(row: last, column: self.numberOfColumns - 1))
-            } else { self.cellSelection = nil }
-            // A sparse external selection must stay sparse, and must never
-            // publish the intermediate first-row selection back to SwiftUI.
-            self.selectRowIndexes(validRows, byExtendingSelection: false)
-            self.invalidateCellSelection()
-        }
-        if let copyCoordinator { copyCoordinator.synchronizeSelection(apply) }
-        else { apply() }
+        contextCell = nil
+        selectsWholeRows = true
+        if let first = validRows.first, let last = validRows.last, numberOfColumns > 0 {
+            cellSelection = ResultGridSelection(anchor: ResultGridCell(row: first, column: 0),
+                focus: ResultGridCell(row: last, column: numberOfColumns - 1))
+        } else { cellSelection = nil }
+        selectRowIndexes(validRows, byExtendingSelection: false)
+        invalidateCellSelection()
     }
 
     private func select(_ cell: ResultGridCell, extending: Bool, wholeRow: Bool = false) {
@@ -406,6 +414,7 @@ struct ResultTableView: NSViewRepresentable {
     var valueKinds: [[String]]?
     var selectedRows: IndexSet?
     var dataIdentity: AnyObject?
+    var partitionMarkers: [GridPartitionMarker?]?
     var onEditCell: ((ResultGridCell) -> Void)?
     var onCommitCell: ((ResultGridCell, String) -> Void)?
     var onInlineDraftChanged: ((Bool) -> Void)?
@@ -440,6 +449,7 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.modifiedCells = modifiedCells
         coordinator.deletedRows = deletedRows
         coordinator.valueKinds = valueKinds
+        coordinator.partitionMarkers = partitionMarkers
         coordinator.onEditCell = onEditCell
         coordinator.onCommitCell = onCommitCell
         coordinator.onInlineDraftChanged = onInlineDraftChanged
@@ -473,6 +483,7 @@ struct ResultTableView: NSViewRepresentable {
         var modifiedCells: Set<ResultGridCell> = []
         var deletedRows: IndexSet = []
         var valueKinds: [[String]]?
+        var partitionMarkers: [GridPartitionMarker?]?
         var onEditCell: ((ResultGridCell) -> Void)?
         var onCommitCell: ((ResultGridCell, String) -> Void)?
         var onInlineDraftChanged: ((Bool) -> Void)?
@@ -594,7 +605,10 @@ struct ResultTableView: NSViewRepresentable {
                 tableView.clampCellSelection()
             }
             updateSortIndicators(in: tableView)
-            (scrollView.verticalRulerView as? ResultGridRowNumberRuler)?.updateRowCount()
+            if let ruler = scrollView.verticalRulerView as? ResultGridRowNumberRuler {
+                ruler.partitionMarkers = partitionMarkers
+                ruler.updateRowCount()
+            }
             // Keep the document at its natural width so wide results scroll horizontally.
             tableView.frame.size.width = max(scrollView.contentSize.width,
                 tableView.tableColumns.reduce(0) { $0 + $1.width + tableView.intercellSpacing.width })

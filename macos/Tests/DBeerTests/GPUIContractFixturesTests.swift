@@ -14,7 +14,7 @@ struct GPUIContractFixturesTests {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         return try JSONDecoder().decode(Fixtures.self, from: Data(contentsOf:
-            repository.appendingPathComponent("protocol/fixtures/contract-v3.json")))
+            repository.appendingPathComponent("protocol/fixtures/contract-v4.json")))
     }
     @Test func existingWireOperationsRetainTypedValuesAndAuthorization() throws {
         let data = try fixture()

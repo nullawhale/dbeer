@@ -2,6 +2,14 @@
 
 ## Next release — unreleased
 
+- Cassandra table grids show pinned, color-coded partition labels with key tooltips. Clicking a label selects every loaded row in that partition, including nonadjacent and offscreen rows. The status beside Apply counts partitions in pending edits, and atomic Apply is disabled when edits span partitions or a partition key is unavailable. Labels are local to the loaded page and stay out of copied/exported data.
+
+- Connection environments now appear beside the profile name in the macOS sidebar, retaining their muted gray styling.
+
+- Added native macOS Apache Cassandra support: contact points, keyspace/datacenter and consistency settings, verified TLS, CQL scripts and batches, schema catalog, cursor browsing, and streamed CSV/JSON exports. Each tab retains an independent keyspace and driver session. Cassandra reports unsupported transactions, local read-only enforcement and unknown write outcomes honestly. Windows/Linux work is deferred.
+- Cassandra grid cells in scalar tables can be edited through Preview/Apply, with multiple rows saved atomically in one conditional batch within a single partition. A conflict rejects every row and retains all pending edits. Cross-partition requests are rejected before writing. Uncertain batch outcomes block further edits and are not retried. Keys and static fields remain read only, and the UI explains TTL behavior. Inserts, deletes, all-NULL regular rows and tables with complex/counter/duration types require explicit CQL.
+- Cassandra preserves acknowledged write completion when result delivery or export fails, bounds wide empty-result metadata, and labels generated schema definitions as partial. Conservative UDF assessment and native function completion preserve CQL selector syntax.
+
 - Fixed PostgreSQL numeric table filters rejecting fractional operands for integer columns. Native macOS filter and shortcut settings views also build with Swift 6.1.
 
 - macOS app packaging materializes database logo resources before signing, including SwiftPM 6.1 bundles that preserve source symlinks.

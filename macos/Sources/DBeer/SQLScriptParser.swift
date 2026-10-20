@@ -43,7 +43,8 @@ enum SQLScriptParser {
         "DECLARE", "WITH", "RECURSIVE", "UNION", "ALL", "DISTINCT", "GROUP", "BY", "HAVING", "ORDER", "LIMIT",
         "OFFSET", "ASC", "DESC", "NULL", "TRUE", "FALSE", "AND", "OR", "NOT", "IS", "IN", "EXISTS", "CASE",
         "WHEN", "DEFAULT", "PRIMARY", "KEY", "REFERENCES", "CONSTRAINT", "EXPLAIN", "ANALYZE", "DELIMITER"]
-    private static let keywordSet = Set(keywords)
+    static let cqlKeywords = ["SELECT", "FROM", "WHERE", "AS", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "MATERIALIZED", "VIEW", "INDEX", "KEYSPACE", "TYPE", "FUNCTION", "AGGREGATE", "TRUNCATE", "USE", "BEGIN", "UNLOGGED", "COUNTER", "BATCH", "APPLY", "IF", "EXISTS", "NOT", "IN", "AND", "OR", "IS", "NULL", "TRUE", "FALSE", "PRIMARY", "KEY", "WITH", "CLUSTERING", "ORDER", "BY", "ASC", "DESC", "LIMIT", "PER", "PARTITION", "ALLOW", "FILTERING", "USING", "TTL", "TIMESTAMP", "STATIC", "FROZEN", "CONTAINS", "TOKEN", "JSON", "DISTINCT", "GROUP", "ANN", "OF", "TO"]
+    static func keywords(for engine: DatabaseEngine) -> [String] { engine == .cassandra ? cqlKeywords : keywords }
 
     static func parse(_ text: String, engine: DatabaseEngine) -> SQLParseResult {
         Scanner(text: text, engine: engine).scan()
@@ -84,6 +85,8 @@ enum SQLScriptParser {
         var atomicDepth = 0
         var caseDepth = 0
         var atomicStart: Int?
+        var cqlBatchStart: Int?
+        var cqlBatchOpen = false
 
         init(text: String, engine: DatabaseEngine) {
             self.text = text as NSString
@@ -99,17 +102,18 @@ enum SQLScriptParser {
                     continue
                 }
                 if matches(delimiter, at: index) {
-                    if atomicDepth > 0 { index += delimiter.count; continue }
+                    if atomicDepth > 0 || cqlBatchOpen { index += delimiter.count; continue }
                     finishStatement(at: index, delimiterLength: delimiter.count)
                     index += delimiter.count
                     segmentStart = index
                     continue
                 }
-                if matches([45, 45], at: index), engine == .postgresql || index + 2 == units.count ||
+                if matches([45, 45], at: index), engine != .mysql || index + 2 == units.count ||
                     SQLScriptParser.isWhitespace(units[index + 2]) {
                     scanLineComment()
                     continue
                 }
+                if engine == .cassandra, matches([47, 47], at: index) { scanLineComment(); continue }
                 if engine == .mysql, units[index] == 35 { scanLineComment(); continue }
                 if matches([47, 42], at: index) { scanBlockComment(); continue }
                 let unit = units[index]
@@ -117,7 +121,7 @@ enum SQLScriptParser {
                     scanQuoted(unit)
                     continue
                 }
-                if engine == .postgresql, unit == 36, let tag = dollarTag(at: index) {
+                if engine == .postgresql || (engine == .cassandra && matches([36, 36], at: index)), unit == 36, let tag = dollarTag(at: index) {
                     scanDollarQuote(tag)
                     continue
                 }
@@ -127,8 +131,9 @@ enum SQLScriptParser {
                     while index < units.count, isIdentifierPart(units[index]), !matches(delimiter, at: index) { index += 1 }
                     let range = NSRange(location: start, length: index - start)
                     let value = text.substring(with: range).uppercased()
-                    tokens.append(SQLToken(range: range, kind: SQLScriptParser.keywordSet.contains(value) ? .keyword : .identifier))
+                    tokens.append(SQLToken(range: range, kind: SQLScriptParser.keywords(for: engine).contains(value) ? .keyword : .identifier))
                     trackAtomicBody(word: value, range: range)
+                    trackCQLBatch(word: value, range: range)
                     words.append((value, range))
                     hasCode = true
                     continue
@@ -157,9 +162,23 @@ enum SQLScriptParser {
                 diagnostics.append(SQLDiagnostic(range: NSRange(location: atomicStart, length: units.count - atomicStart),
                     message: "Unterminated PostgreSQL BEGIN ATOMIC body."))
             }
+            if cqlBatchOpen, let cqlBatchStart {
+                diagnostics.append(SQLDiagnostic(range: NSRange(location: cqlBatchStart, length: units.count - cqlBatchStart),
+                    message: "Unterminated CQL batch. End the batch with APPLY BATCH."))
+            }
             finishStatement(at: units.count)
             return SQLParseResult(statements: statements, statementEditorRanges: statementEditorRanges,
                 tokens: tokens, diagnostics: diagnostics)
+        }
+
+        private func trackCQLBatch(word: String, range: NSRange) {
+            guard engine == .cassandra, word == "BATCH" else { return }
+            if cqlBatchOpen, words.last?.0 == "APPLY" { cqlBatchOpen = false; return }
+            let prefix = words.map(\.0)
+            if prefix == ["BEGIN"] || prefix == ["BEGIN", "UNLOGGED"] || prefix == ["BEGIN", "COUNTER"] {
+                cqlBatchOpen = true
+                cqlBatchStart = words.first?.1.location ?? range.location
+            }
         }
 
         private func trackAtomicBody(word: String, range: NSRange) {
@@ -245,7 +264,7 @@ enum SQLScriptParser {
 
         private func scanQuoted(_ quote: UInt16) {
             let start = index
-            let postgresEscape = quote == 39 && start > 0 && (units[start - 1] == 69 || units[start - 1] == 101) &&
+            let postgresEscape = engine == .postgresql && quote == 39 && start > 0 && (units[start - 1] == 69 || units[start - 1] == 101) &&
                 (start < 2 || !isIdentifierPart(units[start - 2]))
             let escapes = (engine == .mysql && quote != 96) || postgresEscape
             index += 1
@@ -288,7 +307,7 @@ enum SQLScriptParser {
         }
 
         private func finishStatement(at end: Int, delimiterLength: Int = 0) {
-            defer { hasCode = false; words.removeAll(); atomicDepth = 0; caseDepth = 0; atomicStart = nil }
+            defer { hasCode = false; words.removeAll(); atomicDepth = 0; caseDepth = 0; atomicStart = nil; cqlBatchStart = nil; cqlBatchOpen = false }
             guard hasCode else { return }
             var lower = segmentStart
             var upper = end

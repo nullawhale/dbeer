@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -42,9 +43,10 @@ type document struct {
 }
 type catalogEntry = sqlcomplete.Relation
 type configuration struct {
-	URI     string         `json:"uri"`
-	Engine  string         `json:"engine"`
-	Catalog []catalogEntry `json:"catalog"`
+	Keyspace string         `json:"keyspace,omitempty"`
+	URI      string         `json:"uri"`
+	Engine   string         `json:"engine"`
+	Catalog  []catalogEntry `json:"catalog"`
 }
 type server struct {
 	transport   *transport
@@ -274,15 +276,25 @@ func (s *server) acceptDocument(uri, text string) bool {
 	return total <= maxTotalDocumentBytes
 }
 func boundedConfiguration(c configuration) bool {
-	if c.URI == "" || len(c.URI) > 4096 || (c.Engine != "postgresql" && c.Engine != "mysql") || len(c.Catalog) > maxCatalogEntries {
+	if len(c.Keyspace) > 1024 || strings.ContainsRune(c.Keyspace, 0) || c.URI == "" || len(c.URI) > 4096 || (c.Engine != "postgresql" && c.Engine != "mysql" && c.Engine != "cassandra") || len(c.Catalog) > maxCatalogEntries {
 		return false
 	}
 	columns, keyColumns, parameters := 0, 0, 0
 	for _, entry := range c.Catalog {
-		if (entry.Kind != "table" && entry.Kind != "view" && entry.Kind != "function") || entry.Name == "" || len(entry.Name) > 1024 || len(entry.Schema) > 1024 {
+		if (entry.Kind != "table" && entry.Kind != "view" && entry.Kind != "function" && entry.Kind != "type") || entry.Name == "" || len(entry.Name) > 1024 || len(entry.Schema) > 1024 {
 			return false
 		}
-		columns += len(entry.Columns)
+		for _, keys := range [][]string{entry.PartitionKeys, entry.ClusteringColumns, entry.StaticColumns} {
+			if len(keys) > 4096 {
+				return false
+			}
+			for _, key := range keys {
+				if key == "" || len(key) > 1024 {
+					return false
+				}
+			}
+		}
+		columns += len(entry.Columns) + len(entry.PartitionKeys) + len(entry.ClusteringColumns) + len(entry.StaticColumns)
 		if columns > maxCatalogColumns {
 			return false
 		}
@@ -333,7 +345,7 @@ func (s *server) context(d document, uri string) configuration {
 	if c.Engine == "" {
 		c.Engine = d.language
 	}
-	if c.Engine != "mysql" {
+	if c.Engine != "mysql" && c.Engine != "cassandra" {
 		c.Engine = "postgresql"
 	}
 	return c

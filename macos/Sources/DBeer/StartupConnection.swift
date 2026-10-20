@@ -28,9 +28,7 @@ enum StartupConnection {
     static func decode(_ data: Data) throws -> ConnectionSettings {
         guard !data.isEmpty, data.count <= maxInputBytes,
               let settings = try? JSONDecoder().decode(ConnectionSettings.self, from: data),
-              (1...65_535).contains(settings.port),
-              !settings.host.isEmpty, !settings.database.isEmpty, !settings.user.isEmpty,
-              settings.engine.sslModes.contains(settings.sslMode) else {
+              settings.hasValidNativeFields else {
             throw InputError.invalid
         }
         return settings

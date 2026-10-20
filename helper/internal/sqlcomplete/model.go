@@ -16,12 +16,15 @@ type ForeignKey struct {
 }
 
 type Relation struct {
-	Schema      string              `json:"schema"`
-	Name        string              `json:"name"`
-	Kind        string              `json:"kind"`
-	Columns     []string            `json:"columns"`
-	ForeignKeys []ForeignKey        `json:"foreignKeys,omitempty"`
-	Signatures  []FunctionSignature `json:"signatures,omitempty"`
+	PartitionKeys     []string            `json:"partitionKeys,omitempty"`
+	ClusteringColumns []string            `json:"clusteringColumns,omitempty"`
+	StaticColumns     []string            `json:"staticColumns,omitempty"`
+	Schema            string              `json:"schema"`
+	Name              string              `json:"name"`
+	Kind              string              `json:"kind"`
+	Columns           []string            `json:"columns"`
+	ForeignKeys       []ForeignKey        `json:"foreignKeys,omitempty"`
+	Signatures        []FunctionSignature `json:"signatures,omitempty"`
 }
 
 type FunctionParameter struct {
@@ -52,8 +55,9 @@ type SignatureHelp struct {
 }
 
 type Context struct {
-	Engine  string
-	Catalog []Relation
+	Keyspace string
+	Engine   string
+	Catalog  []Relation
 }
 
 type Item struct {

@@ -29,8 +29,17 @@ final class SQLDocument: ObservableObject, Identifiable {
     var stopRequested = false
     var table: TableReference?
     @Published var page = 0
-    @Published var tableSort: [CatalogSort] = []
-    @Published var tableFilters: [CatalogFilter] = []
+    @Published var tableCursor: String?
+    @Published var tableNextCursor: String?
+    @Published var tableSort: [CatalogSort] = [] { didSet { if tableSort != oldValue { resetTablePaging() } } }
+    @Published var tableFilters: [CatalogFilter] = [] {
+        didSet {
+            guard tableFilters != oldValue else { return }
+            resetTablePaging()
+            if tableColumns.contains(where: { (Int($0["partitionKeyPosition"] ?? "0") ?? 0) > 0 }),
+               !CassandraBrowseRules.hasValidSort(self) { tableSort = [] }
+        }
+    }
     @Published var tableColumns: [[String: String]] = []
     @Published private(set) var grid: GridDraft?
     private var runtimeObservation: AnyCancellable?
@@ -43,7 +52,14 @@ final class SQLDocument: ObservableObject, Identifiable {
         self.profileID = profileID
     }
 
+    func resetTablePaging() {
+        page = 0
+        tableCursor = nil
+        tableNextCursor = nil
+    }
+
     func attach(_ model: WorkspaceModel) {
+        resetTablePaging()
         runtime = model
         runtimeObservation = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
@@ -164,7 +180,7 @@ final class ApplicationWorkspace: ObservableObject {
             _ = try await ensureHelper()
             if case .success(let settings) = startupConnection {
                 let existing = library.savedConnections.first { $0.matches(settings) }
-                if await library.saveConnection(name: existing?.name ?? settings.database, settings: settings, id: existing?.id),
+                if await library.saveConnection(name: existing?.name ?? (settings.database.isEmpty ? settings.host : settings.database), settings: settings, id: existing?.id),
                    let id = library.selectedConnectionId { await connectProfile(id) }
             } else if case .failure(let failure) = startupConnection { error = failure.localizedDescription }
             if documents.isEmpty { newDocument(profileID: library.selectedConnectionId) }
@@ -172,9 +188,12 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     @discardableResult
-    func newDocument(profileID: UUID? = nil, text: String = "SELECT 1;") -> SQLDocument {
-        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: text,
-            profileID: profileID ?? library.selectedConnectionId)
+    func newDocument(profileID: UUID? = nil, text: String? = nil) -> SQLDocument {
+        let selectedProfileID = profileID ?? library.selectedConnectionId
+        let engine = library.savedConnections.first { $0.id == selectedProfileID }?.engine
+        let initialText = text ?? (engine == .cassandra ? "SELECT cluster_name, release_version, data_center FROM system.local;" : "SELECT 1;")
+        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: initialText,
+            profileID: selectedProfileID)
         documents.append(document)
         observeDocument(document)
         selectedDocumentID = document.id
@@ -379,19 +398,25 @@ final class ApplicationWorkspace: ObservableObject {
                 }
                 guard canStartOperation(document), !document.stopRequested else { return }
                 await runtime.run(catalog: CatalogRequest(kind: "browse", schema: table.schema,
-                    object: table.name, objectKind: table.kind, page: document.page,
-                    sort: document.tableSort, filters: document.tableFilters))
+                    object: table.name, objectKind: table.kind, page: runtime.usesCursorPagination ? 0 : document.page,
+                    cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: document.tableSort, filters: document.tableFilters))
                 if runtime.queryFailure == nil, let result = runtime.result {
                     document.tableColumns = metadata
+                    document.tableNextCursor = result.nextCursor
                     let grid = GridDraft(reference: table, result: result, metadata: metadata)
                     grid.policyReadOnly = runtime.policy.readOnly
+                    grid.supportsEditing = runtime.supportsGridEditing
                     document.attachGrid(grid)
+                } else if runtime.queryFailure?.category == "cursor" {
+                    document.resetTablePaging()
                 }
             } else {
                 guard let sessionID = runtime.sessionId else { return }
                 guard runtime.activeConnectionId == profileID, runtime.policy == profile.policy,
                       runtime.engine == profile.engine, runtime.host == profile.host,
                       Int(runtime.port) == profile.port, runtime.database == profile.database,
+                      runtime.contactPoints == profile.contactPoints, runtime.localDatacenter == profile.localDatacenter,
+                      runtime.consistency == profile.consistency,
                       runtime.user == profile.user, runtime.sslMode == profile.sslMode,
                       (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
                     throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before executing SQL.")
@@ -794,8 +819,11 @@ final class ApplicationWorkspace: ObservableObject {
         return Array(Set(collect(catalogRoots[profileID] ?? []) + metadata).subtracting([""])).sorted()
     }
 
-    func completionContext(profileID: UUID?) -> SQLCompletionContext {
-        completionCatalog.context(profileID: profileID)
+    func completionContext(profileID: UUID?, keyspace: String? = nil) -> SQLCompletionContext {
+        var context = completionCatalog.context(profileID: profileID)
+        let profile = library.savedConnections.first { $0.id == profileID }
+        context.keyspace = keyspace ?? (profile?.engine == .cassandra ? profile?.database : nil)
+        return context
     }
 
     /// Uses only the existing service session. Typing and restoring documents
@@ -869,15 +897,19 @@ final class ApplicationWorkspace: ObservableObject {
         node.error = nil
         defer { node.isLoading = false }
         if node.kind == .schema {
-            node.children = [("Tables", "table"), ("Views", "view"), ("Functions", "function"),
-                ("Procedures", "procedure"), ("Triggers", "trigger")].map { title, kind in
+            let engine = library.savedConnections.first { $0.id == node.profileID }?.engine
+            let groups = engine == .cassandra ? [("Tables", "table"), ("Materialized Views", "view"), ("User-defined Types", "type")] :
+                [("Tables", "table"), ("Views", "view"), ("Functions", "function"), ("Procedures", "procedure"), ("Triggers", "trigger")]
+            node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .group, schema: node.schema, objectKind: kind)
             }
             return
         }
         if node.kind == .object {
-            node.children = [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes"),
-                ("Constraints", "constraints"), ("Triggers", "triggers")].map { title, kind in
+            let engine = library.savedConnections.first { $0.id == node.profileID }?.engine
+            let groups = node.objectKind == "type" ? [("Columns", "columns")] : engine == .cassandra ? [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes")] :
+                [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes"), ("Constraints", "constraints"), ("Triggers", "triggers")]
+            node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .detailGroup, schema: node.schema,
                     object: node.name, objectKind: kind, identity: node.objectKind)
             }
@@ -895,7 +927,13 @@ final class ApplicationWorkspace: ObservableObject {
             node.children = result.catalogRecords.enumerated().compactMap { index, record in
                 guard let name = record["name"] else { return nil }
                 let isObject = node.kind == .group
-                let type = record["nativeType"]
+                let type = record["nativeType"].map { nativeType in
+                    var details = [nativeType]
+                    if (Int(record["partitionKeyPosition"] ?? "0") ?? 0) > 0 { details.append("partition key") }
+                    if (Int(record["clusteringPosition"] ?? "0") ?? 0) > 0 { details.append("clustering " + (record["clusteringOrder"] ?? "asc")) }
+                    if record["static"] == "true" { details.append("static") }
+                    return details.joined(separator: " · ")
+                }
                 return CatalogNode(profileID: node.profileID, name: name,
                     kind: isObject ? .object : .detail, schema: node.schema,
                     object: isObject ? name : node.object, objectKind: record["kind"] ?? node.objectKind,
@@ -909,7 +947,7 @@ final class ApplicationWorkspace: ObservableObject {
         inspection = CatalogInspection(title: title)
         let inspectionID = inspection?.id
         do {
-            if ["table", "view"].contains(node.objectKind) {
+            if ["table", "view", "type"].contains(node.objectKind) {
                 let structure = try await catalog(CatalogRequest(kind: "columns", schema: node.schema,
                     object: node.name, objectKind: node.objectKind), profileID: node.profileID)
                 guard inspection?.id == inspectionID else { return }

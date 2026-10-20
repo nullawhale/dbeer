@@ -75,12 +75,13 @@ struct ProfileCatalogRow: View {
     private var row: some View {
         HStack(spacing: 8) {
             DatabaseEngineIcon(engine: profile.engine)
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(profile.name).lineLimit(1)
                 if profile.policy.environment != .unspecified {
                     Text(profile.policy.environment.label)
                         .font(.caption2.weight(.regular))
                         .foregroundStyle(.tertiary)
+                        .fixedSize()
                 }
             }
             Spacer(minLength: 0)

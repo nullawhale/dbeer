@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/cassandra"
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
 	"dbeer/helper/internal/productidentity"
@@ -43,6 +44,8 @@ func openDatabase(ctx context.Context, connection protocol.Connection) (adapter.
 		return postgres.Open(ctx, connection)
 	case "mysql":
 		return mysql.Open(ctx, connection)
+	case "cassandra":
+		return cassandra.Open(ctx, connection)
 	default:
 		return nil, &adapter.ConnectionError{Category: "connection", Message: "Database engine is unavailable."}
 	}

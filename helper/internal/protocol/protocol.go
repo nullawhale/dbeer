@@ -13,20 +13,23 @@ import (
 	"dbeer/helper/internal/productidentity"
 )
 
-const Version = 3
+const Version = 4
 const MaxFrameBytes = 16 * 1024 * 1024
 const MaxIDBytes = 128
 
 type Connection struct {
-	Engine      string           `json:"engine,omitempty"`
-	Host        string           `json:"host"`
-	Port        int              `json:"port"`
-	Database    string           `json:"database"`
-	User        string           `json:"user"`
-	Password    string           `json:"password"`
-	SSLMode     string           `json:"sslMode"`
-	SSLRootCert string           `json:"sslRootCert,omitempty"`
-	Policy      *ExecutionPolicy `json:"policy,omitempty"`
+	Engine          string           `json:"engine,omitempty"`
+	Host            string           `json:"host"`
+	Port            int              `json:"port"`
+	Database        string           `json:"database"`
+	User            string           `json:"user"`
+	Password        string           `json:"password"`
+	SSLMode         string           `json:"sslMode"`
+	ContactPoints   []string         `json:"contactPoints,omitempty"`
+	LocalDatacenter string           `json:"localDatacenter,omitempty"`
+	Consistency     string           `json:"consistency,omitempty"`
+	SSLRootCert     string           `json:"sslRootCert,omitempty"`
+	Policy          *ExecutionPolicy `json:"policy,omitempty"`
 }
 
 // Empty engines from an older saved profile retain PostgreSQL semantics. The
@@ -129,6 +132,7 @@ type CatalogRequest struct {
 	ObjectKind string          `json:"objectKind,omitempty"`
 	Identity   string          `json:"identity,omitempty"`
 	Search     string          `json:"search,omitempty"`
+	Cursor     string          `json:"cursor,omitempty"`
 	Page       int             `json:"page,omitempty"`
 	Sort       []CatalogSort   `json:"sort,omitempty"`
 	Filters    []CatalogFilter `json:"filters,omitempty"`
@@ -145,6 +149,9 @@ type CatalogFilter struct {
 }
 
 func (request CatalogRequest) Valid() bool {
+	if request.Cursor != "" && (!ValidID(request.Cursor) || strings.ContainsRune(request.Cursor, 0) || request.Kind != "browse" || request.Page != 0) {
+		return false
+	}
 	if request.Page < 0 || request.Page > 1000000 || len(request.Sort) > 32 || len(request.Filters) > 32 {
 		return false
 	}
@@ -185,7 +192,7 @@ func (request CatalogRequest) Valid() bool {
 	if request.Kind != "search" && request.Search != "" {
 		return false
 	}
-	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger"
+	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type"
 	switch request.Kind {
 	case "completion":
 		return request.Object == "" && objectKind == "" && request.Identity == ""
@@ -195,7 +202,9 @@ func (request CatalogRequest) Valid() bool {
 		return request.Schema == "" && request.Object == "" && objectKind == "" && request.Identity == ""
 	case "objects":
 		return request.Schema != "" && request.Object == "" && objectKindValid && request.Identity == ""
-	case "columns", "keys", "indexes", "constraints", "triggers":
+	case "columns":
+		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view" || objectKind == "type") && request.Identity == ""
+	case "keys", "indexes", "constraints", "triggers":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view") && request.Identity == ""
 	case "definition":
 		return request.Schema != "" && request.Object != "" && objectKindValid
@@ -362,7 +371,7 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 			}
 		}
 	}
-	allowed := map[string]*string{"schema": &request.Schema, "object": &request.Object, "objectKind": &request.ObjectKind, "identity": &request.Identity, "search": &request.Search}
+	allowed := map[string]*string{"schema": &request.Schema, "object": &request.Object, "objectKind": &request.ObjectKind, "identity": &request.Identity, "search": &request.Search, "cursor": &request.Cursor}
 	for name := range fields {
 		if name == "kind" {
 			continue
@@ -417,7 +426,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 			return connection, false
 		}
 	}
-	if connection.Host == "" || connection.Database == "" || connection.User == "" || !required(fields, "port") || json.Unmarshal(fields["port"], &connection.Port) != nil || connection.Port < 1 || connection.Port > 65535 {
+	if !required(fields, "port") || json.Unmarshal(fields["port"], &connection.Port) != nil || connection.Port < 1 || connection.Port > 65535 {
 		return connection, false
 	}
 	switch connection.SSLMode {
@@ -443,12 +452,22 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 		}
 		connection.Policy = &policy
 	}
-	if connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" {
+	for name, target := range map[string]*string{"localDatacenter": &connection.LocalDatacenter, "consistency": &connection.Consistency} {
+		if _, exists := fields[name]; exists && !stringField(fields, name, target) {
+			return connection, false
+		}
+	}
+	if raw, exists := fields["contactPoints"]; exists {
+		if !required(fields, "contactPoints") || json.Unmarshal(raw, &connection.ContactPoints) != nil || len(connection.ContactPoints) == 0 {
+			return connection, false
+		}
+	}
+	if !connection.Valid() {
 		return connection, false
 	}
 	for name := range fields {
 		switch name {
-		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy":
+		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency":
 		default:
 			return connection, false
 		}
@@ -522,13 +541,16 @@ type Column struct {
 }
 
 type ResultSet struct {
-	Columns           []Column    `json:"columns"`
-	Rows              [][]*string `json:"rows"`
-	CommandTag        string      `json:"commandTag"`
-	RowCount          int64       `json:"rowCount"`
-	DisplayedRowCount int         `json:"displayedRowCount"`
-	Truncated         bool        `json:"truncated"`
-	DisplayNotice     string      `json:"displayNotice,omitempty"`
+	// False means rowCount is a returned-row count, not an affected-row assertion.
+	AffectedRowCountKnown *bool       `json:"affectedRowCountKnown,omitempty"`
+	NextCursor            string      `json:"nextCursor,omitempty"`
+	Columns               []Column    `json:"columns"`
+	Rows                  [][]*string `json:"rows"`
+	CommandTag            string      `json:"commandTag"`
+	RowCount              int64       `json:"rowCount"`
+	DisplayedRowCount     int         `json:"displayedRowCount"`
+	Truncated             bool        `json:"truncated"`
+	DisplayNotice         string      `json:"displayNotice,omitempty"`
 }
 
 func (result ResultSet) MarshalJSON() ([]byte, error) {
@@ -543,50 +565,60 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
-	Type              string
-	RequestID         string
-	ProtocolVersion   int
-	BuildIdentity     *productidentity.Identity
-	SessionID         string
-	QueryID           string
-	DurationMS        float64
-	Columns           []Column
-	Rows              [][]*string
-	CommandTag        string
-	RowCount          int64
-	DisplayedRowCount int
-	Truncated         bool
-	TransactionStatus string
-	DisplayNotice     string
-	Status            string
-	Category          string
-	Message           string
-	SQLState          string
-	ErrorPosition     int
-	Connected         bool
-	OutcomeUnknown    bool
-	SQLCompleted      bool
-	SQLNotExecuted    bool
-	ExportPublication string
-	Engine            string
-	Capabilities      []string
-	ResultSets        []ResultSet
-	Streamed          bool
-	Sequence          int
-	ResultIndex       int
-	ExportPath        string
-	ExportFormat      string
-	ExportRowCount    int64
-	Assessment        *OperationAssessment
+	AppliedChangeCount    *int
+	CurrentKeyspace       *string
+	AffectedRowCountKnown *bool
+	NextCursor            string
+	Type                  string
+	RequestID             string
+	ProtocolVersion       int
+	BuildIdentity         *productidentity.Identity
+	SessionID             string
+	QueryID               string
+	DurationMS            float64
+	Columns               []Column
+	Rows                  [][]*string
+	CommandTag            string
+	RowCount              int64
+	DisplayedRowCount     int
+	Truncated             bool
+	TransactionStatus     string
+	DisplayNotice         string
+	Status                string
+	Category              string
+	Message               string
+	SQLState              string
+	ErrorPosition         int
+	Connected             bool
+	OutcomeUnknown        bool
+	SQLCompleted          bool
+	SQLNotExecuted        bool
+	ExportPublication     string
+	Engine                string
+	Capabilities          []string
+	ResultSets            []ResultSet
+	Streamed              bool
+	Sequence              int
+	ResultIndex           int
+	ExportPath            string
+	ExportFormat          string
+	ExportRowCount        int64
+	Assessment            *OperationAssessment
 }
 
 func (response Response) MarshalJSON() ([]byte, error) {
 	fields := map[string]any{"type": response.Type, "requestId": response.RequestID}
+	if response.AppliedChangeCount != nil && (response.Type == "query.result" || response.Type == "error") {
+		fields["appliedChangeCount"] = *response.AppliedChangeCount
+	}
 	if response.SessionID != "" {
 		fields["sessionId"] = response.SessionID
 	}
 	if response.QueryID != "" {
 		fields["queryId"] = response.QueryID
+	}
+	if response.CurrentKeyspace != nil && (response.Type == "connect.result" || response.Type == "query.result" || response.Type == "error") {
+		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
 	case "hello.ack":
@@ -632,6 +664,12 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["commandTag"], fields["rowCount"] = response.CommandTag, response.RowCount
 		fields["displayedRowCount"], fields["truncated"] = response.DisplayedRowCount, response.Truncated
 		fields["transactionStatus"] = response.TransactionStatus
+		if response.AffectedRowCountKnown != nil {
+			fields["affectedRowCountKnown"] = *response.AffectedRowCountKnown
+		}
+		if response.NextCursor != "" {
+			fields["nextCursor"] = response.NextCursor
+		}
 		if response.DisplayNotice != "" {
 			fields["displayNotice"] = response.DisplayNotice
 		}

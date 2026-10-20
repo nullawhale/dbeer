@@ -12,7 +12,7 @@ struct LocalRequestValidationTests {
         def send(message):
             print(json.dumps(message), flush=True)
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':3})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':4})
         command = read()
         send({'type':'connect.result','engine':'postgresql','capabilities':['execute','cancel','transactions'],'requestId':command['requestId'],'sessionId':'same-session','transactionStatus':'transaction'})
         command = read()

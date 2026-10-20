@@ -11,7 +11,7 @@ fi
 resources="$1"
 if [[ -d "$resources/Contents" ]]; then resources="$resources/Contents/Resources"; fi
 mkdir -p "$resources"
-for engine in postgresql mysql; do
+for engine in postgresql mysql cassandra; do
     destination="$resources/$engine-logo.svg"
     if [[ -L "$destination" ]]; then rm -- "$destination"; fi
     if ! cmp -s "$repo_root/assets/$engine-logo.svg" "$destination"; then

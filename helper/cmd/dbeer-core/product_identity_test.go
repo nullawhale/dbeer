@@ -84,7 +84,7 @@ func TestOptionalProductHelloDoesNoDatabaseWorkAndPreservesLegacyOutput(t *testi
 	}
 	for _, attached := range []*productidentity.Identity{nil, &identity} {
 		var output bytes.Buffer
-		input := strings.NewReader("{\"type\":\"hello\",\"requestId\":\"hello\",\"protocolVersion\":3}\n{\"type\":\"shutdown\",\"requestId\":\"shutdown\"}\n")
+		input := strings.NewReader("{\"type\":\"hello\",\"requestId\":\"hello\",\"protocolVersion\":4}\n{\"type\":\"shutdown\",\"requestId\":\"shutdown\"}\n")
 		if err := runWithFactoryAndIdentity(input, &output, func(context.Context, protocol.Connection) (adapter.Session, error) {
 			t.Fatal("hello must not open a database")
 			return nil, nil

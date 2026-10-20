@@ -97,3 +97,13 @@ the preferred overload first and up to eight alternatives with scrolling.
 Metadata references: [PostgreSQL pg_proc](https://www.postgresql.org/docs/current/catalog-pg-proc.html),
 [MySQL PARAMETERS](https://dev.mysql.com/doc/refman/8.4/en/information-schema-parameters-table.html),
 and [LSP signature help](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_signatureHelp).
+
+## Cassandra CQL
+
+The Cassandra dialect uses its own keyword/function registry and clause rules in
+`cassandra.go`, keeping SQL joins, OFFSET and transaction commands out of CQL
+suggestions. The catalog supplies keyspaces, tables, materialized views and UDTs;
+optional partition/clustering/static column lists annotate column candidates.
+An explicit per-document keyspace limits unqualified source resolution after
+`USE`, while qualified names can still address other keyspaces. CQL completion
+never executes queries or adds `ALLOW FILTERING`.
