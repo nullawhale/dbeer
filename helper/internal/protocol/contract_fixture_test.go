@@ -53,6 +53,9 @@ func TestSharedV4OperationContract(t *testing.T) {
 			t.Fatalf("command fixture %d failed the existing parser", index)
 		}
 		kinds[command.Type] = true
+		if command.RequestID == "cassandra-cluster-nodes" && (command.Catalog == nil || command.Catalog.Kind != "clusterNodes") {
+			t.Fatal("lost Cassandra cluster snapshot request")
+		}
 		if command.RequestID == "cassandra-grid-preview" && (command.Changes.Columns[0].Engine != "cassandra" || command.Changes.Changes[0].Original[2].Kind != "binary") {
 			t.Fatal("lost Cassandra snapshot engine or binary value")
 		}

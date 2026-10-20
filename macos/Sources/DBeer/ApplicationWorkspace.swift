@@ -105,6 +105,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private(set) var catalogErrors: [UUID: String] = [:]
     @Published private var completionCatalog = SQLCompletionCatalog()
     @Published var inspection: CatalogInspection?
+    @Published var clusterInspection: CassandraClusterInspection?
     @Published var catalogSearch = ""
     @Published private(set) var catalogSearchResults: [UUID: [CatalogNode]] = [:]
     @Published private(set) var history: [SQLHistoryEntry] = []
@@ -240,6 +241,7 @@ final class ApplicationWorkspace: ObservableObject {
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.profile(id)) else { return false }
+        if clusterInspection?.profileID == id { clusterInspection = nil }
         completionLoads.removeValue(forKey: id)?.task.cancel()
         if let connecting = profileConnections[id] { await connecting.value }
         let sessions = documents.filter { $0.profileID == id }.compactMap(\.runtime)
@@ -891,6 +893,38 @@ final class ApplicationWorkspace: ObservableObject {
         } catch { catalogErrors[profileID] = error.localizedDescription }
     }
 
+    func showClusterNodes(_ profileID: UUID) async {
+        guard library.savedConnections.first(where: { $0.id == profileID })?.engine == .cassandra,
+              let service = services[profileID], service.connectionState == .connected,
+              let sessionID = service.sessionId else { return }
+        let name = library.savedConnections.first(where: { $0.id == profileID })?.name ?? "Cassandra"
+        clusterInspection = CassandraClusterInspection(profileID: profileID, sessionID: sessionID, title: name)
+        await refreshClusterNodes()
+    }
+
+    func refreshClusterNodes() async {
+        guard let inspection = clusterInspection, !inspection.isLoading else { return }
+        clusterInspection?.isLoading = true
+        clusterInspection?.error = nil
+        do {
+            let reply = try await catalog(CatalogRequest(kind: "clusterNodes"), profileID: inspection.profileID,
+                                          connectedSessionID: inspection.sessionID)
+            guard clusterInspection?.id == inspection.id else { return }
+            clusterInspection?.nodes = reply.catalogRecords.map(CassandraClusterNode.init)
+            clusterInspection?.totalNodeCount = reply.rowCount ?? 0
+            clusterInspection?.refreshedAt = Date()
+            clusterInspection?.notice = reply.displayNotice
+        } catch {
+            guard clusterInspection?.id == inspection.id else { return }
+            clusterInspection?.nodes = []
+            clusterInspection?.totalNodeCount = 0
+            clusterInspection?.refreshedAt = nil
+            clusterInspection?.notice = nil
+            clusterInspection?.error = error.localizedDescription
+        }
+        clusterInspection?.isLoading = false
+    }
+
     func expand(_ node: CatalogNode, refresh: Bool = false) async {
         guard !node.isLoading, refresh || node.children == nil else { return }
         node.isLoading = true
@@ -1024,7 +1058,7 @@ final class ApplicationWorkspace: ObservableObject {
             guard shutdownTask == nil, !helperFailed, !disconnectingProfiles.contains(profileID),
                   services[profileID]?.sessionId == connectedSessionID,
                   services[profileID]?.connectionState == .connected, let helper else {
-                throw CatalogFailure(message: "The profile was disconnected while loading completion metadata.")
+                throw CatalogFailure(message: "The profile was disconnected while loading metadata.")
             }
             client = helper
         } else {
@@ -1090,6 +1124,7 @@ final class ApplicationWorkspace: ObservableObject {
                 let failure = await client.waitForFailure()
                 guard let self, self.shutdownTask == nil, self.helperGeneration == generation else { return }
                 self.helperFailed = true
+                self.clusterInspection = nil
                 self.error = failure.localizedDescription
             }
             return client

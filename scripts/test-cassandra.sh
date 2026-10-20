@@ -211,6 +211,7 @@ log=pathlib.Path(sys.argv[1]); events=[json.loads(line) for line in log.read_tex
 passed={e['Test'] for e in events if e.get('Action')=='pass' and e.get('Test')}
 required={'TestCassandraLiveSessionsCQLAndLosslessTypes','TestCassandraLiveBrowsePagingCatalogAndFullExport','TestCassandraLiveBrowsePagingCatalogAndFullExport/csv','TestCassandraLiveBrowsePagingCatalogAndFullExport/json'}
 required.update({'TestCassandraLiveAcknowledgedWritesSurviveDeliveryAndExportFailures','TestCassandraLiveUDTFieldsAndWideEmptyResultsStayBounded','TestCassandraLiveSpecialSelectorsAndNativeFunctions','TestCassandraLiveGeneratedNativeFunctionCompletions','TestCassandraLiveConditionalGridEdits','TestCassandraLiveAtomicGridApply'})
+required.add('TestCassandraLiveClusterNodes')
 for name in 'COUNT SUM AVG MIN MAX TOKEN TTL WRITETIME UUID NOW CURRENTTIMESTAMP CURRENTDATE CURRENTTIME CURRENTTIMEUUID TODATE TOTIMESTAMP TOUNIXTIMESTAMP MINTIMEUUID MAXTIMEUUID CAST TOJSON'.split():required.add('TestCassandraLiveGeneratedNativeFunctionCompletions/'+name)
 if sys.argv[2]=='tls':required.add('TestCassandraLiveTLSAndAuthenticationFailures')
 if sys.argv[2]=='plain':required.add('TestCassandraLiveLostWriteAcknowledgementIsUnknownAndNotRepeated')

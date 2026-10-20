@@ -86,6 +86,12 @@ struct ApplicationWorkspaceView: View {
             CatalogInspectionView(inspection: inspection) { workspace.inspection = nil }
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: $workspace.clusterInspection) { inspection in
+            CassandraClusterView(inspection: inspection,
+                refresh: { Task { await workspace.refreshClusterNodes() } },
+                close: { workspace.clusterInspection = nil })
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(isPresented: $workspace.isHistoryPresented) {
             SQLHistoryView(workspace: workspace)
                 .applicationTheme(appearance: appearance)

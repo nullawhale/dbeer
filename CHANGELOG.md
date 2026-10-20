@@ -11,6 +11,8 @@ have intermittent failures. Installed-archive acceptance for this version is pen
 
 - Cassandra table grids show pinned, color-coded partition labels with key tooltips. Clicking a label selects every loaded row in that partition, including nonadjacent and offscreen rows. The status beside Apply counts partitions in pending edits, and atomic Apply is disabled when edits span partitions or a partition key is unavailable. Labels are local to the loaded page and stay out of copied/exported data.
 
+- Connected Cassandra profiles expose a Cluster Nodes snapshot with node addresses, driver status, datacenters, racks and host IDs. Refresh reads the driver's current observations; statuses describe this connection's view rather than cluster-wide health.
+
 - Connection environments now appear beside the profile name in the macOS sidebar, retaining their muted gray styling.
 
 - Added native macOS Apache Cassandra support: contact points, keyspace/datacenter and consistency settings, verified TLS, CQL scripts and batches, schema catalog, cursor browsing, and streamed CSV/JSON exports. Each tab retains an independent keyspace and driver session. Cassandra reports unsupported transactions, local read-only enforcement and unknown write outcomes honestly. Windows/Linux work is deferred.

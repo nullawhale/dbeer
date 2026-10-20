@@ -1,17 +1,19 @@
 package cassandra_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"dbeer/helper/internal/cassandra"
 	"dbeer/helper/internal/protocol"
 )
 
@@ -20,47 +22,116 @@ import (
 // the client observe transport loss after the server has confirmed execution.
 // No statement bytes, credentials or results are logged or retained globally.
 type lossProxy struct {
-	listener    net.Listener
-	target      string
 	truncated   atomic.Int32
 	dropped     atomic.Int32
 	mu          sync.Mutex
+	closed      bool
 	connections []net.Conn
 }
 
-func newLossProxy(t *testing.T, target string) *lossProxy {
+func newLossProxy(t *testing.T) *lossProxy {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal("cannot create isolated fault proxy")
-	}
-	p := &lossProxy{listener: listener, target: target}
-	t.Cleanup(func() {
-		listener.Close()
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		for _, c := range p.connections {
-			c.Close()
-		}
-	})
-	go func() {
-		for {
-			client, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			server, err := net.DialTimeout("tcp", target, 3*time.Second)
-			if err != nil {
-				client.Close()
-				continue
-			}
-			p.mu.Lock()
-			p.connections = append(p.connections, client, server)
-			p.mu.Unlock()
-			go p.pipe(client, server)
-		}
-	}()
+	p := &lossProxy{}
+	t.Cleanup(p.Close)
 	return p
+}
+
+func (p *lossProxy) Close() {
+	p.mu.Lock()
+	p.closed = true
+	connections := p.connections
+	p.connections = nil
+	p.mu.Unlock()
+	for _, connection := range connections {
+		connection.Close()
+	}
+}
+
+// Intercept every driver dial, including discovered peers and reconnects. A
+// proxy contact point alone is bypassed when metadata advertises real addresses.
+func (p *lossProxy) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	p.mu.Lock()
+	closed := p.closed
+	p.mu.Unlock()
+	if closed {
+		return nil, net.ErrClosed
+	}
+	dialer := &net.Dialer{Timeout: 3 * time.Second}
+	server, err := dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+	client, bridge := net.Pipe()
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		client.Close()
+		bridge.Close()
+		server.Close()
+		return nil, net.ErrClosed
+	}
+	p.connections = append(p.connections, client, bridge, server)
+	p.mu.Unlock()
+	go p.pipe(bridge, server)
+	return lossProxyConn{Conn: client, local: server.LocalAddr(), remote: server.RemoteAddr()}, nil
+}
+
+// The driver uses the real TCP address to interpret system.local metadata.
+// Preserve it instead of exposing net.Pipe's synthetic address to discovery.
+type lossProxyConn struct {
+	net.Conn
+	local, remote net.Addr
+}
+
+func (c lossProxyConn) LocalAddr() net.Addr  { return c.local }
+func (c lossProxyConn) RemoteAddr() net.Addr { return c.remote }
+
+func TestCassandraLossProxyPreservesEveryDialTargetAndClosesConnections(t *testing.T) {
+	proxy := newLossProxy(t)
+	var clients []net.Conn
+	for range 2 {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal("cannot create synthetic upstream")
+		}
+		t.Cleanup(func() { listener.Close() })
+		go func() {
+			server, err := listener.Accept()
+			if err == nil {
+				defer server.Close()
+				_, _ = io.Copy(server, server)
+			}
+		}()
+		client, err := proxy.DialContext(context.Background(), "tcp", listener.Addr().String())
+		if err != nil {
+			t.Fatal("fault proxy did not dial the requested upstream")
+		}
+		clients = append(clients, client)
+		if _, ok := client.RemoteAddr().(*net.TCPAddr); !ok || client.RemoteAddr().String() != listener.Addr().String() {
+			t.Fatal("fault proxy hid the real upstream TCP address from discovery")
+		}
+		if err := client.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+			t.Fatal("fault proxy does not support driver deadlines")
+		}
+		// OPTIONS is unframed, before the protocol-v5 STARTUP/READY transition.
+		message := []byte{0x05, 0, 0, 1, 0x05, 0, 0, 0, 0}
+		if _, err := client.Write(message); err != nil {
+			t.Fatal("fault proxy did not forward the request")
+		}
+		response := make([]byte, len(message))
+		if _, err := io.ReadFull(client, response); err != nil || !bytes.Equal(response, message) {
+			t.Fatal("fault proxy did not forward the upstream response")
+		}
+	}
+	proxy.Close()
+	for _, client := range clients {
+		if _, err := client.Read(make([]byte, 1)); !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatal("fault proxy retained an open client connection after cleanup")
+		}
+	}
+	if _, err := proxy.DialContext(context.Background(), "tcp", "127.0.0.1:0"); !errors.Is(err, net.ErrClosed) {
+		t.Fatal("fault proxy accepted a new dial after cleanup")
+	}
 }
 func protocolFrame(reader io.Reader, framed bool) ([]byte, []byte, error) {
 	size := 9
@@ -162,16 +233,13 @@ func TestCassandraLiveLostWriteAcknowledgementIsUnknownAndNotRepeated(t *testing
 	observer := liveOpen(t, c)
 	liveSQL(t, observer, "CREATE TABLE IF NOT EXISTS dbeer.live_loss (id int PRIMARY KEY)")
 	liveSQL(t, observer, "INSERT INTO dbeer.live_loss (id) VALUES (1)")
-	proxy := newLossProxy(t, net.JoinHostPort(c.Host, strconv.Itoa(c.Port)))
-	c.Host = "127.0.0.1"
-	c.ContactPoints = nil
-	c.Port = proxy.listener.Addr().(*net.TCPAddr).Port
-	victim := liveOpen(t, c)
+	proxy := newLossProxy(t)
+	victim := cassandra.NewSessionWithDialerForTest(t, c, proxy)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	result := victim.Execute(ctx, protocol.Command{Type: "execute", RequestID: "lost-ack", SQL: "TRUNCATE dbeer.live_loss"})
 	if proxy.dropped.Load() != 1 || proxy.truncated.Load() != 1 {
-		t.Fatal("fault proxy did not discard exactly one real write acknowledgement")
+		t.Fatalf("fault proxy did not discard exactly one real write acknowledgement: requests=%d completions=%d result=%s unknown=%t", proxy.truncated.Load(), proxy.dropped.Load(), result.Type, result.OutcomeUnknown)
 	}
 	if result.Type != "error" || !result.OutcomeUnknown {
 		t.Fatalf("lost write acknowledgement was not unknown: type=%s category=%s", result.Type, result.Category)

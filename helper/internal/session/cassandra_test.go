@@ -54,6 +54,10 @@ func TestCassandraReadOnlyIsLocalAndBlocksUnrecognizedFunctions(t *testing.T) {
 	if receive(t, manager).Type != "query.started" || receive(t, manager).Type != "query.result" || physical.executions.Load() != 1 {
 		t.Fatal("local readonly rejected safe SELECT")
 	}
+	submit(t, manager, protocol.Command{Type: "catalog", RequestID: "cluster-nodes", QueryID: "cluster-nodes", SessionID: connected.SessionID, Catalog: &protocol.CatalogRequest{Kind: "clusterNodes"}})
+	if receive(t, manager).Type != "query.started" || receive(t, manager).Type != "query.result" || physical.executions.Load() != 2 {
+		t.Fatal("local readonly rejected cluster observations")
+	}
 }
 func TestCassandraStreamPreservesCursorUnknownCountsAndHonestTruncation(t *testing.T) {
 	known := false

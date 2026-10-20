@@ -50,3 +50,22 @@ func TestUnknownAffectedCountDoesNotOverloadRowCount(t *testing.T) {
 		t.Fatal("unknown affected count lost")
 	}
 }
+
+func TestClusterNodesRejectsObjectAndPagingParameters(t *testing.T) {
+	for _, mutate := range []func(*CatalogRequest){
+		func(c *CatalogRequest) { c.Schema = "demo" },
+		func(c *CatalogRequest) { c.Object = "events" },
+		func(c *CatalogRequest) { c.ObjectKind = "table" },
+		func(c *CatalogRequest) { c.Identity = "node" },
+		func(c *CatalogRequest) { c.Page = 1 },
+		func(c *CatalogRequest) { c.Cursor = "opaque" },
+		func(c *CatalogRequest) { c.Search = "node" },
+		func(c *CatalogRequest) { c.Sort = []CatalogSort{{Column: "address", Direction: "asc"}} },
+	} {
+		request := CatalogRequest{Kind: "clusterNodes"}
+		mutate(&request)
+		if request.Valid() {
+			t.Fatal("cluster snapshot accepted unrelated catalog parameters")
+		}
+	}
+}

@@ -91,6 +91,8 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 	var rows [][]*string
 	var names []string
 	switch request.Kind {
+	case "clusterNodes":
+		return s.catalogResponse(command, clusterNodesResult(command, s.driver.GetHosts()), sink)
 	case "schemas":
 		names = []string{"name", "kind"}
 		records, failure := s.metadata(ctx, command, "SELECT keyspace_name FROM system_schema.keyspaces")

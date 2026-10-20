@@ -55,6 +55,14 @@ struct ProfileCatalogRow: View {
 
     private var catalog: some View {
         Group {
+            if profile.engine == .cassandra && isConnected {
+                Button { Task { await workspace.showClusterNodes(profile.id) } } label: {
+                    Label("Cluster Nodes", systemImage: "server.rack")
+                }
+                .buttonStyle(.plain).controlHover()
+                .help("Show discovered Cassandra nodes and driver status")
+                .accessibilityIdentifier("showClusterNodes-\(profile.id.uuidString)")
+            }
             if !workspace.catalogSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if workspace.services[profile.id]?.connectionState != .connected {
                     Text("Connect to search this profile.").font(.caption).appSecondaryText()
@@ -112,6 +120,11 @@ struct ProfileCatalogRow: View {
             }
         }
         menu.addCatalogAction("New SQL Tab") { workspace.newDocument(profileID: profile.id) }
+        if profile.engine == .cassandra {
+            menu.addCatalogAction("Cluster Nodes…", enabled: isConnected) {
+                Task { await workspace.showClusterNodes(profile.id) }
+            }
+        }
         menu.addCatalogAction("Refresh") { Task { await workspace.loadSchemas(profile.id, refresh: true) } }
         menu.addItem(.separator())
         menu.addCatalogAction("Export Connection…") { workspace.exportProfiles([profile]) }

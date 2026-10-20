@@ -67,6 +67,12 @@ and its own `USE` keyspace. `LOCAL_QUORUM` is the default consistency level; the
 selected consistency is shown in the workspace and affects availability and the
 values observed during replica failures.
 
+For a connected profile, **Cluster Nodes** in the sidebar or profile context menu
+shows discovered node addresses, driver UP/DOWN status, datacenters, racks and
+host IDs. Refresh reads the service session's latest driver observations without
+probing nodes or running CQL. The snapshot time is shown; this is the client's
+view of connectivity, not a cluster-wide health assessment.
+
 The editor runs CQL statements and scripts, retaining `BEGIN ... BATCH ... APPLY
 BATCH` as one statement. Scripts stop at the first error and keep completed
 results. The catalog includes keyspaces, tables, materialized views, indexes and

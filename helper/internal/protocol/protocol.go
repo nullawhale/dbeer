@@ -198,7 +198,7 @@ func (request CatalogRequest) Valid() bool {
 		return request.Object == "" && objectKind == "" && request.Identity == ""
 	case "search":
 		return request.Search != "" && request.Object == "" && objectKind == "" && request.Identity == ""
-	case "schemas":
+	case "schemas", "clusterNodes":
 		return request.Schema == "" && request.Object == "" && objectKind == "" && request.Identity == ""
 	case "objects":
 		return request.Schema != "" && request.Object == "" && objectKindValid && request.Identity == ""

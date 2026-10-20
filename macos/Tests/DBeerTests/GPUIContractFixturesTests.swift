@@ -34,6 +34,7 @@ struct GPUIContractFixturesTests {
         #expect(changes[1].values?[1].value.value == "NULL")
         #expect(changes[1].values?[2].value == ChangeValue(kind: "binary", value: ""))
         let browse = try #require(data.commands.first { $0.catalog?.kind == "browse" }?.catalog)
+        #expect(data.commands.contains { $0.catalog?.kind == "clusterNodes" })
         #expect(browse.filters?.count == 10)
         #expect(browse.sort?.map(\.direction) == ["desc", "asc"])
         let batch = try #require(data.commands.first { $0.type == "operation.assess" }?.operations)
@@ -43,6 +44,9 @@ struct GPUIContractFixturesTests {
     @Test func existingTerminalShapesRetainPartialSetsExportsAndTransactions() throws {
         let data = try fixture()
         for response in data.responses { try response.validate() }
+        let nodes = try #require(data.responses.first { $0.requestId == "cassandra-cluster-nodes" })
+        #expect(nodes.catalogRecords.map { $0["status"] } == ["UP", "DOWN", "UNKNOWN"])
+        #expect(nodes.catalogRecords[1]["address"] == "[2001:db8::2]:9042")
         let results = try #require(data.responses.first { $0.requestId == "ordered-results" })
         #expect(results.resultSets?.count == 2)
         #expect(results.columns?[0].name == results.columns?[1].name)

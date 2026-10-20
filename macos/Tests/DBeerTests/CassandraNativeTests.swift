@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import DBeer
 
@@ -216,7 +217,123 @@ struct CassandraNativeTests {
         }
     }
 
-    private func sessionHelper(editing: Bool = false, applyFailure: String = "") -> BackendClient {
+    @Test func clusterSnapshotRequiresAnExplicitConnectionAndRefreshesDriverStatus() async throws {
+        let profile = SavedConnection(name: "Cluster", settings: settings())
+        let store = MemoryConnectionLibraryStore(library: SavedConnectionLibrary(connections: [profile], selectedConnectionId: profile.id))
+        let workspace = ApplicationWorkspace(connectionStore: store, credentialStore: MemoryConnectionCredentialStore(),
+            helperFactory: { sessionHelper() })
+        await workspace.start()
+        await workspace.showClusterNodes(profile.id)
+        #expect(workspace.clusterInspection == nil && workspace.services[profile.id] == nil)
+        await workspace.connectProfile(profile.id)
+        await workspace.showClusterNodes(profile.id)
+        let snapshot = try #require(workspace.clusterInspection)
+        #expect(snapshot.nodes.map(\.status) == ["UP", "DOWN"])
+        #expect(snapshot.nodes.map(\.datacenter) == ["dc1", "dc2"])
+        #expect(snapshot.nodes[1].rack == "rack2" && snapshot.refreshedAt != nil && !snapshot.isLoading)
+        await workspace.refreshClusterNodes()
+        #expect(workspace.clusterInspection?.nodes.map(\.status) == ["UP", "UP"])
+        #expect(await workspace.disconnectProfile(profile.id))
+        #expect(workspace.clusterInspection == nil)
+        await workspace.showClusterNodes(profile.id)
+        #expect(workspace.clusterInspection == nil && workspace.services[profile.id] == nil)
+        await workspace.shutdown()
+    }
+
+    @Test func failedClusterRefreshClearsPreviouslyHealthyStatus() async throws {
+        let profile = SavedConnection(name: "Cluster", settings: settings())
+        let store = MemoryConnectionLibraryStore(library: SavedConnectionLibrary(connections: [profile], selectedConnectionId: profile.id))
+        let workspace = ApplicationWorkspace(connectionStore: store, credentialStore: MemoryConnectionCredentialStore(),
+            helperFactory: { sessionHelper(clusterFailure: true) })
+        await workspace.start()
+        await workspace.connectProfile(profile.id)
+        await workspace.showClusterNodes(profile.id)
+        #expect(workspace.clusterInspection?.nodes.count == 2)
+        await workspace.refreshClusterNodes()
+        let failed = try #require(workspace.clusterInspection)
+        #expect(failed.nodes.isEmpty && failed.refreshedAt == nil && failed.error != nil && !failed.isLoading)
+        await workspace.shutdown()
+    }
+
+    @Test func dismissedClusterSnapshotIgnoresAnInFlightReply() async throws {
+        let profile = SavedConnection(name: "Cluster", settings: settings())
+        let store = MemoryConnectionLibraryStore(library: SavedConnectionLibrary(connections: [profile], selectedConnectionId: profile.id))
+        let workspace = ApplicationWorkspace(connectionStore: store, credentialStore: MemoryConnectionCredentialStore(),
+            helperFactory: { sessionHelper(clusterDelay: true) })
+        await workspace.start()
+        await workspace.connectProfile(profile.id)
+        let loading = Task { await workspace.showClusterNodes(profile.id) }
+        for _ in 0..<100 where workspace.clusterInspection?.isLoading != true {
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        #expect(workspace.clusterInspection?.isLoading == true)
+        workspace.clusterInspection = nil
+        await loading.value
+        #expect(workspace.clusterInspection == nil)
+        #expect(CassandraClusterNode(["status": "unexpected"]).status == "UNKNOWN")
+        await workspace.shutdown()
+    }
+
+    @Test func clusterSheetDisplaysUpdatedSnapshotInNativeTable() async throws {
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore())
+        let host = NSHostingView(rootView: ApplicationWorkspaceView(workspace: workspace))
+        let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 1100, height: 700),
+            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer {
+            workspace.clusterInspection = nil
+            window.attachedSheet?.orderOut(nil)
+            window.close()
+        }
+        try await Task.sleep(for: .milliseconds(150))
+        var snapshot = CassandraClusterInspection(profileID: UUID(), sessionID: "synthetic-service", title: "Example Cluster")
+        snapshot.nodes = [
+            CassandraClusterNode(["address": "192.0.2.1:9042", "status": "UP", "datacenter": "dc1", "rack": "rack1", "hostId": "11111111-1111-1111-1111-111111111111"]),
+            CassandraClusterNode(["address": "[2001:db8::2]:9042", "status": "DOWN", "datacenter": "dc2", "rack": "rack2", "hostId": "22222222-2222-2222-2222-222222222222"])
+        ]
+        snapshot.totalNodeCount = 2
+        snapshot.refreshedAt = Date()
+        workspace.clusterInspection = snapshot
+        for _ in 0..<100 where window.attachedSheet == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let sheet = try #require(window.attachedSheet)
+        let content = try #require(sheet.contentView)
+        func table(in view: NSView) -> NSTableView? {
+            (view as? NSTableView) ?? view.subviews.lazy.compactMap { table(in: $0) }.first
+        }
+        try await Task.sleep(for: .milliseconds(200))
+        content.layoutSubtreeIfNeeded()
+        let nativeTable = try #require(table(in: content))
+        #expect(nativeTable.numberOfRows == 2 && nativeTable.numberOfColumns == 5)
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
+            sheet.appearance = NSAppearance(named: appearance)
+            try await Task.sleep(for: .milliseconds(100))
+            content.layoutSubtreeIfNeeded()
+            if let path = ProcessInfo.processInfo.environment["DBEER_QA_OUTPUT_DIR"] {
+                let view = content.superview ?? content
+                let bitmap = try #require(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+                view.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    view.cacheDisplay(in: view.bounds, to: bitmap)
+                }
+                let folder = URL(fileURLWithPath: path, isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let png = try #require(bitmap.representation(using: .png, properties: [:]))
+                try png.write(to: folder.appendingPathComponent("cluster-nodes-\(name).png"))
+            }
+        }
+        workspace.clusterInspection?.nodes = []
+        workspace.clusterInspection?.error = "The snapshot could not be refreshed."
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(nativeTable.numberOfRows == 0)
+        await workspace.shutdown()
+    }
+
+    private func sessionHelper(editing: Bool = false, applyFailure: String = "", clusterFailure: Bool = false,
+                               clusterDelay: Bool = false) -> BackendClient {
         BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
         import json, sys
         sessions = {}
@@ -224,6 +341,9 @@ struct CassandraNativeTests {
         cursors = set()
         consumed = set()
         browse_serial = 0
+        cluster_serial = 0
+        cluster_failure = \(clusterFailure ? "True" : "False")
+        cluster_delay = \(clusterDelay ? "True" : "False")
         editing = \(editing ? "True" : "False")
         saved_labels = {'first':'original','second':'original-two','third':'original-three'}
         apply_failure = '\(applyFailure)'
@@ -265,7 +385,17 @@ struct CassandraNativeTests {
                 session = command['sessionId']
                 request = command['catalog']
                 reply.update(type='query.result', sessionId=session, queryId=command['queryId'], transactionStatus='unsupported', durationMs=1, columns=[], rows=[], rowCount=0, displayedRowCount=0, truncated=False, commandTag='CATALOG')
-                if request['kind'] == 'columns':
+                if request['kind'] == 'clusterNodes':
+                    cluster_serial += 1
+                    if cluster_delay:
+                        import time
+                        time.sleep(0.1)
+                    names = ['address','status','datacenter','rack','hostId']
+                    rows = [['192.0.2.1:9042','UP','dc1','rack1','node1'],['[2001:db8::2]:9042','DOWN' if cluster_serial == 1 else 'UP','dc2','rack2','node2']]
+                    reply.update(columns=[{'index':i,'name':name,'engine':'cassandra','nativeType':'text'} for i,name in enumerate(names)], rows=rows, rowCount=2, displayedRowCount=2)
+                    if cluster_failure and cluster_serial > 1:
+                        reply.update(type='error',category='connection',message='Cluster snapshot unavailable.',connected=True,outcomeUnknown=False)
+                elif request['kind'] == 'columns':
                     names = ['name','nativeType','primaryKey','partitionKeyPosition','editable']
                     reply.update(columns=[{'index':i,'name':name,'engine':'cassandra','nativeType':'text'} for i,name in enumerate(names)], rows=[['id','text','1','1','false']], rowCount=1, displayedRowCount=1)
                     if editing:

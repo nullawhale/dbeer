@@ -298,6 +298,31 @@ func TestCassandraLiveReplicaConsistencyFailure(t *testing.T) {
 		t.Skip("three-node replica-failure fixture is not selected")
 	}
 	quorum := liveOpen(t, c)
+	// Discovery must retain the unavailable replica instead of presenting only
+	// the live connection pool as the cluster's complete membership.
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		nodes := liveCatalog(t, quorum, protocol.CatalogRequest{Kind: "clusterNodes"})
+		up, down := 0, 0
+		for _, row := range nodes.Rows {
+			if len(row) != 5 || row[1] == nil || row[2] == nil || *row[2] == "" {
+				t.Fatal("cluster discovery lost node status or datacenter")
+			}
+			switch *row[1] {
+			case "UP":
+				up++
+			case "DOWN":
+				down++
+			}
+		}
+		if nodes.Type == "query.result" && up == 2 && down == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("cluster snapshot did not retain two available and one unavailable replica")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	liveSQL(t, quorum, "UPDATE dbeer.live_quorum SET value='quorum_available' WHERE id=1")
 	c.Consistency = "ALL"
 	all := liveOpen(t, c)
@@ -308,6 +333,19 @@ func TestCassandraLiveReplicaConsistencyFailure(t *testing.T) {
 		t.Fatal("ALL unexpectedly succeeded or a failed read became an unknown write")
 	}
 	liveSQL(t, quorum, "SELECT * FROM dbeer.live_quorum WHERE id=1")
+}
+
+func TestCassandraLiveClusterNodes(t *testing.T) {
+	s := liveOpen(t, liveConnection(t))
+	nodes := liveCatalog(t, s, protocol.CatalogRequest{Kind: "clusterNodes"})
+	if nodes.Type != "query.result" || len(nodes.Rows) == 0 || nodes.Truncated {
+		t.Fatal("cluster snapshot is unavailable or incomplete")
+	}
+	for _, row := range nodes.Rows {
+		if len(row) != 5 || row[0] == nil || *row[0] == "" || row[1] == nil || *row[1] != "UP" || row[2] == nil || *row[2] == "" || row[3] == nil || *row[3] == "" || row[4] == nil || *row[4] == "" {
+			t.Fatal("healthy cluster snapshot lost addresses, status or topology metadata")
+		}
+	}
 }
 
 func TestCassandraLiveUserFunctionShadowingIsNotReadOnly(t *testing.T) {

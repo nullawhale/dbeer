@@ -10,6 +10,7 @@ import (
 func TestCatalogRequestValidationAndCorrelation(t *testing.T) {
 	for _, request := range []CatalogRequest{
 		{Kind: "schemas"},
+		{Kind: "clusterNodes"},
 		{Kind: "search", Search: "%_"},
 		{Kind: "search", Schema: "schema", Search: "quoted'name"},
 		{Kind: "objects", Schema: "schema", ObjectKind: "table"},
