@@ -168,6 +168,26 @@ or `./scripts/build-gpui-app.sh` (macOS 15+, Rust, and Go). GPUI uses separate
 profiles and the operating system's credential store on each platform. See the
 client guide for platform builds, dependencies, checks, and limitations.
 
+To reclaim local GPUI build space, stop GPUI builds and test runs, then preview
+and apply cleanup (Python 3.9+):
+
+```sh
+./scripts/clean-gpui.sh           # preview only; --verbose lists every path
+./scripts/clean-gpui.sh --apply   # remove the selected outputs
+```
+
+Cleanup is limited to `build/gpui/`, including nested review build directories.
+It removes compiled binaries and recognized Rust/Swift/Go/Python caches while
+retaining reports, logs, screenshots, document and archive formats even inside
+output directories. Candidates, release/archive directories, source snapshots
+outside caches, fixture directories, installed toolchains, and the PowerShell
+runtime are kept intact.
+Some compiler JSON metadata and dependency documentation may remain to preserve
+possible evidence. Symlinks are retained and never followed. Native Swift
+outputs, shared `build/.cache/` caches, and `build/releases/` are outside its
+scope. Applied runs record their selected paths in
+`build/maintenance/gpui-cleanup-*.json`; subsequent runs can reclaim new outputs.
+
 ## Verification
 
 ```sh
