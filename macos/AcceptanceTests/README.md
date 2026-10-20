@@ -27,7 +27,7 @@ Pass a private mode-0600 JSON configuration containing:
   "ownedPID": 12345,
   "smokeProfileID": "00000000-0000-0000-0000-000000000001",
   "smokeProfileEngine": "postgresql",
-  "inputSourceOriginalID": "com.apple.keylayout.RussianWin",
+  "inputSourceOriginalID": "com.apple.keylayout.British",
   "inputSourceASCIIID": "com.apple.keylayout.US",
   "resultFile": "/absolute/private/state/build5-postgresql-result.json"
 }

@@ -933,6 +933,7 @@
     "vendor/gpui-pre-linux/src/linux/xdg_desktop_portal.rs": "2e3a8eb44718dbd31b21fc368ad2f5c2105b340ef04f7e002ee0029adb9f3cc1",
     "vendor/gpui-pre-linux/src/linux.rs": "1ad9a4a33a93452a796f4d8bcf512b867c498e9b981d2a14bbf15b76bb5954de"
   },
+  "commandPathBase": "repository-root",
   "metadataCommand": [
     "build/gpui/toolchain/cargo/bin/cargo",
     "metadata",

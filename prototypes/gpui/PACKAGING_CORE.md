@@ -269,7 +269,7 @@ fixtures/packaging/cases.json retains the native upgrade/dependency scenarios.
 
 Static checks completed in this core: rustfmt parse/format of owned Rust files,
 Bash syntax, AST parsing of three Python modules, fixture JSON parsing, scoped
-whitespace/Cyrillic inspection. PowerShell is unavailable locally; no PowerShell
+whitespace inspection. PowerShell is unavailable locally; no PowerShell
 parse result or target-native compile/runtime is claimed. The integrated default/native-smoke all-target check and Clippy with warnings
 denied plus root formatting also pass; BUILD_INTEGRATION.md and IMPLEMENTATION.md
 record this static evidence. These checks do not run the prepared tests, package code or OS stores.

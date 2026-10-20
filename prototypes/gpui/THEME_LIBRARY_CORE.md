@@ -179,8 +179,8 @@ runtime tests or native evidence.
 
 Completed local static checks: rustfmt parsed/formatted only the owned Rust module;
 Swift frontend syntax parse of the additive consumer; all 14 copied asset/notice/
-license bytes compared to actual local Swift resources; Cyrillic scan and owned
-file whitespace inspection. Shared all-target compilation/Clippy results are
+license bytes compared to actual local Swift resources; owned-file whitespace
+inspection. Shared all-target compilation/Clippy results are
 recorded separately by the integration writer after source freeze. No Rust/Swift/
 Go/DB/UI/credential/clipboard runtime test or probe was executed.
 

@@ -45,7 +45,9 @@ for development only.
   `build/`. Do not commit signing material or local connection settings.
 - Keep user-facing project documentation in English, following `README.md` and
   `INSTALL.md`. Update `CHANGELOG.md` when release behavior changes.
-- Do not add Cyrillic characters, including in test fixtures or commit messages.
+- Use English in code comments, test fixtures and commit messages.
+- Keep personal machine paths out of tracked files. Use repository-relative
+  paths or clearly synthetic examples instead.
 
 ## Build and verification
 

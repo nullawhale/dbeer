@@ -101,7 +101,7 @@ observations, wrapping/bidi/large-source behavior and geometry remain open.
 
 Both exact pinned crates, full Apache licenses, original manifests/revision/
 archive hashes and local patch audits are tracked under vendor/gpui-component
-and vendor/gpui-base. Cyrillic upstream test literals use equivalent Rust Unicode
+and vendor/gpui-base. Upstream test literals use equivalent Rust Unicode
 escapes; no runtime locale was removed. Task 31 must ship both new notices.
 Task 16's native multi-MIME Linux clipboard code is preserved.
 
