@@ -1,6 +1,11 @@
 # Changelog
 
-## Next release — unreleased
+## 0.2.0 prerelease — build 7 — 2026-10-20
+
+This local prerelease targets the native macOS client and bundled Go helper.
+Windows/Linux GPUI candidates and their pending acceptance are outside this release.
+The full native UI suite is not green: editor completion and signature-help checks
+have intermittent failures. Installed-archive acceptance for this version is pending.
 
 - DBeer is now licensed under GNU GPL version 3 only (GPL-3.0-only). The license text is included in macOS application bundles and release ZIP archives.
 
