@@ -42,6 +42,7 @@ for icon in ToolbarIcon ToolbarIconDark; do
     cp "$repo_root/macos/Resources/$icon.svg" "$app/Contents/Resources/$icon.svg"
 done
 cp "$repo_root/macos/Resources/Assets.car" "$app/Contents/Resources/Assets.car"
+cp "$repo_root/LICENSE" "$app/Contents/Resources/LICENSE"
 export GOCACHE="$build_root/.cache/go"
 export GOMODCACHE="$build_root/.cache/go-mod"
 export CLANG_MODULE_CACHE_PATH="$build_root/.cache/clang"

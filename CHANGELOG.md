@@ -1,5 +1,9 @@
 # Changelog
 
+## Next release — unreleased
+
+- DBeer is now licensed under GNU GPL version 3 only (GPL-3.0-only). The license text is included in macOS application bundles and release ZIP archives.
+
 ## 0.1.0
 
 First internal DBeer release for macOS 14+ on Apple Silicon.

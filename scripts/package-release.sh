@@ -47,6 +47,7 @@ fi
 codesign --verify --deep --strict "$staged_app"
 cp "$repo_root/CHANGELOG.md" "$staging/CHANGELOG.md"
 cp "$repo_root/INSTALL.md" "$staging/INSTALL.md"
+cp "$repo_root/LICENSE" "$staging/LICENSE"
 ditto -c -k --sequesterRsrc "$staging" "$archive.new"
 unzip -tq "$archive.new" >/dev/null
 checksum="$(shasum -a 256 "$archive.new")"
