@@ -1,17 +1,6 @@
 import AppKit
 import SwiftUI
 
-private struct CatalogSearchFocusKey: FocusedValueKey {
-    typealias Value = () -> Void
-}
-
-extension FocusedValues {
-    var focusCatalogSearch: (() -> Void)? {
-        get { self[CatalogSearchFocusKey.self] }
-        set { self[CatalogSearchFocusKey.self] = newValue }
-    }
-}
-
 private enum WorkspaceChrome {
     // Paired rows on either side of the split share their divider positions.
     static let headerHeight: CGFloat = 36
@@ -20,6 +9,7 @@ private enum WorkspaceChrome {
 
 struct ApplicationWorkspaceView: View {
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var commands: AppCommandRegistry
     @ObservedObject private var appearance: AppAppearance
     @Environment(\.colorScheme) private var colorScheme
     private var connectionEditorRequest = SwiftUI.State<ConnectionEditorRequest>(initialValue: .new)
@@ -27,6 +17,7 @@ struct ApplicationWorkspaceView: View {
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
+        self.commands = workspace.commands
         self.appearance = workspace.appearance
     }
 
@@ -55,7 +46,6 @@ struct ApplicationWorkspaceView: View {
         .background(AppPalette.background).tint(AppPalette.accent)
         .applicationTheme(appearance: appearance)
         .focusEffectDisabled()
-        .focusedSceneValue(\.focusCatalogSearch, focusCatalogSearch)
         .background(WorkspaceWindowCloseGuard(workspace: workspace).frame(width: 0, height: 0))
         .toolbar {
             ToolbarItem(placement: .navigation) {
@@ -120,19 +110,6 @@ struct ApplicationWorkspaceView: View {
         }
     }
 
-    private func focusCatalogSearch() {
-        guard let content = NSApplication.shared.keyWindow?.contentView else { return }
-        func searchField(in view: NSView) -> NSTextField? {
-            if let field = view as? NSTextField,
-               field.accessibilityIdentifier() == "catalogSearch" || field.placeholderString == "Search object names" {
-                return field
-            }
-            return view.subviews.lazy.compactMap { searchField(in: $0) }.first
-        }
-        // AppKit selects the full field editor range even if it already has focus.
-        searchField(in: content)?.selectText(nil)
-    }
-
     private var sidebar: some View {
         VSplitView {
             connectionsSidebar.frame(minHeight: 180)
@@ -151,7 +128,7 @@ struct ApplicationWorkspaceView: View {
                     connectionEditorRequest.wrappedValue = .new
                     workspace.library.isConnectionEditorPresented = true
                 }
-                .help("New Connection")
+                .help(commands.help(for: .newConnection))
                 .accessibilityLabel("New Connection")
                 .accessibilityIdentifier("newConnection")
             }
@@ -165,7 +142,7 @@ struct ApplicationWorkspaceView: View {
                 TextField("Search object names", text: $workspace.catalogSearch)
                     .textFieldStyle(.plain)
                     .onExitCommand { workspace.catalogSearch = "" }
-                    .help("Search object names (⌘F)")
+                    .help(commands.help(for: .findInConnections))
                     .accessibilityLabel("Search object names")
                     .accessibilityIdentifier("catalogSearch")
                 if !workspace.catalogSearch.isEmpty {
@@ -236,7 +213,7 @@ struct ApplicationWorkspaceView: View {
             }
             .scrollIndicators(.hidden)
             ControlIconButton(systemName: "plus") { workspace.newDocument() }
-                .help("New SQL Tab (⌘T)")
+                .help(commands.help(for: .newSQLTab))
                 .accessibilityLabel("New SQL Tab")
                 .accessibilityIdentifier("newSQLTab")
         }
@@ -632,8 +609,7 @@ struct SQLDocumentPane: View {
     }
 
     private func commandHelp(_ command: AppCommandID) -> String {
-        let title = commands.shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
-        return title + (commands.shortcuts.shortcut(for: command).map { " (\($0.displayString))" } ?? "")
+        commands.help(for: command)
     }
 
     private var displayedExecution: SQLExecution? {

@@ -62,7 +62,6 @@ private struct ConnectionCommands: Commands {
 private struct WorkspaceCommands: Commands {
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var commands: AppCommandRegistry
-    @FocusedValue(\.focusCatalogSearch) private var focusCatalogSearch
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
@@ -71,29 +70,20 @@ private struct WorkspaceCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New Connection…") { workspace.library.isConnectionEditorPresented = true }
-                .keyboardShortcut("n", modifiers: .command)
-            Button("New SQL Tab") { workspace.newDocument() }.keyboardShortcut("t", modifiers: .command)
+            commandItem(.newConnection)
+            commandItem(.newSQLTab)
+            commandItem(.closeTab)
             commandItem(.reopenClosedTab)
-            Button("Open SQL…") { workspace.openSQLFile() }.keyboardShortcut("o", modifiers: .command)
-            Button("Attach SQL Folder…") { workspace.attachSQLFolder() }
-            Button("Check SQL Files for Changes") { Task { await workspace.reconcileSQLFiles() } }
+            commandItem(.openSQL)
+            commandItem(.attachSQLFolder)
+            commandItem(.checkSQLFiles)
         }
         CommandGroup(replacing: .saveItem) {
-            Button("Save SQL") { if let document = workspace.selectedDocument { workspace.saveSQLFile(document) } }
-                .keyboardShortcut("s", modifiers: .command)
-                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil ||
-                    workspace.selectedDocument?.fileDocument?.isSaving == true)
-            Button("Save SQL As…") {
-                if let document = workspace.selectedDocument { workspace.saveSQLFile(document, chooseLocation: true) }
-            }.keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil ||
-                    workspace.selectedDocument?.fileDocument?.isSaving == true)
+            commandItem(.saveSQL)
+            commandItem(.saveSQLAs)
         }
         CommandGroup(after: .textEditing) {
-            Button("Find in Connections") { focusCatalogSearch?() }
-                .keyboardShortcut("f", modifiers: .command)
-                .disabled(focusCatalogSearch == nil)
+            commandItem(.findInConnections)
         }
         CommandGroup(after: .pasteboard) {
             commandItem(.copyAsJSON)
@@ -109,12 +99,15 @@ private struct WorkspaceCommands: Commands {
             }
             commandItem(.stop)
             Divider()
-            Button("SQL History…") { workspace.isHistoryPresented = true }
+            commandItem(.showSQLHistory)
         }
         CommandMenu("Connections") {
-            Button("Import Connections…") { workspace.previewProfileImport() }
-            Button("Export Connections…") { workspace.exportProfiles() }
-                .disabled(workspace.library.savedConnections.isEmpty)
+            commandItem(.importConnections)
+            commandItem(.exportConnections)
+        }
+        CommandGroup(after: .windowArrangement) {
+            commandItem(.previousTab)
+            commandItem(.nextTab)
         }
     }
 

@@ -111,15 +111,38 @@ struct AppCommandInvocation {
         gridHandlers[command] = handler
     }
 
+    func help(for command: AppCommandID) -> String {
+        let title = shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
+        return title + (shortcuts.shortcut(for: command).map { " (\($0.displayString))" } ?? "")
+    }
+
     func canPerform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Bool {
         let context = context ?? self.context()
         guard context.isWorkspaceWindow, !context.hasModal,
               let descriptor = shortcuts.descriptors.first(where: { $0.id == command }) else { return false }
         if descriptor.scope == .workspace {
-            return command == .reopenClosedTab && !context.isComposingText &&
-                workspace.canReopenClosedTab
+            guard !context.isComposingText, workspace.canManageWorkspace else { return false }
+            switch command {
+            case .newConnection: return !workspace.library.isSavingConnection
+            case .newSQLTab, .openSQL, .attachSQLFolder, .checkSQLFiles: return true
+            case .reopenClosedTab: return workspace.canReopenClosedTab
+            case .nextTab, .previousTab:
+                return workspace.documents.count > 1 && workspace.selectedDocument != nil
+            case .findInConnections: return catalogSearchField() != nil
+            case .showSQLHistory: return !workspace.isHistoryPresented
+            case .importConnections: return !workspace.isImportingProfiles && workspace.importPreview == nil
+            case .exportConnections: return !workspace.library.savedConnections.isEmpty
+            default: return false
+            }
         }
         guard let document = workspace.selectedDocument, context.documentID == document.id else { return false }
+        if command == .closeTab {
+            return !context.isComposingText && workspace.canStartOperation(document)
+        }
+        if command == .saveSQL || command == .saveSQLAs {
+            return !context.isComposingText && workspace.canStartOperation(document) &&
+                document.table == nil && document.fileDocument?.isSaving != true
+        }
         if descriptor.scope == .grid {
             guard context.focus == .grid, Self.canCopyGrid(in: document, workspace: workspace) else { return false }
             if command.isGridCopyCommand {
@@ -143,13 +166,39 @@ struct AppCommandInvocation {
     @discardableResult
     func perform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Task<Void, Never>? {
         guard canPerform(command, context: context) else { return nil }
-        if command == .reopenClosedTab {
+        switch command {
+        case .newConnection: workspace.library.isConnectionEditorPresented = true
+        case .newSQLTab: workspace.newDocument()
+        case .openSQL: workspace.openSQLFile()
+        case .attachSQLFolder: workspace.attachSQLFolder()
+        case .checkSQLFiles: return Task { [workspace] in await workspace.reconcileSQLFiles() }
+        case .findInConnections: catalogSearchField()?.selectText(nil)
+        case .showSQLHistory: workspace.isHistoryPresented = true
+        case .importConnections: workspace.previewProfileImport()
+        case .exportConnections: workspace.exportProfiles()
+        case .nextTab, .previousTab:
+            guard let index = workspace.documents.firstIndex(where: { $0.id == workspace.selectedDocumentID }) else { return nil }
+            let count = workspace.documents.count
+            let offset = command == .nextTab ? 1 : -1
+            workspace.selectedDocumentID = workspace.documents[(index + offset + count) % count].id
+        case .reopenClosedTab:
             // Pop synchronously so repeated keypresses consume distinct entries
             // even before the next task can run, including with zero open tabs.
             guard workspace.reopenClosedTab() != nil else { return nil }
+        default: return performDocumentCommand(command)
+        }
+        return Task {}
+    }
+
+    private func performDocumentCommand(_ command: AppCommandID) -> Task<Void, Never>? {
+        guard let document = workspace.selectedDocument else { return nil }
+        if command == .closeTab {
+            return Task { [workspace] in await workspace.closeDocument(document) }
+        }
+        if command == .saveSQL || command == .saveSQLAs {
+            workspace.saveSQLFile(document, chooseLocation: command == .saveSQLAs)
             return Task {}
         }
-        guard let document = workspace.selectedDocument else { return nil }
         if command.isGridCopyCommand {
             guard let operation = gridCopyResponder(for: document)?.captureGridCopy(command) else { return nil }
             return Task { [workspace] in
@@ -182,6 +231,17 @@ struct AppCommandInvocation {
                 await workspace.runToFile(document, format: command == .runToJSON ? "json" : "csv", fragment: invocation.fragment)
             }
         }
+    }
+
+    private func catalogSearchField() -> NSTextField? {
+        func find(in view: NSView) -> NSTextField? {
+            if let field = view as? NSTextField,
+               field.accessibilityIdentifier() == "catalogSearch" || field.placeholderString == "Search object names" {
+                return field
+            }
+            return view.subviews.lazy.compactMap { find(in: $0) }.first
+        }
+        return workspace.presentationWindow?.contentView.flatMap { find(in: $0) }
     }
 
     private static func canCopyGrid(in document: SQLDocument, workspace: ApplicationWorkspace) -> Bool {

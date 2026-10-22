@@ -24,7 +24,10 @@ struct ShortcutSettingsView: View {
                     .buttonStyle(.bordered)
                     .controlHover()
                     .accessibilityIdentifier("restoreShortcutDefaults")
-            }.padding(.horizontal, 20).padding(.bottom, 12)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 12)
         }
         .padding(8)
         .frame(width: 650, height: 460)

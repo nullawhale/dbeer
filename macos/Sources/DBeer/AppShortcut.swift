@@ -9,6 +9,20 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
 
     init(rawValue: String) { self.rawValue = rawValue }
 
+    static let newConnection = Self(rawValue: "connections.new")
+    static let importConnections = Self(rawValue: "connections.import")
+    static let exportConnections = Self(rawValue: "connections.export")
+    static let findInConnections = Self(rawValue: "workspace.findInConnections")
+    static let newSQLTab = Self(rawValue: "workspace.newSQLTab")
+    static let closeTab = Self(rawValue: "workspace.closeTab")
+    static let nextTab = Self(rawValue: "workspace.nextTab")
+    static let previousTab = Self(rawValue: "workspace.previousTab")
+    static let openSQL = Self(rawValue: "file.openSQL")
+    static let saveSQL = Self(rawValue: "file.saveSQL")
+    static let saveSQLAs = Self(rawValue: "file.saveSQLAs")
+    static let attachSQLFolder = Self(rawValue: "file.attachSQLFolder")
+    static let checkSQLFiles = Self(rawValue: "file.checkSQLFiles")
+    static let showSQLHistory = Self(rawValue: "workspace.showSQLHistory")
     static let runCurrent = Self(rawValue: "query.runCurrent")
     static let runScript = Self(rawValue: "query.runScript")
     static let stop = Self(rawValue: "query.stop")
@@ -57,8 +71,30 @@ struct AppCommandDescriptor: Identifiable, Hashable, Sendable {
     }
 
     static let builtins: [Self] = [
+        .init(id: .newConnection, title: "New Connection…", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "n", modifiers: .command)),
+        .init(id: .newSQLTab, title: "New SQL Tab", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "t", modifiers: .command)),
+        .init(id: .closeTab, title: "Close Tab", scope: .document),
         .init(id: .reopenClosedTab, title: "Reopen Closed Tab", scope: .workspace,
             defaultShortcut: AppShortcut(key: "t", modifiers: [.command, .shift])),
+        .init(id: .nextTab, title: "Select Next Tab", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "]", modifiers: [.command, .shift])),
+        .init(id: .previousTab, title: "Select Previous Tab", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "[", modifiers: [.command, .shift])),
+        .init(id: .openSQL, title: "Open SQL…", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "o", modifiers: .command)),
+        .init(id: .saveSQL, title: "Save SQL", scope: .sqlDocument,
+            defaultShortcut: AppShortcut(key: "s", modifiers: .command)),
+        .init(id: .saveSQLAs, title: "Save SQL As…", scope: .sqlDocument,
+            defaultShortcut: AppShortcut(key: "s", modifiers: [.command, .shift])),
+        .init(id: .attachSQLFolder, title: "Attach SQL Folder…", scope: .workspace),
+        .init(id: .checkSQLFiles, title: "Check SQL Files for Changes", scope: .workspace),
+        .init(id: .findInConnections, title: "Find in Connections", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "f", modifiers: .command)),
+        .init(id: .showSQLHistory, title: "SQL History…", scope: .workspace),
+        .init(id: .importConnections, title: "Import Connections…", scope: .workspace),
+        .init(id: .exportConnections, title: "Export Connections…", scope: .workspace),
         .init(id: .runCurrent, title: "Run Selection or Current Statement", scope: .document,
             defaultShortcut: AppShortcut(key: "return", modifiers: .command)),
         .init(id: .runScript, title: "Run Script", scope: .sqlDocument,
@@ -82,7 +118,8 @@ struct AppShortcut: Codable, Hashable, Sendable {
     static let supportedModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
 
     init(key: String, modifiers: NSEvent.ModifierFlags) {
-        self.key = Self.canonicalKey(key)
+        let unshiftedBrackets = ["{": "[", "}": "]"]
+        self.key = Self.canonicalKey(modifiers.contains(.shift) ? unshiftedBrackets[key] ?? key : key)
         modifierRawValue = modifiers.intersection(Self.supportedModifiers).rawValue
     }
 
@@ -159,7 +196,7 @@ struct AppShortcut: Codable, Hashable, Sendable {
     /// expressed by both native events and SwiftUI menu key equivalents.
     var isCanonical: Bool {
         modifierRawValue == modifiers.intersection(Self.supportedModifiers).rawValue &&
-            key == Self.canonicalKey(key) && (Self.namedKeys.contains(key) || Self.functionKeyNumber(key) != nil ||
+            key == Self(key: key, modifiers: modifiers).key && (Self.namedKeys.contains(key) || Self.functionKeyNumber(key) != nil ||
                 (key.count == 1 && !key.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)))
     }
 
@@ -199,6 +236,7 @@ struct AppShortcut: Codable, Hashable, Sendable {
         0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x", 8: "c", 9: "v",
         11: "b", 12: "q", 13: "w", 14: "e", 15: "r", 16: "y", 17: "t", 31: "o", 32: "u",
         34: "i", 35: "p", 37: "l", 38: "j", 40: "k", 45: "n", 46: "m",
+        33: "[", 30: "]",
     ]
 }
 
@@ -312,17 +350,18 @@ final class AppShortcutStore: ObservableObject {
             // explicit grid-only exception; ordinary Command-M still belongs
             // to macOS, as does Minimize All outside the grid context.
             let minimizeAll = key == "m" && modifiers == [.command, .option] && scope != .grid
-            // The standard reopen binding belongs only to this workspace
-            // command. Other commands cannot claim it after unbinding Reopen.
-            let reopensClosedTab = command == .reopenClosedTab && scope == .workspace &&
-                key == "t" && modifiers == [.command, .shift]
+            // Standard application bindings belong only to their own built-in
+            // commands, even after the owner is rebound or cleared.
+            let ownsStandardBinding = AppCommandDescriptor.builtins.contains {
+                $0.id == command && $0.scope == scope && $0.defaultShortcut == shortcut
+            }
             let reserved = editing.contains(key) || key == " " ||
                 (modifiers == .command && baseCommands.contains(key)) ||
-                (modifiers == [.command, .shift] && shiftedCommands.contains(key) && !reopensClosedTab) ||
+                (modifiers == [.command, .shift] && shiftedCommands.contains(key)) ||
                 (modifiers == [.command, .option] && optionCommands.contains(key)) ||
                 (modifiers == [.command, .control] && controlCommands.contains(key)) ||
                 (modifiers.contains(.shift) && ["3", "4", "5", "6"].contains(key)) || minimizeAll
-            if reserved {
+            if reserved && !ownsStandardBinding {
                 return "This shortcut is reserved for a standard macOS or application command."
             }
         } else if modifiers.contains(.control) {

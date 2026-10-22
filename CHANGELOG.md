@@ -7,6 +7,11 @@
   options. Use URL fills the existing fields; omitted credentials and TLS options
   stay unchanged. URL previews exclude passwords, and saved credentials continue
   to use Keychain. Unsupported or ambiguous URL options are rejected explicitly.
+- Settings → Shortcuts now includes connection creation, search and profile
+  import/export, SQL tab closing and navigation, SQL file/folder actions and SQL
+  history. Existing New/Open/Save bindings are configurable; Shift-Command-[ and
+  Shift-Command-] switch tabs with wrapping. Close Tab follows the existing
+  transaction and pending-edit review. Restore Defaults has spacing above it.
 - The native connection editor uses a wider dialog with General, SSH, TLS and
   Options tabs. Test Connection checks unsaved settings in a disposable helper,
   closes the test session and reports the result without saving a profile or

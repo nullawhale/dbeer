@@ -340,10 +340,12 @@ final class ApplicationWorkspace: ObservableObject {
 
     var selectedDocument: SQLDocument? { documents.first { $0.id == selectedDocumentID } }
 
-    var canReopenClosedTab: Bool {
-        !closedTabs.isEmpty && shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
+    var canManageWorkspace: Bool {
+        shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
             !isClosing && !isClearingDocuments && closingDocuments.isEmpty && disconnectingProfiles.isEmpty
     }
+
+    var canReopenClosedTab: Bool { canManageWorkspace && !closedTabs.isEmpty }
 
     @discardableResult
     func reopenClosedTab() -> SQLDocument? {
