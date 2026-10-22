@@ -77,6 +77,64 @@ struct WorkspaceShortcutCommandTests {
         }
     }
 
+    @Test func sidebarBindingsCanBeReassignedClearedAndRestoredIndependently() throws {
+        let fixture = try Fixture()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.defaultsName) }
+        for (index, panel) in WorkspaceSidebarPanel.allCases.enumerated() {
+            let expected = AppShortcut(key: String(index + 1), modifiers: .command)
+            #expect(fixture.shortcuts.shortcut(for: panel.command) == expected)
+            #expect(fixture.shortcuts.validationError(for: expected, command: panel.command) == nil)
+            #expect(fixture.shortcuts.update(expected, for: .stop) != nil)
+            let custom = AppShortcut(key: String(index + 1), modifiers: [.command, .option])
+            #expect(fixture.shortcuts.update(custom, for: panel.command) == nil)
+            #expect(AppShortcutStore(defaults: fixture.defaults).shortcut(for: panel.command) == custom)
+            #expect(fixture.shortcuts.update(custom, for: .stop) != nil)
+            #expect(fixture.shortcuts.update(nil, for: panel.command) == nil)
+            #expect(AppShortcutStore(defaults: fixture.defaults).shortcut(for: panel.command) == nil)
+            #expect(fixture.shortcuts.restoreDefault(for: panel.command) == nil)
+            #expect(AppShortcutStore(defaults: fixture.defaults).shortcut(for: panel.command) == expected)
+        }
+    }
+
+    @Test func sidebarCommandsToggleAndSwitchWithNoTabsAndFindRevealsConnections() async throws {
+        let fixture = try Fixture()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.defaultsName) }
+        await fixture.workspace.restoreSavedWorkspace()
+        #expect(fixture.workspace.documents.isEmpty)
+        #expect(fixture.workspace.sidebarPanel == .connections)
+        for panel in WorkspaceSidebarPanel.allCases {
+            if fixture.workspace.sidebarPanel == panel { fixture.workspace.toggleSidebar(panel) }
+            let open = try #require(fixture.registry.perform(panel.command, context: fixture.context(focus: .textInput)))
+            #expect(fixture.workspace.sidebarPanel == panel)
+            await open.value
+            let close = try #require(fixture.registry.perform(panel.command, context: fixture.context()))
+            #expect(fixture.workspace.sidebarPanel == nil)
+            await close.value
+        }
+        let document = fixture.workspace.newDocument(text: "SELECT 1;")
+        document.selection = NSRange(location: 3, length: 2)
+        for panel in WorkspaceSidebarPanel.allCases {
+            let open = try #require(fixture.registry.perform(panel.command, context: fixture.context(focus: .sqlEditor)))
+            #expect(fixture.workspace.sidebarPanel == panel)
+            #expect(fixture.workspace.selectedDocumentID == document.id)
+            #expect(document.text == "SELECT 1;" && document.selection == NSRange(location: 3, length: 2))
+            await open.value
+        }
+        for initial: WorkspaceSidebarPanel? in [nil, .files, .library, .investigations, .connections] {
+            fixture.workspace.sidebarPanel = initial
+            fixture.workspace.catalogSearchFocusRequested = false
+            let find = try #require(fixture.registry.perform(.findInConnections, context: fixture.context()))
+            #expect(fixture.workspace.sidebarPanel == .connections)
+            #expect(fixture.workspace.catalogSearchFocusRequested)
+            await find.value
+        }
+        #expect(fixture.counter.helperStarts == 0)
+        await fixture.workspace.shutdown()
+        for panel in WorkspaceSidebarPanel.allCases {
+            #expect(!fixture.registry.canPerform(panel.command, context: fixture.context()))
+        }
+    }
+
     @Test func paneShortcutsMatchBackslashAndItsShiftedSymbol() throws {
         for command: AppCommandID in [.splitRight, .splitLeft, .splitUp, .splitDown, .unsplitCurrent, .unsplitAll] {
             let shortcut = try #require(AppCommandDescriptor.builtins.first { $0.id == command }?.defaultShortcut)
@@ -147,7 +205,8 @@ struct WorkspaceShortcutCommandTests {
             document.table = nil
         }
         let commands: [AppCommandID] = [.newConnection, .newSQLTab, .closeTab, .nextTab, .previousTab,
-            .openSQL, .saveSQL, .saveSQLAs, .attachSQLFolder, .checkSQLFiles, .showSQLHistory, .importConnections]
+            .openSQL, .saveSQL, .saveSQLAs, .attachSQLFolder, .checkSQLFiles, .showSQLHistory, .importConnections,
+            .findInConnections, .toggleConnectionsPanel, .toggleFilesPanel, .toggleSQLLibraryPanel, .toggleInvestigationsPanel]
         for command in commands {
             #expect(fixture.registry.canPerform(command, context: fixture.context()))
             for context in [fixture.context(hasModal: true), fixture.context(isWorkspaceWindow: false),

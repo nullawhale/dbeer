@@ -238,7 +238,8 @@ struct InvestigationWindowTests {
         let workspace = fixture.workspace
         let window = try await host(workspace)
         defer { window.close() }
-        try await press("newInvestigation", in: window)
+        try await press("toggleSidebar-investigations", in: window)
+        try await press("createInvestigation", in: window)
         try await waitFor(window) { workspace.selectedDocument?.isInvestigation == true }
         let parent = try #require(workspace.selectedDocument)
         let model = try #require(parent.investigationModel)
@@ -286,7 +287,6 @@ struct InvestigationWindowTests {
         try await press("closeDocument-\(parent.id.uuidString)", in: pane(.left, in: window))
         try await waitFor(window) { !workspace.documents.contains { $0.id == parent.id } }
         #expect(fixture.library.documents.contains { $0.id == model.id })
-        try await press("openInvestigationsLibrary", in: window)
         try await waitFor(window) { elements(in: window).contains { $0.identifier == "openInvestigation-\(model.id.uuidString)" } }
         try await press("openInvestigation-\(model.id.uuidString)", in: window)
         try await waitFor(window) { workspace.selectedDocument?.investigationID == model.id && window.attachedSheet == nil }

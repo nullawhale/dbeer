@@ -171,7 +171,8 @@ struct AppCommandInvocation {
             case .unsplitCurrent, .unsplitAll: return workspace.paneLayout.isSplit
             case .nextTab, .previousTab:
                 return workspace.documents(in: workspace.activePaneID).count > 1 && workspace.selectedDocument != nil
-            case .findInConnections: return catalogSearchField() != nil
+            case .findInConnections, .toggleConnectionsPanel, .toggleFilesPanel,
+                 .toggleSQLLibraryPanel, .toggleInvestigationsPanel: return true
             case .showSQLHistory: return !workspace.isHistoryPresented
             case .importConnections: return !workspace.isImportingProfiles && workspace.importPreview == nil
             case .exportConnections: return !workspace.library.savedConnections.isEmpty
@@ -231,7 +232,11 @@ struct AppCommandInvocation {
         case .openSQL: workspace.openSQLFile()
         case .attachSQLFolder: workspace.attachSQLFolder()
         case .checkSQLFiles: return Task { [workspace] in await workspace.reconcileSQLFiles() }
-        case .findInConnections: catalogSearchField()?.selectText(nil)
+        case .findInConnections: workspace.findInConnections()
+        case .toggleConnectionsPanel: workspace.toggleSidebar(.connections)
+        case .toggleFilesPanel: workspace.toggleSidebar(.files)
+        case .toggleSQLLibraryPanel: workspace.toggleSidebar(.library)
+        case .toggleInvestigationsPanel: workspace.toggleSidebar(.investigations)
         case .showSQLHistory: workspace.isHistoryPresented = true
         case .importConnections: workspace.previewProfileImport()
         case .exportConnections: workspace.exportProfiles()
@@ -304,17 +309,6 @@ struct AppCommandInvocation {
                 await workspace.runToFile(document, format: command == .runToJSON ? "json" : "csv", fragment: invocation.fragment)
             }
         }
-    }
-
-    private func catalogSearchField() -> NSTextField? {
-        func find(in view: NSView) -> NSTextField? {
-            if let field = view as? NSTextField,
-               field.accessibilityIdentifier() == "catalogSearch" || field.placeholderString == "Search object names" {
-                return field
-            }
-            return view.subviews.lazy.compactMap { find(in: $0) }.first
-        }
-        return workspace.presentationWindow?.contentView.flatMap { find(in: $0) }
     }
 
     private static func canCopyGrid(in document: SQLDocument, workspace: ApplicationWorkspace) -> Bool {

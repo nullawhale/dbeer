@@ -2,22 +2,6 @@ import SwiftUI
 
 struct SQLFilesSidebarView: View {
     @ObservedObject var workspace: ApplicationWorkspace
-    private var section = SwiftUI.State(initialValue: "files")
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ControlSegmentPicker("SQL files", selection: section.projectedValue, choices: [
-                .init("Files", value: "files"), .init("Library", value: "library"),
-            ]).labelsHidden().font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
-            Divider()
-            if section.wrappedValue == "library" { SQLLibrarySidebarView(workspace: workspace) }
-            else { SQLFolderFilesView(workspace: workspace) }
-        }
-    }
-}
-
-private struct SQLFolderFilesView: View {
-    @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var library: SQLFolderLibrary
     private var query = SwiftUI.State(initialValue: "")
     private var mode = SwiftUI.State(initialValue: SQLFolderSearchMode.all)
@@ -35,7 +19,7 @@ private struct SQLFolderFilesView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 6) {
-                Text("SQL Folders").font(.headline)
+                Text("Files").font(.headline)
                 Spacer(minLength: 0)
                 if library.isSearching { ProgressView().controlSize(.mini) }
                 ControlIconButton(systemName: "arrow.clockwise") {
@@ -46,6 +30,7 @@ private struct SQLFolderFilesView: View {
                 ControlIconButton(systemName: "folder.badge.plus") { workspace.attachSQLFolder() }
                     .help("Attach an existing SQL folder").accessibilityLabel("Attach SQL folder")
                     .accessibilityIdentifier("attachSQLFolder")
+                WorkspaceSidebarCloseButton(workspace: workspace, panel: .files)
             }
             .padding(.horizontal, 12).frame(height: 36)
             Divider()

@@ -5,7 +5,7 @@ import SwiftUI
 struct InvestigationLibraryView: View {
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var library: InvestigationLibraryModel
-    @Environment(\.dismiss) private var dismiss
+    private var query = SwiftUI.State(initialValue: "")
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
@@ -13,54 +13,75 @@ struct InvestigationLibraryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Investigations").font(.title2.weight(.semibold))
-                Spacer()
-                if library.isLoading || library.isSaving { ProgressView().controlSize(.small) }
-                Button("New Investigation") {
-                    Task { if await workspace.newInvestigation() != nil { dismiss() } }
-                }.controlHover().disabled(!library.isLoaded || !workspace.canManageWorkspace)
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Text("Investigations").font(.headline)
+                Spacer(minLength: 0)
+                if library.isLoading || library.isSaving { ProgressView().controlSize(.mini) }
+                ControlIconButton(systemName: "plus") {
+                    Task { _ = await workspace.newInvestigation() }
+                }.disabled(!library.isLoaded || !workspace.canManageWorkspace)
+                    .help("New investigation").accessibilityLabel("New Investigation")
                     .accessibilityIdentifier("createInvestigation")
+                WorkspaceSidebarCloseButton(workspace: workspace, panel: .investigations)
             }
-            Text("Keep notes, independent SQL blocks, and saved result references together. Closing a tab keeps its investigation in this local library.")
-                .font(.callout).appSecondaryText()
-            Table(library.documents) {
-                TableColumn("Investigation") { document in
-                    Button(document.title) {
-                        if workspace.openInvestigation(id: document.id) != nil { dismiss() }
-                    }.buttonStyle(.plain).controlHover()
+            .padding(.horizontal, 12).frame(height: 36)
+            Divider()
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").appSecondaryText().accessibilityHidden(true)
+                TextField("Search investigations", text: query.projectedValue)
+                    .textFieldStyle(.plain).onExitCommand { query.wrappedValue = "" }
+                    .accessibilityLabel("Search investigations")
+                if !query.wrappedValue.isEmpty {
+                    ControlIconButton(systemName: "xmark") { query.wrappedValue = "" }
+                        .help("Clear search").accessibilityLabel("Clear investigation search")
+                }
+            }.padding(.horizontal, 12).frame(height: 40)
+            Divider()
+            List {
+                ForEach(documents) { document in
+                    Button { _ = workspace.openInvestigation(id: document.id) } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Label(document.title, systemImage: "doc.richtext").lineLimit(1)
+                            Text("\(document.blocks.count) blocks · \(document.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                                .font(.caption).appSecondaryText().lineLimit(2)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }.buttonStyle(.plain).catalogRowHover()
                         .disabled(!workspace.canManageWorkspace)
                         .accessibilityIdentifier("openInvestigation-\(document.id.uuidString)")
-                }.width(min: 200, ideal: 340)
-                TableColumn("Blocks") { document in Text(document.blocks.count.formatted()).monospacedDigit() }
-                    .width(65)
-                TableColumn("Updated") { document in
-                    Text(document.updatedAt, format: .dateTime.year().month().day().hour().minute())
-                }.width(min: 140, ideal: 170)
+                }
             }
+            .listStyle(.sidebar).scrollContentBackground(.hidden)
             .overlay {
                 if library.isLoaded, library.documents.isEmpty {
-                    Text("No saved investigations").appSecondaryText().allowsHitTesting(false)
+                    VStack(spacing: 8) {
+                        Image(systemName: "doc.richtext").font(.title2).accessibilityHidden(true)
+                        Text("Keep notes, SQL blocks and saved results together.")
+                            .font(.callout).multilineTextAlignment(.center)
+                        Button("New Investigation") { Task { _ = await workspace.newInvestigation() } }
+                            .controlHover().disabled(!workspace.canManageWorkspace)
+                    }.padding().appSecondaryText()
+                } else if library.isLoaded, documents.isEmpty {
+                    Text("No matching investigations").appSecondaryText().padding().allowsHitTesting(false)
                 }
             }
             .accessibilityIdentifier("investigationsLibraryList")
             if let error = library.error {
                 Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-                    .font(.callout).textSelection(.enabled)
+                    .font(.caption).textSelection(.enabled).padding(10)
                     .accessibilityIdentifier("investigationsLibraryError")
-            }
-            HStack {
-                Text("Stored on this Mac").font(.caption).appSecondaryText()
-                Spacer()
-                Button("Done") { dismiss() }.controlHover().keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("closeInvestigationsLibrary")
+                Button("Retry") { Task { await library.restore() } }.controlHover().padding(.bottom, 8)
             }
         }
-        .padding(20).frame(width: 720, height: 460)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("investigationsLibrary")
         .task { await library.restore() }
+    }
+
+    private var documents: [StoredInvestigation] {
+        let search = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return library.documents.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
     }
 }
 

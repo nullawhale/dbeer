@@ -13,6 +13,10 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
     static let importConnections = Self(rawValue: "connections.import")
     static let exportConnections = Self(rawValue: "connections.export")
     static let findInConnections = Self(rawValue: "workspace.findInConnections")
+    static let toggleConnectionsPanel = Self(rawValue: "workspace.toggleConnectionsPanel")
+    static let toggleFilesPanel = Self(rawValue: "workspace.toggleFilesPanel")
+    static let toggleSQLLibraryPanel = Self(rawValue: "workspace.toggleSQLLibraryPanel")
+    static let toggleInvestigationsPanel = Self(rawValue: "workspace.toggleInvestigationsPanel")
     static let newSQLTab = Self(rawValue: "workspace.newSQLTab")
     static let closeTab = Self(rawValue: "workspace.closeTab")
     static let nextTab = Self(rawValue: "workspace.nextTab")
@@ -122,6 +126,14 @@ struct AppCommandDescriptor: Identifiable, Hashable, Sendable {
         .init(id: .checkSQLFiles, title: "Check SQL Files for Changes", scope: .workspace),
         .init(id: .findInConnections, title: "Find in Connections", scope: .workspace,
             defaultShortcut: AppShortcut(key: "f", modifiers: .command)),
+        .init(id: .toggleConnectionsPanel, title: "Toggle Connections Panel", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "1", modifiers: .command)),
+        .init(id: .toggleFilesPanel, title: "Toggle Files Panel", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "2", modifiers: .command)),
+        .init(id: .toggleSQLLibraryPanel, title: "Toggle SQL Library Panel", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "3", modifiers: .command)),
+        .init(id: .toggleInvestigationsPanel, title: "Toggle Investigations Panel", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "4", modifiers: .command)),
         .init(id: .showSQLHistory, title: "SQL History…", scope: .workspace),
         .init(id: .importConnections, title: "Import Connections…", scope: .workspace),
         .init(id: .exportConnections, title: "Export Connections…", scope: .workspace),

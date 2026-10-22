@@ -18,7 +18,10 @@ struct ShortcutSearchTests {
         let groups = store.groups(matching: " \n ")
         let ids = groups.flatMap { $0.commands.map(\.id) }
         #expect(ids.count == store.descriptors.count && Set(ids).count == ids.count)
-        #expect(groups.map(\.group) == [.connections, .tabs, .panes, .files, .execution, .results, .history])
+        #expect(groups.map(\.group) == [.connections, .sidebar, .tabs, .panes, .files, .execution, .results, .history])
+        #expect(store.groups(matching: "Sidebar Panels").flatMap { $0.commands.map(\.id) } ==
+            WorkspaceSidebarPanel.allCases.map(\.command))
+        #expect(store.groups(matching: "Cmd+4").flatMap { $0.commands.map(\.id) } == [.toggleInvestigationsPanel])
         let panes = try #require(groups.first { $0.group == .panes })
         #expect(Set(panes.commands.map(\.id)) == [.splitLeft, .splitRight, .splitUp, .splitDown, .unsplitCurrent, .unsplitAll])
         #expect(store.groups(matching: "SQL Files and Folders").map(\.group) == [.files])

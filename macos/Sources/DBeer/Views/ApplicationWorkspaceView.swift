@@ -15,6 +15,8 @@ struct ApplicationWorkspaceView: View {
     private var connectionEditorRequest = SwiftUI.State<ConnectionEditorRequest>(initialValue: .new)
     private var deletion = SwiftUI.State<SavedConnection?>(initialValue: nil)
     private var tabDragSessionID = SwiftUI.State(initialValue: UUID())
+    private var sidebarWidth = SwiftUI.State<CGFloat>(initialValue: 260)
+    @FocusState private var catalogSearchFocused: Bool
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
@@ -23,19 +25,33 @@ struct ApplicationWorkspaceView: View {
     }
 
     var body: some View {
-        HSplitView {
-            sidebar
-            VStack(spacing: 0) {
-                WorkspacePanesSplitView(workspace: workspace) { pane in
-                    workingPane(pane)
+        HStack(spacing: 0) {
+            WorkspaceSidebarRail(workspace: workspace)
+            Divider()
+            HSplitView {
+                if let panel = workspace.sidebarPanel {
+                    sidebar(panel)
+                        .frame(minWidth: 230, idealWidth: sidebarWidth.wrappedValue, maxWidth: 420)
+                        .background {
+                            GeometryReader { geometry in
+                                Color.clear.onChange(of: geometry.size.width) { _, width in
+                                    sidebarWidth.wrappedValue = width
+                                }
+                            }
+                        }
                 }
-                .overlay(alignment: .bottomTrailing) {
-                    WorkspaceNotificationToast(notifications: workspace.notifications).padding(12)
+                VStack(spacing: 0) {
+                    WorkspacePanesSplitView(workspace: workspace) { pane in
+                        workingPane(pane)
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        WorkspaceNotificationToast(notifications: workspace.notifications).padding(12)
+                    }
+                    Divider()
+                    WorkspaceStatusBar(workspace: workspace, editConnection: editConnection)
                 }
-                Divider()
-                WorkspaceStatusBar(workspace: workspace, editConnection: editConnection)
+                .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityElement(children: .contain)
         .background(AppPalette.background).tint(AppPalette.accent)
@@ -92,10 +108,6 @@ struct ApplicationWorkspaceView: View {
                     workspace.isSnapshotsPresented = false
                 }
             }
-                .applicationTheme(appearance: appearance)
-        }
-        .sheet(isPresented: $workspace.isInvestigationsPresented) {
-            InvestigationLibraryView(workspace: workspace)
                 .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.insertCopySelection) { selection in
@@ -158,31 +170,20 @@ struct ApplicationWorkspaceView: View {
             }
     }
 
-    private var sidebar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Button {
-                    workspace.isInvestigationsPresented = true
-                } label: { Label("Investigations", systemImage: "doc.richtext") }
-                    .buttonStyle(.plain).controlHover()
-                    .accessibilityIdentifier("openInvestigationsLibrary")
-                Spacer(minLength: 0)
-                ControlIconButton(systemName: "plus") {
-                    Task { _ = await workspace.newInvestigation() }
-                }
-                .disabled(!workspace.canManageWorkspace)
-                .help("New investigation")
-                .accessibilityLabel("New Investigation")
-                .accessibilityIdentifier("newInvestigation")
-            }.padding(.horizontal, 12).frame(height: WorkspaceChrome.headerHeight)
-            Divider()
-            VSplitView {
-                connectionsSidebar.frame(minHeight: 180)
-                SQLFilesSidebarView(workspace: workspace).frame(minHeight: 180)
+    private func sidebar(_ panel: WorkspaceSidebarPanel) -> some View {
+        Group {
+            switch panel {
+            case .connections: connectionsSidebar
+            case .files: SQLFilesSidebarView(workspace: workspace)
+            case .library: SQLLibrarySidebarView(workspace: workspace)
+            case .investigations: InvestigationLibraryView(workspace: workspace)
             }
         }
-        .frame(minWidth: 210, idealWidth: 260, maxWidth: 340)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(AppPalette.isCustom ? AppPalette.sidebar : AppPalette.background)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(panel.title)
+        .accessibilityIdentifier("workspaceSidebar-\(panel.rawValue)")
     }
 
     private var connectionsSidebar: some View {
@@ -197,6 +198,7 @@ struct ApplicationWorkspaceView: View {
                 .help(commands.help(for: .newConnection))
                 .accessibilityLabel("New Connection")
                 .accessibilityIdentifier("newConnection")
+                WorkspaceSidebarCloseButton(workspace: workspace, panel: .connections)
             }
             .padding(.horizontal, 12)
             .frame(height: WorkspaceChrome.headerHeight)
@@ -207,6 +209,12 @@ struct ApplicationWorkspaceView: View {
                     .accessibilityHidden(true)
                 TextField("Search object names", text: $workspace.catalogSearch)
                     .textFieldStyle(.plain)
+                    .focused($catalogSearchFocused)
+                    .task(id: workspace.catalogSearchFocusRequested) {
+                        guard workspace.catalogSearchFocusRequested else { return }
+                        catalogSearchFocused = true
+                        workspace.catalogSearchFocusRequested = false
+                    }
                     .onExitCommand { workspace.catalogSearch = "" }
                     .help(commands.help(for: .findInConnections))
                     .accessibilityLabel("Search object names")
@@ -237,7 +245,6 @@ struct ApplicationWorkspaceView: View {
             .catalogContextMenu()
             .scrollContentBackground(.hidden)
         }
-        .frame(minWidth: 210, idealWidth: 260, maxWidth: 340)
         .background(AppPalette.isCustom ? AppPalette.sidebar : AppPalette.background)
     }
 

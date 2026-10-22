@@ -90,6 +90,12 @@ private struct WorkspaceCommands: Commands {
             commandItem(.copyAsMarkdown)
             commandItem(.copyAsSQLInsert)
         }
+        CommandGroup(after: .sidebar) {
+            commandItem(.toggleConnectionsPanel)
+            commandItem(.toggleFilesPanel)
+            commandItem(.toggleSQLLibraryPanel)
+            commandItem(.toggleInvestigationsPanel)
+        }
         CommandMenu("Query") {
             commandItem(.runCurrent)
             commandItem(.runScript)

@@ -42,6 +42,7 @@ struct SQLLibrarySidebarView: View {
                 ControlIconButton(systemName: "plus") { chooseFile() }
                     .help("Add an existing SQL file").accessibilityLabel("Add SQL file to library")
                     .accessibilityIdentifier("addSQLLibraryFile")
+                WorkspaceSidebarCloseButton(workspace: workspace, panel: .library)
             }.padding(.horizontal, 12).frame(height: 36)
             Divider()
             filters

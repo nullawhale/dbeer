@@ -1,11 +1,12 @@
 import Foundation
 
 enum AppCommandGroup: String, CaseIterable, Identifiable, Sendable {
-    case connections, tabs, panes, files, execution, results, history, other
+    case connections, sidebar, tabs, panes, files, execution, results, history, other
     var id: String { rawValue }
     var title: String {
         switch self {
         case .connections: "Connections"
+        case .sidebar: "Sidebar Panels"
         case .tabs: "Tabs and Navigation"
         case .panes: "Split Panes"
         case .files: "SQL Files and Folders"
@@ -21,6 +22,7 @@ extension AppCommandDescriptor {
     var group: AppCommandGroup {
         switch id {
         case .newConnection, .importConnections, .exportConnections, .findInConnections: .connections
+        case .toggleConnectionsPanel, .toggleFilesPanel, .toggleSQLLibraryPanel, .toggleInvestigationsPanel: .sidebar
         case .newSQLTab, .closeTab, .reopenClosedTab, .nextTab, .previousTab: .tabs
         case .splitLeft, .splitRight, .splitUp, .splitDown, .unsplitCurrent, .unsplitAll: .panes
         case .openSQL, .saveSQL, .saveSQLAs, .attachSQLFolder, .checkSQLFiles: .files

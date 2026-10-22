@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Open Connections, Files, SQL Library and Investigations from a narrow vertical
+  strip on the left. Each section has its own resizable panel; clicking the
+  active section or repeating its shortcut hides the panel. Command-1 through
+  Command-4 are configurable in Settings → Shortcuts → Sidebar Panels and
+  available in the View menu. Strip labels show only icons and names; shortcuts
+  appear in tooltips. The strip stays below the window title bar with a small
+  top inset. Find in Connections reveals its panel before
+  focusing search. Investigations no longer occupy a permanent top row or open
+  as a library sheet.
+
 - Compare mapped PostgreSQL or MySQL table structure from Connections → Compare
   Schema Structure in two dedicated read-only sessions. Inspect paged property
   differences, exact value chunks, capture intervals and metadata limitations;

@@ -6,6 +6,12 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 
 ## Using the application
 
+- The narrow strip on the left opens **Connections** (**⌘1**), **Files** (**⌘2**),
+  **SQL Library** (**⌘3**) and **Investigations** (**⌘4**) as separate resizable
+  panels. Click the active section or press its shortcut again to hide it.
+  Change or clear each binding in **Settings → Shortcuts → Sidebar Panels**;
+  the strip shows icons and names, with current bindings in tooltips. The commands are
+  also in the **View** menu. **⌘F** reveals Connections and focuses its search.
 - **⌘N** creates a PostgreSQL, MySQL, or Cassandra profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords use macOS Keychain by default; a local CLI can supply dynamic passwords. Settings live in `~/Library/Application Support/DBeer/connections.json`.
 - In **General**, paste a `postgresql://`, `postgres://`, `mysql://` or JDBC-prefixed address into **URL** and choose **Use URL**. Single-host URLs support an explicit database, optional user/password, port, IPv6 and encoded values. PostgreSQL accepts `sslmode` and `sslrootcert`; MySQL accepts `ssl-mode` (or JDBC `sslMode`) and `ssl-ca`. Unsupported options and TLS modes are rejected. Omitted credentials and TLS options keep their current field values. The URL preview excludes passwords; imported passwords move into the Password field and use Keychain on Save. Apply or reset a pending URL before saving or testing.
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
@@ -98,7 +104,7 @@ The six commands are also in the Window menu and **Settings → Shortcuts**:
 | Unsplit Current | Option-Shift-Command-Backslash |
 | Unsplit All | Shift-Command-Backslash |
 
-Shortcuts are grouped by connections, tabs/navigation, split panes, SQL files,
+Shortcuts are grouped by connections, sidebar panels, tabs/navigation, split panes, SQL files,
 query execution, results/copying and history. Search by command or group name,
 the assigned shortcut's symbols, or modifier names such as `Cmd+Shift+Backslash`.
 Search follows current assignments, including cleared shortcuts (`unassigned`).
@@ -117,7 +123,8 @@ active pane and divider width survive restart without reconnecting to a server.
 
 ## Investigation documents in the working branch
 
-Open **Investigations** in the sidebar to create or reopen a local document.
+Open **Investigations** from the left strip (**⌘4** by default) to create or
+reopen a local document in its own sidebar panel.
 Give it a title, add Markdown, SQL or snapshot blocks, and use the table of
 contents to select and reorder them. Markdown has editable source and a rendered
 preview. The editor displays one selected block at a time.

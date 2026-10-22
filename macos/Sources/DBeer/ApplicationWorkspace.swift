@@ -317,6 +317,8 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
     @Published var catalogSearch = ""
+    @Published var sidebarPanel: WorkspaceSidebarPanel? = .connections
+    @Published var catalogSearchFocusRequested = false
     @Published private(set) var catalogSearchResults: [UUID: [CatalogNode]] = [:]
     @Published private(set) var history: [SQLHistoryEntry] = []
     @Published private(set) var historySettings = SQLHistoryRetentionSettings.default
@@ -325,7 +327,6 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var isHistoryPresented = false
     @Published var schemaComparison: SchemaComparisonModel?
     @Published var isSnapshotsPresented = false
-    @Published var isInvestigationsPresented = false
     @Published private(set) var isClosing = false
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
