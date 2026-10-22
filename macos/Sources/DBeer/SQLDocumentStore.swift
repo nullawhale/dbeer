@@ -65,10 +65,12 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     var fileContentSHA256: String?
     var fileDocumentID: UUID?
     var fileRecoveryURL: URL?
+    var sqlLibraryEntryID: UUID?
 
     init(id: UUID = UUID(), title: String, text: String, profileID: UUID? = nil,
          kind: StoredWorkspaceDocumentKind = .sql, table: StoredTableDocument? = nil,
-         fileURL: URL? = nil, fileContentSHA256: String? = nil, fileDocumentID: UUID? = nil, fileRecoveryURL: URL? = nil) {
+         fileURL: URL? = nil, fileContentSHA256: String? = nil, fileDocumentID: UUID? = nil, fileRecoveryURL: URL? = nil,
+         sqlLibraryEntryID: UUID? = nil) {
         self.id = id
         self.title = title
         self.text = text
@@ -79,6 +81,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         self.fileContentSHA256 = fileContentSHA256
         self.fileDocumentID = fileURL.map { _ in fileDocumentID ?? id }
         self.fileRecoveryURL = fileRecoveryURL
+        self.sqlLibraryEntryID = sqlLibraryEntryID
     }
 
     var isValid: Bool {
@@ -88,9 +91,10 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
             guard table == nil else { return false }
         case .table:
             guard table?.isValid == true, fileURL == nil, fileContentSHA256 == nil, fileDocumentID == nil,
-                  fileRecoveryURL == nil else { return false }
+                  fileRecoveryURL == nil, sqlLibraryEntryID == nil else { return false }
         }
         guard fileDocumentID == nil || fileURL != nil else { return false }
+        guard sqlLibraryEntryID == nil || fileURL != nil else { return false }
         if let fileRecoveryURL {
             guard SQLFileBinding.isLocalFile(fileRecoveryURL), fileRecoveryURL.path.utf8.count <= 4_096 else { return false }
         }
@@ -109,11 +113,11 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, profileID, kind, table, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL
+        case id, title, text, profileID, kind, table, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID
     }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL"])
+        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         title = try values.decode(String.self, forKey: .title)
@@ -125,6 +129,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         fileContentSHA256 = try values.decodeIfPresent(String.self, forKey: .fileContentSHA256)
         fileDocumentID = try values.decodeIfPresent(UUID.self, forKey: .fileDocumentID) ?? fileURL.map { _ in id }
         fileRecoveryURL = try values.decodeIfPresent(URL.self, forKey: .fileRecoveryURL)
+        sqlLibraryEntryID = try values.decodeIfPresent(UUID.self, forKey: .sqlLibraryEntryID)
     }
 }
 
@@ -157,7 +162,7 @@ private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) thro
 /// Contains documents and history only. Sessions, results and passwords never
 /// enter the format; restoring the snapshot cannot reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 5
+    static let currentVersion = 6
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -168,10 +173,12 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     var historyEnabled: Bool
     var historySettings: SQLHistoryRetentionSettings
     var sqlFolders: [SQLFolderAttachment]
+    var sqlLibrary: SQLLibrarySnapshot
 
     init(documents: [StoredSQLDocument] = [], selectedDocumentID: UUID? = nil,
          history: [SQLHistoryEntry] = [], historyEnabled: Bool = true,
-         historySettings: SQLHistoryRetentionSettings = .default, sqlFolders: [SQLFolderAttachment] = []) {
+         historySettings: SQLHistoryRetentionSettings = .default, sqlFolders: [SQLFolderAttachment] = [],
+         sqlLibrary: SQLLibrarySnapshot = SQLLibrarySnapshot()) {
         version = Self.currentVersion
         self.documents = documents
         self.selectedDocumentID = selectedDocumentID
@@ -179,17 +186,20 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
         self.historyEnabled = historyEnabled
         self.historySettings = historySettings
         self.sqlFolders = sqlFolders
+        self.sqlLibrary = sqlLibrary
     }
 
-    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, history, historyEnabled, historySettings, sqlFolders }
+    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, history, historyEnabled, historySettings, sqlFolders, sqlLibrary }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["version", "documents", "selectedDocumentID", "history", "historyEnabled", "historySettings", "sqlFolders"])
+        try requireWorkspaceKeys(decoder, allowed: ["version", "documents", "selectedDocumentID", "history", "historyEnabled", "historySettings", "sqlFolders", "sqlLibrary"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = values.contains(.version) ? try values.decode(Int.self, forKey: .version) : 0
         guard (0...Self.currentVersion).contains(version) else { throw SQLDocumentStoreError.read }
         if version < 5, values.contains(.sqlFolders) { throw SQLDocumentStoreError.read }
         sqlFolders = version >= 5 ? try values.decode([SQLFolderAttachment].self, forKey: .sqlFolders) : []
+        if version < 6, values.contains(.sqlLibrary) { throw SQLDocumentStoreError.read }
+        sqlLibrary = version >= 6 ? try values.decode(SQLLibrarySnapshot.self, forKey: .sqlLibrary) : SQLLibrarySnapshot()
         documents = version < 4
             ? try values.decode([LegacyStoredSQLDocument].self, forKey: .documents).map(\.document)
             : try values.decode([StoredSQLDocument].self, forKey: .documents)
@@ -247,7 +257,7 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
 
     fileprivate func current(now: Date = .now) -> SQLWorkspaceSnapshot {
         var result = SQLWorkspaceSnapshot(documents: documents, selectedDocumentID: selectedDocumentID,
-            history: history, historyEnabled: historyEnabled, historySettings: historySettings, sqlFolders: sqlFolders)
+            history: history, historyEnabled: historyEnabled, historySettings: historySettings, sqlFolders: sqlFolders, sqlLibrary: sqlLibrary)
         result.trimHistory(now: now)
         return result
     }
@@ -324,6 +334,7 @@ actor FileSQLDocumentStore: SQLDocumentStore {
         guard Set(snapshot.documents.map(\.id)).count == snapshot.documents.count,
               Set(snapshot.history.map(\.id)).count == snapshot.history.count,
               snapshot.historySettings.isValid,
+              snapshot.sqlLibrary.isValid,
               snapshot.documents.allSatisfy(\.isValid),
               snapshot.selectedDocumentID.map({ id in snapshot.documents.contains { $0.id == id } }) != false,
               snapshot.history.allSatisfy(\.isValid) else { throw SQLDocumentStoreError.read }

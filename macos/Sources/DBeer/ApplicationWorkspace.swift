@@ -52,9 +52,11 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var restoredFileBinding = false
     @Published var fileRecoveryURL: URL?
     @Published private(set) var fileDocument: SQLFileDocument?
+    @Published var sqlLibraryEntryID: UUID?
     private var restoredFileDocumentID: UUID?
     private var fileObservations: [AnyCancellable] = []
     private var isSynchronizingFile = false
+    var fileDidMove: ((URL, URL) -> Void)?
     var stopRequested = false
     @Published var table: TableReference?
     @Published var tableNeedsExplicitLoad = false
@@ -120,6 +122,7 @@ final class SQLDocument: ObservableObject, Identifiable {
             fileContentSHA256 = stored.fileContentSHA256
             restoredFileDocumentID = stored.fileDocumentID
             fileRecoveryURL = stored.fileRecoveryURL
+            sqlLibraryEntryID = stored.sqlLibraryEntryID
             restoredFileBinding = stored.fileURL != nil
         }
     }
@@ -133,7 +136,8 @@ final class SQLDocument: ObservableObject, Identifiable {
             fileURL: table == nil ? fileURL : nil,
             fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil,
             fileDocumentID: table == nil ? (fileDocument?.id ?? restoredFileDocumentID) : nil,
-            fileRecoveryURL: table == nil ? fileRecoveryURL : nil)
+            fileRecoveryURL: table == nil ? fileRecoveryURL : nil,
+            sqlLibraryEntryID: table == nil ? sqlLibraryEntryID : nil)
     }
 
     func attachFileDocument(_ file: SQLFileDocument) {
@@ -149,9 +153,11 @@ final class SQLDocument: ObservableObject, Identifiable {
             file.$text.dropFirst().sink { [weak self] in self?.synchronizeFileText($0) },
             file.$url.dropFirst().sink { [weak self] url in
                 guard let self else { return }
+                let oldURL = self.fileURL
                 let oldName = self.fileURL?.lastPathComponent
                 self.fileURL = url
                 if self.title == oldName { self.title = url.lastPathComponent }
+                if let oldURL, oldURL != url { self.fileDidMove?(oldURL, url) }
             },
             file.$acceptedSHA256.dropFirst().sink { [weak self] in self?.fileContentSHA256 = $0 },
             file.$restoredBinding.dropFirst().sink { [weak self] in self?.restoredFileBinding = $0 },
@@ -248,6 +254,7 @@ final class ApplicationWorkspace: ObservableObject {
     let commandShortcuts: AppShortcutStore
     let copySettings: ResultCopySettings
     let sqlFolders: SQLFolderLibrary
+    let sqlLibrary: SQLLibrary
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
@@ -279,6 +286,8 @@ final class ApplicationWorkspace: ObservableObject {
     private var libraryObservation: AnyCancellable?
     private var folderObservation: AnyCancellable?
     private var folderSaveObservation: AnyCancellable?
+    private var sqlLibraryObservation: AnyCancellable?
+    private var sqlLibrarySaveObservation: AnyCancellable?
     private var fileDocuments: [UUID: SQLFileDocument] = [:]
     private let automaticallyWatchFiles: Bool
     weak var presentationWindow: NSWindow?
@@ -292,6 +301,7 @@ final class ApplicationWorkspace: ObservableObject {
          editorThemes: EditorThemeStore? = nil,
          appearance: AppAppearance? = nil,
          sqlFolders: SQLFolderLibrary? = nil,
+         sqlLibrary: SQLLibrary? = nil,
          automaticallyWatchFiles: Bool = true,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
@@ -303,6 +313,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.commandShortcuts = commandShortcuts ?? AppShortcutStore()
         self.copySettings = copySettings ?? .shared
         self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
+        self.sqlLibrary = sqlLibrary ?? SQLLibrary()
         self.automaticallyWatchFiles = automaticallyWatchFiles
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
         self.editorThemes = themes
@@ -313,6 +324,11 @@ final class ApplicationWorkspace: ObservableObject {
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         folderObservation = self.sqlFolders.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
+        sqlLibraryObservation = self.sqlLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        sqlLibrarySaveObservation = self.sqlLibrary.$snapshot.dropFirst().sink { [weak self] snapshot in
+            self?.bindIndexedSQLViews(snapshot)
+            self?.scheduleSave()
+        }
     }
 
     var selectedDocument: SQLDocument? { documents.first { $0.id == selectedDocumentID } }
@@ -545,9 +561,12 @@ final class ApplicationWorkspace: ObservableObject {
 
     private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
                          isScript: Bool = false, sourceSQL: String? = nil, forNavigating: Bool = false) async {
-        guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning, let profileID = document.profileID else { return }
+        guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning else { return }
+        if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
+        guard let profileID = document.profileID else { return }
         guard document.table != nil || !statements.isEmpty else { return }
         guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
+        let libraryBinding = sqlLibraryExecutionBinding(document)
         let boundText = document.text
         if !forNavigating { document.tableNavigationError = nil }
         document.clearExecutionSuccess()
@@ -571,12 +590,16 @@ final class ApplicationWorkspace: ObservableObject {
             }
             guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText),
                   document.profileID == profileID,
+                  hasSQLLibraryExecutionBinding(document, libraryBinding),
                   library.savedConnections.first(where: { $0.id == profileID }) == profile else {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
             }
             if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
             guard documents.contains(where: { $0.id == document.id }), !document.stopRequested,
                   services[profileID]?.connectionState == .connected else { return }
+            guard hasSQLLibraryExecutionBinding(document, libraryBinding) else {
+                throw ExecutionPolicyError(message: "The SQL library scope changed while connecting. Review the file and connection before running again.")
+            }
             if document.runtime?.connectionState != .connected {
                 let runtime = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
                 document.attach(runtime, preserveTablePage: document.table != nil)
@@ -585,6 +608,7 @@ final class ApplicationWorkspace: ObservableObject {
             }
             guard let runtime = document.runtime else { return }
             guard !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText), document.profileID == profileID,
+                  hasSQLLibraryExecutionBinding(document, libraryBinding),
                   library.savedConnections.first(where: { $0.id == profileID }) == profile else {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed while connecting. Review it and run again.")
             }
@@ -646,9 +670,13 @@ final class ApplicationWorkspace: ObservableObject {
                     sourceSQL: isScript || statements.count > 1 ? (sourceSQL ?? statements.map(\.sql).joined(separator: ";\n")) : nil),
                     canStartOperation(document), !document.stopRequested,
                     document.profileID == profileID, document.runtime === runtime,
+                    hasSQLLibraryExecutionBinding(document, libraryBinding),
                     runtime.sessionId == sessionID, runtime.policy == profile.policy,
                     library.savedConnections.first(where: { $0.id == profileID }) == profile,
                     SQLFileDocument.sameBytes(document.text, boundText) else {
+                    if !hasSQLLibraryExecutionBinding(document, libraryBinding) {
+                        document.localError = "The SQL library scope or connection group changed. Review it before running again."
+                    }
                     _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
                     for index in document.executions.indices { document.executions[index].status = "Not executed" }
                     return
@@ -656,6 +684,7 @@ final class ApplicationWorkspace: ObservableObject {
                 for (index, statement) in statements.enumerated() {
                     guard !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText),
                           document.profileID == profileID, runtime.sessionId == sessionID,
+                          hasSQLLibraryExecutionBinding(document, libraryBinding),
                           library.savedConnections.first(where: { $0.id == profileID }) == profile else { break }
                     document.selectedExecution = index
                     document.executions[index].status = "Running"
@@ -681,6 +710,9 @@ final class ApplicationWorkspace: ObservableObject {
                 }
                 for index in document.executions.indices where document.executions[index].status == "Pending" {
                     document.executions[index].status = "Skipped"
+                }
+                if !hasSQLLibraryExecutionBinding(document, libraryBinding) {
+                    document.localError = "The SQL library scope or connection group changed. Remaining statements were not executed."
                 }
                 _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
             }
@@ -879,7 +911,7 @@ final class ApplicationWorkspace: ObservableObject {
         return SQLWorkspaceSnapshot(documents: states,
             selectedDocumentID: requestedSelection.flatMap { knownIDs.contains($0) ? $0 : nil },
             history: history, historyEnabled: historyEnabled, historySettings: historySettings,
-            sqlFolders: sqlFolders.attachments)
+            sqlFolders: sqlFolders.attachments, sqlLibrary: sqlLibrary.snapshot)
     }
 
     /// Loads local workspace state without launching a helper, requesting
@@ -903,12 +935,18 @@ final class ApplicationWorkspace: ObservableObject {
             history = saved.history
             historySettings = saved.historySettings
             historyEnabled = saved.historyEnabled
+            let localLibrary = sqlLibrary.snapshot
+            let mergedLibrary = SQLLibrarySnapshot(
+                entries: saved.sqlLibrary.entries + localLibrary.entries.filter { !saved.sqlLibrary.entries.contains($0) },
+                groups: saved.sqlLibrary.groups + localLibrary.groups.filter { !saved.sqlLibrary.groups.contains($0) })
+            guard mergedLibrary.isValid else { throw SQLDocumentStoreError.read }
             // Folder restoration creates local tree roots only. Enumeration
             // and file reconciliation run separately from database startup.
             let attached = sqlFolders.attachments
             guard sqlFolders.restore(saved.sqlFolders + attached.filter { local in
                 !saved.sqlFolders.contains { $0.id == local.id || $0.url == local.url }
             }) else { throw SQLDocumentStoreError.read }
+            guard sqlLibrary.restore(mergedLibrary) else { throw SQLDocumentStoreError.read }
             let localIDs = Set(localDocuments.map(\.id))
             let restored = saved.documents.filter { !localIDs.contains($0.id) }.map { stored in
                 restoredDocument(stored, knownProfiles: knownProfiles)
@@ -919,7 +957,8 @@ final class ApplicationWorkspace: ObservableObject {
                 ?? saved.selectedDocumentID.flatMap { id in documents.contains { $0.id == id } ? id : nil }
                 ?? documents.first?.id
             draftsLoaded = true
-            if !localDocuments.isEmpty || !attached.isEmpty || documents.map(\.storedState) != saved.documents {
+            if !localDocuments.isEmpty || !attached.isEmpty || localLibrary != SQLLibrarySnapshot() ||
+                documents.map(\.storedState) != saved.documents {
                 scheduleSave()
             }
         } catch { self.error = error.localizedDescription }
@@ -928,6 +967,7 @@ final class ApplicationWorkspace: ObservableObject {
     private func restoredDocument(_ stored: StoredSQLDocument, knownProfiles: [UUID]?) -> SQLDocument {
         let document = SQLDocument(restoring: stored)
         restoreFileDocument(document)
+        bindIndexedSQLView(document)
         if document.profileID == nil {
             document.historyConnectionNotice = "This restored tab has no saved connection. Choose a connection before loading data or running SQL."
         } else if let knownProfiles, !knownProfiles.contains(document.profileID!) {
@@ -937,6 +977,15 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func observeDocument(_ document: SQLDocument) {
+        document.fileDidMove = { [weak self, weak document] oldURL, newURL in
+            guard let self, let document, self.documents.contains(where: { $0 === document }),
+                  let id = document.sqlLibraryEntryID, let entry = self.sqlLibrary.entry(id: id),
+                  entry.fileURL == oldURL else { return }
+            do {
+                _ = try self.sqlLibrary.upsertEntry(id: id, fileURL: newURL, folder: entry.folder,
+                    tags: entry.tags, scope: entry.scope)
+            } catch { self.error = error.localizedDescription }
+        }
         documentObservations[document.id] = [
             document.$text.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$title.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
@@ -946,6 +995,7 @@ final class ApplicationWorkspace: ObservableObject {
             document.$tableFilters.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$tableSort.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$sqlLibraryEntryID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileContentSHA256.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileRecoveryURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -960,6 +1010,82 @@ final class ApplicationWorkspace: ObservableObject {
         for url in panel.urls {
             Task { await openSQLFile(at: url) }
         }
+    }
+
+    func selectedSQLLibraryEntry(for document: SQLDocument) -> SQLLibraryEntry? {
+        if let id = document.sqlLibraryEntryID { return sqlLibrary.entry(id: id) }
+        return document.fileURL.flatMap { sqlLibrary.entry(at: $0) }
+    }
+
+    func availableSQLLibraryProfiles(for document: SQLDocument) -> [SavedConnection] {
+        guard isSQLLibraryView(document) else { return library.savedConnections }
+        guard let entry = selectedSQLLibraryEntry(for: document), entry.fileURL == document.fileURL else { return [] }
+        return library.savedConnections.filter { sqlLibrary.allows(entry: entry, profileID: $0.id) }
+    }
+
+    func sqlLibraryExecutionNotice(for document: SQLDocument) -> String? {
+        guard isSQLLibraryView(document) else { return nil }
+        guard let entry = selectedSQLLibraryEntry(for: document), entry.fileURL == document.fileURL else {
+            return "This SQL library entry is no longer available at this path. Restore its library reference or open a separate SQL file view."
+        }
+        guard let profileID = document.profileID,
+              library.savedConnections.contains(where: { $0.id == profileID }) else {
+            return "Choose a specific connection and review its environment before running shared SQL."
+        }
+        guard sqlLibrary.allows(entry: entry, profileID: profileID) else {
+            return "This connection is outside the SQL file's current library scope. Choose an available connection; a missing group or profile remains unavailable."
+        }
+        return nil
+    }
+
+    private func isSQLLibraryView(_ document: SQLDocument) -> Bool {
+        document.table == nil && (document.sqlLibraryEntryID != nil ||
+            document.fileURL.flatMap { sqlLibrary.entry(at: $0) } != nil)
+    }
+
+    private struct SQLLibraryExecutionBinding: Equatable {
+        let entryID: UUID
+        let fileURL: URL
+        let scope: SQLLibraryScope
+        let group: SQLProfileGroup?
+    }
+
+    private func sqlLibraryExecutionBinding(_ document: SQLDocument) -> SQLLibraryExecutionBinding? {
+        guard let entry = selectedSQLLibraryEntry(for: document) else { return nil }
+        let group: SQLProfileGroup?
+        if case .group(let id) = entry.scope { group = sqlLibrary.snapshot.groups.first { $0.id == id } }
+        else { group = nil }
+        return SQLLibraryExecutionBinding(entryID: entry.id, fileURL: entry.fileURL, scope: entry.scope, group: group)
+    }
+
+    private func hasSQLLibraryExecutionBinding(_ document: SQLDocument, _ expected: SQLLibraryExecutionBinding?) -> Bool {
+        sqlLibraryExecutionNotice(for: document) == nil && sqlLibraryExecutionBinding(document) == expected
+    }
+
+    private func bindIndexedSQLView(_ document: SQLDocument, snapshot: SQLLibrarySnapshot? = nil) {
+        guard document.table == nil, document.sqlLibraryEntryID == nil, let url = document.fileURL,
+              let entry = (snapshot ?? sqlLibrary.snapshot).entries.first(where: { $0.fileURL == url }) else { return }
+        document.sqlLibraryEntryID = entry.id
+        // Indexing a file must not turn the globally selected default profile
+        // into an implicit authorization to run shared SQL.
+        if document.runtime?.sessionId == nil { document.profileID = nil }
+    }
+
+    private func bindIndexedSQLViews(_ snapshot: SQLLibrarySnapshot) {
+        for document in documents { bindIndexedSQLView(document, snapshot: snapshot) }
+    }
+
+    @discardableResult
+    func openSQLLibraryEntry(_ entry: SQLLibraryEntry) async -> SQLDocument? {
+        guard let current = sqlLibrary.entry(id: entry.id), current.fileURL == entry.fileURL else {
+            error = SQLLibraryError.missingEntry.localizedDescription
+            return nil
+        }
+        guard let document = await openSQLFile(at: current.fileURL, inNewTab: true) else { return nil }
+        document.sqlLibraryEntryID = current.id
+        document.profileID = nil
+        scheduleSave()
+        return document
     }
 
     @discardableResult
@@ -981,12 +1107,14 @@ final class ApplicationWorkspace: ObservableObject {
                 }
             }
             if !inNewTab, let existing = documents.first(where: { $0.fileDocument === file }) {
+                bindIndexedSQLView(existing)
                 selectedDocumentID = existing.id
                 return existing
             }
             let document = newDocument(text: file.text)
             document.title = file.url.lastPathComponent
             document.attachFileDocument(file)
+            bindIndexedSQLView(document)
             if automaticallyWatchFiles { file.startWatching() }
             scheduleSave()
             return document
@@ -999,6 +1127,7 @@ final class ApplicationWorkspace: ObservableObject {
         let document = newDocument(profileID: source.profileID, text: file.text)
         document.title = source.title
         document.attachFileDocument(file)
+        bindIndexedSQLView(document)
         scheduleSave()
         return document
     }
@@ -1093,6 +1222,7 @@ final class ApplicationWorkspace: ObservableObject {
         let location = destination.standardizedFileURL
         let text = document.text
         let original = document.fileDocument
+        let originalURL = document.fileURL
         let target = fileDocument(at: location)
         guard original?.isSaving != true, target?.isSaving != true else {
             throw SQLFileDocumentFailure(message: "A file involved in this save is already being saved.")
@@ -1126,6 +1256,8 @@ final class ApplicationWorkspace: ObservableObject {
             fileDocuments[file.id] = file
         }
         document.attachFileDocument(file)
+        if originalURL != location { document.sqlLibraryEntryID = nil }
+        bindIndexedSQLView(document)
         document.title = location.lastPathComponent
         if automaticallyWatchFiles { file.startWatching() }
         pruneFileDocuments()
@@ -1195,6 +1327,8 @@ final class ApplicationWorkspace: ObservableObject {
 
     func runToFile(_ document: SQLDocument, format: String, fragment: SQLExecutionFragment? = nil) async {
         guard document.table == nil, !document.isRunning else { return }
+        if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
+        let libraryBinding = sqlLibraryExecutionBinding(document)
         let boundText = document.text
         let boundProfileID = document.profileID
         let boundProfile = library.savedConnections.first { $0.id == boundProfileID }
@@ -1214,6 +1348,7 @@ final class ApplicationWorkspace: ObservableObject {
         panel.message = "Run this SQL once and save all rows. The final file appears only after successful completion."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         guard SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
+              hasSQLLibraryExecutionBinding(document, libraryBinding),
               library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
             document.localError = "The SQL or connection changed while choosing the export file. Review it and run again."
             return
@@ -1221,6 +1356,7 @@ final class ApplicationWorkspace: ObservableObject {
         do {
             let captured = try await Task.detached { try Self.captureExportDestination(destination) }.value
             guard SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
+                  hasSQLLibraryExecutionBinding(document, libraryBinding),
                   library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
                 document.localError = "The SQL or connection changed while capturing the export file. Review it and run again."
                 return

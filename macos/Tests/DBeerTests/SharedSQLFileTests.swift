@@ -534,7 +534,7 @@ struct SharedSQLFileTests {
         _ = try await fixture.workspace.sqlFolders.attach(fixture.directory.url)
         await fixture.workspace.flushDocuments()
         let saved = await fixture.store.load()
-        #expect(saved.version == 5 && saved.sqlFolders.count == 1)
+        #expect(saved.version == SQLWorkspaceSnapshot.currentVersion && saved.sqlFolders.count == 1)
         #expect(saved.documents.map(\.fileDocumentID) == [file.id, file.id])
         let external = "SELECT 'changed while closed';\r\n"
         try Data(external.utf8).write(to: fixture.url, options: .atomic)

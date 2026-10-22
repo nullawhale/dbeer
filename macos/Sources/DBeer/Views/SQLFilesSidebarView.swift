@@ -2,9 +2,26 @@ import SwiftUI
 
 struct SQLFilesSidebarView: View {
     @ObservedObject var workspace: ApplicationWorkspace
+    private var section = SwiftUI.State(initialValue: "files")
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ControlSegmentPicker("SQL files", selection: section.projectedValue, choices: [
+                .init("Files", value: "files"), .init("Library", value: "library"),
+            ]).labelsHidden().font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+            Divider()
+            if section.wrappedValue == "library" { SQLLibrarySidebarView(workspace: workspace) }
+            else { SQLFolderFilesView(workspace: workspace) }
+        }
+    }
+}
+
+private struct SQLFolderFilesView: View {
+    @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var library: SQLFolderLibrary
     private var query = SwiftUI.State(initialValue: "")
     private var mode = SwiftUI.State(initialValue: SQLFolderSearchMode.all)
+    private var editingLibrary = SwiftUI.State<SQLLibraryEditRequest?>(initialValue: nil)
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
@@ -66,6 +83,9 @@ struct SQLFilesSidebarView: View {
             }
         }
         .accessibilityElement(children: .contain).accessibilityIdentifier("sqlFoldersSidebar")
+        .sheet(item: editingLibrary.projectedValue) { request in
+            SQLLibraryEntryEditor(workspace: workspace, fileURL: request.url)
+        }
     }
 
     private var searchControls: some View {
@@ -113,6 +133,9 @@ struct SQLFilesSidebarView: View {
         .contextMenu {
             Button("Open") { Task { await workspace.openSQLFile(at: match.url) } }
             Button("Open in New Tab") { Task { await workspace.openSQLFile(at: match.url, inNewTab: true) } }
+            Button(workspace.sqlLibrary.entry(at: match.url) == nil ? "Add to SQL Library…" : "Edit Library Details…") {
+                editingLibrary.wrappedValue = SQLLibraryEditRequest(url: match.url)
+            }
         }
     }
 }
@@ -122,6 +145,7 @@ private struct SQLFolderTreeRow: View {
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject var library: SQLFolderLibrary
     var isRoot = false
+    private var editingLibrary = SwiftUI.State<SQLLibraryEditRequest?>(initialValue: nil)
 
     var body: some View {
         Group {
@@ -168,8 +192,14 @@ private struct SQLFolderTreeRow: View {
                 .contextMenu {
                     Button("Open") { Task { await workspace.openSQLFile(at: node.url) } }
                     Button("Open in New Tab") { Task { await workspace.openSQLFile(at: node.url, inNewTab: true) } }
+                    Button(workspace.sqlLibrary.entry(at: node.url) == nil ? "Add to SQL Library…" : "Edit Library Details…") {
+                        editingLibrary.wrappedValue = SQLLibraryEditRequest(url: node.url)
+                    }
                 }
             }
+        }
+        .sheet(item: editingLibrary.projectedValue) { request in
+            SQLLibraryEntryEditor(workspace: workspace, fileURL: request.url)
         }
     }
 }

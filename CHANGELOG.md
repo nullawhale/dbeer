@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Shared SQL Library indexes real `.sql` files with local tags, logical folders
+  and connection, named group or global scope. Search and metadata filters find
+  entries; groups retain opaque profile references without copying SQL or
+  connection secrets. Removing metadata leaves files untouched.
+- Shared SQL opens in a fresh file view with an explicit connection choice and
+  visible environment/readonly context. Views share text and retain independent
+  sessions and transactions. Scope changes during connection, confirmation or
+  scripts stop pending execution; missing groups/profiles remain unavailable.
+- Workspace v6 persists the SQL index, named groups and per-view library
+  bindings with exact private v5 migration backups. Observed file renames update
+  index references; Save As to another file detaches only the current view.
 - SQL Files attaches existing folders with a lazy `.sql` tree and background
   name/content search. Symlinks, Git metadata and build/dependency directories
   are excluded; incomplete scans are reported. Folder attachments persist.

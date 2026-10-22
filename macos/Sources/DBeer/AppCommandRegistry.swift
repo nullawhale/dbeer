@@ -134,6 +134,7 @@ struct AppCommandInvocation {
               let profileID = document.profileID, workspace.library.savedConnections.contains(where: { $0.id == profileID }) else { return false }
         if descriptor.scope == .sqlDocument, document.table != nil { return false }
         if document.table != nil { return command == .runCurrent }
+        guard workspace.sqlLibraryExecutionNotice(for: document) == nil else { return false }
         // Invalid SQL remains launchable so the normal parser diagnostic appears.
         let fragment = workspace.executionFragment(document, script: command == .runScript)
         return fragment.map { !$0.sourceSQL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } == true

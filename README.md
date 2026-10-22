@@ -41,8 +41,8 @@ buffers adopt external changes, while changed drafts retain both versions for
 review. Missing or unreadable files keep their editable drafts. Bindings without
 a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage advances to v5, with exact private backups before migrating
-v0/v1/v2/v3/v4. Folder attachments and shared file identities are saved alongside
+Workspace storage advances to v6, with exact private backups before migrating
+v0/v1/v2/v3/v4/v5. Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
 Unknown document kinds, malformed state and future workspace versions are left
@@ -91,6 +91,35 @@ Replacement requires the exact version reviewed; a changed or newly appeared
 destination stops the save. A failed race recovery reports any preserved
 external file and offers to open its bytes as a separate draft. These references
 survive workspace restoration. Cancelling or failing a save keeps the draft.
+
+## Shared SQL library in the working branch
+
+Choose **Library** beside **Files** in the SQL sidebar to index an existing
+`.sql` file. **Add to SQL Library…** is also available on file rows and in an
+open file's details. Add tags and an optional logical folder, then choose its
+scope: all connections, one connection, or a named connection group. Search and
+connection/folder/tag filters find indexed files. Library folders organize
+references without moving files. Removing an entry leaves its file on disk.
+
+**Manage connection groups** creates simple named groups of saved connections.
+The index stores file references and metadata, including opaque connection IDs;
+the actual SQL stays in its original file. There is no cloud synchronization.
+Missing or deleted groups and connections remain unavailable until explicitly
+replaced; they never turn a scoped query into a global one.
+
+Opening a library entry creates a fresh view of its shared file buffer with no
+connection selected. Choose a specific connection in that view and review its
+environment and readonly policy before Run, Run Script or Run to File. Other
+views retain independent connections, sessions and transactions, so the same
+file can be used in development and production without copying the query.
+Scope is checked again after asynchronous connection and confirmation work and
+before each script statement. A changed scope stops pending execution.
+
+Edits and safe saves use the same file model as SQL folders. Observed file
+renames update the index reference; Save As to another path detaches only that
+view. Workspace v6 restores the index, groups and view bindings disconnected,
+with an exact private backup before migrating v5. Restoring or editing library
+metadata does not connect or execute SQL.
 
 ## Independent table views in the working branch
 
@@ -188,7 +217,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v5. Existing v0/v1/v2/v3/v4 files
+History uses versioned workspace storage, currently v6. Existing v0/v1/v2/v3/v4/v5 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.

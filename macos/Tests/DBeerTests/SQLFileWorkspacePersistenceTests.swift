@@ -26,7 +26,7 @@ struct SQLFileWorkspacePersistenceTests {
         let store = FileSQLDocumentStore(fileURL: directory.appendingPathComponent("workspace.json"))
         try await store.save(snapshot)
         let saved = try await store.load()
-        #expect(saved == snapshot && saved.version == 5 && saved.sqlFolders == [folder])
+        #expect(saved == snapshot && saved.version == SQLWorkspaceSnapshot.currentVersion && saved.sqlFolders == [folder])
         #expect(saved.documents[0].id != saved.documents[1].id && first.profileID != second.profileID)
         #expect(saved.documents.map(\.fileDocumentID) == [modelID, modelID])
         let memory = MemorySQLDocumentStore(snapshot: saved)
@@ -43,6 +43,7 @@ struct SQLFileWorkspacePersistenceTests {
         var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
         object["version"] = 4
         object["sqlFolders"] = nil
+        object["sqlLibrary"] = nil
         var documents = try #require(object["documents"] as? [[String: Any]])
         // JSONSerialization strips a leading BOM when decoding string values.
         // Restore the exact source text before emitting the legacy fixture.
@@ -53,7 +54,7 @@ struct SQLFileWorkspacePersistenceTests {
         let url = directory.appendingPathComponent("workspace.json")
         try original.write(to: url)
         let migrated = try await FileSQLDocumentStore(fileURL: url).load()
-        #expect(migrated.version == 5 && migrated.sqlFolders.isEmpty && migrated.documents == [draft])
+        #expect(migrated.version == SQLWorkspaceSnapshot.currentVersion && migrated.sqlFolders.isEmpty && migrated.documents == [draft])
         #expect(migrated.documents[0].text.utf8.elementsEqual(text.utf8))
         let backup = url.appendingPathExtension("v4.backup")
         #expect(try Data(contentsOf: backup) == original)

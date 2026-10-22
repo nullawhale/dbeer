@@ -318,6 +318,7 @@ struct SQLDocumentPane: View {
     @Environment(\.colorScheme) private var colorScheme
     private var resultSetIndex = SwiftUI.State(initialValue: 0)
     private var showingFilters = SwiftUI.State(initialValue: false)
+    private var editingLibrary = SwiftUI.State<SQLLibraryEditRequest?>(initialValue: nil)
 
     init(document: SQLDocument, workspace: ApplicationWorkspace) {
         self.document = document
@@ -334,11 +335,13 @@ struct SQLDocumentPane: View {
                 Picker("Connection", selection: $document.profileID) {
                     Text("Choose a connection").tag(Optional<UUID>.none)
                     if let missingProfileID {
-                        Text("Unavailable saved connection").tag(Optional(missingProfileID))
+                        Text(workspace.library.savedConnections.contains { $0.id == missingProfileID }
+                            ? "Connection outside library scope" : "Unavailable saved connection").tag(Optional(missingProfileID))
                             .help("Saved connection \(missingProfileID.uuidString)")
                     }
-                    ForEach(workspace.library.savedConnections) { profile in
-                        Text(profile.name).tag(Optional(profile.id))
+                    ForEach(workspace.availableSQLLibraryProfiles(for: document)) { profile in
+                        Text(document.sqlLibraryEntryID == nil ? profile.name : profile.name + " · " + profile.policy.label)
+                            .tag(Optional(profile.id))
                     }
                 }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(maxWidth: 220)
                     .accessibilityIdentifier("documentConnection")
@@ -397,6 +400,10 @@ struct SQLDocumentPane: View {
             .padding(.horizontal, 12)
             .frame(height: WorkspaceChrome.toolbarHeight)
             Divider()
+            if document.table == nil, let url = document.fileURL {
+                libraryContext(url)
+                Divider()
+            }
             if document.table != nil, let error = document.tableNavigationError {
                 HStack(alignment: .top, spacing: 8) {
                     Label(error, systemImage: "exclamationmark.triangle")
@@ -477,11 +484,39 @@ struct SQLDocumentPane: View {
         }
         .onChange(of: document.selectedExecution) { _, _ in resultSetIndex.wrappedValue = 0 }
         .onChange(of: document.isRunning) { _, value in if value { resultSetIndex.wrappedValue = 0 } }
+        .sheet(item: editingLibrary.projectedValue) { request in
+            SQLLibraryEntryEditor(workspace: workspace, fileURL: request.url)
+        }
+    }
+
+    private func libraryContext(_ url: URL) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if document.sqlLibraryEntryID != nil {
+                    Label(workspace.selectedSQLLibraryEntry(for: document)?.fileURL.lastPathComponent ?? "Unavailable library reference",
+                        systemImage: "books.vertical").lineLimit(1)
+                    if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }) {
+                        Text(profile.name + " · " + profile.policy.label).foregroundStyle(.tertiary).lineLimit(1)
+                            .accessibilityIdentifier("sqlLibraryExecutionConnection")
+                    }
+                }
+                Spacer(minLength: 0)
+                Button(workspace.sqlLibrary.entry(at: url) == nil ? "Add to SQL Library…" : "Library Details…") {
+                    editingLibrary.wrappedValue = SQLLibraryEditRequest(url: url)
+                }.controlHover().accessibilityIdentifier("documentSQLLibraryDetails")
+            }
+            if let notice = workspace.sqlLibraryExecutionNotice(for: document) {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange).textSelection(.enabled)
+                    .accessibilityIdentifier("sqlLibraryExecutionNotice")
+            }
+        }.font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("sqlLibraryExecutionContext")
     }
 
     private var missingProfileID: UUID? {
         guard let id = document.profileID,
-              !workspace.library.savedConnections.contains(where: { $0.id == id }) else { return nil }
+              !workspace.availableSQLLibraryProfiles(for: document).contains(where: { $0.id == id }) else { return nil }
         return id
     }
 
