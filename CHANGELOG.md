@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Result snapshot storage uses private, versioned artifacts with exact typed
+  values and atomic publication. Query → Result Snapshots lists saved artifacts
+  and their sizes, manages deletion and configures the default 1 GiB quota.
+  Storage never captures results or evicts snapshots automatically; interrupted
+  temporary writes are cleaned without removing published artifacts. Deleting a
+  snapshot referenced by an investigation requires explicit confirmation.
+
 - Workspace errors show bottom-right notification banners alongside the footer
   counter update. Up to five messages stack with the newest at the bottom, each
   visible for five seconds. A sixth message hides the oldest banner; automatic

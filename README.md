@@ -243,6 +243,21 @@ receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.
 
+## Result snapshot storage in the working branch
+
+**Query → Result Snapshots…** opens the local snapshot manager. It lists capture
+times, row counts and stored sizes, shows total usage, and lets you change the
+storage limit in MiB. The default quota is **1 GiB**. Lowering a quota does not
+delete existing snapshots; no automatic capture or eviction is enabled.
+
+Artifacts use private versioned metadata and positional JSONL rows to preserve
+column order, duplicate names, SQL NULL, empty text, exact numbers, binary values
+and truncation. A snapshot is published only after its actual written size fits
+the quota. Failed or interrupted writes leave earlier snapshots intact; Refresh
+cleans incomplete temporary writes. Deletion requires confirmation, including
+notice of any investigation documents using the artifact. Credentials and
+connection secrets are excluded from snapshot metadata.
+
 ## Dynamic database passwords in the working branch
 
 In **General → Authentication**, choose **CLI command** as the password source.

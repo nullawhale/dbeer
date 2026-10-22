@@ -244,6 +244,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private(set) var historyError: String?
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
+    @Published var isSnapshotsPresented = false
     @Published private(set) var isClosing = false
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
@@ -256,6 +257,7 @@ final class ApplicationWorkspace: ObservableObject {
     let copySettings: ResultCopySettings
     let sqlFolders: SQLFolderLibrary
     let sqlLibrary: SQLLibrary
+    let resultSnapshots: ResultSnapshotsModel
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
@@ -304,6 +306,7 @@ final class ApplicationWorkspace: ObservableObject {
          appearance: AppAppearance? = nil,
          sqlFolders: SQLFolderLibrary? = nil,
          sqlLibrary: SQLLibrary? = nil,
+         resultSnapshots: ResultSnapshotsModel? = nil,
          automaticallyWatchFiles: Bool = true,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
@@ -316,6 +319,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.copySettings = copySettings ?? .shared
         self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
         self.sqlLibrary = sqlLibrary ?? SQLLibrary()
+        self.resultSnapshots = resultSnapshots ?? ResultSnapshotsModel()
         self.automaticallyWatchFiles = automaticallyWatchFiles
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
         self.editorThemes = themes

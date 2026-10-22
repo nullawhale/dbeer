@@ -100,6 +100,8 @@ private struct WorkspaceCommands: Commands {
             commandItem(.stop)
             Divider()
             commandItem(.showSQLHistory)
+            Button("Result Snapshots…") { workspace.isSnapshotsPresented = true }
+                .disabled(!workspace.canManageWorkspace)
         }
         CommandMenu("Connections") {
             commandItem(.importConnections)

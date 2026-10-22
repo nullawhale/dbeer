@@ -88,6 +88,10 @@ struct ApplicationWorkspaceView: View {
             SQLHistoryView(workspace: workspace)
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(isPresented: $workspace.isSnapshotsPresented) {
+            ResultSnapshotsView(model: workspace.resultSnapshots)
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(item: $workspace.insertCopySelection) { selection in
             InsertCopyView(workspace: workspace, selection: selection)
                 .applicationTheme(appearance: appearance)
