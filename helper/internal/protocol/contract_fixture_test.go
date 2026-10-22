@@ -54,6 +54,9 @@ func TestSharedV5OperationContract(t *testing.T) {
 			t.Fatalf("command fixture %d failed the existing parser", index)
 		}
 		kinds[command.Type] = true
+		if command.RequestID == "password-command-connect" && (command.Connection.PasswordCommand == nil || command.Connection.Password != "" || command.Connection.PasswordCommand.Arguments[3] != "literal $HOME") {
+			t.Fatal("lost local password command or literal argv")
+		}
 		if command.RequestID == "foreign-keys-1" {
 			foreignKeyRequest = command.Catalog != nil && command.Catalog.Kind == "foreignKeys" && command.Catalog.ObjectKind == "table"
 			if !foreignKeyRequest {

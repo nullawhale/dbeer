@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/safety"
 	gocql "github.com/apache/cassandra-gocql-driver/v2"
@@ -15,9 +16,10 @@ import (
 
 type Session struct {
 	adapter.TransportBinding
-	driver   *gocql.Session
-	keyspace string
-	cursors  map[string]browseCursor
+	driver          *gocql.Session
+	stopCredentials context.CancelFunc
+	keyspace        string
+	cursors         map[string]browseCursor
 }
 
 func Open(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
@@ -25,9 +27,17 @@ func Open(ctx context.Context, connection protocol.Connection) (adapter.Session,
 	if err != nil {
 		return nil, err
 	}
+	if connection.PasswordCommand != nil {
+		config.ConnectTimeout += credential.Timeout
+	}
 	if err := configureTransport(ctx, connection, config); err != nil {
 		return nil, err
 	}
+	credentialCtx, stopCredentials := context.WithCancel(context.Background())
+	stopStartupCancellation := context.AfterFunc(ctx, stopCredentials)
+	failures := configureCredentials(credentialCtx, connection, config)
+	openingCtx, stopOpening := context.WithCancel(ctx)
+	defer stopOpening()
 	// ClusterConfig has bounded per-node connect deadlines but no context-aware
 	// CreateSession. An abandoned result is closed by its creator, never leaked.
 	ready := make(chan struct {
@@ -41,7 +51,7 @@ func Open(ctx context.Context, connection protocol.Connection) (adapter.Session,
 			driver *gocql.Session
 			err    error
 		}{driver, err}:
-		case <-ctx.Done():
+		case <-openingCtx.Done():
 			if driver != nil {
 				driver.Close()
 			}
@@ -49,16 +59,34 @@ func Open(ctx context.Context, connection protocol.Connection) (adapter.Session,
 	}()
 	select {
 	case result := <-ready:
+		stopStartupCancellation()
+		if ctx.Err() != nil {
+			stopCredentials()
+			if result.driver != nil {
+				result.driver.Close()
+			}
+			return nil, &adapter.ConnectionError{Category: "cancelled", Message: "The Cassandra connection attempt was cancelled."}
+		}
 		if result.err != nil {
+			stopCredentials()
 			failure := safeError(protocol.Command{}, ctx, result.err, false, false)
 			return nil, &adapter.ConnectionError{Category: failure.Category, Message: failure.Message}
 		}
-		return &Session{driver: result.driver, keyspace: connection.Database, cursors: make(map[string]browseCursor), TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
+		return &Session{driver: result.driver, stopCredentials: stopCredentials, keyspace: connection.Database, cursors: make(map[string]browseCursor), TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
+	case err := <-failures:
+		stopStartupCancellation()
+		stopCredentials()
+		return nil, err
 	case <-ctx.Done():
+		stopStartupCancellation()
+		stopCredentials()
 		return nil, &adapter.ConnectionError{Category: "timeout", Message: "The Cassandra connection attempt timed out or was cancelled."}
 	}
 }
 func (s *Session) Close() {
+	if s.stopCredentials != nil {
+		s.stopCredentials()
+	}
 	if s.driver != nil {
 		s.driver.Close()
 	}

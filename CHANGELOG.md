@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Connection profiles can obtain database passwords from a local CLI executable
+  with literal arguments instead of Keychain. Each new physical connection,
+  including service, Preview/Apply and MySQL Stop connections, resolves a fresh
+  value. Commands have a 15-second timeout and a 64 KiB stdout limit; cancellation
+  terminates their process group. Output is never logged or saved, and provider
+  failures stop connection attempts without replaying SQL. Command configuration
+  stays local and is excluded from profile transfer. Connection-library v5 keeps
+  legacy profiles on Keychain and preserves migration backups.
+
 - Native SSH profiles can use local OpenSSH configuration for Host aliases,
   Include, ProxyJump, ProxyCommand and multiple jumps. The configuration supplies
   host, user, port and keys; authentication uses noninteractive local keys or an

@@ -229,8 +229,26 @@ struct ConnectionEditorView: View {
             Section("Authentication") {
                 TextField(draft.engine == .cassandra ? "User (optional)" : "User", text: binding(\.user))
                     .accessibilityIdentifier("User")
-                SecureField("Password", text: binding(\.password))
-                    .textContentType(.password).accessibilityIdentifier("password")
+                Picker("Password source", selection: valueBinding(\.usesPasswordCommand)) {
+                    Text("macOS Keychain").tag(false)
+                    Text("CLI command").tag(true)
+                }.accessibilityIdentifier("passwordSource")
+                if draft.usesPasswordCommand {
+                    TextField("Executable (absolute path)", text: binding(\.passwordExecutable))
+                        .autocorrectionDisabled().accessibilityIdentifier("passwordExecutable")
+                    TextField("Arguments (JSON array)", text: binding(\.passwordArguments), axis: .vertical)
+                        .lineLimit(2...4).autocorrectionDisabled()
+                        .accessibilityIdentifier("passwordArguments")
+                    Text("Runs for each new database connection, including service connections and Apply. Arguments are passed literally, without a shell. Timeout: 15 seconds; stdout limit: 64 KiB. Return one nonempty password, optionally followed by a newline.")
+                        .font(.caption).appSecondaryText()
+                    if draft.passwordCommand == nil {
+                        Text("Enter an absolute executable path and a JSON array of up to 128 string arguments, for example [\"token\", \"--database\", \"app\"].")
+                            .font(.caption).foregroundStyle(.orange)
+                    }
+                } else {
+                    SecureField("Password", text: binding(\.password))
+                        .textContentType(.password).accessibilityIdentifier("password")
+                }
                 if loadingPasswordState.wrappedValue {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -239,8 +257,11 @@ struct ConnectionEditorView: View {
                 } else if passwordLoadFailedState.wrappedValue {
                     Button("Retry Reading Saved Password") { passwordLoadAttemptState.wrappedValue = UUID() }
                         .controlHover().connectionButtonFocus().accessibilityIdentifier("retryConnectionPassword")
-                } else {
+                } else if !draft.usesPasswordCommand {
                     Label("Passwords are saved in macOS Keychain", systemImage: "key")
+                        .font(.caption).appSecondaryText()
+                } else {
+                    Text("Only the command configuration is saved locally. Generated passwords are never saved. Configure the command again after importing profiles.")
                         .font(.caption).appSecondaryText()
                 }
             }
@@ -544,6 +565,9 @@ struct ConnectionDraft {
     var database: String
     var user: String
     var password = ""
+    var usesPasswordCommand = false
+    var passwordExecutable = ""
+    var passwordArguments = "[]"
     var sslMode: String
     var sslRootCert: String
     var policy: ExecutionPolicy
@@ -571,6 +595,12 @@ struct ConnectionDraft {
         sshAuthMethod = connection?.ssh?.authMethod ?? .agent
         sshIdentityFile = connection?.ssh?.identityFile ?? ""
         sshConfigFile = connection?.ssh?.configFile ?? ""
+        usesPasswordCommand = connection?.passwordCommand != nil
+        passwordExecutable = connection?.passwordCommand?.executable ?? ""
+        if let arguments = connection?.passwordCommand?.arguments,
+           let data = try? JSONEncoder().encode(arguments) {
+            passwordArguments = String(decoding: data, as: UTF8.self)
+        }
         name = connection?.name ?? ""
         engine = connection?.engine ?? .postgresql
         host = connection?.contactPoints?.joined(separator: ", ") ?? connection?.host ?? "localhost"
@@ -617,7 +647,7 @@ struct ConnectionDraft {
         port = String(url.port)
         database = url.database
         if let user = url.user { self.user = user }
-        if let password = url.password { self.password = password }
+        if let password = url.password { self.password = password; usesPasswordCommand = false }
         if let sslMode = url.sslMode { self.sslMode = sslMode }
         if let sslRootCert = url.sslRootCert { self.sslRootCert = sslRootCert }
     }
@@ -632,7 +662,15 @@ struct ConnectionDraft {
         return (1...65_535).contains(value)
     }
 
+    var passwordCommand: PasswordCommand? {
+        guard let data = passwordArguments.data(using: .utf8),
+              let arguments = try? JSONDecoder().decode([String].self, from: data) else { return nil }
+        let command = PasswordCommand(executable: passwordExecutable, arguments: arguments)
+        return command.isValid ? command : nil
+    }
+
     var settings: ConnectionSettings? {
+        if usesPasswordCommand && passwordCommand == nil { return nil }
         let cleanedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedDatabase = database.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedUser = user.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -661,7 +699,8 @@ struct ConnectionDraft {
             sslRootCert: rootCert.isEmpty ? nil : rootCert, engine: engine, policy: policy,
             contactPoints: engine == .cassandra ? points : nil,
             localDatacenter: engine == .cassandra && !localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-            consistency: engine == .cassandra ? consistency : nil, ssh: ssh)
+            consistency: engine == .cassandra ? consistency : nil, ssh: ssh,
+            passwordCommand: usesPasswordCommand ? passwordCommand : nil)
         return settings.hasValidNativeFields ? settings : nil
     }
 }

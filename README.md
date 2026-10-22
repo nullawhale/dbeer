@@ -6,7 +6,7 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 
 ## Using the application
 
-- **⌘N** creates a PostgreSQL, MySQL, or Cassandra profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords live in macOS Keychain, and settings in `~/Library/Application Support/DBeer/connections.json`.
+- **⌘N** creates a PostgreSQL, MySQL, or Cassandra profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords use macOS Keychain by default; a local CLI can supply dynamic passwords. Settings live in `~/Library/Application Support/DBeer/connections.json`.
 - In **General**, paste a `postgresql://`, `postgres://`, `mysql://` or JDBC-prefixed address into **URL** and choose **Use URL**. Single-host URLs support an explicit database, optional user/password, port, IPv6 and encoded values. PostgreSQL accepts `sslmode` and `sslrootcert`; MySQL accepts `ssl-mode` (or JDBC `sslMode`) and `ssl-ca`. Unsupported options and TLS modes are rejected. Omitted credentials and TLS options keep their current field values. The URL preview excludes passwords; imported passwords move into the Password field and use Keychain on Save. Apply or reset a pending URL before saving or testing.
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
 - The tree loads on demand and provides search, Refresh, structure, definitions, Copy Name, and Generate SELECT. Double-click a table to select an existing data view or load its first 200 rows; Open in New Tab creates an independent view. Filtering and sorting run on the server; pagination uses the primary key for stable ordering without automatic COUNT queries.
@@ -242,6 +242,40 @@ History uses versioned workspace storage, currently v6. Existing v0/v1/v2/v3/v4/
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.
+
+## Dynamic database passwords in the working branch
+
+In **General → Authentication**, choose **CLI command** as the password source.
+Enter an absolute executable path and its arguments as a JSON array of strings,
+for example `/usr/local/bin/database-token` with
+`["issue", "--host", "db.example.test", "--user", "reader"]`.
+Arguments are passed exactly as entered. There is no implicit shell, quoting
+parser, variable expansion, pipeline or `~` expansion. Keep secrets in the CLI's
+own credential store rather than in these locally saved arguments.
+
+The command receives no stdin and must exit successfully within **15 seconds**.
+Stdout is limited to **64 KiB**, including any trailing newline. Return one
+nonempty UTF-8 password, optionally followed by one LF or CRLF. Other whitespace
+is preserved; embedded line breaks and NUL bytes are rejected. Stderr is
+discarded. Output is never logged, returned to the app, or saved in Keychain or
+profile files. Cancellation terminates the command's process group.
+
+Each new authenticated database connection obtains a fresh value: independent
+SQL tabs, catalog/service sessions, Preview/Apply sessions and MySQL's Stop
+connection. Existing database sessions keep their current authentication.
+PostgreSQL cancellation uses its server-issued cancellation key. SSH
+authentication remains separate. A command or authentication failure stops that
+connection attempt without falling back to an old token or replaying user SQL.
+Reconnect explicitly after fixing the provider.
+
+Save, duplicate, profile import and workspace restoration never run commands.
+Commands run when connecting, running a query, testing a connection or opening
+a Preview/Apply session. An already-connected Cassandra profile also obtains
+fresh values for driver control/node connections and reconnects.
+Portable profile export omits the executable and arguments;
+imported profiles use Keychain until a local CLI is configured again. Existing
+profiles continue using Keychain. Connection-library v5 preserves private
+migration backups and prevents older clients from silently dropping CLI settings.
 
 ## SSH tunnels in the working branch
 

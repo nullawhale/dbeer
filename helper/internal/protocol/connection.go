@@ -15,6 +15,9 @@ func (connection Connection) CassandraConsistency() string {
 }
 
 func (connection Connection) Valid() bool {
+	if connection.PasswordCommand != nil && (!connection.PasswordCommand.Valid() || connection.Password != "" || connection.User == "") {
+		return false
+	}
 	if connection.SSH != nil && !connection.SSH.Valid() {
 		return false
 	}

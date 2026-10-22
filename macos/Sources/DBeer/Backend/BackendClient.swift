@@ -4,7 +4,7 @@ import Foundation
 /// Local command rejection before a request is registered or written to stdin.
 /// Keep this distinct from a malformed or oversized reply from the helper.
 enum BackendRequestError: LocalizedError, Sendable, Equatable {
-    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration
+    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand
 
     var errorDescription: String? {
         let explanation: String
@@ -14,6 +14,7 @@ enum BackendRequestError: LocalizedError, Sendable, Equatable {
         case .frameTooLarge: explanation = "The command exceeds the 16 MiB transport limit."
         case .encodingFailed: explanation = "The command could not be encoded."
         case .unsupportedSSHConfiguration: explanation = "This helper does not support OpenSSH configuration. Rebuild the matching app and helper."
+        case .unsupportedPasswordCommand: explanation = "This helper does not support password commands. Rebuild the matching app and helper."
         }
         return explanation + " The command was not sent."
     }
@@ -81,6 +82,7 @@ actor BackendClient {
     private var capturedExportSupported = false
     private var sshTunnelsSupported = false
     private var sshConfigurationSupported = false
+    private var passwordCommandSupported = false
     private var insertFormattingSupported = false
     private var shuttingDown = false
     private var wasForced = false
@@ -181,6 +183,9 @@ actor BackendClient {
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.connection?.passwordCommand != nil, !passwordCommandSupported {
+            throw BackendRequestError.unsupportedPasswordCommand
+        }
         if command.connection?.ssh?.authMethod == .openSSH, !sshConfigurationSupported {
             throw BackendRequestError.unsupportedSSHConfiguration
         }
@@ -323,6 +328,7 @@ actor BackendClient {
             capturedExportSupported = reply.capabilities?.contains("capturedExportV1") == true
             sshTunnelsSupported = reply.capabilities?.contains("sshTunnelsV1") == true
             sshConfigurationSupported = reply.capabilities?.contains("sshConfigV1") == true
+            passwordCommandSupported = reply.capabilities?.contains("passwordCommandV1") == true
             insertFormattingSupported = reply.capabilities?.contains("formatInsertsV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {

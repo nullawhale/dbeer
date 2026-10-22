@@ -21,6 +21,7 @@ enum CassandraSettings {
 
 extension ConnectionSettings {
     var hasValidNativeFields: Bool {
+        if let passwordCommand, !passwordCommand.isValid || !password.isEmpty || user.isEmpty { return false }
         guard ssh?.isValid != false else { return false }
         let fields = [host, database, user, localDatacenter ?? ""] + (contactPoints ?? [])
         guard fields.allSatisfy({ !$0.contains("\0") && $0.utf8.count <= 1_024 }),

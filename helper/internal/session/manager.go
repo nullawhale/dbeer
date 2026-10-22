@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
 )
 
@@ -405,6 +406,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 	connectTimeout := ConnectTimeout
 	if connection.SSH != nil {
 		connectTimeout = 30 * time.Second
+	}
+	if connection.PasswordCommand != nil {
+		connectTimeout += credential.Timeout
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer func() { cancel() }()

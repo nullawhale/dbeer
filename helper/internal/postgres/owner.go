@@ -5,9 +5,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"net"
 	"sync"
 	"time"
 
+	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -68,6 +71,21 @@ func connect(ctx context.Context, connection protocol.Connection) (*pgx.Conn, er
 	}
 	if err := configureTransport(ctx, connection, config); err != nil {
 		return nil, err
+	}
+	if connection.PasswordCommand != nil {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		config.ConnectTimeout += credential.Timeout
+		config.AfterNetConnect = func(ctx context.Context, config *pgconn.Config, conn net.Conn) (net.Conn, error) {
+			password, err := credential.Password(ctx, connection)
+			if err != nil {
+				cancel()
+				return conn, err
+			}
+			config.Password = password
+			return conn, nil
+		}
+		return pgx.ConnectConfig(ctx, config)
 	}
 	return pgx.ConnectConfig(ctx, config)
 }
@@ -180,7 +198,11 @@ func (owner *Owner) run(connector connectFunc, queryTimeout time.Duration) {
 				if connecting != nil || conn != nil {
 					response = protocol.ErrorResponse(command, "busy", "Disconnect the current session before connecting again.")
 				} else {
-					ctx, cancelConnect := context.WithTimeout(context.Background(), ConnectTimeout)
+					timeout := ConnectTimeout
+					if command.Connection.PasswordCommand != nil {
+						timeout += credential.Timeout
+					}
+					ctx, cancelConnect := context.WithTimeout(context.Background(), timeout)
 					cancel = cancelConnect
 					pending = &command
 					result := make(chan connectionResult, 1)
@@ -277,6 +299,10 @@ func transactionStatus(conn *pgx.Conn) string {
 
 func connectionError(command protocol.Command, err error) protocol.Response {
 	response := protocol.ErrorResponse(command, "connection", "Cannot connect to PostgreSQL. Check the address, TLS settings, and server availability.")
+	var safe *adapter.ConnectionError
+	if errors.As(err, &safe) {
+		return protocol.ErrorResponse(command, safe.Category, safe.Message)
+	}
 	var pgError *pgconn.PgError
 	if errors.As(err, &pgError) {
 		if validSQLState(pgError.Code) {

@@ -59,6 +59,15 @@ func testSSHProtocolProbeTrustConnectAndShutdown(t *testing.T, configured bool) 
 		t.Fatal("missing fixture credential")
 	}
 	connection.Password = string(secret[:len(secret)-1])
+	providerMarker := filepath.Join(t.TempDir(), "provider-invoked")
+	if configured {
+		provider := filepath.Join(t.TempDir(), "password-cli")
+		if os.WriteFile(provider, []byte("#!/bin/sh\nprintf x >> \"$1\"\nexec /bin/cat \"$2\"\n"), 0700) != nil {
+			t.Fatal("cannot prepare protocol password provider")
+		}
+		connection.Password = ""
+		connection.PasswordCommand = &protocol.PasswordCommand{Executable: provider, Arguments: []string{providerMarker, filepath.Join(root, "password")}}
+	}
 	if os.Getenv("DBEER_TEST_SSH_ENGINE") != "postgresql" {
 		t.Skip("protocol connect covered by PostgreSQL matrix")
 	}
@@ -117,10 +126,12 @@ func testSSHProtocolProbeTrustConnectAndShutdown(t *testing.T, configured bool) 
 	}
 	if configured {
 		found := false
+		passwordCommands := false
 		for _, capability := range hello.Capabilities {
 			found = found || capability == "sshConfigV1"
+			passwordCommands = passwordCommands || capability == "passwordCommandV1"
 		}
-		if !found {
+		if !found || !passwordCommands {
 			t.Fatal("configuration capability missing")
 		}
 	}
@@ -148,9 +159,18 @@ func testSSHProtocolProbeTrustConnectAndShutdown(t *testing.T, configured bool) 
 	if configured && reviews != 2 {
 		t.Fatal("protocol did not separately review the jump and final host")
 	}
+	if _, err := os.Stat(providerMarker); !os.IsNotExist(err) {
+		t.Fatal("SSH review executed the password command")
+	}
 	send(map[string]any{"type": "connect", "requestId": "connect", "connection": connection})
 	if receive().Type != "connect.result" {
 		t.Fatal("tunneled protocol connection failed")
+	}
+	if configured {
+		data, err := os.ReadFile(providerMarker)
+		if err != nil || string(data) != "x" {
+			t.Fatal("protocol connection did not resolve exactly one fresh credential")
+		}
 	}
 	send(map[string]any{"type": "shutdown", "requestId": "shutdown"})
 	if receive().Type != "shutdown.ack" {

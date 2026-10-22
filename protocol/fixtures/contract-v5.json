@@ -2,6 +2,23 @@
   "version": 5,
   "commands": [
     {
+      "type": "connect",
+      "requestId": "password-command-connect",
+      "connection": {
+        "engine": "postgresql",
+        "host": "database.example.test",
+        "port": 5432,
+        "database": "app",
+        "user": "reader",
+        "password": "",
+        "passwordCommand": {
+          "executable": "/synthetic/token-cli",
+          "arguments": ["token", "--database", "app", "literal $HOME"]
+        },
+        "sslMode": "verify-full"
+      }
+    },
+    {
       "type": "catalog",
       "requestId": "foreign-keys-1",
       "sessionId": "session-1",

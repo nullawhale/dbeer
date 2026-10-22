@@ -18,6 +18,7 @@ const MaxFrameBytes = 16 * 1024 * 1024
 const MaxIDBytes = 128
 
 type Connection struct {
+	PasswordCommand *PasswordCommand `json:"passwordCommand,omitempty"`
 	SSH             *SSHSettings     `json:"ssh,omitempty"`
 	Engine          string           `json:"engine,omitempty"`
 	Host            string           `json:"host"`
@@ -495,12 +496,20 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 			return connection, false
 		}
 	}
+	if raw, exists := fields["passwordCommand"]; exists {
+		if _, ok := changesObject(raw, "executable|arguments", "executable", "arguments"); !ok {
+			return connection, false
+		}
+		if json.Unmarshal(raw, &connection.PasswordCommand) != nil || connection.PasswordCommand == nil || connection.PasswordCommand.Arguments == nil {
+			return connection, false
+		}
+	}
 	if !connection.Valid() {
 		return connection, false
 	}
 	for name := range fields {
 		switch name {
-		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh":
+		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "passwordCommand":
 		default:
 			return connection, false
 		}

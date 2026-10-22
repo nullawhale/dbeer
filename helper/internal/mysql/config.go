@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
 	"github.com/go-mysql-org/go-mysql/client"
 	wire "github.com/go-mysql-org/go-mysql/mysql"
@@ -100,6 +101,10 @@ func dialWithTransport(ctx context.Context, settings protocol.Connection, tunnel
 	if err != nil {
 		return nil, err
 	}
+	password, err := credential.Password(ctx, settings)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, ConnectTimeout)
 	defer cancel()
 	var transport net.Conn
@@ -121,7 +126,7 @@ func dialWithTransport(ctx context.Context, settings protocol.Connection, tunnel
 		return conn, nil
 	}
 	conn, err := client.ConnectWithDialer(ctx, "tcp", net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port)),
-		settings.User, settings.Password, settings.Database, dialer, func(conn *client.Conn) error {
+		settings.User, password, settings.Database, dialer, func(conn *client.Conn) error {
 			conn.SetTLSConfig(tlsConfig)
 			// Never grant local-file access or multiple user statements.
 			conn.UnsetCapability(wire.CLIENT_LOCAL_FILES)

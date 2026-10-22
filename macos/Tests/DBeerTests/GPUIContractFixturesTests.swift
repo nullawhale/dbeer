@@ -40,6 +40,10 @@ struct GPUIContractFixturesTests {
         let batch = try #require(data.commands.first { $0.type == "operation.assess" }?.operations)
         #expect(batch.map(\.type) == ["execute", "changes.apply"])
         #expect(batch[0].export?.format == "json")
+        let dynamic = try #require(data.commands.first { $0.requestId == "password-command-connect" }?.connection)
+        #expect(dynamic.password.isEmpty && dynamic.hasValidNativeFields)
+        #expect(dynamic.passwordCommand == PasswordCommand(executable: "/synthetic/token-cli",
+            arguments: ["token", "--database", "app", "literal $HOME"]))
     }
     @Test func existingTerminalShapesRetainPartialSetsExportsAndTransactions() throws {
         let data = try fixture()

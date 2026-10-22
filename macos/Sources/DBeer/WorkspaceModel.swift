@@ -79,6 +79,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var user = "postgres"
     // Runtime credentials stay in memory; saved passwords use the credential store.
     @Published var password = ""
+    @Published var passwordCommand: PasswordCommand?
     @Published var sslMode = "verify-full"
     @Published var sslRootCert = ""
     @Published var policy = ExecutionPolicy()
@@ -228,7 +229,7 @@ final class WorkspaceModel: ObservableObject {
         let settings = ConnectionSettings(host: host, port: portNumber, database: database,
             user: user, password: password, sslMode: sslMode,
             sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine, policy: policy,
-            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh)
+            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh, passwordCommand: passwordCommand)
         guard settings.hasValidNativeFields else {
             errorMessage = "Enter valid connection settings for the selected database engine."
             return
@@ -329,7 +330,8 @@ final class WorkspaceModel: ObservableObject {
 
     /// nil is a read failure; an empty string is a successfully read empty/missing password.
     func passwordForConnection(_ id: UUID) async -> String? {
-        guard savedConnections.contains(where: { $0.id == id }) else { return nil }
+        guard let profile = savedConnections.first(where: { $0.id == id }) else { return nil }
+        if profile.passwordCommand != nil { return "" }
         do { return try await credentialStore.password(for: id) ?? "" }
         catch {
             reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
@@ -364,7 +366,7 @@ final class WorkspaceModel: ObservableObject {
         connectionPreparationId = id
         defer { if connectionAttempt == attempt { connectionPreparationId = nil } }
         do {
-            let secret = try await credentialStore.password(for: id) ?? ""
+            let secret = profile.passwordCommand == nil ? try await credentialStore.password(for: id) ?? "" : ""
             guard !stopping, connectionAttempt == attempt, connectionState == .disconnected, selectedConnectionId == id else { return }
             var settings = profile.settings(password: secret)
             if let sshSnapshot {
@@ -423,7 +425,8 @@ final class WorkspaceModel: ObservableObject {
             return false
         }
         do {
-            try await credentialStore.savePassword(settings.password, for: profile.id)
+            if settings.passwordCommand == nil { try await credentialStore.savePassword(settings.password, for: profile.id) }
+            else { try await credentialStore.deletePassword(for: profile.id) }
             for purpose in [ConnectionCredentialPurpose.sshPassword, .sshPassphrase] {
                 let value = purpose == .sshPassword ? settings.ssh?.password : settings.ssh?.passphrase
                 if rememberSSHSecret, let value { try await credentialStore.saveSecret(value, for: profile.id, purpose: purpose) }
@@ -547,6 +550,7 @@ final class WorkspaceModel: ObservableObject {
         database = settings.database
         user = settings.user
         password = settings.password
+        passwordCommand = settings.passwordCommand
         sslMode = settings.sslMode
         sslRootCert = settings.sslRootCert ?? ""
         policy = settings.policy

@@ -30,6 +30,7 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     var database: String
     var user: String
     var password: String
+    var passwordCommand: PasswordCommand?
     var sslMode: String
     var sslRootCert: String?
     var policy: ExecutionPolicy
@@ -41,14 +42,16 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     init(host: String, port: Int, database: String, user: String, password: String,
          sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql,
          policy: ExecutionPolicy = ExecutionPolicy(), contactPoints: [String]? = nil,
-         localDatacenter: String? = nil, consistency: String? = nil, ssh: SSHSettings? = nil) {
+         localDatacenter: String? = nil, consistency: String? = nil, ssh: SSHSettings? = nil,
+         passwordCommand: PasswordCommand? = nil) {
+        self.passwordCommand = passwordCommand
         self.ssh = ssh
         self.engine = engine
         self.host = host
         self.port = port
         self.database = database
         self.user = user
-        self.password = password
+        self.password = passwordCommand == nil ? password : ""
         self.sslMode = sslMode
         self.sslRootCert = sslRootCert
         self.policy = policy
@@ -58,7 +61,7 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, host, port, database, user, password, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh
+        case engine, host, port, database, user, password, passwordCommand, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh
     }
 
     init(from decoder: Decoder) throws {
@@ -70,6 +73,7 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
         database = try values.decode(String.self, forKey: .database)
         user = try values.decode(String.self, forKey: .user)
         password = try values.decode(String.self, forKey: .password)
+        passwordCommand = try values.decodeIfPresent(PasswordCommand.self, forKey: .passwordCommand)
         sslMode = try values.decode(String.self, forKey: .sslMode)
         sslRootCert = try values.decodeIfPresent(String.self, forKey: .sslRootCert)
         policy = try values.decodeIfPresent(ExecutionPolicy.self, forKey: .policy) ?? ExecutionPolicy()

@@ -37,7 +37,7 @@ struct GridLifecycleTests {
             kind = command['type']
             reply = {'requestId': command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=5)
+                reply.update(type='hello.ack', protocolVersion=5, capabilities=['passwordCommandV1'])
             elif kind == 'operation.assess':
                 reply.update(type='operation.assessment', sessionId=command['sessionId'], queryId=command['queryId'],
                              assessment={'decision':'confirm' if delay == 'apply-preview' else 'allow','policy':{'environment':'unspecified','readOnly':False},
@@ -47,6 +47,10 @@ struct GridLifecycleTests {
                 reply.update(type='ssh.probe.result', ssh={'status':'trusted','host':ssh['host'],'port':ssh['port'],
                     'algorithm':'ssh-ed25519','fingerprint':'SHA256:fixture'})
             elif kind == 'connect':
+                if delay == 'password-command':
+                    connection = command['connection']
+                    if connection.get('password') != '' or connection.get('passwordCommand') != dict(executable='/synthetic/token-cli', arguments=['token']):
+                        sys.exit(46)
                 if delay.startswith('ssh'):
                     ssh = command['connection'].get('ssh', {})
                     if ssh.get('password') != 'ssh-fixture-secret' or ssh.get('host') != 'bastion.example':
@@ -125,7 +129,8 @@ struct GridLifecycleTests {
         try #require(await workspace.library.saveConnection(name: "Lifecycle fixture",
             settings: ConnectionSettings(host: "localhost", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable",
                 ssh: delay.hasPrefix("ssh") ? SSHConfiguration(host: "bastion.example", user: "fixture", authMethod: .password)
-                    .runtime(profileId: UUID(), password: "ssh-fixture-secret") : nil)))
+                    .runtime(profileId: UUID(), password: "ssh-fixture-secret") : nil,
+                passwordCommand: delay == "password-command" ? PasswordCommand(executable: "/synthetic/token-cli", arguments: ["token"]) : nil)))
         let profile = try #require(workspace.library.selectedConnectionId)
         let document = workspace.newDocument(profileID: profile)
         document.table = TableReference(schema: "public", name: "fixture", kind: "table")
@@ -138,6 +143,30 @@ struct GridLifecycleTests {
         ], rows: [["1", "original"]])
         document.attachGrid(GridDraft(reference: document.table!, result: result, metadata: document.tableColumns))
         return (workspace, document)
+    }
+
+    @Test func serviceTabPreviewAndApplyKeepPasswordCommandsAndRejectChangedProviders() async throws {
+        let gate = try Gate()
+        let (workspace, document) = try await workspace(gate, delay: "password-command")
+        defer { Task { await workspace.shutdown() } }
+        let profile = try #require(document.profileID)
+        await workspace.connectProfile(profile)
+        await workspace.run(document)
+        let runtime = try #require(document.runtime)
+        #expect(runtime.passwordCommand?.executable == "/synthetic/token-cli")
+        let grid = try #require(document.grid)
+        grid.set(ChangeValue(kind: "text", value: "edited"), row: 0, column: 1)
+        await workspace.previewGrid(document)
+        #expect(grid.preview != nil && grid.error == nil)
+        #expect(await workspace.applyGrid(document))
+        let count = try String(contentsOf: gate.connections, encoding: .utf8).split(separator: "\n").count
+        #expect(count >= 4)
+        let refreshed = try #require(document.grid)
+        refreshed.set(ChangeValue(kind: "text", value: "next"), row: 0, column: 1)
+        runtime.passwordCommand?.arguments = ["changed"]
+        await workspace.previewGrid(document)
+        #expect(refreshed.error?.contains("changed") == true)
+        #expect(try String(contentsOf: gate.connections, encoding: .utf8).split(separator: "\n").count == count)
     }
 
     @Test func SSHGridPreviewAndApplyPreserveTransportAndRejectChangedSSHContext() async throws {
