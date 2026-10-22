@@ -74,6 +74,7 @@ private struct WorkspaceCommands: Commands {
             Button("New Connection…") { workspace.library.isConnectionEditorPresented = true }
                 .keyboardShortcut("n", modifiers: .command)
             Button("New SQL Tab") { workspace.newDocument() }.keyboardShortcut("t", modifiers: .command)
+            commandItem(.reopenClosedTab)
             Button("Open SQL…") { workspace.openSQLFile() }.keyboardShortcut("o", modifiers: .command)
         }
         CommandGroup(replacing: .saveItem) {

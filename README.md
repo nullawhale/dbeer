@@ -48,6 +48,20 @@ Unknown document kinds, malformed state and future workspace versions are left
 unchanged. These changes require rebuilding the native app and are not part of
 the existing build 8 archive.
 
+**File → Reopen Closed Tab** (**⇧⌘T**) returns the most recently closed SQL or
+table/view tab, including when no tabs remain open. Up to 20 successfully closed
+tabs are kept in memory for the current application run. Repeated reopening
+returns them in reverse closing order, at their former position where possible,
+and selects each reopened tab. Cancelled or rejected closes are excluded.
+
+Reopened tabs have fresh document identities and no session, transaction, result,
+cursor or pending edits. Their SQL, connection reference, file binding and table
+browsing settings are restored without reconnecting, executing SQL or reloading
+files. Run or Load Data opens a new session explicitly. Missing connections
+require choosing a replacement. Rebind or clear the shortcut in **Settings →
+Shortcuts**. The closed-tab list is cleared on application exit and by a successful
+**Clear Drafts** action; it is never written to workspace storage.
+
 ## Result copying in the working branch
 
 Copy cells, rows or ranges as TSV, CSV, JSON, Markdown or SQL INSERT. Ordinary

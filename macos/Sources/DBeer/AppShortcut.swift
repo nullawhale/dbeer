@@ -17,6 +17,7 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
     static let copyAsJSON = Self(rawValue: "grid.copy.json")
     static let copyAsMarkdown = Self(rawValue: "grid.copy.markdown")
     static let copyAsSQLInsert = Self(rawValue: "grid.copy.insert")
+    static let reopenClosedTab = Self(rawValue: "workspace.reopenClosedTab")
 
     var isGridCopyCommand: Bool {
         self == .copyAsJSON || self == .copyAsMarkdown || self == .copyAsSQLInsert
@@ -24,7 +25,7 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
 }
 
 enum AppCommandScope: String, Codable, Hashable, Sendable {
-    case document, sqlDocument, grid
+    case workspace, document, sqlDocument, grid
 
     func overlaps(_ other: Self) -> Bool {
         // SQL documents also contain result grids. A script shortcut and a
@@ -34,6 +35,7 @@ enum AppCommandScope: String, Codable, Hashable, Sendable {
 
     var title: String {
         switch self {
+        case .workspace: "Workspace"
         case .document: "Active document"
         case .sqlDocument: "SQL document"
         case .grid: "Result grid"
@@ -55,6 +57,8 @@ struct AppCommandDescriptor: Identifiable, Hashable, Sendable {
     }
 
     static let builtins: [Self] = [
+        .init(id: .reopenClosedTab, title: "Reopen Closed Tab", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "t", modifiers: [.command, .shift])),
         .init(id: .runCurrent, title: "Run Selection or Current Statement", scope: .document,
             defaultShortcut: AppShortcut(key: "return", modifiers: .command)),
         .init(id: .runScript, title: "Run Script", scope: .sqlDocument,
@@ -251,7 +255,7 @@ final class AppShortcutStore: ObservableObject {
     func validationError(for shortcut: AppShortcut?, command: AppCommandID) -> String? {
         guard let descriptor = descriptors.first(where: { $0.id == command }) else { return "Unknown command." }
         guard let shortcut else { return nil }
-        if let error = Self.nativeValidationError(shortcut, scope: descriptor.scope) { return error }
+        if let error = Self.nativeValidationError(shortcut, command: descriptor.id, scope: descriptor.scope) { return error }
         if let conflict = descriptors.first(where: {
             $0.id != command && descriptor.scope.overlaps($0.scope) && self.shortcut(for: $0.id) == shortcut
         }) { return "This shortcut is already assigned to \(conflict.title)." }
@@ -281,7 +285,8 @@ final class AppShortcutStore: ObservableObject {
         persist(removing: Set(descriptors.map(\.id)))
     }
 
-    private static func nativeValidationError(_ shortcut: AppShortcut, scope: AppCommandScope) -> String? {
+    private static func nativeValidationError(_ shortcut: AppShortcut, command: AppCommandID,
+                                              scope: AppCommandScope) -> String? {
         guard shortcut.isCanonical else { return "Choose a single key supported by macOS." }
         let modifiers = shortcut.modifiers
         guard !modifiers.intersection([.command, .control, .option]).isEmpty else {
@@ -307,9 +312,13 @@ final class AppShortcutStore: ObservableObject {
             // explicit grid-only exception; ordinary Command-M still belongs
             // to macOS, as does Minimize All outside the grid context.
             let minimizeAll = key == "m" && modifiers == [.command, .option] && scope != .grid
+            // The standard reopen binding belongs only to this workspace
+            // command. Other commands cannot claim it after unbinding Reopen.
+            let reopensClosedTab = command == .reopenClosedTab && scope == .workspace &&
+                key == "t" && modifiers == [.command, .shift]
             let reserved = editing.contains(key) || key == " " ||
                 (modifiers == .command && baseCommands.contains(key)) ||
-                (modifiers == [.command, .shift] && shiftedCommands.contains(key)) ||
+                (modifiers == [.command, .shift] && shiftedCommands.contains(key) && !reopensClosedTab) ||
                 (modifiers == [.command, .option] && optionCommands.contains(key)) ||
                 (modifiers == [.command, .control] && controlCommands.contains(key)) ||
                 (modifiers.contains(.shift) && ["3", "4", "5", "6"].contains(key)) || minimizeAll
@@ -344,7 +353,7 @@ final class AppShortcutStore: ObservableObject {
                   JSONSerialization.isValidJSONObject(value),
                   let entryData = try? JSONSerialization.data(withJSONObject: value),
                   let entry = try? JSONDecoder().decode(AppShortcutOverride.self, from: entryData),
-                  entry.shortcut.map({ Self.nativeValidationError($0, scope: descriptor.scope) == nil }) ?? true else { continue }
+                  entry.shortcut.map({ Self.nativeValidationError($0, command: descriptor.id, scope: descriptor.scope) == nil }) ?? true else { continue }
             validated[descriptor.id] = entry
         }
         func effectiveShortcut(for descriptor: AppCommandDescriptor) -> AppShortcut? {

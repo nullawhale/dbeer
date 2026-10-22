@@ -84,7 +84,7 @@ struct SQLHistoryView: View {
             Button("Cancel", role: .cancel) {}
             Button("Clear Drafts", role: .destructive) { Task { await workspace.clearRestoredDocuments() } }
         } message: {
-            Text("Close the current documents and remove the saved drafts. Saved .sql files stay on disk.")
+            Text("Close the current documents, remove the saved drafts and clear recently closed tabs. Saved .sql files stay on disk.")
         }
     }
 

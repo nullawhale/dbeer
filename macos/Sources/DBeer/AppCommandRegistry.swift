@@ -22,6 +22,16 @@ struct AppCommandContext: Equatable {
     let focus: AppCommandFocus
     let isWorkspaceWindow: Bool
     let hasModal: Bool
+    let isComposingText: Bool
+
+    init(documentID: UUID?, focus: AppCommandFocus, isWorkspaceWindow: Bool, hasModal: Bool,
+         isComposingText: Bool = false) {
+        self.documentID = documentID
+        self.focus = focus
+        self.isWorkspaceWindow = isWorkspaceWindow
+        self.hasModal = hasModal
+        self.isComposingText = isComposingText
+    }
 }
 
 struct AppCommandInvocation {
@@ -42,7 +52,7 @@ struct AppCommandInvocation {
     private let gridCopyResponderProvider: (@MainActor () -> (any AppGridCopyCommandResponder)?)?
     private let invocationHandler: ((AppCommandInvocation) async -> Void)?
     private var previousContext: AppCommandContext?
-    private var previousGridCommands: Set<AppCommandID> = []
+    private var previousScopedCommands: Set<AppCommandID> = []
 
     convenience init(workspace: ApplicationWorkspace, shortcuts: AppShortcutStore,
                      invocationHandler: ((AppCommandInvocation) async -> Void)? = nil) {
@@ -68,14 +78,13 @@ struct AppCommandInvocation {
 
     @objc private func refreshContext() {
         let context = context()
-        // Native result selections can change while focus stays in the grid,
-        // without a document or SwiftUI binding publishing that change.
-        let gridCommands = Set(shortcuts.descriptors.filter {
-            $0.scope == .grid && canPerform($0.id, context: context)
+        // Selection and the closed-tab stack can change without moving focus.
+        let scopedCommands = Set(shortcuts.descriptors.filter {
+            ($0.scope == .grid || $0.scope == .workspace) && canPerform($0.id, context: context)
         }.map(\.id))
-        guard context != previousContext || gridCommands != previousGridCommands else { return }
+        guard context != previousContext || scopedCommands != previousScopedCommands else { return }
         previousContext = context
-        previousGridCommands = gridCommands
+        previousScopedCommands = scopedCommands
         objectWillChange.send()
     }
 
@@ -92,7 +101,8 @@ struct AppCommandInvocation {
         else { focus = .workspace }
         return AppCommandContext(documentID: documentID, focus: focus,
             isWorkspaceWindow: window != nil && NSApp.keyWindow === window,
-            hasModal: NSApp.modalWindow != nil || window?.attachedSheet != nil || workspace.library.isConnectionEditorPresented)
+            hasModal: NSApp.modalWindow != nil || window?.attachedSheet != nil || workspace.library.isConnectionEditorPresented,
+            isComposingText: (responder as? NSTextView)?.hasMarkedText() == true)
     }
 
     /// Extension point for grid commands that operate on a document. Copy as
@@ -104,8 +114,12 @@ struct AppCommandInvocation {
     func canPerform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Bool {
         let context = context ?? self.context()
         guard context.isWorkspaceWindow, !context.hasModal,
-              let document = workspace.selectedDocument, context.documentID == document.id,
               let descriptor = shortcuts.descriptors.first(where: { $0.id == command }) else { return false }
+        if descriptor.scope == .workspace {
+            return command == .reopenClosedTab && !context.isComposingText &&
+                workspace.canReopenClosedTab
+        }
+        guard let document = workspace.selectedDocument, context.documentID == document.id else { return false }
         if descriptor.scope == .grid {
             guard context.focus == .grid, Self.canCopyGrid(in: document, workspace: workspace) else { return false }
             if command.isGridCopyCommand {
@@ -126,7 +140,14 @@ struct AppCommandInvocation {
 
     @discardableResult
     func perform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Task<Void, Never>? {
-        guard canPerform(command, context: context), let document = workspace.selectedDocument else { return nil }
+        guard canPerform(command, context: context) else { return nil }
+        if command == .reopenClosedTab {
+            // Pop synchronously so repeated keypresses consume distinct entries
+            // even before the next task can run, including with zero open tabs.
+            guard workspace.reopenClosedTab() != nil else { return nil }
+            return Task {}
+        }
+        guard let document = workspace.selectedDocument else { return nil }
         if command.isGridCopyCommand {
             guard let operation = gridCopyResponder(for: document)?.captureGridCopy(command) else { return nil }
             return Task { [workspace] in

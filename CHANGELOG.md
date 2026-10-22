@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- File → Reopen Closed Tab (Shift-Command-T, configurable in Shortcuts) restores
+  up to 20 successfully closed SQL/table tabs in reverse closing order, including
+  from an empty workspace. Text, connection/file bindings and table browsing
+  context return at the former position with a new document identity; sessions,
+  transactions, results, cursors and pending edits remain closed. Cancelled or
+  rejected closes are excluded. The list exists only in memory until application
+  exit or a successful Clear Drafts action.
 - Workspace v4 restores mixed SQL and table/view tabs, their order and selection,
   SQL text, connection bindings, table references, pages, server filters, sorting
   and SQL file bindings. Recovered tables show saved context with explicit Load

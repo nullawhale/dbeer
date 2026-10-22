@@ -12,7 +12,7 @@ struct ShortcutSettingsView: View {
                         ShortcutSettingsRow(store: store, descriptor: descriptor)
                     }
                 } header: {
-                    Text("Query and result shortcuts")
+                    Text("Keyboard shortcuts")
                 } footer: {
                     Text("Click a shortcut and press a key with Command, Control, or Option. Escape cancels; Tab moves to the next control. Standard editing and navigation shortcuts stay available.")
                 }

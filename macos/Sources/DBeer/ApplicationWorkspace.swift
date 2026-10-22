@@ -136,6 +136,7 @@ struct SQLExecution: Identifiable {
 final class ApplicationWorkspace: ObservableObject {
     let library: WorkspaceModel
     @Published private(set) var documents: [SQLDocument] = []
+    @Published private(set) var closedTabs: [ClosedWorkspaceTab] = []
     @Published var selectedDocumentID: UUID? { didSet { scheduleSave() } }
     @Published private(set) var services: [UUID: WorkspaceModel] = [:]
     @Published private(set) var error: String?
@@ -184,6 +185,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var profileConnections: [UUID: Task<Void, Never>] = [:]
     private var disconnectingProfiles: Set<UUID> = []
     private var closingDocuments: Set<UUID> = []
+    @Published private var isClearingDocuments = false
     private var catalogRequests: [UUID: (id: UUID, task: Task<BackendMessage, Error>)] = [:]
     private var completionLoads: [UUID: (id: UUID, task: Task<Void, Never>)] = [:]
     private var shutdownTask: Task<Void, Never>?
@@ -219,6 +221,26 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     var selectedDocument: SQLDocument? { documents.first { $0.id == selectedDocumentID } }
+
+    var canReopenClosedTab: Bool {
+        !closedTabs.isEmpty && shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
+            !isClosing && !isClearingDocuments && closingDocuments.isEmpty && disconnectingProfiles.isEmpty
+    }
+
+    @discardableResult
+    func reopenClosedTab() -> SQLDocument? {
+        guard canReopenClosedTab, let closed = closedTabs.popLast() else { return nil }
+        var state = closed.state
+        // Callbacks belonging to the old document must not acquire a new tab
+        // with the same identity while this application is still running.
+        state.id = UUID()
+        let document = restoredDocument(state, knownProfiles: library.savedConnections.map(\.id))
+        documents.insert(document, at: min(max(0, closed.originalIndex), documents.count))
+        observeDocument(document)
+        selectedDocumentID = document.id
+        scheduleSave()
+        return document
+    }
 
     func reportCopyError(_ message: String) { error = message }
 
@@ -339,21 +361,36 @@ final class ApplicationWorkspace: ObservableObject {
             grid?.isClosing = false
         }
         guard await prepareToClose(.document(document.id)) else { return }
-        await closeDocumentImmediately(document)
+        if let runtime = document.runtime, runtime.sessionId != nil {
+            // A rejected disconnect leaves the original tab and its session
+            // available for retry instead of publishing a successful close.
+            await runtime.disconnect()
+            guard runtime.sessionId == nil else {
+                document.localError = runtime.errorMessage ?? "The tab's session could not be closed. Try closing the tab again."
+                return
+            }
+        }
+        await closeDocumentImmediately(document, remember: true)
     }
 
     func canStartOperation(_ document: SQLDocument, forClosing: Bool = false) -> Bool {
-        guard shutdownTask == nil, documents.contains(where: { $0.id == document.id }) else { return false }
+        guard shutdownTask == nil, documents.contains(where: { $0 === document }) else { return false }
         return forClosing || (!isClosing && !closingDocuments.contains(document.id) &&
             document.profileID.map { !disconnectingProfiles.contains($0) } != false)
     }
 
-    private func closeDocumentImmediately(_ document: SQLDocument) async {
+    private func closeDocumentImmediately(_ document: SQLDocument, remember: Bool = false) async {
         if let runtime = document.runtime { await runtime.shutdown() }
-        documents.removeAll { $0.id == document.id }
+        guard shutdownTask == nil, let index = documents.firstIndex(where: { $0 === document }) else { return }
+        let closed = remember ? ClosedWorkspaceTab(state: document.storedState, originalIndex: index) : nil
+        documents.remove(at: index)
         documentObservations[document.id] = nil
         editorState.removeDocument(document.id)
         if selectedDocumentID == document.id { selectedDocumentID = documents.last?.id }
+        if let closed {
+            closedTabs.append(closed)
+            if closedTabs.count > 20 { closedTabs.removeFirst(closedTabs.count - 20) }
+        }
         scheduleSave()
     }
 
@@ -648,7 +685,10 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func clearRestoredDocuments() async {
-        guard !isClosing, closingDocuments.isEmpty, disconnectingProfiles.isEmpty else { return }
+        guard !isClosing, !isClearingDocuments, closingDocuments.isEmpty, disconnectingProfiles.isEmpty else { return }
+        isClearingDocuments = true
+        defer { isClearingDocuments = false }
+        let previousClosedIDs = Set(closedTabs.map(\.id))
         let affected = documents
         let ids = Set(affected.map(\.id))
         guard closingDocuments.isDisjoint(with: ids) else { return }
@@ -662,7 +702,8 @@ final class ApplicationWorkspace: ObservableObject {
         }
         guard await prepareToClose(.application) else { return }
         for document in affected { await closeDocumentImmediately(document) }
-        await flushDocuments()
+        if draftsLoaded { guard await persistDocuments() else { return } }
+        closedTabs.removeAll { previousClosedIDs.contains($0.id) }
     }
 
     func prepareToClose(_ scope: WorkspaceCloseScope) async -> Bool {
@@ -753,13 +794,7 @@ final class ApplicationWorkspace: ObservableObject {
             historyEnabled = saved.historyEnabled
             let localIDs = Set(localDocuments.map(\.id))
             let restored = saved.documents.filter { !localIDs.contains($0.id) }.map { stored in
-                let document = SQLDocument(restoring: stored)
-                if document.profileID == nil {
-                    document.historyConnectionNotice = "This restored tab has no saved connection. Choose a connection before loading data or running SQL."
-                } else if let knownProfiles, !knownProfiles.contains(document.profileID!) {
-                    document.historyConnectionNotice = "The original connection is no longer available. Choose a connection before loading data or running SQL."
-                }
-                return document
+                restoredDocument(stored, knownProfiles: knownProfiles)
             }
             documents = restored + localDocuments
             for document in documents { observeDocument(document) }
@@ -769,6 +804,16 @@ final class ApplicationWorkspace: ObservableObject {
             draftsLoaded = true
             if !localDocuments.isEmpty { scheduleSave() }
         } catch { self.error = error.localizedDescription }
+    }
+
+    private func restoredDocument(_ stored: StoredSQLDocument, knownProfiles: [UUID]?) -> SQLDocument {
+        let document = SQLDocument(restoring: stored)
+        if document.profileID == nil {
+            document.historyConnectionNotice = "This restored tab has no saved connection. Choose a connection before loading data or running SQL."
+        } else if let knownProfiles, !knownProfiles.contains(document.profileID!) {
+            document.historyConnectionNotice = "The original connection is no longer available. Choose a connection before loading data or running SQL."
+        }
+        return document
     }
 
     private func observeDocument(_ document: SQLDocument) {
@@ -1315,6 +1360,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func shutdown() async {
         if let shutdownTask { await shutdownTask.value; return }
+        closedTabs.removeAll()
         let task = Task { @MainActor in
             await self.flushDocuments()
             for load in self.completionLoads.values { load.task.cancel() }
