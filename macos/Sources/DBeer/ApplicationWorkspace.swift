@@ -326,6 +326,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
     @Published var schemaComparison: SchemaComparisonModel?
+    @Published var dataComparison: DataComparisonModel?
     @Published var isSnapshotsPresented = false
     @Published private(set) var isClosing = false
     @Published var importPreview: [ImportedProfile]?
@@ -758,6 +759,19 @@ final class ApplicationWorkspace: ObservableObject {
         guard library.savedConnections.contains(where: { $0.id == id }),
               await disconnectProfile(id) else { return nil }
         return library.savedConnections.first { $0.id == id }
+    }
+
+    func showDataComparison() {
+        guard dataComparison == nil else { return }
+        let store = credentialStore
+        dataComparison = DataComparisonModel(profiles: library.savedConnections, resolve: { profile, attempt in
+            try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt)
+        })
+    }
+
+    func dismissDataComparison() {
+        guard let model = dataComparison else { return }
+        Task { await model.close(); if dataComparison?.id == model.id { dataComparison = nil } }
     }
 
     func showSchemaComparison() {
@@ -2981,6 +2995,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func shutdown() async {
+        await dataComparison?.close(); dataComparison = nil
         await schemaComparison?.close(); schemaComparison = nil
         if let shutdownTask { await shutdownTask.value; return }
         dismissPostgresTypeInspection()

@@ -1,0 +1,435 @@
+{
+  "version": 5,
+  "capability": "dataComparisonV1",
+  "commands": [
+    {
+      "type": "data.describe",
+      "requestId": "describe",
+      "dataComparison": {
+        "source": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "localhost",
+            "port": 5432,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "table": {
+            "schema": "public",
+            "name": "source_orders"
+          }
+        },
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "localhost",
+            "port": 5432,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "table": {
+            "schema": "public",
+            "name": "target_orders"
+          }
+        }
+      }
+    },
+    {
+      "type": "data.start",
+      "requestId": "start",
+      "dataComparison": {
+        "source": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "localhost",
+            "port": 5432,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "table": {
+            "schema": "public",
+            "name": "source_orders"
+          },
+          "descriptorDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "filters": [],
+          "readLimit": 3
+        },
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "localhost",
+            "port": 5432,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "table": {
+            "schema": "public",
+            "name": "target_orders"
+          },
+          "descriptorDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "filters": [],
+          "readLimit": 3
+        },
+        "columns": [
+          {
+            "source": "id",
+            "target": "id",
+            "key": true
+          },
+          {
+            "source": "value",
+            "target": "value",
+            "key": false
+          },
+          {
+            "source": "bytes",
+            "target": "bytes",
+            "key": false
+          }
+        ],
+        "originals": "allColumns"
+      }
+    },
+    {
+      "type": "data.status",
+      "requestId": "status",
+      "dataComparison": {
+        "jobId": "data-job"
+      }
+    },
+    {
+      "type": "data.page",
+      "requestId": "page",
+      "dataComparison": {
+        "jobId": "data-job"
+      }
+    },
+    {
+      "type": "data.value",
+      "requestId": "value",
+      "dataComparison": {
+        "jobId": "data-job",
+        "valueRef": "source-value"
+      }
+    },
+    {
+      "type": "data.cancel",
+      "requestId": "cancel",
+      "dataComparison": {
+        "jobId": "data-job"
+      }
+    },
+    {
+      "type": "data.close",
+      "requestId": "close",
+      "dataComparison": {
+        "jobId": "data-job"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "type": "data.describe.result",
+      "requestId": "describe",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "pending"
+      }
+    },
+    {
+      "type": "data.start.result",
+      "requestId": "start",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "pending"
+      }
+    },
+    {
+      "type": "data.status.result",
+      "requestId": "status",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "completed",
+        "summary": {
+          "formatVersion": 1,
+          "comparison": {
+            "leftRows": 3,
+            "rightRows": 3,
+            "equalRows": 2,
+            "addedRows": 0,
+            "deletedRows": 0,
+            "changedRows": 1,
+            "ambiguousRows": 0,
+            "uncertainRows": 0,
+            "reportRows": 1,
+            "complete": false,
+            "fullEquality": false,
+            "schemaDifferences": [],
+            "schemaDifferenceCount": 0,
+            "schemaDifferencesTruncated": false,
+            "warnings": [
+              "Left input is partial; complete-set equality cannot be established."
+            ]
+          },
+          "source": {
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "repeatableRead",
+            "rendering": "postgresTextUTCISOv1",
+            "storedRows": 3,
+            "observedAtLeast": 4,
+            "readLimit": 3,
+            "partialReasons": [
+              "readLimit"
+            ],
+            "fullOriginals": true,
+            "descriptorDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "captureDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "table": {
+              "schema": "public",
+              "name": "source_orders"
+            },
+            "engine": "postgresql",
+            "excludedColumns": 0
+          },
+          "target": {
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "repeatableRead",
+            "rendering": "postgresTextUTCISOv1",
+            "storedRows": 3,
+            "observedAtLeast": 3,
+            "readLimit": 3,
+            "partialReasons": [],
+            "fullOriginals": true,
+            "descriptorDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "captureDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "table": {
+              "schema": "public",
+              "name": "target_orders"
+            },
+            "engine": "postgresql",
+            "excludedColumns": 0
+          },
+          "mappedColumns": 3,
+          "keyColumns": 1,
+          "modelDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    },
+    {
+      "type": "data.page.result",
+      "requestId": "page",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "completed",
+        "page": {
+          "offset": 0,
+          "nextOffset": 1,
+          "hasMore": false,
+          "rows": [
+            {
+              "index": 0,
+              "kind": "changed",
+              "leftIndex": 0,
+              "rightIndex": 0,
+              "cells": [
+                {
+                  "mapping": 0,
+                  "left": {
+                    "isNull": false,
+                    "preview": "1",
+                    "totalBytes": 1,
+                    "truncated": false,
+                    "valueRef": "source-key"
+                  },
+                  "right": {
+                    "isNull": false,
+                    "preview": "1",
+                    "totalBytes": 1,
+                    "truncated": false,
+                    "valueRef": "target-key"
+                  },
+                  "different": false,
+                  "uncertain": false
+                },
+                {
+                  "mapping": 1,
+                  "left": {
+                    "isNull": false,
+                    "preview": "9007199254740993.123456789",
+                    "totalBytes": 26,
+                    "truncated": false,
+                    "valueRef": "source-value"
+                  },
+                  "right": {
+                    "isNull": false,
+                    "preview": "9007199254740993.123456788",
+                    "totalBytes": 26,
+                    "truncated": false,
+                    "valueRef": "target-value"
+                  },
+                  "different": true,
+                  "uncertain": false
+                }
+              ],
+              "cellsTruncated": true,
+              "cellOffset": 0,
+              "nextCellOffset": 2,
+              "totalCells": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "data.value.result",
+      "requestId": "value",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "completed",
+        "value": {
+          "valueRef": "source-value",
+          "isNull": false,
+          "totalBytes": 26,
+          "offset": 0,
+          "nextOffset": 26,
+          "dataBase64": "OTAwNzE5OTI1NDc0MDk5My4xMjM0NTY3ODk=",
+          "hasMore": false
+        }
+      }
+    },
+    {
+      "type": "data.cancel.result",
+      "requestId": "cancel",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "cancelled"
+      }
+    },
+    {
+      "type": "data.close.result",
+      "requestId": "close",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "closed"
+      }
+    },
+    {
+      "type": "data.status.result",
+      "requestId": "describe-status",
+      "dataComparison": {
+        "jobId": "describe-job",
+        "state": "completed",
+        "descriptors": {
+          "source": {
+            "formatVersion": 1,
+            "engine": "postgresql",
+            "table": {
+              "schema": "public",
+              "name": "source_orders"
+            },
+            "columns": [
+              {
+                "index": 0,
+                "name": "id",
+                "nativeType": "int8",
+                "typeLabel": "int8",
+                "primaryKey": 1,
+                "numeric": true,
+                "generated": false,
+                "identity": false,
+                "nullable": false,
+                "definition": {}
+              },
+              {
+                "index": 1,
+                "name": "value",
+                "nativeType": "text",
+                "typeLabel": "text",
+                "primaryKey": 0,
+                "numeric": false,
+                "generated": false,
+                "identity": false,
+                "nullable": true,
+                "definition": {}
+              },
+              {
+                "index": 2,
+                "name": "bytes",
+                "nativeType": "bytea",
+                "typeLabel": "bytea",
+                "primaryKey": 0,
+                "numeric": false,
+                "generated": false,
+                "identity": false,
+                "nullable": true,
+                "definition": {},
+                "encoding": "base64"
+              }
+            ],
+            "definition": {},
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "target": {
+            "formatVersion": 1,
+            "engine": "postgresql",
+            "table": {
+              "schema": "public",
+              "name": "target_orders"
+            },
+            "columns": [
+              {
+                "index": 0,
+                "name": "id",
+                "nativeType": "int8",
+                "typeLabel": "int8",
+                "primaryKey": 1,
+                "numeric": true,
+                "generated": false,
+                "identity": false,
+                "nullable": false,
+                "definition": {}
+              },
+              {
+                "index": 1,
+                "name": "value",
+                "nativeType": "text",
+                "typeLabel": "text",
+                "primaryKey": 0,
+                "numeric": false,
+                "generated": false,
+                "identity": false,
+                "nullable": true,
+                "definition": {}
+              },
+              {
+                "index": 2,
+                "name": "bytes",
+                "nativeType": "bytea",
+                "typeLabel": "bytea",
+                "primaryKey": 0,
+                "numeric": false,
+                "generated": false,
+                "identity": false,
+                "nullable": true,
+                "definition": {},
+                "encoding": "base64"
+              }
+            ],
+            "definition": {},
+            "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        }
+      }
+    }
+  ]
+}

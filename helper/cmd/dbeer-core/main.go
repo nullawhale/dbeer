@@ -13,6 +13,7 @@ import (
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/cassandra"
 	"dbeer/helper/internal/comparisonjob"
+	"dbeer/helper/internal/datacomparisonjob"
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
 	"dbeer/helper/internal/productidentity"
@@ -103,7 +104,7 @@ func safeSSHError(err error) *adapter.ConnectionError {
 // The input reader owns protocol guards and never waits for result output.
 // Ordinary admission is bounded; overflow is a transport failure, rather than
 // indefinitely hiding Stop/EOF behind an unresponsive output consumer.
-func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}, comparisons *comparisonjob.Manager, schemas *schemajob.Manager) {
+func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}, comparisons *comparisonjob.Manager, schemas *schemajob.Manager, dataComparisons *datacomparisonjob.Manager) {
 	reader := protocol.NewReader(input)
 	requests, queries := make(map[string]bool), make(map[string]string)
 	handshaken := false
@@ -111,6 +112,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 	finish := func(err error, shutdown bool) {
 		comparisons.Close()
 		schemas.Close()
+		dataComparisons.Close()
 		if !shutdown {
 			manager.Close()
 		}
@@ -160,6 +162,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 		if command.Type == "shutdown" {
 			comparisons.Close()
 			schemas.Close()
+			dataComparisons.Close()
 			manager.Control(command)
 			if !manager.TrySubmit(command) {
 				finish(errors.New("Protocol command queue exceeded its bounded capacity."), false)
@@ -176,7 +179,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -190,6 +193,31 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			if !emit(protocol.ErrorResponse(command, "protocol", "A successful hello handshake is required.")) {
 				return
 			}
+			continue
+		}
+		if strings.HasPrefix(command.Type, "data.") {
+			if command.Type != "data.page" && command.Type != "data.value" {
+				if !emit(dataComparisons.Handle(command)) {
+					return
+				}
+				continue
+			}
+			select {
+			case comparisonReads <- struct{}{}:
+			default:
+				if !emit(protocol.ErrorResponse(command, "busy", "Too many comparison reads are in progress.")) {
+					return
+				}
+				continue
+			}
+			go func(command protocol.Command) {
+				defer func() { <-comparisonReads }()
+				response := dataComparisons.Handle(command)
+				select {
+				case local <- response:
+				case <-controlContext.Done():
+				}
+			}(command)
 			continue
 		}
 		if strings.HasPrefix(command.Type, "schema.") {
@@ -344,6 +372,13 @@ func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc,
 		return err
 	}
 	defer schemas.Close()
+	// The native owner supplies a private parent so it can clean captures after
+	// forced process termination. This path is never accepted over the protocol.
+	dataComparisons, err := datacomparisonjob.New(opener, datacomparisonjob.Options{Root: os.Getenv("DBEER_DATA_COMPARISON_ROOT")})
+	if err != nil {
+		return err
+	}
+	defer dataComparisons.Close()
 	manager := session.New(opener)
 	defer manager.Close()
 	local := make(chan protocol.Response, 256)
@@ -360,7 +395,7 @@ func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc,
 			_ = closer.Close()
 		}
 	}()
-	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls, comparisons, schemas)
+	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls, comparisons, schemas, dataComparisons)
 	writer := protocol.NewWriter(output)
 	go func() {
 		for {

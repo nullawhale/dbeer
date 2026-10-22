@@ -45,6 +45,7 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
+	DataComparison   *DataComparisonRequest   `json:"dataComparison,omitempty"`
 	SchemaComparison *SchemaComparisonRequest `json:"schemaComparison,omitempty"`
 	Comparison       *ComparisonRequest       `json:"comparison,omitempty"`
 	SSHTrust         *SSHTrust                `json:"sshTrust,omitempty"`
@@ -356,6 +357,13 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.SSHTrust = &trust
 		}
+	case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.cancel", "data.close":
+		allowed["dataComparison"] = true
+		request, ok := parseDataComparison(fields["dataComparison"], command.Type)
+		if !ok {
+			return command, failure
+		}
+		command.DataComparison = &request
 	case "schema.start", "schema.status", "schema.page", "schema.value", "schema.export", "schema.cancel", "schema.close":
 		allowed["schemaComparison"] = true
 		request, ok := parseSchemaComparison(fields["schemaComparison"], command.Type)
@@ -734,6 +742,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	DataComparison        *DataComparisonResponse
 	SchemaComparison      *SchemaComparisonResponse
 	Comparison            *ComparisonResponse
 	SQL                   string
@@ -794,6 +803,8 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
+	case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.cancel.result", "data.close.result":
+		fields["dataComparison"] = response.DataComparison
 	case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
 		fields["schemaComparison"] = response.SchemaComparison
 	case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":

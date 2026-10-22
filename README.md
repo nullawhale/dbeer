@@ -268,6 +268,52 @@ successfully. Navigation history stays in memory; workspace restoration saves th
 current location and remains disconnected until explicit Load Data. Cassandra
 supports independent views but has no foreign keys.
 
+## Table data comparison in the working branch
+
+Use **Connections → Compare Table Data…** to select one source and target table
+on saved PostgreSQL or MySQL profiles with the same engine. Enter exact schema
+and table names, then explicitly **Read Table Metadata**. Opening or configuring
+the sheet never connects. Map columns one-to-one and select at least one key;
+primary keys are labelled as suggestions and are never selected automatically.
+Configure each side's filters and read limit independently: 10,000 rows by
+default, up to 100,000. NULL predicates are separate from the text `NULL`.
+
+**Compare** opens two new physical read-only sessions, including when both sides
+use the same profile. Each side rechecks its typed table descriptor and reads in
+a repeatable-read transaction. SQL tabs and their transactions remain independent.
+Capture intervals are recorded separately: there is no common atomic snapshot
+across servers. Database sessions close before the local comparison begins.
+
+Matching uses exact typed keys and values, preserving numeric strings, NULL,
+empty strings, literal `NULL` and Base64 binary. Duplicate keys are ambiguous;
+row order never establishes correspondence. Source-only and target-only labels
+express ownership, not database actions. Inspect paged differences, wide-row
+column pages and bounded exact value chunks. Limited captures report observed
+differences only: a missing row in a partial sample does not establish absence
+from the table. Samples may differ because server ordering and collations differ.
+
+Each capture reads at most one row beyond its configured limit. That sentinel
+marks the scope partial without being retained or establishing a total count;
+exactly the configured limit is complete only after a successful end of result.
+Temporary captures and comparison files share a 256 MiB budget. Storage limits
+can produce a partial-prefix report or an explicit failure, never full equality.
+All original columns are retained privately by default, including columns excluded
+from comparison. **Mapped columns only** omits excluded originals. This setting,
+filters, capture intervals and exclusions remain visible in the captured context.
+
+The initial scope supports PostgreSQL 14+ ordinary tables without row-level
+security, inheritance or partitions, and MySQL 8.0.30+ ordinary InnoDB tables.
+MySQL requires conservative direct SELECT-grant visibility, no active roles and
+partial revokes disabled;
+unsupported or hidden metadata fails explicitly. Descriptors include exact type
+identity, modifiers and relevant definitions; schema changes invalidate capture.
+Cassandra, cross-engine comparison and unsupported table kinds are unavailable.
+
+**Stop**, closing or resetting the comparison removes its private temporary data;
+the application also cleans its owned directory after forced helper termination.
+Captures are transient and are not saved result snapshots. This feature performs
+no database writes and generates no synchronization SQL.
+
 ## Schema comparison in the working branch
 
 Use **Connections → Compare Schema Structure…**, choose explicit source and

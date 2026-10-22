@@ -68,6 +68,7 @@ actor BackendClient {
 
     private let executableURL: URL
     private let arguments: [String]
+    private let environment: [String: String]
     private var process: Process?
     private var writer: PipeWriter?
     private var outputReader: Task<Void, Never>?
@@ -86,13 +87,15 @@ actor BackendClient {
     private var insertFormattingSupported = false
     private var resultComparisonSupported = false
     private var schemaComparisonSupported = false
+    private var dataComparisonSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
 
-    init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = []) {
+    init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = [], environment: [String: String] = [:]) {
         self.executableURL = executableURL
         self.arguments = arguments
+        self.environment = environment
     }
 
     nonisolated static func bundledExecutableURL(bundleURL: URL = Bundle.main.bundleURL) -> URL {
@@ -111,6 +114,9 @@ actor BackendClient {
         let stderr = Pipe()
         child.executableURL = executableURL
         child.arguments = arguments
+        if !environment.isEmpty {
+            child.environment = ProcessInfo.processInfo.environment.merging(environment) { _, replacement in replacement }
+        }
         child.standardInput = stdin
         child.standardOutput = stdout
         child.standardError = stderr
@@ -186,6 +192,17 @@ actor BackendClient {
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type.hasPrefix("data.") {
+            guard dataComparisonSupported, command.dataComparison?.valid(for: command.type) == true,
+                  command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
+                  command.protocolVersion == nil, command.stream == nil, command.export == nil, command.changes == nil,
+                  command.operations == nil, command.authorization == nil, command.sequence == nil, command.sshTrust == nil,
+                  command.insert == nil, command.comparison == nil, command.schemaComparison == nil else { throw BackendRequestError.invalidCommand }
+            for settings in [command.dataComparison?.source?.connection, command.dataComparison?.target?.connection].compactMap({ $0 }) {
+                if settings.passwordCommand != nil, !passwordCommandSupported { throw BackendRequestError.unsupportedPasswordCommand }
+                if settings.ssh?.authMethod == .openSSH, !sshConfigurationSupported { throw BackendRequestError.unsupportedSSHConfiguration }
+            }
+        } else if command.dataComparison != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("schema.") {
             guard schemaComparisonSupported, command.schemaComparison?.valid(for: command.type) == true,
                   command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
@@ -355,6 +372,7 @@ actor BackendClient {
             insertFormattingSupported = reply.capabilities?.contains("formatInsertsV1") == true
             resultComparisonSupported = reply.capabilities?.contains("resultComparisonV1") == true
             schemaComparisonSupported = reply.capabilities?.contains("schemaComparisonV1") == true
+            dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
@@ -362,6 +380,7 @@ actor BackendClient {
         }
         let terminal: BackendMessage
         do {
+            try validateDataComparison(reply, command: command)
             try validateSchemaComparison(reply, command: command)
             try validateComparison(reply, command: command)
             terminal = try hydrate(reply, request: request)
@@ -372,6 +391,21 @@ actor BackendClient {
             request.continuation.resume(throwing: BackendRemoteError(reply: terminal))
         } else {
             request.continuation.resume(returning: terminal)
+        }
+    }
+
+    private func validateDataComparison(_ reply: BackendMessage, command: BackendCommand) throws {
+        guard command.type.hasPrefix("data."), reply.type != "error" else { return }
+        guard let request = command.dataComparison, let response = reply.dataComparison,
+              request.jobId == nil || request.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let page = response.page {
+            guard page.offset == (request.offset ?? 0), page.rows.count <= (request.limit ?? 100),
+                  page.rows.allSatisfy({ $0.cellOffset == (request.cellOffset ?? 0) }),
+                  try JSONEncoder().encode(page).count <= (request.maxBytes ?? 262_144) else { throw BackendTransportError(.invalidMessage) }
+        }
+        if let value = response.value {
+            guard value.valueRef == request.valueRef, value.offset == (request.offset ?? 0),
+                  (value.data?.count ?? Int.max) <= (request.maxBytes ?? 65_536) else { throw BackendTransportError(.invalidMessage) }
         }
     }
 

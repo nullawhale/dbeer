@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Compare PostgreSQL or MySQL table data from Connections → Compare Table Data
+  in two dedicated read-only sessions. Explicitly read metadata, map columns,
+  select keys and configure independent filters and row limits. Exact typed
+  comparison preserves numeric strings, SQL NULL and binary values, reports
+  duplicate keys as ambiguous and never treats limited captures as full equality.
+  Inspect paged differences, wide rows and exact value chunks with source → target
+  context. Private temporary captures and comparison files share a 256 MiB budget
+  and are removed on close or Stop, including forced helper shutdown. Comparison
+  performs no database writes and generates no synchronization SQL.
+
 - Open Connections, Files, SQL Library and Investigations from a narrow vertical
   strip on the left. Each section has its own resizable panel; clicking the
   active section or repeating its shortcut hides the panel. Command-1 through

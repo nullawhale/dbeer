@@ -110,6 +110,8 @@ private struct WorkspaceCommands: Commands {
                 .disabled(!workspace.canManageWorkspace)
         }
         CommandMenu("Connections") {
+            Button("Compare Table Data…") { workspace.showDataComparison() }
+                .disabled(!workspace.canManageWorkspace)
             Button("Compare Schema Structure…") { workspace.showSchemaComparison() }
                 .disabled(!workspace.canManageWorkspace)
             Divider()

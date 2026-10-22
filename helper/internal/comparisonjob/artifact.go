@@ -19,13 +19,18 @@ func OpenArtifacts(store *resultartifact.Store) OpenSource {
 		if e != nil {
 			return nil, e
 		}
-		metadata := a.Metadata()
-		columns := make([]resultcompare.Column, len(metadata.Columns))
-		for i, c := range metadata.Columns {
-			columns[i] = resultcompare.Column{Index: c.Index, Name: c.Name, Engine: c.Engine, NativeType: c.NativeType, Encoding: c.Encoding}
-		}
-		return &artifactSource{artifact: a, metadata: resultcompare.Metadata{Columns: columns, RowCount: metadata.RowCount, Complete: metadata.Complete()}}, nil
+		return FromArtifact(a), nil
 	}
+}
+
+// FromArtifact adapts a verified job-owned capture without exposing its path.
+func FromArtifact(a resultartifact.Artifact) resultcompare.Source {
+	metadata := a.Metadata()
+	columns := make([]resultcompare.Column, len(metadata.Columns))
+	for i, c := range metadata.Columns {
+		columns[i] = resultcompare.Column{Index: c.Index, Name: c.Name, Engine: c.Engine, NativeType: c.NativeType, Encoding: c.Encoding}
+	}
+	return &artifactSource{artifact: a, metadata: resultcompare.Metadata{Columns: columns, RowCount: metadata.RowCount, Complete: metadata.Complete()}}
 }
 
 type artifactSource struct {

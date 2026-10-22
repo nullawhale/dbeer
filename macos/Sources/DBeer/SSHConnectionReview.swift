@@ -7,6 +7,7 @@ import Foundation
 enum SSHConnectionReview {
     private struct Review {
         let id: UUID
+        let ownerID: UUID?
         let configuration: SSHConfiguration
         let task: Task<Void, Error>
     }
@@ -28,12 +29,20 @@ enum SSHConnectionReview {
         }
     }
 
-    static func prepare(_ settings: ConnectionSettings, client: BackendClient) async throws {
+    static func cancel(ownerID: UUID) {
+        let keys = pending.filter { $0.value.ownerID == ownerID }.map(\.key)
+        keys.forEach { cancel(profileId: $0) }
+    }
+
+    static func prepare(_ settings: ConnectionSettings, client: BackendClient, ownerID: UUID? = nil) async throws {
         guard let ssh = settings.ssh else { return }
         if let review = pending[ssh.profileId], review.configuration == ssh.configuration {
             return try await review.task.value
         }
-        if pending[ssh.profileId] != nil { cancel(profileId: ssh.profileId) }
+        if pending[ssh.profileId] != nil {
+            if ownerID != nil { throw CancellationError() }
+            cancel(profileId: ssh.profileId)
+        }
         let reviewId = UUID()
         let task = Task { @MainActor in
             var reply = try await client.request(.sshProbe(settings))
@@ -62,7 +71,7 @@ enum SSHConnectionReview {
             }
             throw BackendTransportError(.invalidMessage)
         }
-        pending[ssh.profileId] = Review(id: reviewId, configuration: ssh.configuration, task: task)
+        pending[ssh.profileId] = Review(id: reviewId, ownerID: ownerID, configuration: ssh.configuration, task: task)
         defer { if pending[ssh.profileId]?.id == reviewId { pending[ssh.profileId] = nil } }
         try await task.value
     }
