@@ -51,6 +51,18 @@ for development only.
 
 ## Build and verification
 
+- Run UI verification only when the user explicitly requests it for the current
+  task. This includes launching or activating the application for manual checks,
+  walking through its interface, UI automation, screenshot capture, visual/theme
+  matrices, installed-archive acceptance, and native AppKit/SwiftUI tests that
+  show windows or interact with the desktop. A request to change UI code, fix a
+  bug, or run checks does not by itself authorize UI verification. Do not add
+  these checks automatically for broad changes or final verification.
+- By default, use builds and focused non-UI tests appropriate to the change.
+  Before selecting a native suite, check whether it opens windows or activates
+  the application. Leave UI coverage unrun unless explicitly requested, report
+  that scope accurately, and continue with the available non-UI checks without
+  making UI approval a routine prerequisite for completing the task.
 - Build the signed app: `./scripts/build-app.sh`.
   Use `CONFIGURATION=debug` for a debug build. Output: `build/DBeer.app`.
 - GPUI Windows/Linux paired builds use `./scripts/build-gpui-client.ps1 -Test -Package`
@@ -65,12 +77,13 @@ for development only.
   1.99.1); do not claim Windows/Linux UI coverage from a headless build.
 - Default to focused checks for the changed behavior. Run selected native suites
   with `./scripts/test.sh --filter SuiteName` (repeat `--filter` as needed).
-  This skips Go tests; theme/UI matrices run only if the filter selects them.
-  Do not run the full suite after every small edit. Use it for broad changes,
-  final verification of cross-cutting work, or an explicit request.
-- Run all Go race and native Swift tests: `./scripts/test.sh --all`. This builds the app
-  and isolates test credentials in a temporary Keychain. Use this runner for
-  AppKit tests; a plain `swift test` can exit before the suite completes.
+  This skips Go tests. Select only non-UI suites by default; selecting a filter
+  that includes UI or theme checks still requires the user's explicit request.
+- Run all Go race and native Swift tests: `./scripts/test.sh --all`. This includes
+  UI tests, so run it only when the user explicitly requests UI verification as
+  part of the full suite. It builds the app and isolates test credentials in a
+  temporary Keychain. Use this runner for requested AppKit tests; a plain
+  `swift test` can exit before the suite completes.
 - Run helper-only tests: `./scripts/test-go.sh` (also supported on Linux).
 - Run isolated database integration: `./scripts/test-postgres.sh`,
   `./scripts/test-mysql.sh` and `./scripts/test-tls.sh` (Docker required).
