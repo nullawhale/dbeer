@@ -12,13 +12,41 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 - Double-clicking an editable cell creates a local change. Insert Row, Delete Selected, Preview SQL, Apply, and Discard manage the batch. Apply uses a separate transaction and checks original rows under locks. A conflict or constraint error rolls back the entire batch. An unknown COMMIT outcome blocks another Apply until the outcome is checked and data is reloaded.
 - Arbitrary SQL, views, and tables without a primary key are read-only; MySQL editing requires InnoDB. Computed and unsupported types cannot be edited, with the reason shown in the interface.
 - Copy cells, rows, and ranges with **⌘C** or the context menu. Export Loaded saves rows already received. The separate **Run to File** action executes one statement once and publishes the complete file only after successful completion.
-- **⌘O**, **⌘S**, and **⇧⌘S** open and save UTF-8 `.sql` files. Drafts are saved after one second of inactivity. History is enabled by default: 1,000 entries retained for 30 days. Query → SQL History can disable or clear history, or clear restored documents. Restoration never connects to a database or executes SQL.
+- **⌘O**, **⌘S**, and **⇧⌘S** open and save UTF-8 `.sql` files. Workspace changes are saved after one second of inactivity. History is enabled by default: 1,000 entries retained for 30 days. Query → SQL History can disable or clear history, or clear restored documents. Restoration never connects to a database or executes SQL.
 - Connections → Import/Export Connections transfers profiles without passwords or private keys. Import shows a preview, creates new UUIDs, and requires selecting any missing or foreign CA while preserving the TLS mode. Portable files accept POSIX, Windows drive and UNC CA hints; foreign hints require explicit local remapping.
 - Closing a tab, profile, or the application offers to complete transactions and apply/discard changes; Cancel keeps the window open. DBeer → Settings (**⌘,**) selects System/Lager/Porter.
 
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. Version 1 excludes psql/mysql client commands, COPY streams, LOAD DATA LOCAL, SSH tunnels, and external plugins.
+
+## Workspace restoration in the working branch
+
+DBeer restores mixed SQL and table/view tabs in their saved order, with the
+selected tab, titles, SQL text and original connection bindings. Table tabs keep
+their schema/table reference, page, server filters and sort order. They initially
+show this context with an explicit **Load Data** action. SQL tabs remain
+disconnected until Run; table tabs remain disconnected until Load Data or Refresh.
+A missing connection stays unavailable until you explicitly choose a replacement.
+PostgreSQL/MySQL reopen the saved page on loading; Cassandra starts from the first
+page because its server cursors cannot survive a session restart.
+
+Sessions, transactions, running operations, results, cursor tokens and pending
+grid changes are excluded. A recovered tab cannot resume an old Apply or repeat
+SQL automatically. Text and browsing changes autosave without fetching table data.
+
+SQL file bindings retain the last accepted file-content fingerprint and the draft
+text independently. Restoration does not reload the file. Ordinary Save checks
+its current contents before replacing it; a changed, missing or unreadable bound
+file leaves the recovered draft open for **Save As**. Bindings without a known
+fingerprint require the Save As chooser. Cancelling or failing a save preserves
+the current draft and binding.
+
+Workspace storage advances to v4, with exact private backups before migrating
+v0/v1/v2/v3. Existing history, favorites and retention preferences are preserved.
+Unknown document kinds, malformed state and future workspace versions are left
+unchanged. These changes require rebuilding the native app and are not part of
+the existing build 8 archive.
 
 ## Result copying in the working branch
 
@@ -90,9 +118,9 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History storage advances to v3. Existing v0/v1/v2 files receive exact backups before
-migration; older entries retain their original outcome text and show unavailable
-execution details rather than inferred values. These working-branch changes are
+History uses versioned workspace storage, currently v4. Existing v0/v1/v2/v3 files
+receive exact backups before migration; older entries retain their original
+outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.
 
 ## SSH tunnels in the working branch

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Workspace v4 restores mixed SQL and table/view tabs, their order and selection,
+  SQL text, connection bindings, table references, pages, server filters, sorting
+  and SQL file bindings. Recovered tables show saved context with explicit Load
+  Data; restoration does not connect, execute SQL, reload files or resume edits.
+  PostgreSQL/MySQL retain their saved page; Cassandra loads from its first page.
+- Recovered file bindings retain the last accepted content fingerprint. Save
+  refuses changed or unavailable bound files; unknown fingerprints require Save
+  As. Drafts and bindings survive cancelled or failed saves. Exact private
+  v0/v1/v2/v3 workspace backups precede migration; history favorites and retention
+  settings are preserved, and malformed or future workspace files stay unchanged.
 - Native result selections copy as TSV, CSV, JSON, Markdown or SQL INSERT through
   one typed serializer. Settings retain the default format and headers; ordinary
   Copy still defaults to TSV without headers. NULL, empty text, marker text,
@@ -14,8 +24,8 @@
 - SQL history supports favorites that are exempt from automatic age and count
   limits, configurable retention settings, individual deletion and clearing the
   current matches. Clear confirmations preserve favorites unless explicitly
-  included and capture their target entries before confirmation. Workspace v3
-  persists favorites and settings, with exact backups when migrating v0/v1/v2.
+  included and capture their target entries before confirmation. Versioned
+  workspace storage persists favorites and settings with exact migration backups.
 - SQL history searches the complete SQL text and combines connection, date and
   outcome filters. Searches run in the background and cancel obsolete requests.
   Opening an entry creates a disconnected SQL tab; entries whose original
@@ -26,7 +36,7 @@
   gets one terminal entry; skipped and locally rejected commands are excluded.
 - History preserves the profile context captured when execution starts, excluding
   credentials, SSH settings, certificate paths and result values. History storage
-  advances to v3 with exact v0/v1/v2 backups before migration; missing legacy
+  retains exact backups before migration; missing legacy
   execution details remain unavailable rather than being inferred.
 - Native macOS connection profiles can use an SSH bastion through supervised
   system OpenSSH, with agent, private-key or password authentication. SSH

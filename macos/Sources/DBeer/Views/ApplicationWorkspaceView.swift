@@ -306,6 +306,10 @@ struct SQLDocumentPane: View {
             HStack(spacing: 8) {
                 Picker("Connection", selection: $document.profileID) {
                     Text("Choose a connection").tag(Optional<UUID>.none)
+                    if let missingProfileID {
+                        Text("Unavailable saved connection").tag(Optional(missingProfileID))
+                            .help("Saved connection \(missingProfileID.uuidString)")
+                    }
                     ForEach(workspace.library.savedConnections) { profile in
                         Text(profile.name).tag(Optional(profile.id))
                     }
@@ -351,7 +355,8 @@ struct SQLDocumentPane: View {
                     commands.perform(.runCurrent)
                 } label: {
                     HStack(spacing: 6) {
-                        Label(document.table == nil ? "Run" : "Refresh", systemImage: document.table == nil ? "play" : "arrow.clockwise")
+                        Label(document.table == nil ? "Run" : (document.grid == nil ? "Load Data" : "Refresh"),
+                            systemImage: document.table == nil ? "play" : "arrow.clockwise")
                         if let shortcut = commands.shortcuts.shortcut(for: .runCurrent) {
                             Text(shortcut.displayString).opacity(0.65)
                         }
@@ -371,6 +376,26 @@ struct SQLDocumentPane: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .accessibilityIdentifier("historyConnectionNotice")
+                Divider()
+            }
+            if document.table == nil, let fileURL = document.fileURL {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text").accessibilityHidden(true)
+                        Text(fileURL.path).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                        Spacer(minLength: 0)
+                    }
+                    if document.restoredFileBinding {
+                        Text(document.fileContentSHA256 == nil
+                            ? "Recovered draft. The file has not been reloaded; use Save As to choose where to save it."
+                            : "Recovered draft. The file has not been reloaded; Save checks for external changes.")
+                            .accessibilityIdentifier("restoredFileBindingNotice")
+                    }
+                }
+                .font(.caption).appSecondaryText()
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("documentFileBinding")
                 Divider()
             }
             if document.table == nil {
@@ -399,11 +424,101 @@ struct SQLDocumentPane: View {
             HStack {
                 Text(document.runtime?.transactionLabel ?? "No session")
                 Spacer()
-                Text(document.runtime?.connectionSummary ?? "Session opens on first Run")
+                Text(document.runtime?.connectionSummary ?? (document.table == nil ? "Session opens on first Run" : "Session opens on Load Data"))
             }.font(.caption).appSecondaryText().padding(8)
         }
         .onChange(of: document.selectedExecution) { _, _ in resultSetIndex.wrappedValue = 0 }
         .onChange(of: document.isRunning) { _, value in if value { resultSetIndex.wrappedValue = 0 } }
+    }
+
+    private var missingProfileID: UUID? {
+        guard let id = document.profileID,
+              !workspace.library.savedConnections.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
+
+    private func unloadedTable(_ table: TableReference, error: String? = nil) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Table data is not loaded", systemImage: table.kind == "view" ? "eye" : "tablecells")
+                    .font(.title3)
+                Text("This tab keeps its table and browsing settings. Load Data opens a new session and reads the selected page.")
+                    .font(.callout).appSecondaryText()
+                if let error {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                        .accessibilityIdentifier("unloadedTableError")
+                }
+                SwiftUI.Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+                    SwiftUI.GridRow {
+                        Text("Schema / database").appSecondaryText()
+                        Text(table.schema).textSelection(.enabled)
+                    }
+                    SwiftUI.GridRow {
+                        Text(table.kind == "view" ? "View" : "Table").appSecondaryText()
+                        Text(table.name).textSelection(.enabled)
+                    }
+                    SwiftUI.GridRow {
+                        Text("Connection").appSecondaryText()
+                        Text(workspace.library.savedConnections.first(where: { $0.id == document.profileID })?.name
+                            ?? (missingProfileID == nil ? "Not selected" : "Unavailable saved connection"))
+                    }
+                    SwiftUI.GridRow {
+                        Text("Saved page").appSecondaryText()
+                        Text("\(document.page + 1)").monospacedDigit()
+                    }
+                }.font(.callout)
+                if !document.tableFilters.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Saved filters").font(.headline)
+                        ForEach(Array(document.tableFilters.enumerated()), id: \.offset) { _, filter in
+                            Text(filterDescription(filter))
+                                .font(.callout).textSelection(.enabled).lineLimit(3)
+                        }
+                    }
+                }
+                if !document.tableSort.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Saved sort").font(.headline)
+                        ForEach(Array(document.tableSort.enumerated()), id: \.offset) { _, sort in
+                            Text("\(sort.column) · \(sort.direction == "desc" ? "Descending" : "Ascending")")
+                                .font(.callout).textSelection(.enabled)
+                        }
+                    }
+                }
+                if workspace.library.savedConnections.first(where: { $0.id == document.profileID })?.engine == .cassandra {
+                    Text("Cassandra paging starts from the first page when loading a restored tab.")
+                        .font(.caption).appSecondaryText()
+                }
+                if document.profileID == nil || missingProfileID != nil {
+                    Text("Choose a connection above before loading this table.")
+                        .font(.callout).foregroundStyle(.orange)
+                }
+                Button(error == nil ? "Load Data" : "Retry Load Data") { commands.perform(.runCurrent) }
+                    .controlHover().buttonStyle(.borderedProminent)
+                    .disabled(!commands.canPerform(.runCurrent))
+                    .accessibilityIdentifier("loadRestoredTable")
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityIdentifier("unloadedTableContext")
+    }
+
+    private func filterDescription(_ filter: CatalogFilter) -> String {
+        let operation = switch filter.operator {
+        case "eq": "="
+        case "ne": "≠"
+        case "lt": "<"
+        case "lte": "≤"
+        case "gt": ">"
+        case "gte": "≥"
+        case "isNull": "is NULL"
+        case "isNotNull": "is not NULL"
+        default: filter.operator
+        }
+        return "\(filter.column) \(operation)" + (filter.value.map { " \(String(reflecting: $0))" } ?? "")
     }
 
     private var effectiveEditorTheme: EditorTheme {
@@ -443,6 +558,19 @@ struct SQLDocumentPane: View {
         document.executions.isEmpty ? document.runtime?.queryFailure : displayedExecution?.failure
     }
 
+    private var unloadedTableError: String? {
+        if let error = document.localError { return error }
+        if let failure = displayedFailure {
+            var message = "\(failure.title): \(failure.message)"
+            if let sqlState = failure.sqlState { message += "\nSQLSTATE \(sqlState)" }
+            if failure.outcomeUnknown {
+                message += "\nThe SQL outcome is unknown. Check the database before repeating this command."
+            }
+            return message
+        }
+        return document.runtime?.errorMessage ?? document.runtime?.connectionsError
+    }
+
     @ViewBuilder private var executionBar: some View {
         if document.executions.count > 1 {
             ScrollView(.horizontal) {
@@ -460,7 +588,9 @@ struct SQLDocumentPane: View {
     }
 
     @ViewBuilder private var result: some View {
-        if let error = document.localError {
+        if let table = document.table, document.grid == nil, !document.isRunning, displayedResult == nil {
+            unloadedTable(table, error: unloadedTableError)
+        } else if let error = document.localError {
             Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else if let failure = displayedFailure, displayedResult == nil {
@@ -532,6 +662,8 @@ struct SQLDocumentPane: View {
         } else if let error = document.runtime?.errorMessage ?? document.runtime?.connectionsError {
             Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(20)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let table = document.table {
+            unloadedTable(table)
         } else {
             Text("Run SQL to see its result").appSecondaryText()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

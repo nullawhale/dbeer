@@ -32,8 +32,11 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var localError: String?
     @Published var errorPosition: Int?
     @Published var fileURL: URL?
+    @Published var fileContentSHA256: String?
+    @Published var restoredFileBinding = false
     var stopRequested = false
-    var table: TableReference?
+    @Published var table: TableReference?
+    @Published var tableNeedsExplicitLoad = false
     @Published var page = 0
     @Published var tableCursor: String?
     @Published var tableNextCursor: String?
@@ -58,14 +61,44 @@ final class SQLDocument: ObservableObject, Identifiable {
         self.profileID = profileID
     }
 
+    /// Reopening a saved document creates presentation state only. Runtime,
+    /// cursors, result rows, executions and pending grid writes stay absent.
+    convenience init(restoring stored: StoredSQLDocument) {
+        self.init(id: stored.id, title: stored.title, text: stored.text, profileID: stored.profileID)
+        if let savedTable = stored.table, stored.kind == .table {
+            table = savedTable.reference
+            tableFilters = savedTable.filters
+            tableSort = savedTable.sort
+            page = savedTable.page
+            tableNeedsExplicitLoad = true
+        } else {
+            fileURL = stored.fileURL
+            fileContentSHA256 = stored.fileContentSHA256
+            restoredFileBinding = stored.fileURL != nil
+        }
+    }
+
+    /// This state can also be used by future closed-tab and pane restoration.
+    /// A table's loaded rows and local edit draft are deliberately excluded.
+    var storedState: StoredSQLDocument {
+        StoredSQLDocument(id: id, title: title, text: text, profileID: profileID,
+            kind: table == nil ? .sql : .table,
+            table: table.map { StoredTableDocument(reference: $0, page: page, filters: tableFilters, sort: tableSort) },
+            fileURL: table == nil ? fileURL : nil,
+            fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil)
+    }
+
     func resetTablePaging() {
         page = 0
         tableCursor = nil
         tableNextCursor = nil
     }
 
-    func attach(_ model: WorkspaceModel) {
-        resetTablePaging()
+    func attach(_ model: WorkspaceModel, preserveTablePage: Bool = false) {
+        if preserveTablePage {
+            tableCursor = nil
+            tableNextCursor = nil
+        } else { resetTablePaging() }
         runtime = model
         runtimeObservation = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
@@ -138,6 +171,10 @@ final class ApplicationWorkspace: ObservableObject {
     private let closeDecision: @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision
     let executionDecision: @MainActor (OperationConfirmation) async -> Bool
     private var autosave: Task<Void, Never>?
+    private var documentSaveTask: Task<Bool, Never>?
+    private var documentSaveID = UUID()
+    private var documentSaveError: String?
+    private var documentRestoreTask: Task<Void, Never>?
     private var draftsLoaded = false
     private var documentObservations: [UUID: [AnyCancellable]] = [:]
     private var helper: BackendClient?
@@ -188,7 +225,7 @@ final class ApplicationWorkspace: ObservableObject {
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil) async {
         guard !started else { return }
         started = true
-        await restoreDocuments()
+        await restoreSavedWorkspace()
         isStarting = true
         defer { isStarting = false }
         do {
@@ -407,7 +444,7 @@ final class ApplicationWorkspace: ObservableObject {
                   services[profileID]?.connectionState == .connected else { return }
             if document.runtime?.connectionState != .connected {
                 let runtime = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
-                document.attach(runtime)
+                document.attach(runtime, preserveTablePage: document.table != nil)
                 await runtime.start(sharedHelper: client)
                 await runtime.connectSavedConnection(profileID, sshSnapshot: services[profileID]?.ssh)
             }
@@ -423,6 +460,12 @@ final class ApplicationWorkspace: ObservableObject {
             }
             runtime.sql = document.text
             if let table = document.table {
+                if runtime.usesCursorPagination, document.tableCursor == nil {
+                    // Server cursors belong to a physical session. Offset-based
+                    // engines retain their saved page; cursor engines start over.
+                    document.page = 0
+                    document.tableNextCursor = nil
+                }
                 let metadata: [[String: String]]
                 do {
                     let structure = try await catalog(CatalogRequest(kind: "columns", schema: table.schema,
@@ -443,6 +486,7 @@ final class ApplicationWorkspace: ObservableObject {
                     grid.policyReadOnly = runtime.policy.readOnly
                     grid.supportsEditing = runtime.supportsGridEditing
                     document.attachGrid(grid)
+                    document.tableNeedsExplicitLoad = false
                 } else if runtime.queryFailure?.category == "cursor" {
                     document.resetTablePaging()
                 }
@@ -524,15 +568,34 @@ final class ApplicationWorkspace: ObservableObject {
         autosave?.cancel()
         autosave = nil
         guard draftsLoaded else { return false }
-        do {
-            try await documentStore.save(snapshot())
-            historyError = nil
-            return true
-        } catch {
-            self.error = error.localizedDescription
-            historyError = "SQL drafts and history changes remain in memory but could not be saved. Try saving again before closing the application."
-            return false
+        let captured = snapshot()
+        let previous = documentSaveTask
+        let saveID = UUID()
+        documentSaveID = saveID
+        let task = Task { @MainActor [self] in
+            if let previous { _ = await previous.value }
+            do {
+                try await documentStore.save(captured)
+                if documentSaveID == saveID {
+                    historyError = nil
+                    if let documentSaveError, self.error == documentSaveError { self.error = nil }
+                    documentSaveError = nil
+                }
+                return true
+            } catch {
+                if documentSaveID == saveID {
+                    let message = error.localizedDescription
+                    self.error = message
+                    documentSaveError = message
+                    historyError = "Workspace and history changes remain in memory but could not be saved. Try saving again before closing the application."
+                }
+                return false
+            }
         }
+        documentSaveTask = task
+        let saved = await task.value
+        if documentSaveID == saveID { documentSaveTask = nil }
+        return saved
     }
 
     @discardableResult
@@ -655,26 +718,56 @@ final class ApplicationWorkspace: ObservableObject {
                 }
             }
         }
+        if case .application = scope, draftsLoaded {
+            guard await persistDocuments() else { return false }
+        }
         return true
     }
 
     private func snapshot() -> SQLWorkspaceSnapshot {
-        SQLWorkspaceSnapshot(documents: documents.filter { $0.table == nil }.map {
-            StoredSQLDocument(id: $0.id, title: $0.title, text: $0.text, profileID: $0.profileID)
-        }, selectedDocumentID: selectedDocumentID, history: history, historyEnabled: historyEnabled,
+        SQLWorkspaceSnapshot(documents: documents.map(\.storedState),
+            selectedDocumentID: selectedDocumentID, history: history, historyEnabled: historyEnabled,
             historySettings: historySettings)
     }
 
-    private func restoreDocuments() async {
+    /// Loads local workspace state without launching a helper, requesting
+    /// credentials, connecting, browsing a table or executing user SQL.
+    func restoreSavedWorkspace() async {
+        guard !draftsLoaded, shutdownTask == nil else { return }
+        if let documentRestoreTask { await documentRestoreTask.value; return }
+        let task = Task { @MainActor [self] in await loadSavedWorkspace() }
+        documentRestoreTask = task
+        await task.value
+        documentRestoreTask = nil
+    }
+
+    private func loadSavedWorkspace() async {
         do {
             let saved = try await documentStore.load()
+            let knownProfiles = try? await connectionStore.load().connections.map(\.id)
+            guard shutdownTask == nil else { return }
+            let localDocuments = documents
+            let localSelection = selectedDocumentID
             history = saved.history
             historySettings = saved.historySettings
             historyEnabled = saved.historyEnabled
-            documents = saved.documents.map { SQLDocument(id: $0.id, title: $0.title, text: $0.text, profileID: $0.profileID) }
+            let localIDs = Set(localDocuments.map(\.id))
+            let restored = saved.documents.filter { !localIDs.contains($0.id) }.map { stored in
+                let document = SQLDocument(restoring: stored)
+                if document.profileID == nil {
+                    document.historyConnectionNotice = "This restored tab has no saved connection. Choose a connection before loading data or running SQL."
+                } else if let knownProfiles, !knownProfiles.contains(document.profileID!) {
+                    document.historyConnectionNotice = "The original connection is no longer available. Choose a connection before loading data or running SQL."
+                }
+                return document
+            }
+            documents = restored + localDocuments
             for document in documents { observeDocument(document) }
-            selectedDocumentID = documents.contains { $0.id == saved.selectedDocumentID } ? saved.selectedDocumentID : documents.first?.id
+            selectedDocumentID = localSelection.flatMap { id in documents.contains { $0.id == id } ? id : nil }
+                ?? saved.selectedDocumentID.flatMap { id in documents.contains { $0.id == id } ? id : nil }
+                ?? documents.first?.id
             draftsLoaded = true
+            if !localDocuments.isEmpty { scheduleSave() }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -683,6 +776,12 @@ final class ApplicationWorkspace: ObservableObject {
             document.$text.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$title.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$profileID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$table.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$page.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$tableFilters.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$tableSort.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$fileContentSHA256.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         ]
     }
@@ -694,10 +793,12 @@ final class ApplicationWorkspace: ObservableObject {
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
             do {
-                let text = try String(contentsOf: url, encoding: .utf8)
-                let document = newDocument(text: text)
+                let loaded = try SQLFileBinding.read(url)
+                let document = newDocument(text: loaded.text)
                 document.title = url.lastPathComponent
                 document.fileURL = url
+                document.fileContentSHA256 = loaded.sha256
+                document.restoredFileBinding = false
             } catch { self.error = "The SQL file could not be opened as UTF-8." }
         }
     }
@@ -705,19 +806,28 @@ final class ApplicationWorkspace: ObservableObject {
     func saveSQLFile(_ document: SQLDocument, chooseLocation: Bool = false) {
         guard document.table == nil else { return }
         var destination = document.fileURL
-        if chooseLocation || destination == nil {
+        let needsUnverifiedBindingReview = destination != nil && document.fileContentSHA256 == nil
+        var reviewedDestination = false
+        if chooseLocation || destination == nil || needsUnverifiedBindingReview {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [UTType(filenameExtension: "sql") ?? .plainText]
             panel.nameFieldStringValue = document.fileURL?.lastPathComponent ?? document.title + ".sql"
+            if needsUnverifiedBindingReview {
+                panel.message = "This restored file binding has no saved content fingerprint. Choose a destination and review any replacement before saving."
+            }
             guard panel.runModal() == .OK else { return }
             destination = panel.url
+            reviewedDestination = true
         }
         guard let destination else { return }
         do {
-            try document.text.write(to: destination, atomically: true, encoding: .utf8)
+            let sha256 = try SQLFileBinding.write(document.text, to: destination,
+                expectedSHA256: reviewedDestination ? nil : document.fileContentSHA256)
             document.fileURL = destination
+            document.fileContentSHA256 = sha256
+            document.restoredFileBinding = false
             document.title = destination.lastPathComponent
-        } catch { self.error = "The SQL file could not be saved." }
+        } catch { self.error = error.localizedDescription }
     }
 
     func exportLoaded(_ result: ExportResultSet, title: String, format: String) {
