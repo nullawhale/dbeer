@@ -29,8 +29,18 @@ struct ApplicationWorkspaceView: View {
                 Divider()
                 Group {
                     if let document = workspace.selectedDocument {
-                        SQLDocumentPane(document: document, workspace: workspace)
-                            .id(document.id)
+                        if document.isSnapshot {
+                            if let model = document.snapshotModel {
+                                ResultSnapshotDocumentView(document: document, model: model, workspace: workspace)
+                                    .id(document.id)
+                            } else {
+                                Text("Snapshot unavailable. Its saved reference is missing.")
+                                    .appSecondaryText().frame(maxWidth: .infinity, maxHeight: .infinity)
+                            }
+                        } else {
+                            SQLDocumentPane(document: document, workspace: workspace)
+                                .id(document.id)
+                        }
                     } else {
                         VStack(spacing: 12) {
                             Image(systemName: "doc.text").font(.largeTitle).appSecondaryText()
@@ -89,7 +99,11 @@ struct ApplicationWorkspaceView: View {
                 .applicationTheme(appearance: appearance)
         }
         .sheet(isPresented: $workspace.isSnapshotsPresented) {
-            ResultSnapshotsView(model: workspace.resultSnapshots)
+            ResultSnapshotsView(model: workspace.resultSnapshots) { snapshot in
+                if workspace.openResultSnapshot(id: snapshot.id, title: snapshot.title) != nil {
+                    workspace.isSnapshotsPresented = false
+                }
+            }
                 .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.insertCopySelection) { selection in
@@ -246,6 +260,9 @@ struct DocumentTab: View {
                     if document.fileDocument?.isDirty == true {
                         Image(systemName: "circle.fill").font(.system(size: 5)).accessibilityHidden(true)
                     }
+                    if document.isSnapshot {
+                        Image(systemName: "pin.fill").font(.caption).accessibilityLabel("Offline snapshot")
+                    }
                     if document.fileDocument?.conflict != nil || document.fileDocument?.isMissing == true {
                         Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).accessibilityHidden(true)
                     }
@@ -283,7 +300,7 @@ struct DocumentTab: View {
             }
             Button("Rename…") {
                 let alert = NSAlert()
-                alert.messageText = "Rename SQL Tab"
+                alert.messageText = document.isSnapshot ? "Rename Snapshot Tab" : "Rename SQL Tab"
                 let field = NSTextField(string: document.title)
                 field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
                 alert.accessoryView = field
@@ -628,21 +645,8 @@ struct SQLDocumentPane: View {
     private var displayedResult: BackendMessage? {
         if document.table != nil, document.grid == nil { return nil }
         let tableResult = document.table != nil && document.grid != nil ? document.tableResult : nil
-        guard var message = tableResult ?? (document.executions.isEmpty ? document.runtime?.result : displayedExecution?.result) else { return nil }
-        if let sets = message.resultSets, !sets.isEmpty {
-            let index = min(resultSetIndex.wrappedValue, sets.count - 1)
-            let set = sets[index]
-            message.columns = set.columns
-            message.rows = set.rows
-            message.commandTag = set.commandTag
-            message.rowCount = set.rowCount
-            message.displayedRowCount = set.displayedRowCount
-            message.truncated = set.truncated
-            message.displayNotice = set.displayNotice
-            message.affectedRowCountKnown = set.affectedRowCountKnown
-            message.nextCursor = set.nextCursor
-        }
-        return message
+        guard let message = tableResult ?? (document.executions.isEmpty ? document.runtime?.result : displayedExecution?.result) else { return nil }
+        return ResultSnapshotSource.project(message, resultSetIndex: resultSetIndex.wrappedValue)
     }
 
     private var displayedFailure: WorkspaceModel.QueryFailure? {
@@ -715,6 +719,14 @@ struct SQLDocumentPane: View {
                             }.controlHover().frame(maxWidth: 240)
                         }
                         Spacer()
+                        Button("Pin Result") {
+                            let index = resultSetIndex.wrappedValue
+                            Task { await workspace.pinResult(document, resultSetIndex: index) }
+                        }.controlHover()
+                            .disabled(workspace.resultSnapshots.isBusy || workspace.snapshotCapture(for: document,
+                                resultSetIndex: resultSetIndex.wrappedValue) == nil)
+                            .help("Save the selected result set as an offline snapshot")
+                            .accessibilityIdentifier("pinQueryResult")
                         Menu("Export Loaded") {
                             Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
                             Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }

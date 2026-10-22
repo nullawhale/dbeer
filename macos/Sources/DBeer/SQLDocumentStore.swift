@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-enum StoredWorkspaceDocumentKind: String, Codable, Sendable { case sql, table }
+enum StoredWorkspaceDocumentKind: String, Codable, Sendable { case sql, table, snapshot }
 
 struct StoredTableDocument: Codable, Equatable, Sendable {
     var reference: TableReference
@@ -61,6 +61,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     var profileID: UUID?
     var kind: StoredWorkspaceDocumentKind
     var table: StoredTableDocument?
+    var snapshotID: UUID?
     var fileURL: URL?
     var fileContentSHA256: String?
     var fileDocumentID: UUID?
@@ -69,6 +70,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
 
     init(id: UUID = UUID(), title: String, text: String, profileID: UUID? = nil,
          kind: StoredWorkspaceDocumentKind = .sql, table: StoredTableDocument? = nil,
+         snapshotID: UUID? = nil,
          fileURL: URL? = nil, fileContentSHA256: String? = nil, fileDocumentID: UUID? = nil, fileRecoveryURL: URL? = nil,
          sqlLibraryEntryID: UUID? = nil) {
         self.id = id
@@ -77,6 +79,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         self.profileID = profileID
         self.kind = kind
         self.table = table
+        self.snapshotID = snapshotID
         self.fileURL = fileURL
         self.fileContentSHA256 = fileContentSHA256
         self.fileDocumentID = fileURL.map { _ in fileDocumentID ?? id }
@@ -88,9 +91,16 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         switch kind {
         case .sql:
-            guard table == nil else { return false }
+            guard table == nil, snapshotID == nil else { return false }
         case .table:
-            guard table?.isValid == true, fileURL == nil, fileContentSHA256 == nil, fileDocumentID == nil,
+            guard table?.isValid == true, snapshotID == nil, fileURL == nil, fileContentSHA256 == nil, fileDocumentID == nil,
+                  fileRecoveryURL == nil, sqlLibraryEntryID == nil else { return false }
+        case .snapshot:
+            // An offline tab stores an opaque artifact reference only. In
+            // particular, captured SQL and profile context stay in the private
+            // artifact and cannot become an executable restored SQL document.
+            guard snapshotID != nil, text.isEmpty, profileID == nil, table == nil,
+                  fileURL == nil, fileContentSHA256 == nil, fileDocumentID == nil,
                   fileRecoveryURL == nil, sqlLibraryEntryID == nil else { return false }
         }
         guard fileDocumentID == nil || fileURL != nil else { return false }
@@ -113,23 +123,47 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, profileID, kind, table, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID
+        case id, title, text, profileID, kind, table, snapshotID, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID
     }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID"])
+        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         title = try values.decode(String.self, forKey: .title)
-        text = try values.decode(String.self, forKey: .text)
-        profileID = try values.decodeIfPresent(UUID.self, forKey: .profileID)
         kind = try values.decode(StoredWorkspaceDocumentKind.self, forKey: .kind)
+        if kind == .snapshot {
+            try requireWorkspaceKeys(decoder, allowed: ["id", "title", "kind", "snapshotID"])
+        } else if values.contains(.snapshotID) { throw SQLDocumentStoreError.read }
+        text = kind == .snapshot ? "" : try values.decode(String.self, forKey: .text)
+        profileID = try values.decodeIfPresent(UUID.self, forKey: .profileID)
         table = try values.decodeIfPresent(StoredTableDocument.self, forKey: .table)
+        snapshotID = try values.decodeIfPresent(UUID.self, forKey: .snapshotID)
         fileURL = try values.decodeIfPresent(URL.self, forKey: .fileURL)
         fileContentSHA256 = try values.decodeIfPresent(String.self, forKey: .fileContentSHA256)
         fileDocumentID = try values.decodeIfPresent(UUID.self, forKey: .fileDocumentID) ?? fileURL.map { _ in id }
         fileRecoveryURL = try values.decodeIfPresent(URL.self, forKey: .fileRecoveryURL)
         sqlLibraryEntryID = try values.decodeIfPresent(UUID.self, forKey: .sqlLibraryEntryID)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        guard isValid else { throw SQLDocumentStoreError.write }
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(title, forKey: .title)
+        try values.encode(kind, forKey: .kind)
+        if kind == .snapshot {
+            try values.encode(snapshotID, forKey: .snapshotID)
+            return
+        }
+        try values.encode(text, forKey: .text)
+        try values.encodeIfPresent(profileID, forKey: .profileID)
+        try values.encodeIfPresent(table, forKey: .table)
+        try values.encodeIfPresent(fileURL, forKey: .fileURL)
+        try values.encodeIfPresent(fileContentSHA256, forKey: .fileContentSHA256)
+        try values.encodeIfPresent(fileDocumentID, forKey: .fileDocumentID)
+        try values.encodeIfPresent(fileRecoveryURL, forKey: .fileRecoveryURL)
+        try values.encodeIfPresent(sqlLibraryEntryID, forKey: .sqlLibraryEntryID)
     }
 }
 
@@ -162,7 +196,7 @@ private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) thro
 /// Contains documents and history only. Sessions, results and passwords never
 /// enter the format; restoring the snapshot cannot reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 6
+    static let currentVersion = 7
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -203,6 +237,11 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
         documents = version < 4
             ? try values.decode([LegacyStoredSQLDocument].self, forKey: .documents).map(\.document)
             : try values.decode([StoredSQLDocument].self, forKey: .documents)
+        if version < 7 {
+            // A newer operational binding in an older version is corruption,
+            // not a format that can be silently migrated or overwritten.
+            guard !documents.contains(where: { $0.kind == .snapshot }) else { throw SQLDocumentStoreError.read }
+        }
         selectedDocumentID = try values.decodeIfPresent(UUID.self, forKey: .selectedDocumentID)
         if version < 4, let selectedDocumentID, !documents.contains(where: { $0.id == selectedDocumentID }) {
             // Old snapshots omitted table tabs but could still name one as

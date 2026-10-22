@@ -107,6 +107,13 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 	if result.DisplayNotice != "" {
 		notice = result.DisplayNotice + " " + notice
 	}
+	if request.Cursor != "" {
+		notice += " This page uses a cursor that is not encoded in source CQL. Rerunning the CQL starts a fresh read rather than returning this page."
+	}
+	sourceSQL, _, sourceErr := buildBrowseStatement(request, columns, true)
+	if sourceErr != nil {
+		notice += " The source CQL could not be captured for this page."
+	}
 	result.DisplayNotice = notice
 	if sink != nil {
 		_ = sink.End(0, result)
@@ -121,7 +128,7 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 	response.DisplayNotice = result.DisplayNotice
 	response.CommandTag = "SELECT"
 	response.ResultSets = []protocol.ResultSet{result}
-	return response
+	return response.WithReadSQL(sourceSQL)
 }
 
 var errBrowse = errors.New("unsupported Cassandra browse condition")
@@ -140,6 +147,13 @@ func browseScalarType(nativeType string) bool {
 }
 
 func browseStatement(request protocol.CatalogRequest, columns []tableColumn) (string, []any, error) {
+	return buildBrowseStatement(request, columns, false)
+}
+
+// Standalone source uses the same validated key and ordering plan as execution.
+// Render values through the driver's scalar conversion and the lossless CQL
+// formatter, preserving exact decimals, binary keys and temporal values.
+func buildBrowseStatement(request protocol.CatalogRequest, columns []tableColumn, source bool) (string, []any, error) {
 	byName := map[string]tableColumn{}
 	var partition, clustering []tableColumn
 	for _, column := range columns {
@@ -229,8 +243,29 @@ func browseStatement(request protocol.CatalogRequest, columns []tableColumn) (st
 	var values []any
 	operators := map[string]string{"eq": "=", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}
 	for _, filter := range request.Filters {
-		where = append(where, quoteIdentifier(filter.Column)+" "+operators[filter.Operator]+" ?")
-		values = append(values, textParameter{Value: *filter.Value})
+		parameter := textParameter{Value: *filter.Value}
+		operand := "?"
+		if source {
+			column := byName[filter.Column]
+			info := gocql.NewNativeType(5, gocql.TypeCustom, strings.ToLower(strings.TrimSpace(column.nativeType)))
+			encoded, err := parameter.MarshalCQL(info)
+			if err != nil {
+				return "", nil, err
+			}
+			operand, err = cqlValue(info, encoded, true, 0)
+			if err != nil {
+				return "", nil, err
+			}
+			if info.Type() == gocql.TypeFloat || info.Type() == gocql.TypeDouble {
+				if operand == "+Inf" {
+					operand = "Infinity"
+				} else if operand == "-Inf" {
+					operand = "-Infinity"
+				}
+			}
+		}
+		where = append(where, quoteIdentifier(filter.Column)+" "+operators[filter.Operator]+" "+operand)
+		values = append(values, parameter)
 	}
 	if len(where) > 0 {
 		sql += " WHERE " + strings.Join(where, " AND ")

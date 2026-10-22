@@ -3,10 +3,8 @@ package mysql
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"strconv"
 	"strings"
 
 	"dbeer/helper/internal/adapter"
@@ -31,7 +29,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 	}
 	var unavailable bool
 	var metadataWarning bool
-	var browseNotice string
+	var browseNotice, sourceSQL string
 	response := session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
 		var err error
 		switch request.Kind {
@@ -58,7 +56,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 				err = collectLoaded(collector, result, loaded)
 			}
 		case "select", "browse":
-			err = session.catalogSelect(collector, result, request, &browseNotice)
+			err = session.catalogSelect(collector, result, request, &browseNotice, &sourceSQL)
 		default:
 			query, args := catalogQuery(request)
 			var loaded *wire.Result
@@ -108,6 +106,9 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		}
 	}
 
+	if response.Type == "query.result" && request.Kind == "browse" {
+		response = response.WithReadSQL(sourceSQL)
+	}
 	return response
 }
 
@@ -232,7 +233,7 @@ func (session *Session) catalogDefinition(collector *collector, request protocol
 	return collectCatalogRows(collector, []string{"name", "definition"}, rows)
 }
 
-func (session *Session) catalogSelect(collector *collector, result *wire.Result, request protocol.CatalogRequest, notice *string) error {
+func (session *Session) catalogSelect(collector *collector, result *wire.Result, request protocol.CatalogRequest, notice, sourceSQL *string) error {
 	// Validate the relation even when it has no primary key, distinguishing a
 	// missing object from a legitimate view or a table without a key.
 	object, err := session.work.client.Execute(`SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=? LIMIT 1`, request.Schema, request.Object)
@@ -280,83 +281,23 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 		actual[name] = kind
 	}
 	columns.Close()
-	var order []string
-	seen := map[string]bool{}
-	for _, sort := range request.Sort {
-		if _, ok := actual[sort.Column]; !ok || seen[sort.Column] {
-			return invalidSettings("Unknown or repeated MySQL sort column.")
-		}
-		seen[sort.Column] = true
-		order = append(order, QuoteIdentifier(sort.Column)+" "+strings.ToUpper(sort.Direction))
+	plan, err := buildBrowsePlan(request, actual, primaryKey)
+	if err != nil {
+		return err
 	}
-	for _, name := range primaryKey {
-		if !seen[name] {
-			order = append(order, QuoteIdentifier(name))
-			seen[name] = true
-		}
-	}
-	query := "SELECT * FROM " + QuoteIdentifier(request.Schema) + "." + QuoteIdentifier(request.Object)
-	var predicates []string
-	var args []any
-	for _, filter := range request.Filters {
-		kind, ok := actual[filter.Column]
-		if !ok {
-			return invalidSettings("Unknown MySQL filter column.")
-		}
-		column := QuoteIdentifier(filter.Column)
-		switch filter.Operator {
-		case "isNull":
-			predicates = append(predicates, column+" IS NULL")
-		case "isNotNull":
-			predicates = append(predicates, column+" IS NOT NULL")
-		default:
-			var value any = *filter.Value
-			switch kind {
-			case "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "bit", "geometry", "vector":
-				decoded, err := base64.StdEncoding.DecodeString(*filter.Value)
-				if err != nil {
-					return invalidSettings("MySQL binary filter values must use base64.")
-				}
-				value = decoded
-			}
-			if filter.Operator == "contains" {
-				predicates = append(predicates, "LOCATE(?, "+column+") > 0")
-			} else {
-				parameter, canonical, err := browseNumericParameter(kind, *filter.Value)
-				if err != nil {
-					return err
-				}
-				if parameter != "?" {
-					value = canonical
-				}
-				operator := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}[filter.Operator]
-				predicates = append(predicates, column+" "+operator+" "+parameter)
-			}
-			args = append(args, value)
-		}
-	}
-	if len(predicates) > 0 {
-		query += " WHERE " + strings.Join(predicates, " AND ")
-	}
-	if len(order) > 0 {
-		query += " ORDER BY " + strings.Join(order, ", ")
-	}
-	query += " LIMIT 200"
-	if request.Page > 0 {
-		query += " OFFSET " + strconv.Itoa(request.Page*200)
-	}
+	*sourceSQL = plan.sourceSQL
 	if request.Kind == "select" {
-		return collectCatalogRows(collector, []string{"sql", "name"}, [][]*string{{text(query), text(QuoteIdentifier(request.Schema) + "." + QuoteIdentifier(request.Object))}})
+		return collectCatalogRows(collector, []string{"sql", "name"}, [][]*string{{text(plan.sourceSQL), text(QuoteIdentifier(request.Schema) + "." + QuoteIdentifier(request.Object))}})
 	}
-	if len(args) == 0 {
-		return session.work.client.ExecuteSelectStreaming(query, result, collector.row, collector.columns)
+	if len(plan.args) == 0 {
+		return session.work.client.ExecuteSelectStreaming(plan.statement, result, collector.row, collector.columns)
 	}
-	statement, err := session.work.client.Prepare(query)
+	statement, err := session.work.client.Prepare(plan.statement)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
-	return statement.ExecuteSelectStreaming(result, collector.row, collector.columns, args...)
+	return statement.ExecuteSelectStreaming(result, collector.row, collector.columns, plan.args...)
 }
 
 func catalogQuery(request protocol.CatalogRequest) (string, []any) {

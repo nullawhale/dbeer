@@ -396,6 +396,10 @@ actor BackendClient {
                 throw BackendTransportError(.invalidMessage)
             }
             sets[index].rows = request.streamSets[index].rows
+            // Terminal notices can be added after the last streaming summary,
+            // including an explanation that SQL source exceeded a size limit.
+            // Retain them when presenting any selected result set.
+            sets[index].displayNotice = Self.mergingNotice(sets[index].displayNotice, reply.displayNotice)
         }
         var result = reply
         result.streamed = nil
@@ -414,6 +418,14 @@ actor BackendClient {
         try result.validate()
         try validateAggregate(result)
         return result
+    }
+
+    private static func mergingNotice(_ local: String?, _ terminal: String?) -> String? {
+        guard let terminal, !terminal.isEmpty else { return local }
+        guard let local, !local.isEmpty else { return terminal }
+        if local.contains(terminal) { return local }
+        if terminal.contains(local) { return terminal }
+        return local + "\n" + terminal
     }
 
     private func validateAggregate(_ reply: BackendMessage) throws {

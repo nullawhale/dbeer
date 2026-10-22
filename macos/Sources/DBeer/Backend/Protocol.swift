@@ -422,7 +422,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard sql == nil || type == "insertSQL",
+        guard sql == nil || (type == "insertSQL" || type == "query.result") &&
+                sql?.isEmpty == false && (sql?.utf8.count ?? Int.max) <= BackendProtocol.maxFrameBytes / 2 &&
+                sql?.contains("\0") == false,
               sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
               sqlCompleted != true || (type == "error" && outcomeUnknown != true),
               exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }

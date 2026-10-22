@@ -141,7 +141,7 @@ struct AppCommandInvocation {
         }
         if command == .saveSQL || command == .saveSQLAs {
             return !context.isComposingText && workspace.canStartOperation(document) &&
-                document.table == nil && document.fileDocument?.isSaving != true
+                document.isSQLDocument && document.fileDocument?.isSaving != true
         }
         if descriptor.scope == .grid {
             guard context.focus == .grid, Self.canCopyGrid(in: document, workspace: workspace) else { return false }
@@ -151,6 +151,7 @@ struct AppCommandInvocation {
             return gridHandlers[command] != nil
         }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true }
+        guard !document.isSnapshot else { return false }
         guard !document.isNavigatingTable else { return false }
         guard context.focus != .textInput else { return false }
         guard workspace.canStartOperation(document), !document.isRunning, document.grid?.isApplying != true,

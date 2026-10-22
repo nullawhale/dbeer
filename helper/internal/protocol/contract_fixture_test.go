@@ -41,7 +41,7 @@ func TestSharedV5OperationContract(t *testing.T) {
 		}
 	}
 	kinds := map[string]bool{}
-	foreignKeyRequest, foreignKeyResponse := false, false
+	foreignKeyRequest, foreignKeyResponse, browseSourceResponse := false, false, false
 	for index, raw := range fixture.Commands {
 		var value any
 		if json.Unmarshal(raw, &value) != nil {
@@ -86,6 +86,12 @@ func TestSharedV5OperationContract(t *testing.T) {
 		if json.Unmarshal(raw, &response) != nil {
 			t.Fatalf("invalid response fixture %d", index)
 		}
+		if response.RequestID == "catalog-browse" {
+			browseSourceResponse = response.Type == "query.result" && response.SQL != ""
+			if !browseSourceResponse || len(response.Rows) != 0 {
+				t.Fatal("lost the exact generated browse read statement or empty page")
+			}
+		}
 		if response.RequestID == "foreign-keys-1" {
 			foreignKeyResponse = true
 			if response.Type != "query.result" || response.Truncated || len(response.Columns) != 6 || len(response.Rows) != 2 {
@@ -116,7 +122,7 @@ func TestSharedV5OperationContract(t *testing.T) {
 			t.Fatalf("response fixture %d did not preserve the wire shape", index)
 		}
 	}
-	if !foreignKeyRequest || !foreignKeyResponse {
+	if !foreignKeyRequest || !foreignKeyResponse || !browseSourceResponse {
 		t.Fatal("missing structured foreign key fixtures")
 	}
 }

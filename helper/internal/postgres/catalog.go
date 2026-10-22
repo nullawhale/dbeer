@@ -26,9 +26,10 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 		return *failure
 	}
 	sql, values, notice := catalogSQL(request)
+	var sourceSQL string
 	if request.Kind == "browse" {
-		var failure *protocol.Response
-		sql, values, notice, failure = browseSQL(ctx, conn, command)
+		plan, failure := browseSQL(ctx, conn, command)
+		sql, values, notice, sourceSQL = plan.statement, plan.values, plan.notice, plan.sourceSQL
 		if failure != nil {
 			return *failure
 		}
@@ -45,7 +46,7 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 			response.DisplayNotice = "No catalog information is available for this object."
 		}
 	}
-	return response
+	return response.WithReadSQL(sourceSQL)
 }
 
 func catalogAccess(ctx context.Context, conn *pgx.Conn, command protocol.Command, request protocol.CatalogRequest) *protocol.Response {

@@ -27,6 +27,7 @@ final class SQLDocument: ObservableObject, Identifiable {
                 tableForeignKeys = []
                 foreignKeysError = nil
                 tableResult = nil
+                tableSnapshotSource = nil
                 tableFailure = nil
                 tableNavigationError = nil
                 foreignKeysRequestID = UUID()
@@ -74,6 +75,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     }
     @Published var tableColumns: [[String: String]] = []
     @Published var tableResult: BackendMessage?
+    @Published var tableSnapshotSource: ResultSnapshotSource?
     @Published var tableFailure: WorkspaceModel.QueryFailure?
     @Published var tableForeignKeys: [TableForeignKey] = []
     @Published var foreignKeysError: String?
@@ -87,8 +89,12 @@ final class SQLDocument: ObservableObject, Identifiable {
     var isProvisionalTableView = false
     var provisionalPreviousSelection: UUID?
     @Published private(set) var grid: GridDraft?
+    @Published private(set) var snapshotID: UUID?
+    @Published private(set) var snapshotModel: ResultSnapshotDocumentModel?
+    @Published private(set) var isSnapshot = false
     private var runtimeObservation: AnyCancellable?
     private var gridObservation: AnyCancellable?
+    private var snapshotObservation: AnyCancellable?
 
     init(id: UUID = UUID(), title: String = "SQL", text: String = "SELECT 1;", profileID: UUID? = nil) {
         self.id = id
@@ -100,6 +106,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     /// The persisted document identity distinguishes independent views of the
     /// same database relation, including views restored by R09.
     var tableViewID: UUID? { table == nil ? nil : id }
+    var isSQLDocument: Bool { table == nil && !isSnapshot }
     var canNavigateTable: Bool {
         table != nil && !isRunning && !isNavigatingTable && grid?.isApplying != true &&
             grid?.isReloading != true && grid?.isPreviewing != true && grid?.isClosing != true
@@ -110,7 +117,14 @@ final class SQLDocument: ObservableObject, Identifiable {
     /// Reopening a saved document creates presentation state only. Runtime,
     /// cursors, result rows, executions and pending grid writes stay absent.
     convenience init(restoring stored: StoredSQLDocument) {
-        self.init(id: stored.id, title: stored.title, text: stored.text, profileID: stored.profileID)
+        self.init(id: stored.id, title: stored.title,
+            text: stored.kind == .snapshot ? "" : stored.text,
+            profileID: stored.kind == .snapshot ? nil : stored.profileID)
+        if stored.kind == .snapshot {
+            isSnapshot = true
+            snapshotID = stored.snapshotID
+            return
+        }
         if let savedTable = stored.table, stored.kind == .table {
             table = savedTable.reference
             tableFilters = savedTable.filters
@@ -130,7 +144,10 @@ final class SQLDocument: ObservableObject, Identifiable {
     /// This state can also be used by future closed-tab and pane restoration.
     /// A table's loaded rows and local edit draft are deliberately excluded.
     var storedState: StoredSQLDocument {
-        StoredSQLDocument(id: id, title: title, text: text, profileID: profileID,
+        if isSnapshot {
+            return StoredSQLDocument(id: id, title: title, text: "", kind: .snapshot, snapshotID: snapshotID)
+        }
+        return StoredSQLDocument(id: id, title: title, text: text, profileID: profileID,
             kind: table == nil ? .sql : .table,
             table: table.map { StoredTableDocument(reference: $0, page: page, filters: tableFilters, sort: tableSort) },
             fileURL: table == nil ? fileURL : nil,
@@ -141,6 +158,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     }
 
     func attachFileDocument(_ file: SQLFileDocument) {
+        guard !isSnapshot else { return }
         fileObservations = []
         fileDocument = file
         restoredFileDocumentID = file.id
@@ -185,6 +203,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     }
 
     func attach(_ model: WorkspaceModel, preserveTablePage: Bool = false) {
+        guard !isSnapshot else { return }
         if preserveTablePage {
             tableCursor = nil
             tableNextCursor = nil
@@ -211,6 +230,13 @@ final class SQLDocument: ObservableObject, Identifiable {
         grid = draft
         gridObservation = draft?.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
+
+    func attachSnapshot(_ model: ResultSnapshotDocumentModel) {
+        isSnapshot = true
+        snapshotID = model.snapshotID
+        snapshotModel = model
+        snapshotObservation = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+    }
 }
 
 struct SQLExecution: Identifiable {
@@ -220,6 +246,7 @@ struct SQLExecution: Identifiable {
     var status = "Pending"
     var result: BackendMessage?
     var failure: WorkspaceModel.QueryFailure?
+    var snapshotSource: ResultSnapshotSource?
 }
 
 @MainActor
@@ -292,6 +319,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var folderSaveObservation: AnyCancellable?
     private var sqlLibraryObservation: AnyCancellable?
     private var sqlLibrarySaveObservation: AnyCancellable?
+    private var resultSnapshotsObservation: AnyCancellable?
     private var fileDocuments: [UUID: SQLFileDocument] = [:]
     private let automaticallyWatchFiles: Bool
     weak var presentationWindow: NSWindow?
@@ -336,6 +364,7 @@ final class ApplicationWorkspace: ObservableObject {
         folderObservation = self.sqlFolders.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
         sqlLibraryObservation = self.sqlLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        resultSnapshotsObservation = self.resultSnapshots.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         sqlLibrarySaveObservation = self.sqlLibrary.$snapshot.dropFirst().sink { [weak self] snapshot in
             self?.bindIndexedSQLViews(snapshot)
             self?.scheduleSave()
@@ -385,6 +414,10 @@ final class ApplicationWorkspace: ObservableObject {
         await restoreSavedWorkspace()
         isStarting = true
         defer { isStarting = false }
+        if startupConnection == nil, !documents.isEmpty, documents.allSatisfy(\.isSnapshot) {
+            await library.loadConnections()
+            return
+        }
         do {
             _ = try await ensureHelper()
             if case .success(let settings) = startupConnection {
@@ -416,6 +449,59 @@ final class ApplicationWorkspace: ObservableObject {
                 : "The original connection is no longer available. Choose a connection above before running this SQL."
         }
         return addDocument(document)
+    }
+
+    @discardableResult
+    func openResultSnapshot(id: UUID, title: String = "Result Snapshot") -> SQLDocument? {
+        guard canManageWorkspace else { return nil }
+        if let existing = documents.first(where: { $0.snapshotID == id }) {
+            selectedDocumentID = existing.id
+            return existing
+        }
+        let document = SQLDocument(title: title, text: "")
+        document.attachSnapshot(ResultSnapshotDocumentModel(id: id, store: resultSnapshots.store))
+        return addDocument(document)
+    }
+
+    /// The captured profile is historical information, not authorization to run.
+    /// A new SQL draft always requires an explicit connection choice.
+    @discardableResult
+    func openSnapshotSQLInNewTab(_ source: SQLDocument) -> SQLDocument? {
+        guard canStartOperation(source), source.isSnapshot,
+              let model = source.snapshotModel, model.isAvailable,
+              let manifest = model.manifest else { return nil }
+        let document = SQLDocument(title: "SQL from " + source.title, text: manifest.sql)
+        document.historyConnectionNotice = manifest.engine == .cassandra
+            ? "Choose a connection before running this captured SQL. It starts a new read; the original paging cursor is not encoded."
+            : "Choose a connection before running this captured SQL."
+        return addDocument(document)
+    }
+
+    func snapshotCapture(for document: SQLDocument, resultSetIndex: Int = 0) -> ResultSnapshotCapture? {
+        guard canStartOperation(document), !document.isSnapshot, !document.isRunning,
+              !document.isNavigatingTable, document.grid?.isApplying != true,
+              document.grid?.isReloading != true, document.grid?.isClosing != true else { return nil }
+        let source: ResultSnapshotSource?
+        if document.table != nil {
+            guard document.grid != nil else { return nil }
+            source = document.tableSnapshotSource
+        } else {
+            guard document.executions.indices.contains(document.selectedExecution) else { return nil }
+            source = document.executions[document.selectedExecution].snapshotSource
+        }
+        return source?.capture(title: document.title, resultSetIndex: resultSetIndex)
+    }
+
+    @discardableResult
+    func pinResult(_ document: SQLDocument, resultSetIndex: Int = 0) async -> ResultSnapshotSummary? {
+        guard let capture = snapshotCapture(for: document, resultSetIndex: resultSetIndex) else { return nil }
+        let saved = await resultSnapshots.save(capture)
+        if let saved {
+            notifications.post("Result snapshot saved. Open it from Result Snapshots.", source: "Result Snapshots")
+            return saved
+        }
+        if let error = resultSnapshots.error { reportError(error) }
+        return nil
     }
 
     private func addDocument(_ document: SQLDocument) -> SQLDocument {
@@ -534,7 +620,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func run(_ document: SQLDocument, sql: String? = nil) async {
-        guard canStartOperation(document) else { return }
+        guard canStartOperation(document), !document.isSnapshot else { return }
         if document.table != nil {
             document.grid?.commitEditing?()
             guard !isClosing, document.grid?.isApplying != true else { return }
@@ -570,6 +656,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func executionFragment(_ document: SQLDocument, script: Bool = false) -> SQLExecutionFragment? {
+        guard document.isSQLDocument else { return nil }
         let engine = library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql
         let selection = editorState.selection(for: document.id, fallback: document.selection)
         return SQLExecutionFragment.resolve(text: document.text, selection: selection, engine: engine, script: script)
@@ -588,6 +675,7 @@ final class ApplicationWorkspace: ObservableObject {
     private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
                          isScript: Bool = false, sourceSQL: String? = nil, forNavigating: Bool = false) async {
         guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning else { return }
+        guard !document.isSnapshot else { return }
         if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
         guard let profileID = document.profileID else { return }
         guard document.table != nil || !statements.isEmpty else { return }
@@ -670,12 +758,19 @@ final class ApplicationWorkspace: ObservableObject {
                     return
                 }
                 guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested else { return }
-                await runtime.run(catalog: CatalogRequest(kind: "browse", schema: table.schema,
+                let historyProfile = SQLHistoryProfile(profile, currentKeyspace: runtime.currentKeyspace)
+                let completion = await runtime.run(catalog: CatalogRequest(kind: "browse", schema: table.schema,
                     object: table.name, objectKind: table.kind, page: runtime.usesCursorPagination ? 0 : document.page,
                     cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: document.tableSort, filters: document.tableFilters))
                 if runtime.queryFailure == nil, let result = runtime.result {
                     document.tableFailure = nil
                     document.tableResult = result
+                    document.tableSnapshotSource = completion.flatMap { completion in
+                        completion.reply?.sql.flatMap { sql in
+                            ResultSnapshotSource(sql: sql, profileID: profileID, profile: historyProfile,
+                                completion: completion, isTablePage: true)
+                        }
+                    }
                     document.tableColumns = metadata
                     document.tableNextCursor = result.nextCursor
                     let grid = GridDraft(reference: table, result: result, metadata: metadata)
@@ -718,6 +813,9 @@ final class ApplicationWorkspace: ObservableObject {
                     let completion = await runtime.run(sql: statement.sql, export: export, authorization: authorization)
                     document.executions[index].result = runtime.result
                     document.executions[index].failure = runtime.queryFailure
+                    document.executions[index].snapshotSource = completion.flatMap {
+                        ResultSnapshotSource(sql: statement.sql, profileID: profileID, profile: historyProfile, completion: $0)
+                    }
                     document.executions[index].status = runtime.queryFailure?.title ?? (runtime.result == nil ? "Failed" : "Completed")
                     if runtime.queryFailure?.outcomeUnknown == true { document.executions[index].status = "Unknown outcome" }
                     if runtime.queryFailure == nil, let result = runtime.result, result.outcomeUnknown != true {
@@ -992,6 +1090,12 @@ final class ApplicationWorkspace: ObservableObject {
 
     private func restoredDocument(_ stored: StoredSQLDocument, knownProfiles: [UUID]?) -> SQLDocument {
         let document = SQLDocument(restoring: stored)
+        if document.isSnapshot {
+            if let snapshotID = document.snapshotID {
+                document.attachSnapshot(ResultSnapshotDocumentModel(id: snapshotID, store: resultSnapshots.store))
+            }
+            return document
+        }
         restoreFileDocument(document)
         bindIndexedSQLView(document)
         if document.profileID == nil {
@@ -1149,7 +1253,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     @discardableResult
     func openSQLFileInNewTab(_ source: SQLDocument) -> SQLDocument? {
-        guard canStartOperation(source), source.table == nil, let file = boundFileDocument(source) else { return nil }
+        guard canStartOperation(source), source.isSQLDocument, let file = boundFileDocument(source) else { return nil }
         let document = newDocument(profileID: source.profileID, text: file.text)
         document.title = source.title
         document.attachFileDocument(file)
@@ -1204,7 +1308,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func saveSQLFile(_ document: SQLDocument, chooseLocation: Bool = false) {
-        guard canStartOperation(document), document.table == nil else { return }
+        guard canStartOperation(document), document.isSQLDocument else { return }
         let file = boundFileDocument(document)
         guard file?.isSaving != true else { return }
         if !chooseLocation, let file, file.requiresSaveAs {
@@ -1242,7 +1346,7 @@ final class ApplicationWorkspace: ObservableObject {
     /// Headless entry point shared by Save As and the conflict copy action.
     /// Existing targets require the exact version shown in the comparison.
     func saveSQLFile(_ document: SQLDocument, to destination: URL, reviewedVersion: SQLFileVersion?) throws {
-        guard canStartOperation(document), document.table == nil else {
+        guard canStartOperation(document), document.isSQLDocument else {
             throw SQLFileDocumentFailure(message: "This SQL document is no longer available for saving.")
         }
         let location = destination.standardizedFileURL
@@ -1352,7 +1456,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func runToFile(_ document: SQLDocument, format: String, fragment: SQLExecutionFragment? = nil) async {
-        guard document.table == nil, !document.isRunning else { return }
+        guard document.isSQLDocument, !document.isRunning else { return }
         if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
         let libraryBinding = sqlLibraryExecutionBinding(document)
         let boundText = document.text
@@ -1961,6 +2065,7 @@ final class ApplicationWorkspace: ObservableObject {
         guard navigationIsCurrent(document, source: source) else { return false }
         let oldGrid = document.grid
         let oldResult = document.tableResult
+        let oldSnapshotSource = document.tableSnapshotSource
         let oldFailure = document.tableFailure
         let oldColumns = document.tableColumns
         let oldCursor = document.tableCursor
@@ -1977,6 +2082,7 @@ final class ApplicationWorkspace: ObservableObject {
         installTableLocation(target, in: document)
         document.attachGrid(nil)
         document.tableResult = nil
+        document.tableSnapshotSource = nil
         document.tableFailure = nil
         document.tableColumns = columns
         document.tableNeedsExplicitLoad = true
@@ -1988,6 +2094,7 @@ final class ApplicationWorkspace: ObservableObject {
             installTableLocation(source, in: document)
             document.attachGrid(oldGrid)
             document.tableResult = oldResult
+            document.tableSnapshotSource = oldSnapshotSource
             document.tableFailure = oldFailure
             document.tableColumns = oldColumns
             document.tableCursor = oldCursor

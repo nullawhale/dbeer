@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -26,16 +27,28 @@ func TestMySQLTypedTableBrowsePagesFiltersAndUnstableViewOrder(t *testing.T) {
 	run(t, service, "INSERT INTO "+qualified+" (id,part,n,txt,b,nullable,special) WITH RECURSIVE seq(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM seq WHERE n<201) SELECT 1,n,9007199254740993.000000000000000001,'needle%_'' OR 1=1 --',UNHEX('00ff'),NULL,CASE WHEN n=1 THEN '' WHEN n=2 THEN 'NULL' ELSE 'value' END FROM seq")
 	run(t, service, "UPDATE "+qualified+" SET n=9007199254740993.000000000000000002 WHERE part=201")
 	run(t, sql, "START TRANSACTION READ ONLY")
+	assertSource := func(response protocol.Response) {
+		t.Helper()
+		if response.SQL == "" {
+			t.Fatal("browse omitted its executed read statement")
+		}
+		rerun := run(t, sql, response.SQL)
+		if !reflect.DeepEqual(rerun.Rows, response.Rows) || !reflect.DeepEqual(rerun.Columns, response.Columns) {
+			t.Fatal("rerunning source SQL changed the loaded browse page")
+		}
+	}
 	request := protocol.CatalogRequest{Kind: "browse", Schema: schema, Object: name, ObjectKind: "table", Sort: []protocol.CatalogSort{{Column: "txt", Direction: "asc"}}}
 	first := catalogRequest(t, service, request)
 	if len(first.Rows) != 200 || *first.Rows[0][1] != "1" || *first.Rows[199][1] != "200" {
 		t.Fatal("browse did not retain PK tie-break order and fixed page size")
 	}
+	assertSource(first)
 	request.Page = 1
 	second := catalogRequest(t, service, request)
 	if len(second.Rows) != 1 || *second.Rows[0][1] != "201" {
 		t.Fatal("201st row did not belong to the next page")
 	}
+	assertSource(second)
 	request.Page = 0
 	cases := []struct {
 		column, operator, value string
@@ -53,7 +66,9 @@ func TestMySQLTypedTableBrowsePagesFiltersAndUnstableViewOrder(t *testing.T) {
 			filter.Value = nil
 		}
 		request.Filters = []protocol.CatalogFilter{filter}
-		if response := catalogRequest(t, service, request); len(response.Rows) != item.count {
+		response := catalogRequest(t, service, request)
+		assertSource(response)
+		if len(response.Rows) != item.count {
 			t.Fatalf("typed browse operator %s failed", item.operator)
 		}
 	}

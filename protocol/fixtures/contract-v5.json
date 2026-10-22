@@ -921,6 +921,44 @@
   "responses": [
     {
       "type": "query.result",
+      "requestId": "catalog-browse",
+      "sessionId": "contract-session",
+      "queryId": "catalog-browse-query",
+      "durationMs": 1,
+      "columns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "int8",
+          "typeOid": 20
+        },
+        {
+          "index": 1,
+          "name": "label",
+          "engine": "postgresql",
+          "nativeType": "text",
+          "typeOid": 25
+        },
+        {
+          "index": 2,
+          "name": "payload",
+          "engine": "postgresql",
+          "nativeType": "bytea",
+          "typeOid": 17,
+          "encoding": "base64"
+        }
+      ],
+      "rows": [],
+      "rowCount": 0,
+      "displayedRowCount": 0,
+      "truncated": false,
+      "transactionStatus": "idle",
+      "commandTag": "SELECT 0",
+      "sql": "SELECT * FROM \"public\".\"Order Items\" WHERE \"id\" = E'9007199254740993'::numeric AND \"id\" <> E'9007199254740993'::numeric AND \"id\" < E'9007199254740993'::numeric AND \"id\" <= E'9007199254740993'::numeric AND \"id\" > E'9007199254740993'::numeric AND \"id\" >= E'9007199254740993'::numeric AND strpos(\"label\"::text,E'%_\\\\世界 🌍'::text)>0 AND \"payload\" = pg_catalog.decode('00ff', 'hex') AND \"label\" IS NULL AND \"label\" IS NOT NULL ORDER BY \"id\" DESC,\"label\" ASC LIMIT 200 OFFSET 400"
+    },
+    {
+      "type": "query.result",
       "requestId": "foreign-keys-1",
       "sessionId": "session-1",
       "queryId": "foreign-keys-query-1",

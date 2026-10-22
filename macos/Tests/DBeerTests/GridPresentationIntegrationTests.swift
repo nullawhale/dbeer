@@ -156,8 +156,16 @@ struct GridPresentationIntegrationTests {
 
     private func click(_ cell: ResultGridCell, in table: ResultGridTableView, count: Int) throws {
         let window = try #require(table.window)
+        // Native window events only reach cells inside the clipped table viewport.
+        // Compact windows place later columns beneath the adjacent inspector.
+        table.scrollRowToVisible(cell.row)
+        table.scrollColumnToVisible(cell.column)
+        table.enclosingScrollView?.layoutSubtreeIfNeeded()
         let rect = table.frameOfCell(atColumn: cell.column, row: cell.row)
-        let point = table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
+        let cellPoint = NSPoint(x: rect.midX, y: rect.midY)
+        try #require(table.visibleRect.contains(cellPoint),
+            "Native grid click must be visible: cell=\(cell), viewport=\(table.visibleRect)")
+        let point = table.convert(cellPoint, to: nil)
         for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
             let event = try #require(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
                 timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,

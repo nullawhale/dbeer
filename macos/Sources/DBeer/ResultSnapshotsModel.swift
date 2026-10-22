@@ -41,6 +41,19 @@ final class ResultSnapshotsModel: ObservableObject {
     }
 
     @discardableResult
+    func save(_ capture: ResultSnapshotCapture) async -> ResultSnapshotSummary? {
+        guard !isBusy else { return nil }
+        isBusy = true
+        defer { isBusy = false }
+        error = nil
+        do {
+            let saved = try await store.save(capture)
+            try await reload()
+            return saved
+        } catch { report(error); return nil }
+    }
+
+    @discardableResult
     func updateQuotaBytes(_ value: Int64) async -> Bool {
         guard !isBusy else { return false }
         isBusy = true

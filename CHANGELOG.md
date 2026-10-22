@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Pin Result saves a completed result set with its original SQL, capture time,
+  connection and environment context, outcome and partial-data markers. Pinned
+  results open as paged offline tabs and survive tab closure and restart through
+  local artifact references. Opening a snapshot never runs its SQL; opening the
+  captured SQL creates a separate draft that requires choosing a connection.
+
 - Result snapshot storage uses private, versioned artifacts with exact typed
   values and atomic publication. Query → Result Snapshots lists saved artifacts
   and their sizes, manages deletion and configures the default 1 GiB quota.

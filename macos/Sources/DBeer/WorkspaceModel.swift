@@ -505,7 +505,8 @@ final class WorkspaceModel: ObservableObject {
         return true
     }
 
-    private func loadConnections() async {
+    /// Read profile metadata without starting a helper or restoring credentials.
+    func loadConnections() async {
         guard !hasLoadedConnections, !isSavingConnection else { return }
         isSavingConnection = true
         defer { finishConnectionMutation() }

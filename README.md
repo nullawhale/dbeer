@@ -245,6 +245,22 @@ not included in the existing build 8 archive.
 
 ## Result snapshot storage in the working branch
 
+Use **Pin Result** on a completed result to retain the selected result set and
+its original SQL, capture time, profile, environment and outcome. Partial or
+truncated data remains marked. Local grid edits are excluded. Pinned results
+open as read-only, paged offline tabs, including after closing a tab or restarting
+the app. Workspace files retain artifact references rather than copying rows.
+
+Opening a snapshot reads local data and never runs SQL against a database.
+**Open SQL in New Tab** creates a separate draft; choose a connection before
+running it. Missing or damaged artifacts remain visibly unavailable.
+
+Table snapshots retain the filtered, sorted read query and loaded page. Cassandra
+cursor pages remain partial; their captured CQL starts a fresh read because a
+cursor is not part of the SQL text. Source SQL has an 8 MiB metadata limit and
+must also fit the helper's response frame. An oversized browse source is reported
+without discarding the loaded rows.
+
 **Query → Result Snapshots…** opens the local snapshot manager. It lists capture
 times, row counts and stored sizes, shows total usage, and lets you change the
 storage limit in MiB. The default quota is **1 GiB**. Lowering a quota does not

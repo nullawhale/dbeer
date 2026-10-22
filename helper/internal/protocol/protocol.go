@@ -701,6 +701,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		}
 		fields["rows"] = rows
 	case "query.result":
+		if response.SQL != "" {
+			fields["sql"] = response.SQL
+		}
 		columns, rows := response.Columns, response.Rows
 		if columns == nil {
 			columns = []Column{}
@@ -763,6 +766,28 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		return nil, errors.New("unknown protocol response type")
 	}
 	return json.Marshal(fields)
+}
+
+// WithReadSQL observes the native source metadata limit and the complete encoded
+// wire frame budget. Large filters must not make a successful browse fail or
+// displace the captured rows merely to carry optional source metadata.
+func (response Response) WithReadSQL(sql string) Response {
+	if response.Type != "query.result" || sql == "" {
+		return response
+	}
+	response.SQL = sql
+	if len(sql) <= MaxFrameBytes/2 {
+		encoded, err := json.Marshal(response)
+		if err == nil && len(encoded) <= MaxFrameBytes {
+			return response
+		}
+	}
+	response.SQL = ""
+	if response.DisplayNotice != "" {
+		response.DisplayNotice += " "
+	}
+	response.DisplayNotice += "The generated read statement is too large to capture with this result. Reduce filter values to include its source SQL."
+	return response
 }
 
 func ErrorResponse(command Command, category, message string) Response {

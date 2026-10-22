@@ -10,7 +10,7 @@ struct WorkspaceStatusBar: View {
                 .appSecondaryText().lineLimit(1)
             Spacer(minLength: 8)
             if let document = workspace.selectedDocument {
-                Text(document.runtime?.connectionSummary ?? (document.table == nil
+                Text(document.isSnapshot ? "Offline result snapshot" : document.runtime?.connectionSummary ?? (document.table == nil
                     ? "Session opens on first Run" : "Session opens on Load Data"))
                     .appSecondaryText().lineLimit(1).truncationMode(.middle)
             }

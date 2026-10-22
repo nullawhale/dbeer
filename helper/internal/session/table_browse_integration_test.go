@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -36,18 +37,30 @@ func TestPostgresTypedTableBrowsePagesFiltersAndMissingObject(t *testing.T) {
 	exec("CREATE TABLE " + qualified + " (id int, part int, n numeric(65,30), txt text, b bytea, nullable text, special text, rounded_n decimal(10,2) DEFAULT 1.23, PRIMARY KEY(id,part))")
 	exec("INSERT INTO " + qualified + " (id,part,n,txt,b,nullable,special) SELECT 1,n,9007199254740993.000000000000000001,'needle%_'' OR 1=1 --',decode('00ff','hex'),NULL,CASE WHEN n=1 THEN '' WHEN n=2 THEN 'NULL' ELSE 'value' END FROM generate_series(1,201)n")
 	exec("UPDATE " + qualified + " SET n=9007199254740993.000000000000000002 WHERE part=201")
-	service, sql := h.connect(), h.connect()
+	service, sql, source := h.connect(), h.connect(), h.connect()
 	h.query(sql, "BEGIN", "transaction")
+	assertSource := func(response protocol.Response) {
+		t.Helper()
+		if response.SQL == "" {
+			t.Fatal("browse omitted its executed read statement")
+		}
+		rerun := h.query(source, response.SQL, "idle")
+		if !reflect.DeepEqual(rerun.Rows, response.Rows) || !reflect.DeepEqual(rerun.Columns, response.Columns) {
+			t.Fatal("rerunning source SQL changed the loaded browse page")
+		}
+	}
 	request := protocol.CatalogRequest{Kind: "browse", Schema: schema, Object: table, ObjectKind: "table", Sort: []protocol.CatalogSort{{Column: "txt", Direction: "asc"}}}
 	first := h.catalog(service, request)
 	if first.Type != "query.result" || len(first.Rows) != 200 || catalogText(t, first, 0, "part") != "1" || catalogText(t, first, 199, "part") != "200" {
 		t.Fatal("browse did not retain PK tie-break order and fixed page size")
 	}
+	assertSource(first)
 	request.Page = 1
 	second := h.catalog(service, request)
 	if len(second.Rows) != 1 || catalogText(t, second, 0, "part") != "201" {
 		t.Fatal("201st row did not belong to the next page")
 	}
+	assertSource(second)
 	request.Page = 0
 	cases := []struct {
 		column, operator, value string
@@ -68,6 +81,7 @@ func TestPostgresTypedTableBrowsePagesFiltersAndMissingObject(t *testing.T) {
 		}
 		request.Filters = []protocol.CatalogFilter{filter}
 		response := h.catalog(service, request)
+		assertSource(response)
 		if response.Type != "query.result" || len(response.Rows) != item.count {
 			t.Fatalf("typed browse %s/%s returned %s with %d rows; want query.result with %d rows", item.column, item.operator, response.Type, len(response.Rows), item.count)
 		}

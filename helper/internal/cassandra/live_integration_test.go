@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -167,10 +168,27 @@ func TestCassandraLiveBrowsePagingCatalogAndFullExport(t *testing.T) {
 	if first.Type != "query.result" || len(first.Rows) != 200 || first.NextCursor == "" {
 		t.Fatalf("first Cassandra page invalid: category=%s rows=%d cursor=%t", first.Category, len(first.Rows), first.NextCursor != "")
 	}
+	if first.SQL != `SELECT * FROM "dbeer"."live_pages"` {
+		t.Fatal("first Cassandra page omitted its executed source CQL")
+	}
 	request.Cursor = first.NextCursor
 	second := liveCatalog(t, s, request)
 	if second.Type != "query.result" || len(second.Rows) != 200 || second.NextCursor == "" {
 		t.Fatal("second Cassandra cursor page invalid")
+	}
+	if second.SQL != first.SQL || !strings.Contains(second.DisplayNotice, "cursor that is not encoded") || !strings.Contains(second.DisplayNotice, "starts a fresh read") || len(second.ResultSets) != 1 || second.ResultSets[0].DisplayNotice != second.DisplayNotice {
+		t.Fatal("cursor page lost its base CQL or falsely claimed its cursor can be rerun")
+	}
+	bucket, minimum := "001", "1195"
+	filteredRequest := protocol.CatalogRequest{Kind: "browse", Schema: "dbeer", Object: "live_pages", ObjectKind: "table",
+		Filters: []protocol.CatalogFilter{{Column: "bucket", Operator: "eq", Value: &bucket}, {Column: "id", Operator: "gte", Value: &minimum}},
+		Sort:    []protocol.CatalogSort{{Column: "id", Direction: "desc"}}}
+	filtered := liveCatalog(t, s, filteredRequest)
+	if filtered.SQL != `SELECT * FROM "dbeer"."live_pages" WHERE "bucket" = 1 AND "id" >= 1195 ORDER BY "id" DESC` || len(filtered.Rows) != 10 {
+		t.Fatal("filtered Cassandra browse source lost key conversion, range, or clustering sort")
+	}
+	if rerun := liveSQL(t, s, filtered.SQL); !reflect.DeepEqual(rerun.Rows, filtered.Rows) || !reflect.DeepEqual(rerun.Columns, filtered.Columns) {
+		t.Fatal("rerunning first-page source CQL changed the filtered browse rows")
 	}
 	if replay := liveCatalog(t, s, request); replay.Type != "error" || replay.Category != "cursor" {
 		t.Fatal("one-shot cursor replay accepted")

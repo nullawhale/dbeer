@@ -52,7 +52,7 @@ struct SQLLibraryPersistenceTests {
         try original.write(to: url)
         let store = FileSQLDocumentStore(fileURL: url)
         let restored = try await store.load()
-        #expect(restored == snapshot && restored.version == 6 && restored.sqlLibrary == SQLLibrarySnapshot())
+        #expect(restored == snapshot && restored.version == SQLWorkspaceSnapshot.currentVersion && restored.sqlLibrary == SQLLibrarySnapshot())
         #expect(restored.documents.map(\.fileDocumentID) == [sharedID, sharedID])
         #expect(restored.documents.allSatisfy { $0.text.utf8.elementsEqual(text.utf8) && $0.fileRecoveryURL == recovery })
         #expect(restored.sqlFolders == folders && restored.history == [favorite] && restored.historySettings == settings)

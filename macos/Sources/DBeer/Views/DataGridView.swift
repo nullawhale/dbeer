@@ -211,6 +211,10 @@ struct DataGridView: View {
             }.fixedSize().controlHover().help("Export loaded rows")
                 .disabled(result == nil || grid.pendingCount > 0 || grid.hasInlineDraft || grid.isApplying || grid.outcomeUnknown || document.isRunning || document.isNavigatingTable)
                 .accessibilityIdentifier("gridExport")
+            Button("Pin Result") { Task { await workspace.pinResult(document) } }.controlHover()
+                .disabled(workspace.resultSnapshots.isBusy || workspace.snapshotCapture(for: document) == nil)
+                .help("Save server-loaded rows as an offline snapshot. Local edits are excluded.")
+                .accessibilityIdentifier("pinTableResult")
             Spacer(minLength: 4)
             if grid.pendingCount > 0 {
                 Text("\(grid.pendingCount) pending").font(.caption).monospacedDigit().fixedSize().appSecondaryText()

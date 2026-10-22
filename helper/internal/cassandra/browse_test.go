@@ -11,6 +11,61 @@ import (
 )
 
 func ptr(value string) *string { return &value }
+
+func TestCassandraBrowseReadSQLPreservesScalarWireValues(t *testing.T) {
+	for _, scenario := range []struct {
+		name, nativeType, value, literal string
+	}{
+		{"quoted Unicode and SQL text", "text", "quote' \\ κόσμος 🌍'); DROP TABLE records; --", `'quote'' \ κόσμος 🌍''); DROP TABLE records; --'`},
+		{"empty text", "text", "", `''`},
+		{"literal NULL", "varchar", "NULL", `'NULL'`},
+		{"ASCII", "ascii", "a'b", `'a''b'`},
+		{"binary", "blob", "AP+A", "0x00ff80"},
+		{"empty binary", "blob", "", "0x"},
+		{"integer canonical key", "int", "001", "1"},
+		{"exact decimal", "decimal", "9007199254740993.000000000000000001", "9007199254740993.000000000000000001"},
+		{"unbounded integer", "varint", "1234567890123456789012345678901234567890", "1234567890123456789012345678901234567890"},
+		{"boolean", "boolean", "TRUE", "true"},
+		{"timestamp", "timestamp", "2024-01-02T03:04:05.006Z", "1704164645006"},
+		{"date", "date", "2024-01-02", "'2024-01-02'"},
+		{"time", "time", "03:04:05.006", "'03:04:05.006000000'"},
+		{"inet", "inet", "2001:0db8::1", "'2001:db8::1'"},
+		{"duration", "duration", "1h2m3s", "0mo0d3723000000000ns"},
+		{"single precision", "float", "1.23456789", "1.2345679"},
+		{"positive infinity", "double", "+Inf", "Infinity"},
+		{"negative infinity", "double", "-Inf", "-Infinity"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			request := protocol.CatalogRequest{Schema: `ks"?`, Object: "records", Filters: []protocol.CatalogFilter{{Column: `key"?`, Operator: "eq", Value: ptr(scenario.value)}}}
+			columns := []tableColumn{{name: `key"?`, nativeType: scenario.nativeType, kind: "partition_key"}}
+			statement, values, err := browseStatement(request, columns)
+			if err != nil || statement != `SELECT * FROM "ks""?"."records" WHERE "key""?" = ?` || len(values) != 1 || values[0].(textParameter).Value != scenario.value {
+				t.Fatal("browse execution lost a bound scalar value or identifier")
+			}
+			source, _, err := buildBrowseStatement(request, columns, true)
+			if err != nil || source != `SELECT * FROM "ks""?"."records" WHERE "key""?" = `+scenario.literal {
+				t.Fatal("source CQL did not preserve the scalar wire value")
+			}
+		})
+	}
+}
+
+func TestCassandraBrowseReadSQLPreservesCompositeKeysRangeAndClusteringSort(t *testing.T) {
+	columns := []tableColumn{{name: "tenant", nativeType: "text", kind: "partition_key"}, {name: "bucket", nativeType: "int", kind: "partition_key", position: 1}, {name: "created", nativeType: "bigint", kind: "clustering", order: "desc"}, {name: "id", nativeType: "int", kind: "clustering", position: 1, order: "asc"}}
+	request := protocol.CatalogRequest{Schema: "ks", Object: "records", Cursor: "opaque-cursor",
+		Filters: []protocol.CatalogFilter{{Column: "tenant", Operator: "eq", Value: ptr("tenant'世界")}, {Column: "bucket", Operator: "eq", Value: ptr("007")}, {Column: "created", Operator: "gte", Value: ptr("42")}},
+		Sort:    []protocol.CatalogSort{{Column: "created", Direction: "asc"}, {Column: "id", Direction: "desc"}}}
+	source, _, err := buildBrowseStatement(request, columns, true)
+	if err != nil || source != `SELECT * FROM "ks"."records" WHERE "tenant" = 'tenant''世界' AND "bucket" = 7 AND "created" >= 42 ORDER BY "created" ASC, "id" DESC` {
+		t.Fatal("source CQL changed composite key, clustering range, or reverse order semantics")
+	}
+	request.Cursor = ""
+	first, _, err := buildBrowseStatement(request, columns, true)
+	if err != nil || first != source || strings.Contains(source, "OFFSET") || strings.Contains(source, "ALLOW FILTERING") {
+		t.Fatal("source CQL invented opaque cursor state or unsupported SQL")
+	}
+}
+
 func TestCassandraBrowseRejectsFilteringAndInvalidClusteringSort(t *testing.T) {
 	columns := []tableColumn{{name: "tenant", kind: "partition_key", position: 0}, {name: "region", kind: "partition_key", position: 1}, {name: "created", kind: "clustering", position: 0, order: "desc"}, {name: "id", kind: "clustering", position: 1, order: "asc"}, {name: "body", kind: "regular"}, {name: "label", kind: "regular", indexed: true}}
 	for i := range columns {

@@ -40,7 +40,7 @@ struct ResultSnapshotsView: View {
             Table(model.snapshots) {
                 TableColumn("Snapshot") { snapshot in
                     VStack(alignment: .leading, spacing: 3) {
-                        if let openSnapshot, snapshot.isAvailable {
+                        if let openSnapshot {
                             Button(snapshot.title) { openSnapshot(snapshot) }.buttonStyle(.plain).controlHover()
                                 .accessibilityIdentifier("openSnapshot-\(snapshot.id.uuidString)")
                         } else { Text(snapshot.title) }
@@ -128,5 +128,100 @@ struct ResultSnapshotsView: View {
     private func applyQuota() async {
         guard let value = quotaBytes else { return }
         _ = await model.updateQuotaBytes(value)
+    }
+}
+
+struct ResultSnapshotDocumentView: View {
+    @ObservedObject var document: SQLDocument
+    @ObservedObject var model: ResultSnapshotDocumentModel
+    @ObservedObject var workspace: ApplicationWorkspace
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Label("Offline Snapshot", systemImage: "pin.fill").font(.headline)
+                Spacer()
+                Button("Open SQL in New Tab") { workspace.openSnapshotSQLInNewTab(document) }
+                    .controlHover().disabled(!model.isAvailable || !workspace.canStartOperation(document))
+                    .help("Create a SQL draft, then choose a connection before running it")
+                    .accessibilityIdentifier("openSnapshotSQLInNewTab")
+            }.padding(.horizontal, 12).frame(height: 40)
+            Divider()
+            if let manifest = model.manifest {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text("Captured")
+                        Text(manifest.capturedAt, format: .dateTime.year().month().day().hour().minute().second())
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("snapshotCapturedAt")
+                        Spacer()
+                        Text(manifest.outcome.label)
+                            .accessibilityIdentifier("snapshotOutcome")
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("snapshotCaptureContext")
+                    Text([manifest.engine.displayName, manifest.profileName ?? "No recorded connection",
+                          manifest.environment.label].joined(separator: " · "))
+                        .appSecondaryText().textSelection(.enabled)
+                    if !manifest.isComplete {
+                        Label("Partial result. This snapshot does not establish a complete result set.",
+                            systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.orange).accessibilityIdentifier("snapshotPartialNotice")
+                    }
+                    if manifest.truncated { Text("The captured result was truncated.").foregroundStyle(.orange) }
+                    Text("\(manifest.rowCount.formatted()) loaded rows saved" +
+                         (manifest.sourceRowCount.map { " · \($0.formatted()) source rows reported" } ?? ""))
+                        .appSecondaryText()
+                    DisclosureGroup("Captured SQL") {
+                        ScrollView {
+                            Text(manifest.sql).font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
+                        }.frame(maxHeight: 140)
+                    }
+                }
+                .font(.callout).padding(12)
+                Divider()
+            }
+            if let error = model.error {
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Snapshot unavailable", systemImage: "exclamationmark.triangle").font(.headline)
+                    Text(error).textSelection(.enabled)
+                    Button("Retry Local Read") { Task { await model.load() } }.controlHover().disabled(model.isLoading)
+                }
+                .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("snapshotUnavailable")
+            } else if let result = model.result, let columns = result.columns {
+                InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [],
+                    copySettings: workspace.copySettings,
+                    onCopyError: { workspace.reportCopyError($0) },
+                    copyAllowed: !model.isLoading && !workspace.isClosing,
+                    commandHandler: { workspace.commands.handleKeyEvent($0, documentID: document.id) },
+                    documentID: document.id))
+                Divider()
+                HStack(spacing: 8) {
+                    Text("\((result.rows ?? []).isEmpty ? 0 : model.pageOffset + 1)–\(model.pageOffset + (result.rows?.count ?? 0)) of \(model.manifest?.rowCount ?? 0) saved rows")
+                        .font(.caption).monospacedDigit().appSecondaryText()
+                    Spacer()
+                    ControlIconButton(systemName: "chevron.left") {
+                        Task { await model.loadPage(model.pageIndex - 1) }
+                    }.disabled(!model.canLoadPrevious).help("Previous snapshot page")
+                        .accessibilityLabel("Previous snapshot page").accessibilityIdentifier("snapshotPreviousPage")
+                    Text("Page \(model.pageIndex + 1) of \(model.pageCount)").font(.caption).monospacedDigit()
+                    ControlIconButton(systemName: "chevron.right") {
+                        Task { await model.loadPage(model.pageIndex + 1) }
+                    }.disabled(!model.canLoadNext).help("Next snapshot page")
+                        .accessibilityLabel("Next snapshot page").accessibilityIdentifier("snapshotNextPage")
+                }.padding(.horizontal, 12).padding(.vertical, 8)
+            } else {
+                ProgressView("Reading local snapshot…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if model.isLoading, model.result != nil { ProgressView().controlSize(.small).padding(12) }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("offlineSnapshotDocument")
+        .task { if model.result == nil && model.error == nil { await model.load() } }
     }
 }
