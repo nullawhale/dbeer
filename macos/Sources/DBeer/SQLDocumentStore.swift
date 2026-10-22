@@ -15,29 +15,10 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
-struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
-    var id: UUID
-    var date: Date
-    var documentID: UUID?
-    var profileID: UUID?
-    var sql: String
-    var outcome: String
-
-    init(id: UUID = UUID(), date: Date = .now, documentID: UUID? = nil, profileID: UUID? = nil,
-         sql: String, outcome: String) {
-        self.id = id
-        self.date = date
-        self.documentID = documentID
-        self.profileID = profileID
-        self.sql = sql
-        self.outcome = outcome
-    }
-}
-
 /// Contains documents and history only. Sessions, results and passwords never
 /// enter the format; restoring the snapshot cannot reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    static let currentVersion = 2
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -61,10 +42,16 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decodeIfPresent(Int.self, forKey: .version) ?? 0
-        guard version == 0 || version == Self.currentVersion else { throw SQLDocumentStoreError.read }
+        guard (0...Self.currentVersion).contains(version) else { throw SQLDocumentStoreError.read }
         documents = try values.decode([StoredSQLDocument].self, forKey: .documents)
         selectedDocumentID = try values.decodeIfPresent(UUID.self, forKey: .selectedDocumentID)
         history = try values.decodeIfPresent([SQLHistoryEntry].self, forKey: .history) ?? []
+        if version < 2 {
+            // Legacy status strings never established typed outcomes or timing,
+            // even if one happens to match a new enum's spelling.
+            history = history.map { SQLHistoryEntry(id: $0.id, date: $0.date, documentID: $0.documentID,
+                profileID: $0.profileID, sql: $0.sql, outcome: $0.legacyOutcome ?? $0.outcome.rawValue) }
+        }
         historyEnabled = try values.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? true
     }
 
@@ -163,7 +150,7 @@ actor FileSQLDocumentStore: SQLDocumentStore {
         guard Set(snapshot.documents.map(\.id)).count == snapshot.documents.count,
               Set(snapshot.history.map(\.id)).count == snapshot.history.count,
               snapshot.documents.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
-              snapshot.history.allSatisfy({ $0.date.timeIntervalSince1970.isFinite }) else { throw SQLDocumentStoreError.read }
+              snapshot.history.allSatisfy(\.isValid) else { throw SQLDocumentStoreError.read }
     }
 
     private func backup(version: Int) throws {

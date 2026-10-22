@@ -29,6 +29,7 @@ func execute(ctx context.Context, conn *pgx.Conn, command protocol.Command) prot
 	if startsWithCopy(command.SQL) {
 		response := protocol.ErrorResponse(command, "sql", "COPY is not supported by this prototype.")
 		response.Connected, response.TransactionStatus = true, transactionStatus(conn)
+		response.SQLNotExecuted = true
 		return response
 	}
 	return executeParams(ctx, conn, command, command.SQL, nil)
@@ -40,6 +41,16 @@ func executeParams(ctx context.Context, conn *pgx.Conn, command protocol.Command
 
 func executeParamsSink(ctx context.Context, conn *pgx.Conn, command protocol.Command, sql string, values [][]byte, sink adapter.ResultSink) protocol.Response {
 	started := time.Now()
+	if ctx.Err() != nil {
+		category, message := "cancelled", "Execution was cancelled before it started."
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			category, message = "timeout", "Execution timed out before it started."
+		}
+		failure := protocol.ErrorResponse(command, category, message)
+		failure.SQLNotExecuted = command.Type == "execute"
+		failure.Connected, failure.TransactionStatus = !conn.IsClosed(), transactionStatus(conn)
+		return failure
+	}
 	reader := conn.PgConn().ExecParams(ctx, sql, values, nil, nil, nil)
 	collector := newResultCollector(command, reader.FieldDescriptions(), MaxResultBytes)
 	for index, field := range reader.FieldDescriptions() {

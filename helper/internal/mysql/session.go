@@ -120,6 +120,7 @@ func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Co
 	if unsupportedStatement(command.SQL) {
 		response := protocol.ErrorResponse(command, "validation", "MySQL client commands, COPY and LOAD DATA LOCAL are not supported. Submit SQL statements directly.")
 		response.Connected, response.TransactionStatus = !session.closed.Load(), session.TransactionStatus()
+		response.SQLNotExecuted = command.Type == "execute"
 		return response
 	}
 	return session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
@@ -131,12 +132,16 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	if session.closed.Load() {
-		return session.unknown(command)
+		response := protocol.ErrorResponse(command, "connection", "The MySQL session is closed. SQL was not executed.")
+		response.SQLNotExecuted = command.Type == "execute"
+		return response
 	}
 	ctx, cancel := context.WithTimeout(ctx, ExecuteTimeout)
 	defer cancel()
 	if ctx.Err() != nil {
-		return session.queryError(command, ctx, ctx.Err())
+		response := session.queryError(command, ctx, ctx.Err())
+		response.SQLNotExecuted = command.Type == "execute"
+		return response
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = session.work.transport.SetDeadline(deadline.Add(RecoveryTimeout))

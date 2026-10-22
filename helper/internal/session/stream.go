@@ -290,6 +290,15 @@ func (sink *exportProgressSink) End(index int, summary protocol.ResultSet) error
 }
 
 func runExecution(ctx context.Context, physical adapter.Session, command protocol.Command, credit *creditState) protocol.Response {
+	if ctx.Err() != nil {
+		category, message := "cancelled", "Execution was cancelled before it started."
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			category, message = "timeout", "Execution timed out before it started."
+		}
+		failure := rejectedCommand(command, category, message)
+		failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
+		return failure
+	}
 	if !command.Stream && command.Export == nil {
 		return physical.Execute(ctx, command)
 	}

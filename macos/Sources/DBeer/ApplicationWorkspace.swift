@@ -442,7 +442,8 @@ final class ApplicationWorkspace: ObservableObject {
                           library.savedConnections.first(where: { $0.id == profileID }) == profile else { break }
                     document.selectedExecution = index
                     document.executions[index].status = "Running"
-                    await runtime.run(sql: statement.sql, export: export, authorization: authorization)
+                    let historyProfile = SQLHistoryProfile(profile, currentKeyspace: runtime.currentKeyspace)
+                    let completion = await runtime.run(sql: statement.sql, export: export, authorization: authorization)
                     document.executions[index].result = runtime.result
                     document.executions[index].failure = runtime.queryFailure
                     document.executions[index].status = runtime.queryFailure?.title ?? (runtime.result == nil ? "Failed" : "Completed")
@@ -450,7 +451,10 @@ final class ApplicationWorkspace: ObservableObject {
                     if runtime.queryFailure == nil, let result = runtime.result, result.outcomeUnknown != true {
                         document.recordExecutionSuccess(statement, revision: executionRevision)
                     }
-                    if runtime.queryFailure?.sqlNotExecuted != true { recordHistory(document: document, sql: statement.sql, outcome: document.executions[index].status) }
+                    if let completion, let entry = SQLHistoryEntry(documentID: document.id, profileID: profileID,
+                        profile: historyProfile, sql: statement.sql, completion: completion) {
+                        recordHistory(entry)
+                    }
                     if let position = runtime.queryErrorPosition {
                         let scalars = statement.sql.unicodeScalars
                         let end = scalars.index(scalars.startIndex, offsetBy: min(max(0, position - 1), scalars.count))
@@ -873,9 +877,9 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
-    private func recordHistory(document: SQLDocument, sql: String, outcome: String) {
+    private func recordHistory(_ entry: SQLHistoryEntry) {
         var saved = snapshot()
-        saved.record(SQLHistoryEntry(documentID: document.id, profileID: document.profileID, sql: sql, outcome: outcome))
+        saved.record(entry)
         history = saved.history
         scheduleSave()
     }

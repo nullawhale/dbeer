@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Native SQL history records start and finish times, duration, typed execution
+  outcomes, separate loaded/affected/exported row counts, truncation and partial
+  counts, SQLSTATE and safe error descriptions. Each executed script statement
+  gets one terminal entry; skipped and locally rejected commands are excluded.
+- History preserves the profile context captured when execution starts, excluding
+  credentials, SSH settings, certificate paths and result values. History storage
+  advances to v2 with exact v0/v1 backups before migration; missing legacy
+  execution details remain unavailable rather than being inferred.
+
 ## 0.2.0 prerelease — build 8 — 2026-10-20
 
 This prerelease targets the native macOS client and bundled Go helper.

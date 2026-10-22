@@ -62,7 +62,8 @@ struct LocalRequestValidationTests {
         await model.start()
         await model.connect()
         model.sql = String(repeating: "a", count: BackendProtocol.maxFrameBytes)
-        await model.run()
+        let rejected = await model.run()
+        #expect(rejected == nil)
 
         #expect(model.sessionId == "same-session")
         #expect(model.connectionState == .connected)
@@ -71,6 +72,7 @@ struct LocalRequestValidationTests {
         #expect(model.queryPhase == .idle && !model.isExecuting)
         #expect(model.queryFailure?.category == "validation")
         #expect(model.queryFailure?.outcomeUnknown == false)
+        #expect(model.queryFailure?.sqlNotExecuted == true)
         #expect(model.errorMessage?.contains("command was not sent") == true)
         #expect(model.errorMessage?.contains("outcome is unknown") == false)
         let canRunAfterRejection = model.canRun

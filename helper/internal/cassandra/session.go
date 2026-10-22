@@ -88,7 +88,9 @@ func (s *Session) ExecuteWithSink(ctx context.Context, command protocol.Command,
 	}
 	statements := safety.Classify("cassandra", command.SQL)
 	if len(statements) == 0 || len(statements) > 1024 {
-		return s.failure(command, "sql", "Enter between 1 and 1024 CQL statements.")
+		failure := s.failure(command, "sql", "Enter between 1 and 1024 CQL statements.")
+		failure.SQLNotExecuted = true
+		return failure
 	}
 	response := s.response(command)
 	budget := &displayBudget{}
@@ -96,6 +98,7 @@ func (s *Session) ExecuteWithSink(ctx context.Context, command protocol.Command,
 	for index, statement := range statements {
 		if ctx.Err() != nil {
 			failure := safeError(command, ctx, ctx.Err(), false, false)
+			failure.SQLNotExecuted = index == 0
 			failure.ResultSets = results
 			return s.complete(failure, started)
 		}
@@ -129,6 +132,7 @@ func (s *Session) ExecuteWithSink(ctx context.Context, command protocol.Command,
 		} else {
 			if firstWord(sql) == "COMMIT" || firstWord(sql) == "ROLLBACK" || firstWord(sql) == "BEGIN" && statement.Reason != "cql_batch" {
 				failure := s.failure(command, "unsupported", "Cassandra does not support SQL transactions. CQL BATCH is a separate operation.")
+				failure.SQLNotExecuted = index == 0
 				failure.ResultSets = results
 				return s.complete(failure, started)
 			}

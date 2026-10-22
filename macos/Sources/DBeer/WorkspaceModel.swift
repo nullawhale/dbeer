@@ -43,7 +43,7 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    struct QueryFailure: Equatable {
+    struct QueryFailure: Equatable, Sendable {
         let category: String
         let message: String
         let sqlState: String?
@@ -60,6 +60,14 @@ final class WorkspaceModel: ObservableObject {
             default: "Query failed"
             }
         }
+    }
+
+    struct QueryCompletion: Sendable {
+        let startedAt: Date
+        let finishedAt: Date
+        let durationMs: Double
+        let reply: BackendMessage?
+        let failure: QueryFailure?
     }
 
     nonisolated static let sslModes = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
@@ -492,9 +500,10 @@ final class WorkspaceModel: ObservableObject {
         return saved ? selectedConnectionId : existing?.id
     }
 
+    @discardableResult
     func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil,
-             authorization: String? = nil) async {
-        guard canRun, let sessionId, let helper else { return }
+             authorization: String? = nil) async -> QueryCompletion? {
+        guard canRun, let sessionId, let helper else { return nil }
         let queryId = UUID().uuidString
         let generation = helperGeneration
         var command: BackendCommand
@@ -505,7 +514,16 @@ final class WorkspaceModel: ObservableObject {
         clearQueryFeedback()
         latestQueryId = queryId
         activeQueryId = queryId
-        queryStartedAt = .now
+        let startedAt = Date.now
+        let clock = ContinuousClock.now
+        func completion(reply: BackendMessage? = nil, failure: QueryFailure? = nil) -> QueryCompletion {
+            let elapsed = clock.duration(to: .now).components
+            let elapsedMs = Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15
+            let duration = reply?.durationMs.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil } ?? elapsedMs
+            return QueryCompletion(startedAt: startedAt, finishedAt: .now, durationMs: max(0, duration),
+                reply: reply, failure: failure)
+        }
+        queryStartedAt = startedAt
         queryPhase = .starting
         do {
             let reply = try await helper.request(command) { [weak self] event in
@@ -516,7 +534,8 @@ final class WorkspaceModel: ObservableObject {
                     self.queryPhase = .running
                 }
             }
-            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
+            let terminal = completion(reply: reply)
+            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
             result = reply
             if let keyspace = reply.currentKeyspace { currentKeyspace = keyspace }
             queryFailure = nil
@@ -524,29 +543,40 @@ final class WorkspaceModel: ObservableObject {
             else { preserveConfirmedOutcome() }
             queryDurationMs = reply.durationMs
             finishQuery()
+            return terminal
         } catch let error as BackendRequestError {
-            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
+            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return nil }
             queryFailure = QueryFailure(category: "validation", message: error.localizedDescription,
-                sqlState: nil, outcomeUnknown: false)
+                sqlState: nil, outcomeUnknown: false, sqlNotExecuted: true)
             queryDurationMs = nil
             errorMessage = error.localizedDescription
             preserveConfirmedOutcome()
             finishQuery()
+            return nil
         } catch let error as BackendRemoteError {
-            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
+            let failure = QueryFailure(category: error.reply.category ?? "sql",
+                message: error.reply.message ?? "The query failed.", sqlState: error.reply.sqlState,
+                outcomeUnknown: error.reply.outcomeUnknown == true, sqlNotExecuted: error.reply.sqlNotExecuted == true)
+            let terminal = completion(reply: error.reply, failure: failure)
+            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
             if let keyspace = error.reply.currentKeyspace { currentKeyspace = keyspace }
             queryErrorPosition = error.reply.errorPosition
             if error.reply.resultSets?.isEmpty == false { result = error.reply }
             queryDurationMs = error.reply.durationMs ?? elapsedMilliseconds()
-            queryFailure = QueryFailure(category: error.reply.category ?? "sql",
-                message: error.reply.message ?? error.localizedDescription,
-                sqlState: error.reply.sqlState, outcomeUnknown: error.reply.outcomeUnknown == true, sqlNotExecuted: error.reply.sqlNotExecuted == true)
+            queryFailure = failure
             showRemoteFailure(error)
             if case .failed = state, error.reply.outcomeUnknown != true { preserveConfirmedOutcome() }
             finishQuery()
+            return terminal
         } catch {
-            guard !stopping, helperGeneration == generation, activeQueryId == queryId else { return }
+            let transport = error as? BackendTransportError
+            let terminal = completion(failure: QueryFailure(category: "transport",
+                message: transport.map { BackendTransportError($0.code).localizedDescription } ?? "The helper connection failed.",
+                sqlState: nil, outcomeUnknown: transport?.outcomeUnknown ?? true,
+                sqlNotExecuted: transport?.outcomeUnknown == false))
+            guard !stopping, helperGeneration == generation, activeQueryId == queryId else { return terminal }
             showTransportFailure(error)
+            return terminal
         }
     }
 

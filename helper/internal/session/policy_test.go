@@ -169,6 +169,9 @@ func TestReadonlyManagerBlocksAllRawExecutionPathsBeforeAdapter(t *testing.T) {
 		if response.Type != "error" || response.Category != "policy" || !response.Connected || physical.executions.Load() != 0 {
 			t.Fatal("readonly operation reached adapter")
 		}
+		if command.Type == "execute" && !response.SQLNotExecuted {
+			t.Fatal("readonly rejection claimed submitted SQL was executed")
+		}
 	}
 	submit(t, manager, protocol.Command{Type: "execute", RequestID: "read", QueryID: "read", SessionID: connected.SessionID, SQL: "SELECT 1"})
 	if receive(t, manager).Type != "query.started" || receive(t, manager).Type != "query.result" || physical.executions.Load() != 1 {
@@ -200,8 +203,11 @@ func TestBatchAuthorizationIsDestroyedByCancelAndExecutionError(t *testing.T) {
 	}
 	token := assess("assessment-error")
 	submit(t, manager, protocol.Command{Type: "execute", RequestID: "first", SessionID: id, QueryID: "first", SQL: operations[0].SQL, Authorization: token})
-	if receive(t, manager).Type != "query.started" || receive(t, manager).Category != "sql" {
+	if receive(t, manager).Type != "query.started" {
 		t.Fatal("fixture did not fail its first execution")
+	}
+	if terminal := receive(t, manager); terminal.Category != "sql" || terminal.SQLNotExecuted {
+		t.Fatal("dispatched SQL failure was confused with a preexecution rejection")
 	}
 	submit(t, manager, protocol.Command{Type: "execute", RequestID: "second", SessionID: id, QueryID: "second", SQL: operations[1].SQL, Authorization: token})
 	if receive(t, manager).Category != "policy" || executions.Load() != 1 {

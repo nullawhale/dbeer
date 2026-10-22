@@ -105,6 +105,14 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 	manager.controlMu.Unlock()
 }
 
+// Routing rejections happen before the adapter receives the submitted SQL.
+// Keep them distinct from terminal failures of dispatched database commands.
+func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
+	response := protocol.ErrorResponse(command, category, message)
+	response.SQLNotExecuted = command.Type == "execute"
+	return response
+}
+
 // Close is an out-of-band abort used by EOF or transport failure. It also
 // unblocks full response queues, then waits until all physical sessions close.
 func (manager *Manager) Close() {
@@ -205,14 +213,14 @@ func (manager *Manager) run() {
 			owner := owners[command.SessionID]
 			if owner == nil {
 				manager.forgetPending(command)
-				if !emit(protocol.ErrorResponse(command, "connection", "Session identifier is not active.")) {
+				if !emit(rejectedCommand(command, "connection", "Session identifier is not active.")) {
 					return
 				}
 				continue
 			}
 			if category := owner.route(command); category != "" {
 				manager.forgetPending(command)
-				response := protocol.ErrorResponse(command, category, "Session is closing or its command queue is full.")
+				response := rejectedCommand(command, category, "Session is closing or its command queue is full.")
 				response.Connected = category == "busy"
 				if !emit(response) {
 					return
@@ -362,7 +370,7 @@ func (owner *owner) closeRouting() []protocol.Response {
 		select {
 		case command := <-owner.commands:
 			owner.manager.forgetPending(command)
-			rejected = append(rejected, protocol.ErrorResponse(command, "connection", "Session is closing."))
+			rejected = append(rejected, rejectedCommand(command, "connection", "Session is closing."))
 		default:
 			return rejected
 		}
@@ -514,10 +522,10 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			case "execute", "catalog", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
-					response = protocol.ErrorResponse(command, "busy", "Another operation is in progress in this session.")
+					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
 				} else if !owner.authorize(command, engine, policy) {
 					owner.manager.forgetPending(command)
-					response = protocol.ErrorResponse(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
+					response = rejectedCommand(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
 				} else {
 					ctx, cancel = context.WithTimeout(context.Background(), owner.manager.timeout)
 					pending = command
@@ -530,7 +538,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						owner.controlMu.Unlock()
 						owner.manager.controlMu.Unlock()
 						cancel()
-						response = protocol.ErrorResponse(command, "cancelled", "Execution was cancelled before it started.")
+						response = rejectedCommand(command, "cancelled", "Execution was cancelled before it started.")
 						response.Connected, response.TransactionStatus = true, txStatus
 						outgoing = append(outgoing, response)
 						continue

@@ -24,8 +24,39 @@ struct SQLHistoryView: View {
                         Text(entry.date, style: .date)
                         Text(entry.date, style: .time)
                         Spacer()
-                        Text(entry.outcome)
+                        Text(entry.outcomeLabel)
                     }.font(.caption).appSecondaryText()
+                    if let profile = entry.profile {
+                        Text(profile.summary)
+                            .font(.caption).appSecondaryText().textSelection(.enabled)
+                    } else {
+                        Text("Original connection details unavailable")
+                            .font(.caption).appSecondaryText()
+                    }
+                    if let startedAt = entry.startedAt, let finishedAt = entry.finishedAt {
+                        Text("Started \(startedAt.formatted(date: .abbreviated, time: .standard)) · Finished \(finishedAt.formatted(date: .abbreviated, time: .standard))")
+                            .font(.caption).appSecondaryText()
+                    }
+                    Text(entry.executionSummary).font(.caption).appSecondaryText()
+                    if entry.truncated == true {
+                        Text("Result display truncated. Loaded rows are not the full result.")
+                            .font(.caption).appSecondaryText()
+                    }
+                    if entry.countsArePartial == true {
+                        Text("Counts cover retained results only; additional results may be unavailable.")
+                            .font(.caption).appSecondaryText()
+                    }
+                    if entry.sqlCompleted == true, entry.outcome != .succeeded {
+                        Text("SQL completion was confirmed; result delivery or export failed. Do not rerun SQL to recover the result.")
+                            .font(.caption).appSecondaryText()
+                    } else if entry.outcome == .unknown, entry.legacyOutcome == nil {
+                        Text("SQL outcome is unknown. Inspect the database before retrying.")
+                            .font(.caption).appSecondaryText()
+                    }
+                    if let message = entry.errorMessage {
+                        Text(message + (entry.sqlState.map { " (SQLSTATE \($0))" } ?? ""))
+                            .font(.caption).textSelection(.enabled)
+                    }
                     Text(entry.sql).font(.system(.callout, design: .monospaced)).lineLimit(4).textSelection(.enabled)
                     Button {
                         workspace.newDocument(profileID: entry.profileID, text: entry.sql)

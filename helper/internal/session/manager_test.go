@@ -166,7 +166,7 @@ func TestCancellationKeepsSessionBusyUntilRecoveryFinishes(t *testing.T) {
 		t.Fatal("Stop was not accepted")
 	}
 	submit(t, manager, protocol.Command{Type: "execute", RequestID: "too-early", SessionID: id, QueryID: "too-early", SQL: "SELECT 'fast'"})
-	if response := receive(t, manager); response.Category != "busy" || executions.Load() != 1 {
+	if response := receive(t, manager); response.Category != "busy" || !response.SQLNotExecuted || executions.Load() != 1 {
 		t.Fatal("another query ran before transaction recovery completed")
 	}
 	release()

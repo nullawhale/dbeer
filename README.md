@@ -20,6 +20,26 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. Version 1 excludes psql/mysql client commands, COPY streams, LOAD DATA LOCAL, SSH tunnels, and external plugins.
 
+## SQL history in the working branch
+
+Query → SQL History records each executed statement once after it finishes,
+including individual script statements. Skipped statements and commands rejected
+before execution do not create entries. Entries distinguish completed, failed,
+cancelled, timed-out and unknown outcomes, with start and finish times, duration,
+SQLSTATE when reported, and a safe error description.
+
+Loaded, affected and exported row counts are shown separately. Missing counts
+remain unavailable rather than becoming zero; truncation and partial counts are
+explicit, and loaded rows do not imply the complete result size. Each entry keeps
+the profile name, engine, endpoint, database or keyspace, user and execution policy
+from the time the statement started, even after the profile is renamed or deleted.
+Credentials, SSH settings, certificate paths and result values are excluded.
+
+History storage advances to v2. Existing v0/v1 files receive exact backups before
+migration; older entries retain their original outcome text and show unavailable
+execution details rather than inferred values. These working-branch changes are
+not included in the existing build 8 archive.
+
 ## Next release changes
 
 The Query menu, execution buttons, and keyboard share a command registry for the active document. Default shortcuts are preserved: **⌘Return** runs the selection or current statement, and **⇧⌘Return** runs the entire script. The Run fragment is highlighted inside the editor and updates with cursor or selection changes. A cursor immediately after `;` still belongs to the completed statement.
