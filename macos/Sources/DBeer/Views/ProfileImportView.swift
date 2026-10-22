@@ -37,6 +37,17 @@ struct ProfileImportView: View {
                                 .disabled(!imported.isSelected)
                             }
                         }
+                        if let ssh = imported.profile.ssh {
+                            Text("SSH: \(ssh.user)@\(ssh.host):\(ssh.port) · \(ssh.authMethod.label)").font(.caption).appSecondaryText()
+                            if ssh.authMethod == .privateKey {
+                                Button(imported.requiresSSHKeySelection ? "Choose Local SSH Key…" : "Change SSH Key…") {
+                                    workspace.chooseImportedSSHKey(imported.id)
+                                }.controlHover().disabled(!imported.isSelected)
+                            }
+                            if imported.requiresSSHKeySelection {
+                                Text("Select a private key on this Mac before importing.").font(.caption).foregroundStyle(.orange)
+                            }
+                        }
                         if imported.requiresCASelection {
                             Text("The CA file is unavailable on this Mac.").font(.caption).foregroundStyle(.orange)
                         }

@@ -76,7 +76,7 @@ struct ApplicationWorkspaceView: View {
         .sheet(isPresented: Binding(get: { workspace.library.isConnectionEditorPresented },
             set: { workspace.library.isConnectionEditorPresented = $0 })) {
             ConnectionEditorView(model: workspace.library, connection: editing.wrappedValue,
-                onConnect: { id in await workspace.connectProfile(id) }) {
+                onConnect: { id, ssh in await workspace.connectProfile(id, sshSnapshot: ssh) }) {
                 workspace.library.isConnectionEditorPresented = false
                 editing.wrappedValue = nil
             }

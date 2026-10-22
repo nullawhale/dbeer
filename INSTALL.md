@@ -25,6 +25,14 @@ Developers can reproduce the separate UI acceptance run with `./scripts/test-ins
 
 The 0.2.0 prerelease migrates profiles to format v3 with environment and readonly settings. The first load of v1/v2 creates `connections.json.v1.backup` or `connections.json.v2.backup` containing the original bytes, preserves UUIDs and access to the same Keychain entries, and replaces the file atomically. Unknown versions and corrupt files are not overwritten. Profile export v2 includes environment and readonly, while legacy v1 imports remain compatible. The application and bundled helper must both use protocol v4; incompatible helpers are rejected during the handshake. These changes do not rename or replace existing 0.1.0 archives.
 
+The working branch adds optional SSH tunneling with profile format v4, portable
+profile format v3 and native app/helper protocol v5. Rebuild the complete app;
+mixing it with an older helper fails the handshake. Existing profiles preserve
+their UUIDs and database Keychain credentials and default to SSH disabled. SSH
+passwords and key passphrases have separate Keychain entries. Profile imports
+exclude secrets and SSH trust, and key authentication requires local key-file
+selection. These changes do not modify the existing build 8 release archive.
+
 Readonly in the 0.2.0 prerelease rejects writes and unknown SQL/CQL in the helper. PostgreSQL/MySQL also enable server-side read-only mode; Cassandra uses local assessment. Enforce strict write restrictions with database user permissions: read-only mode does not replace server restrictions and has exceptions for temporary tables. Changing environment or readonly in the profile editor requires the normal session shutdown workflow; active transactions are never silently completed.
 
 Production confirmation uses a structural assessment of the operation. Views, overloaded built-in functions, custom casts, and operators can hide writes. The client does not promise to detect every such effect; restrict write access, temporary tables, and dangerous function execution in the database.

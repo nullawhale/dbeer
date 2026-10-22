@@ -202,16 +202,16 @@ final class ApplicationWorkspace: ObservableObject {
         return document
     }
 
-    func connectProfile(_ id: UUID) async {
+    func connectProfile(_ id: UUID, sshSnapshot: SSHSettings? = nil) async {
         guard shutdownTask == nil, !isClosing, !disconnectingProfiles.contains(id) else { return }
         if let connection = profileConnections[id] { await connection.value; return }
-        let task = Task { @MainActor in await self.openProfile(id) }
+        let task = Task { @MainActor in await self.openProfile(id, sshSnapshot: sshSnapshot) }
         profileConnections[id] = task
         await task.value
         profileConnections[id] = nil
     }
 
-    private func openProfile(_ id: UUID) async {
+    private func openProfile(_ id: UUID, sshSnapshot: SSHSettings?) async {
         do {
             let client = try await ensureHelper()
             if let service = services[id], service.connectionState == .connected { return }
@@ -219,7 +219,7 @@ final class ApplicationWorkspace: ObservableObject {
             services[id] = service
             observations[id] = service.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
             await service.start(sharedHelper: client)
-            await service.connectSavedConnection(id)
+            await service.connectSavedConnection(id, sshSnapshot: sshSnapshot)
             if service.connectionState != .connected { error = service.errorMessage ?? service.connectionsError }
             else {
                 error = nil
@@ -243,7 +243,11 @@ final class ApplicationWorkspace: ObservableObject {
         guard await prepareToClose(.profile(id)) else { return false }
         if clusterInspection?.profileID == id { clusterInspection = nil }
         completionLoads.removeValue(forKey: id)?.task.cancel()
-        if let connecting = profileConnections[id] { await connecting.value }
+        if let connecting = profileConnections[id] {
+            services[id]?.cancelConnection()
+            connecting.cancel()
+            await connecting.value
+        }
         let sessions = documents.filter { $0.profileID == id }.compactMap(\.runtime)
         for session in sessions { await session.shutdown() }
         if let service = services.removeValue(forKey: id) { await service.shutdown() }
@@ -369,13 +373,13 @@ final class ApplicationWorkspace: ObservableObject {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
             }
             if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
-            guard documents.contains(where: { $0.id == document.id }),
+            guard documents.contains(where: { $0.id == document.id }), !document.stopRequested,
                   services[profileID]?.connectionState == .connected else { return }
             if document.runtime?.connectionState != .connected {
                 let runtime = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
                 document.attach(runtime)
                 await runtime.start(sharedHelper: client)
-                await runtime.connectSavedConnection(profileID)
+                await runtime.connectSavedConnection(profileID, sshSnapshot: services[profileID]?.ssh)
             }
             guard let runtime = document.runtime else { return }
             guard !document.stopRequested, document.text == boundText, document.profileID == profileID,
@@ -418,7 +422,7 @@ final class ApplicationWorkspace: ObservableObject {
                       runtime.engine == profile.engine, runtime.host == profile.host,
                       Int(runtime.port) == profile.port, runtime.database == profile.database,
                       runtime.contactPoints == profile.contactPoints, runtime.localDatacenter == profile.localDatacenter,
-                      runtime.consistency == profile.consistency,
+                      runtime.consistency == profile.consistency, runtime.ssh?.configuration == profile.ssh,
                       runtime.user == profile.user, runtime.sslMode == profile.sslMode,
                       (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
                     throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before executing SQL.")
@@ -478,6 +482,7 @@ final class ApplicationWorkspace: ObservableObject {
     func stop(_ document: SQLDocument) async {
         if document.grid?.isApplying == true { await stopGridApply(document); return }
         document.stopRequested = true
+        if document.runtime?.isConnecting == true { document.runtime?.cancelConnection() }
         await document.runtime?.stop()
     }
 
@@ -766,12 +771,22 @@ final class ApplicationWorkspace: ObservableObject {
         importPreview?[index].profile.sslRootCert = selected.path
     }
 
+    func chooseImportedSSHKey(_ id: UUID) {
+        guard !isImportingProfiles, let original = importPreview?.first(where: { $0.id == id }),
+              original.profile.ssh?.authMethod == .privateKey else { return }
+        let panel = NSOpenPanel()
+        panel.message = "Choose this Mac's SSH private key. Private keys and trust decisions are never imported."
+        guard panel.runModal() == .OK, let selected = panel.url else { return }
+        guard !isImportingProfiles, let index = importPreview?.firstIndex(where: { $0.id == id && $0 == original }) else { return }
+        importPreview?[index].profile.ssh?.identityFile = selected.path
+    }
+
     func importProfiles() async {
         guard !isImportingProfiles else { return }
         let profiles = selectedImportProfiles
         guard !profiles.isEmpty else { return }
-        guard !profiles.contains(where: \.requiresCASelection) else {
-            importError = "Choose the missing CA files before importing."
+        guard !profiles.contains(where: { $0.requiresCASelection || $0.requiresSSHKeySelection }) else {
+            importError = "Choose the missing CA files and local SSH private keys before importing."
             return
         }
         isImportingProfiles = true
@@ -795,7 +810,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     var canImportProfiles: Bool {
         !isImportingProfiles && !selectedImportProfiles.isEmpty &&
-            !selectedImportProfiles.contains(where: \.requiresCASelection)
+            !selectedImportProfiles.contains(where: { $0.requiresCASelection || $0.requiresSSHKeySelection })
     }
 
     func selectImportProfile(_ id: UUID, selected: Bool) {
@@ -1103,6 +1118,9 @@ final class ApplicationWorkspace: ObservableObject {
         let task = Task { @MainActor in
             await self.flushDocuments()
             for load in self.completionLoads.values { load.task.cancel() }
+            for service in self.services.values { service.cancelConnection() }
+            for document in self.documents { document.runtime?.cancelConnection() }
+            for task in self.profileConnections.values { task.cancel() }
             await self.editorState.languageService.shutdown()
             if let start = self.helperStart { _ = try? await start.value }
             if let helper = self.helper { _ = await helper.shutdown() }

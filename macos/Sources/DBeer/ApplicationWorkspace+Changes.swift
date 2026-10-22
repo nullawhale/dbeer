@@ -101,7 +101,7 @@ extension ApplicationWorkspace {
         let boundSettings = ConnectionSettings(host: runtime.host, port: boundPort, database: runtime.database,
             user: runtime.user, password: "", sslMode: runtime.sslMode,
             sslRootCert: runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert, engine: runtime.engine, policy: runtime.policy,
-            contactPoints: runtime.contactPoints, localDatacenter: runtime.localDatacenter, consistency: runtime.consistency)
+            contactPoints: runtime.contactPoints, localDatacenter: runtime.localDatacenter, consistency: runtime.consistency, ssh: runtime.ssh)
         func validateConnectionBinding() throws {
             guard document.profileID == profileID, document.runtime === runtime, document.grid === grid,
                   runtime.connectionState == .connected, runtime.sessionId == boundSessionID,
@@ -113,6 +113,7 @@ extension ApplicationWorkspace {
                   runtime.user == boundSettings.user, runtime.sslMode == boundSettings.sslMode,
                   runtime.contactPoints == boundSettings.contactPoints, runtime.localDatacenter == boundSettings.localDatacenter,
                   runtime.consistency == boundSettings.consistency, runtime.policy == boundSettings.policy,
+                  runtime.ssh == boundSettings.ssh,
                   (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == boundSettings.sslRootCert else {
                 throw ChangesClientError(message: "The profile changed after this table was loaded. Reconnect the profile and reload the table before previewing or applying changes.")
             }
@@ -130,7 +131,9 @@ extension ApplicationWorkspace {
         guard canStartOperation(document, forClosing: forClosing), !grid.cancelRequested || !apply else {
             throw ChangesClientError(message: "The changes operation was cancelled before execution.")
         }
-        let connected = try await client.request(.connect(profile.settings(password: password)))
+        var temporarySettings = profile.settings(password: password)
+        temporarySettings.ssh = boundSettings.ssh
+        let connected = try await client.request(.connect(temporarySettings))
         guard let sessionID = connected.sessionId else { throw ChangesClientError(message: "The changes session could not be opened.") }
         let queryID = UUID().uuidString
         if apply {

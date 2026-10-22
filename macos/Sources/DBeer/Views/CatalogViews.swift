@@ -107,15 +107,17 @@ struct ProfileCatalogRow: View {
         .onTapGesture { Task { await workspace.library.selectConnection(profile.id) } }
         .catalogRowHover()
         .catalogRowContextMenu { contextMenu }
-        .help("\(profile.user)@\(profile.host):\(profile.port)/\(profile.database)")
+        .help(workspace.services[profile.id]?.connectionProgress ?? "\(profile.user)@\(profile.host):\(profile.port)/\(profile.database)")
     }
 
     private var contextMenu: NSMenu {
         let menu = NSMenu()
         if isConnected {
             menu.addCatalogAction("Disconnect") { Task { await workspace.disconnectProfile(profile.id) } }
+        } else if workspace.services[profile.id]?.isConnecting == true {
+            menu.addCatalogAction("Cancel Connection") { workspace.services[profile.id]?.cancelConnection() }
         } else {
-            menu.addCatalogAction("Connect", enabled: workspace.services[profile.id]?.connectionState != .connecting) {
+            menu.addCatalogAction("Connect", enabled: workspace.services[profile.id]?.isConnecting != true) {
                 Task { await workspace.connectProfile(profile.id) }
             }
         }

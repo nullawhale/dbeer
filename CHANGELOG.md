@@ -10,6 +10,17 @@
   credentials, SSH settings, certificate paths and result values. History storage
   advances to v2 with exact v0/v1 backups before migration; missing legacy
   execution details remain unavailable rather than being inferred.
+- Native macOS connection profiles can use an SSH bastion through supervised
+  system OpenSSH, with agent, private-key or password authentication. SSH
+  passwords and key passphrases use separate Keychain entries; profile exports
+  exclude credentials, private keys and trust decisions.
+- SSH host keys require explicit fingerprint review before first use. Database
+  TLS continues verifying the original database identity. PostgreSQL/MySQL
+  cancellation and Cassandra node connections use the same SSH transport;
+  Cassandra SSH contact points currently require numeric IP addresses.
+- Native profile storage advances to v4, portable profiles to v3 and the native
+  app/helper protocol to v5. Existing profiles migrate with SSH disabled.
+  Windows/Linux GPUI compatibility remains deferred.
 
 ## 0.2.0 prerelease — build 8 — 2026-10-20
 

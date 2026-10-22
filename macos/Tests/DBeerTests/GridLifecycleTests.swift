@@ -42,11 +42,19 @@ struct GridLifecycleTests {
                 reply.update(type='operation.assessment', sessionId=command['sessionId'], queryId=command['queryId'],
                              assessment={'decision':'confirm' if delay == 'apply-preview' else 'allow','policy':{'environment':'unspecified','readOnly':False},
                              'operations':[{'kind':'read','statements':[]} for op in command['operations']], 'authorization':'test-grant'})
+            elif kind == 'ssh.probe':
+                ssh = command['connection']['ssh']
+                reply.update(type='ssh.probe.result', ssh={'status':'trusted','host':ssh['host'],'port':ssh['port'],
+                    'algorithm':'ssh-ed25519','fingerprint':'SHA256:fixture'})
             elif kind == 'connect':
+                if delay.startswith('ssh'):
+                    ssh = command['connection'].get('ssh', {})
+                    if ssh.get('password') != 'ssh-fixture-secret' or ssh.get('host') != 'bastion.example':
+                        sys.exit(45)
                 connections += 1
                 with (directory / 'connections').open('a') as recorded:
                     recorded.write('connect\\n')
-                if delay == 'apply-connect' and connections == 3:
+                if (delay == 'apply-connect' and connections == 3) or (delay == 'ssh-service-connect' and connections == 1):
                     wait()
                 reply.update(type='connect.result', engine='postgresql', capabilities=['execute','cancel','transactions','catalog','gridEditing'],
                              sessionId='session-' + str(connections), transactionStatus='idle')
@@ -107,14 +115,17 @@ struct GridLifecycleTests {
     }
 
     private func workspace(_ gate: Gate, delay: String,
+                           credentials: MemoryConnectionCredentialStore = MemoryConnectionCredentialStore(),
                            close: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = { _ in .discard }) async throws -> (ApplicationWorkspace, SQLDocument) {
         let client = helper(gate, delay: delay)
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
-            credentialStore: MemoryConnectionCredentialStore(), closeDecision: close,
+            credentialStore: credentials, closeDecision: close,
             executionDecision: { _ in gate.confirmations += 1; return true }, helperFactory: { client })
         await workspace.start()
         try #require(await workspace.library.saveConnection(name: "Lifecycle fixture",
-            settings: ConnectionSettings(host: "localhost", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable")))
+            settings: ConnectionSettings(host: "localhost", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable",
+                ssh: delay.hasPrefix("ssh") ? SSHConfiguration(host: "bastion.example", user: "fixture", authMethod: .password)
+                    .runtime(profileId: UUID(), password: "ssh-fixture-secret") : nil)))
         let profile = try #require(workspace.library.selectedConnectionId)
         let document = workspace.newDocument(profileID: profile)
         document.table = TableReference(schema: "public", name: "fixture", kind: "table")
@@ -127,6 +138,55 @@ struct GridLifecycleTests {
         ], rows: [["1", "original"]])
         document.attachGrid(GridDraft(reference: document.table!, result: result, metadata: document.tableColumns))
         return (workspace, document)
+    }
+
+    @Test func SSHGridPreviewAndApplyPreserveTransportAndRejectChangedSSHContext() async throws {
+        let gate = try Gate()
+        let credentials = MemoryConnectionCredentialStore()
+        let (workspace, document) = try await workspace(gate, delay: "ssh", credentials: credentials)
+        defer { Task { await workspace.shutdown() } }
+        let profileId = try #require(document.profileID)
+        await workspace.connectProfile(profileId)
+        // Working and temporary sessions must retain the live service's SSH
+        // generation even if the remembered credential changes meanwhile.
+        await credentials.saveSecret("must-not-open-a-new-generation", for: profileId, purpose: .sshPassword)
+        await workspace.run(document)
+        let runtime = try #require(document.runtime)
+        #expect(runtime.connectionState == .connected)
+        let grid = try #require(document.grid)
+        grid.set(ChangeValue(kind: "text", value: "edited"), row: 0, column: 1)
+        await workspace.previewGrid(document)
+        #expect(grid.preview != nil && grid.error == nil)
+        #expect(await workspace.applyGrid(document))
+        let refreshed = try #require(document.grid)
+        refreshed.set(ChangeValue(kind: "text", value: "next edit"), row: 0, column: 1)
+        runtime.ssh?.host = "changed.example"
+        await workspace.previewGrid(document)
+        #expect(refreshed.preview == nil)
+        #expect(refreshed.error?.contains("profile changed") == true)
+        await workspace.shutdown()
+    }
+
+    @Test func SSHStoppingOneDocumentDoesNotCancelAnotherDocumentsSharedProfileStartup() async throws {
+        let gate = try Gate()
+        let (workspace, first) = try await workspace(gate, delay: "ssh-service-connect")
+        defer { gate.open(); Task { await workspace.shutdown() } }
+        let profileId = try #require(first.profileID)
+        let second = workspace.newDocument(profileID: profileId, text: "SELECT 1;")
+        let firstRun = Task { await workspace.run(first) }
+        try await waitUntil { FileManager.default.fileExists(atPath: gate.entered.path) }
+        let secondRun = Task { await workspace.run(second) }
+        try await waitUntil { second.isRunning }
+        await workspace.stop(first)
+        gate.open()
+        await firstRun.value
+        await secondRun.value
+        #expect(first.runtime == nil)
+        #expect(first.executions.allSatisfy { $0.result == nil })
+        #expect(second.runtime?.connectionState == .connected)
+        #expect(second.executions.first?.status == "Completed")
+        #expect(workspace.services[profileId]?.connectionState == .connected)
+        await workspace.shutdown()
     }
 
     @Test func delayedBrowseLocksTheOldSnapshotUntilReplacement() async throws {

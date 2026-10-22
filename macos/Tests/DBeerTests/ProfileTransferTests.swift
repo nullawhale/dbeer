@@ -54,7 +54,7 @@ struct ProfileTransferTests {
     @Test func strictPreviewRejectsCorruptionSecretsUnknownFieldsVersionsAndDuplicateKeys() throws {
         let data = try ProfileTransfer.encode([profile(engine: .mysql)])
         let base = String(decoding: data, as: UTF8.self)
-        let invalid = ["{invalid", base.replacingOccurrences(of: "\"version\" : 2", with: "\"version\" : 99"),
+        let invalid = ["{invalid", base.replacingOccurrences(of: "\"version\" : \(ProfileTransfer.currentVersion)", with: "\"version\" : 99"),
             base.replacingOccurrences(of: "\"engine\" : \"mysql\"", with: "\"engine\" : \"unknown\""),
             base.replacingOccurrences(of: "\"port\" : 3306", with: "\"port\" : 0"),
             base.replacingOccurrences(of: "\"verify-full\"", with: "\"prefer\""),

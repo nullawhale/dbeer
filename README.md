@@ -40,6 +40,53 @@ migration; older entries retain their original outcome text and show unavailable
 execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.
 
+## SSH tunnels in the working branch
+
+Enable **SSH Tunnel** in a connection profile and enter the bastion host, SSH
+port and SSH user. Choose **SSH Agent**, **Private Key**, or **Password**. Select
+the local private key file for key authentication, including encrypted keys.
+The database host and port describe the destination as seen from the bastion;
+for a database running on that server, the database host can be `127.0.0.1`.
+
+SSH passwords and private-key passphrases can be remembered separately in macOS
+Keychain. Private keys remain in their selected files. A first connection asks
+you to verify the SSH server's SHA256 fingerprint before trusting it. A changed
+or revoked key blocks ordinary connection; review a replacement independently.
+Trust records stay local and are excluded from profile transfer.
+Accepted DBeer keys are scoped to the profile. Existing user/system
+`known_hosts` records are consulted read-only; conflicting or revoked records
+must be reviewed there. DBeer-owned keys can be replaced only through the
+separate replacement confirmation. SSH host certificate authorities are not
+supported in this first connection mode.
+
+The helper manages system OpenSSH and shares a tunnel among a profile's active
+sessions. Each tab keeps its own database session and transaction state. Closing
+one tab leaves other sessions connected; profile disconnect releases its
+tunnel. PostgreSQL and MySQL cancellation connections also use SSH. A broken
+tunnel invalidates its sessions, and DBeer never automatically repeats SQL or
+an Apply operation after a transport failure.
+
+Database TLS remains independent of SSH. `verify-full` checks the original
+database identity, and its trusted CA settings continue to apply. PostgreSQL
+and MySQL destination names resolve from the bastion. For Cassandra, enter
+numeric IP contact points: the driver resolves names before its transport hook.
+Discovered node connections also go through SSH, and every advertised node
+address must be reachable from the bastion.
+Use a stable database endpoint for cancellation: a hostname resolving to
+different servers on successive connections can route a cancellation connection
+to another server. Failed recovery closes the affected session and preserves
+uncertain outcomes without repeating the query.
+
+Portable profiles retain SSH settings while excluding passwords, passphrases,
+private keys and trust decisions. Imported key profiles require selecting a local
+private key. Saving, importing or restoring profiles does not start SSH.
+
+The first delivery supports one explicitly configured bastion. SSH configuration
+aliases, `Include`, `ProxyJump`, `ProxyCommand`, multiple hops and interactive MFA
+are outside this delivery. This working-branch feature is not part of the
+existing build 8 archive. Rebuild the native app with its matching protocol v5
+helper to use it; Windows/Linux GPUI SSH support is deferred.
+
 ## Next release changes
 
 The Query menu, execution buttons, and keyboard share a command registry for the active document. Default shortcuts are preserved: **⌘Return** runs the selection or current statement, and **⇧⌘Return** runs the entire script. The Run fragment is highlighted inside the editor and updates with cursor or selection changes. A cursor immediately after `;` still belongs to the completed statement.

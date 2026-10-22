@@ -23,7 +23,9 @@ struct ProfileTransferFixturesTests {
             #expect(rows[1].profile.sslMode == "verify-ca" && rows[1].profile.policy == ExecutionPolicy(environment: .staging, readOnly: false))
             #expect(rows[2].profile.sslRootCert == nil && rows[2].profile.port == 65535)
             let exported = try ProfileTransfer.encode(rows.map(\.profile))
-            #expect(try JSONSerialization.jsonObject(with: exported) as? NSDictionary == JSONSerialization.jsonObject(with: data) as? NSDictionary)
+            var expected = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            expected["version"] = ProfileTransfer.currentVersion
+            #expect(try JSONSerialization.jsonObject(with: exported) as? NSDictionary == expected as NSDictionary)
             let text = String(decoding: exported, as: UTF8.self)
             #expect(!text.contains("password") && !text.contains("privateKey"))
             #expect(rows.allSatisfy { !text.contains($0.id.uuidString) })

@@ -213,6 +213,114 @@ struct ConnectionsSidebarIntegrationTests {
         try await settle()
     }
 
+    @Test func SSHAuthenticationControlsRemainFocusableAndScrollableInBothThemes() async throws {
+        let app = NSApplication.shared
+        let originalAppearance = app.appearance
+        defer { app.appearance = originalAppearance }
+        app.accessibilitySetValue(true, forAttribute: .init(rawValue: "AXEnhancedUserInterface"))
+        app.accessibilitySetValue(true, forAttribute: .init(rawValue: "AXManualAccessibility"))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = directory.appendingPathComponent("synthetic-key")
+        try Data("Synthetic local key selection fixture; never used for authentication.".utf8).write(to: key)
+        let model = WorkspaceModel(helperFactory: helper, connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore())
+        await model.start()
+        defer { Task { await model.shutdown() } }
+        for method in SSHConfiguration.Authentication.allCases {
+            let configuration = SSHConfiguration(host: "bastion.example", port: 2222, user: "analyst", authMethod: method,
+                identityFile: method == .privateKey ? key.path : nil)
+            let settings = ConnectionSettings(host: "database.internal", port: 5432, database: "warehouse", user: "reader",
+                password: "", sslMode: "verify-full", ssh: configuration.runtime(profileId: UUID(),
+                    password: method == .password ? "" : nil, passphrase: method == .privateKey ? "" : nil))
+            try #require(await model.saveConnection(name: "SSH UI Fixture", settings: settings))
+            let profile = try #require(model.savedConnections.first(where: { $0.id == model.selectedConnectionId }))
+            for (theme, scheme, appearance) in [("light", ColorScheme.light, NSAppearance.Name.aqua), ("dark", .dark, .darkAqua)] {
+                app.appearance = NSAppearance(named: appearance)
+                let view = ConnectionEditorView(model: model, connection: profile) {}
+                    .background(AppPalette.background)
+                    .preferredColorScheme(scheme)
+                let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 520, height: 780),
+                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
+                window.title = "DBeer SSH connection verification"
+                window.isReleasedWhenClosed = false
+                window.contentView = NSHostingView(rootView: view)
+                window.appearance = NSAppearance(named: appearance)
+                window.makeKeyAndOrderFront(nil)
+                app.activate(ignoringOtherApps: true)
+                defer { window.close() }
+                try await settle()
+                try await waitFor({ (try? self.element("saveConnection", in: window).isAccessibilityEnabled()) == true }, "The SSH editor did not finish loading its credentials.")
+                let host = try #require(window.contentView)
+                host.layoutSubtreeIfNeeded()
+                #expect(!descendants(host, of: NSScrollView.self).isEmpty)
+                for identifier in ["sshEnabled", "sshHost", "sshPort", "sshUser", "sshAuthentication"] {
+                    #expect(try element(identifier, in: window).isAccessibilityEnabled(), "Disabled SSH control \(identifier)/\(method.rawValue)/\(theme)")
+                }
+                var fields = ["sshHost", "sshPort", "sshUser"]
+                if method == .password { fields.append("sshPassword") }
+                if method == .privateKey {
+                    fields.append(contentsOf: ["sshIdentityFile", "sshPassphrase"])
+                    #expect(try element("chooseSSHKey", in: window).isAccessibilityEnabled())
+                }
+                for identifier in fields {
+                    let object = try element(identifier, in: window).object
+                    let field = try #require((object as? NSTextField) ?? ((object as? NSCell)?.controlView as? NSTextField))
+                    field.scrollToVisible(field.bounds)
+                    host.layoutSubtreeIfNeeded()
+                    #expect(field.isEnabled && field.isEditable && !field.isHiddenOrHasHiddenAncestor)
+                    #expect(window.makeFirstResponder(field), "Cannot focus SSH field \(identifier)/\(method.rawValue)/\(theme)")
+                    #expect(field.currentEditor() != nil)
+                    if identifier == "sshPassword" || identifier == "sshPassphrase" { #expect(field is NSSecureTextField) }
+                }
+                if let scroll = descendants(host, of: NSScrollView.self).first, let document = scroll.documentView {
+                    let bottom = document.isFlipped ? document.bounds.maxY - 1 : document.bounds.minY
+                    document.scrollToVisible(NSRect(x: document.bounds.minX, y: bottom, width: 1, height: 1))
+                }
+                window.makeFirstResponder(nil)
+                try await settle()
+                try capture(window, named: "ssh-\(method.rawValue)-\(theme)")
+                #expect(model.connectionState == .disconnected)
+                if case .ready = model.state {} else { Issue.record("Opening the SSH editor contacted the server") }
+                window.close()
+            }
+        }
+        await model.shutdown()
+    }
+
+    @Test func SSHSaveAndConnectPassesUnrememberedCredentialOnlyToExplicitConnection() async throws {
+        let credentials = MemoryConnectionCredentialStore()
+        let model = WorkspaceModel(helperFactory: helper, connectionStore: MemoryConnectionLibraryStore(), credentialStore: credentials)
+        await model.start()
+        defer { Task { await model.shutdown() } }
+        let settings = ConnectionSettings(host: "database.internal", port: 5432, database: "warehouse", user: "reader", password: "", sslMode: "verify-full",
+            ssh: SSHConfiguration(host: "bastion.example", user: "analyst", authMethod: .password).runtime(profileId: UUID()))
+        try #require(await model.saveConnection(name: "One connection", settings: settings))
+        let profile = try #require(model.savedConnections.first)
+        var captured: SSHSettings?
+        var closed = false
+        let window = window(for: ConnectionEditorView(model: model, connection: profile,
+            onConnect: { id, ssh in
+                #expect(id == profile.id)
+                captured = ssh
+            }, onClose: { closed = true }))
+        window.setContentSize(NSSize(width: 520, height: 780))
+        defer { window.close() }
+        try await waitFor({ (try? self.element("saveAndConnect", in: window).isAccessibilityEnabled()) == true }, "The SSH editor did not load.")
+        let object = try element("sshPassword", in: window).object
+        let field = try #require((object as? NSTextField) ?? ((object as? NSCell)?.controlView as? NSTextField))
+        field.scrollToVisible(field.bounds)
+        try await enter("one-connection-fixture", into: "sshPassword", in: window)
+        try await press("saveAndConnect", in: window)
+        try await waitFor({ closed && captured != nil }, "Save and Connect did not forward the transient SSH credential.")
+        #expect(captured?.password == "one-connection-fixture")
+        #expect(captured?.profileId == profile.id.uuidString)
+        #expect(await credentials.secret(for: profile.id, purpose: .sshPassword) == nil)
+        #expect(model.connectionState == .disconnected)
+        await model.shutdown()
+    }
+
     @Test func headerEngineMenuSelectsMySQLAndSavesItsDefaults() async throws {
         let model = WorkspaceModel(helperFactory: helper, connectionStore: MemoryConnectionLibraryStore(),
             credentialStore: MemoryConnectionCredentialStore())

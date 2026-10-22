@@ -8,6 +8,10 @@ struct ImportedProfile: Identifiable, Equatable, Sendable {
 
     /// Recomputed before importing too, so a CA removed after preview does not
     /// silently switch the connection to the system trust store.
+    var requiresSSHKeySelection: Bool {
+        profile.ssh?.authMethod == .privateKey && (profile.ssh?.identityFile.map(ProfileTransfer.isLocalReadableCA) != true)
+    }
+
     var requiresCASelection: Bool {
         guard let path = profile.sslRootCert else { return false }
         return !ProfileTransfer.isLocalReadableCA(path)
@@ -29,13 +33,22 @@ enum ProfileTransferError: LocalizedError {
 /// Portable metadata only. UUIDs and password/private-key fields have no place
 /// in this format; decoding a preview never reads or writes Keychain.
 enum ProfileTransfer {
-    static let currentVersion = 2
+    static let currentVersion = 3
     static let maxFileBytes = 2 * 1_024 * 1_024
     static let maxProfiles = 1_000
 
     private struct Envelope: Codable {
         let version: Int
         let profiles: [Profile]
+    }
+
+    private struct PortableSSH: Codable {
+        var host: String
+        var port: Int
+        var user: String
+        var authMethod: SSHConfiguration.Authentication
+        init(_ value: SSHConfiguration) { host = value.host; port = value.port; user = value.user; authMethod = value.authMethod }
+        var configuration: SSHConfiguration { SSHConfiguration(host: host, port: port, user: user, authMethod: authMethod) }
     }
 
     private struct Profile: Codable {
@@ -51,8 +64,10 @@ enum ProfileTransfer {
         var contactPoints: [String]?
         var localDatacenter: String?
         var consistency: String?
+        var ssh: PortableSSH?
 
         init(_ saved: SavedConnection) {
+            ssh = saved.ssh.map(PortableSSH.init)
             name = saved.name
             engine = saved.engine
             host = saved.host
@@ -71,7 +86,7 @@ enum ProfileTransfer {
             ImportedProfile(profile: SavedConnection(id: UUID(), name: name, settings: ConnectionSettings(
                 host: host, port: port, database: database, user: user, password: "", sslMode: sslMode,
                 sslRootCert: sslRootCert, engine: engine, policy: policy ?? ExecutionPolicy(), contactPoints: contactPoints,
-                localDatacenter: localDatacenter, consistency: consistency)))
+                localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.configuration.runtime(profileId: UUID()))))
         }
     }
 
@@ -94,11 +109,16 @@ enum ProfileTransfer {
             }
             var uniqueKeys = UniqueJSONKeys(data)
             try uniqueKeys.validate()
-            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency"]
-            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency"])
+            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh"]
+            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh"])
             guard raw.allSatisfy({ Set($0.keys).isSubset(of: permitted) && required.isSubset(of: Set($0.keys)) }) else {
                 throw ProfileTransferError.invalid
             }
+            guard raw.allSatisfy({ record in
+                guard let value = record["ssh"], !(value is NSNull) else { return true }
+                guard let fields = value as? [String: Any] else { return false }
+                return Set(fields.keys) == ["host", "port", "user", "authMethod"]
+            }) else { throw ProfileTransferError.invalid }
             guard raw.allSatisfy({ record in
                 // Legacy v1 treats null like omission. Version 2 still requires
                 // a decoded policy below, and present objects remain strict.
@@ -107,8 +127,8 @@ enum ProfileTransfer {
                 return Set(fields.keys) == ["environment", "readOnly"]
             }) else { throw ProfileTransferError.invalid }
             let envelope = try JSONDecoder().decode(Envelope.self, from: data)
-            guard envelope.version == 1 || envelope.version == currentVersion else { throw ProfileTransferError.unsupportedVersion }
-            if envelope.version == currentVersion, envelope.profiles.contains(where: { $0.policy == nil }) { throw ProfileTransferError.invalid }
+            guard (1...currentVersion).contains(envelope.version) else { throw ProfileTransferError.unsupportedVersion }
+            if envelope.version >= 2, envelope.profiles.contains(where: { $0.policy == nil }) { throw ProfileTransferError.invalid }
             try validate(envelope.profiles)
             return envelope.profiles.map { $0.imported() }
         } catch let error as ProfileTransferError { throw error }
@@ -128,10 +148,12 @@ enum ProfileTransfer {
     private static func validate(_ profiles: [Profile]) throws {
         guard !profiles.isEmpty, profiles.count <= maxProfiles,
               profiles.allSatisfy({ profile in
+                  var native = profile.imported().profile.settings(password: "")
+                  if native.ssh?.authMethod == .privateKey { native.ssh?.identityFile = "/requires-local-selection" }
                   let fields = [profile.name, profile.host] + (profile.engine == .cassandra ? [] : [profile.database, profile.user])
                   return fields.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                       !$0.contains("\0") && $0.utf8.count <= 1_024 } && profile.name.count <= 128 &&
-                      profile.imported().profile.settings(password: "").hasValidNativeFields &&
+                      native.hasValidNativeFields &&
                       (profile.sslRootCert.map { validCAHint($0) } ?? true)
               }) else { throw ProfileTransferError.invalid }
     }

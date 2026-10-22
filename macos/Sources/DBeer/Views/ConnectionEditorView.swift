@@ -1,10 +1,11 @@
 import SwiftUI
+import AppKit
 
 struct ConnectionEditorView: View {
     @ObservedObject var model: WorkspaceModel
     let connection: SavedConnection?
     let onClose: () -> Void
-    private let onConnect: (@MainActor (UUID) async -> Void)?
+    private let onConnect: (@MainActor (UUID, SSHSettings?) async -> Void)?
 
     private var draftState: SwiftUI.State<ConnectionDraft>
     private var loadingPasswordState: SwiftUI.State<Bool>
@@ -13,7 +14,7 @@ struct ConnectionEditorView: View {
     private var validationState = SwiftUI.State<String?>(initialValue: nil)
 
     init(model: WorkspaceModel, connection: SavedConnection?,
-         onConnect: (@MainActor (UUID) async -> Void)? = nil, onClose: @escaping () -> Void) {
+         onConnect: (@MainActor (UUID, SSHSettings?) async -> Void)? = nil, onClose: @escaping () -> Void) {
         self.model = model
         self.connection = connection
         self.onClose = onClose
@@ -121,6 +122,43 @@ struct ConnectionEditorView: View {
                             .font(.caption).appSecondaryText()
                     }
                 }
+                Section("SSH Tunnel") {
+                    Toggle("Connect through SSH", isOn: Binding(get: { draft.sshEnabled }, set: { draft.sshEnabled = $0 }))
+                        .padding(.horizontal, 6).frame(minHeight: 24).controlHover().connectionButtonFocus()
+                        .accessibilityIdentifier("sshEnabled")
+                    if draft.sshEnabled {
+                        TextField("SSH server", text: binding(\.sshHost)).accessibilityIdentifier("sshHost")
+                        TextField("SSH port", text: binding(\.sshPort)).accessibilityIdentifier("sshPort")
+                        TextField("SSH user", text: binding(\.sshUser)).accessibilityIdentifier("sshUser")
+                        Picker("Authentication", selection: Binding(get: { draft.sshAuthMethod }, set: { draft.sshAuthMethod = $0 })) {
+                            ForEach(SSHConfiguration.Authentication.allCases) { Text($0.label).tag($0) }
+                        }.controlHover().connectionButtonFocus().accessibilityIdentifier("sshAuthentication")
+                        if draft.sshAuthMethod == .privateKey {
+                            HStack {
+                                TextField("Private key", text: binding(\.sshIdentityFile)).accessibilityIdentifier("sshIdentityFile")
+                                Button("Choose…") { chooseSSHKey() }.controlHover().connectionButtonFocus()
+                                    .accessibilityIdentifier("chooseSSHKey")
+                            }
+                            SecureField("Key passphrase (optional)", text: binding(\.sshPassphrase)).accessibilityIdentifier("sshPassphrase")
+                        } else if draft.sshAuthMethod == .password {
+                            SecureField("SSH password", text: binding(\.sshPassword)).accessibilityIdentifier("sshPassword")
+                        }
+                        if draft.sshAuthMethod != .agent {
+                            Toggle("Remember SSH credential in Keychain", isOn: Binding(get: { draft.rememberSSHSecret }, set: { draft.rememberSSHSecret = $0 }))
+                                .padding(.horizontal, 6).frame(minHeight: 24).controlHover().connectionButtonFocus()
+                                .accessibilityIdentifier("rememberSSHSecret")
+                        }
+                        if draft.engine == .cassandra {
+                            Text("Cassandra over SSH requires numeric IP contact points; all discovered nodes also use the tunnel.").font(.caption).appSecondaryText()
+                        }
+                        Text("Database addresses are reached from the SSH server. Database TLS settings still verify the database identity. SSH configuration aliases and jump hosts are not supported.")
+                            .font(.caption).appSecondaryText()
+                        if draft.sshAuthMethod == .privateKey, !draft.sshIdentityFile.isEmpty,
+                           !ProfileTransfer.isLocalReadableCA(draft.sshIdentityFile) {
+                            Text("Choose a readable private key on this Mac.").font(.caption).foregroundStyle(.orange)
+                        }
+                    }
+                }
                 if connection?.id == model.activeConnectionId, connection != nil {
                     Text("Changes apply the next time you connect.")
                         .font(.caption).appSecondaryText()
@@ -175,12 +213,21 @@ struct ConnectionEditorView: View {
                 guard !Task.isCancelled else { return }
                 if let password {
                     draft.password = password
-                    passwordLoadFailedState.wrappedValue = false
+                    if connection.ssh?.authMethod == .password {
+                        let stored = await model.sshSecretForConnection(connection.id, purpose: .sshPassword)
+                        draft.sshPassword = stored ?? ""
+                        draft.rememberSSHSecret = stored != nil
+                    } else if connection.ssh?.authMethod == .privateKey {
+                        let stored = await model.sshSecretForConnection(connection.id, purpose: .sshPassphrase)
+                        draft.sshPassphrase = stored ?? ""
+                        draft.rememberSSHSecret = stored != nil
+                    }
+                    passwordLoadFailedState.wrappedValue = model.connectionsError != nil
                 } else { passwordLoadFailedState.wrappedValue = true }
             }
             loadingPasswordState.wrappedValue = false
         }
-        .onDisappear { draft.password = "" }
+        .onDisappear { clearSecrets() }
     }
 
     private var engineMenu: some View {
@@ -222,19 +269,36 @@ struct ConnectionEditorView: View {
         }
         let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
-            let saved = await model.saveConnection(name: name, settings: settings, id: connection?.id)
+            let saved = await model.saveConnection(name: name, settings: settings, id: connection?.id, rememberSSHSecret: draft.rememberSSHSecret)
             guard saved else { return }
             let savedId = model.selectedConnectionId
             close()
             if connectAfterSaving, let savedId {
-                if let onConnect { await onConnect(savedId) }
-                else { await model.connectSavedConnection(savedId) }
+                var snapshot = settings.ssh
+                snapshot?.profileId = savedId.uuidString
+                if let onConnect { await onConnect(savedId, snapshot) }
+                else { await model.connectSavedConnection(savedId, sshSnapshot: snapshot) }
             }
         }
     }
 
-    private func close() {
+    private func chooseSSHKey() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose an SSH private key. DBeer keeps the key in its existing location."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        draft.sshIdentityFile = url.path
+    }
+
+    private func clearSecrets() {
         draft.password = ""
+        draft.sshPassword = ""
+        draft.sshPassphrase = ""
+    }
+
+    private func close() {
+        clearSecrets()
         onClose()
     }
 }
@@ -252,8 +316,25 @@ struct ConnectionDraft {
     var policy: ExecutionPolicy
     var localDatacenter: String
     var consistency: String
+    var sshEnabled = false
+    var sshHost = ""
+    var sshPort = "22"
+    var sshUser = ""
+    var sshAuthMethod: SSHConfiguration.Authentication = .agent
+    var sshIdentityFile = ""
+    var sshPassword = ""
+    var sshPassphrase = ""
+    var rememberSSHSecret = true
+    private var sshProfileId: UUID
 
     init(connection: SavedConnection?) {
+        sshProfileId = connection?.id ?? UUID()
+        sshEnabled = connection?.ssh != nil
+        sshHost = connection?.ssh?.host ?? ""
+        sshPort = String(connection?.ssh?.port ?? 22)
+        sshUser = connection?.ssh?.user ?? ""
+        sshAuthMethod = connection?.ssh?.authMethod ?? .agent
+        sshIdentityFile = connection?.ssh?.identityFile ?? ""
         name = connection?.name ?? ""
         engine = connection?.engine ?? .postgresql
         host = connection?.contactPoints?.joined(separator: ", ") ?? connection?.host ?? "localhost"
@@ -293,6 +374,18 @@ struct ConnectionDraft {
         guard let portNumber = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)),
               (1...65_535).contains(portNumber), !cleanedHost.isEmpty, (engine == .cassandra || !cleanedDatabase.isEmpty),
               (engine == .cassandra || !cleanedUser.isEmpty), engine.sslModes.contains(sslMode) else { return nil }
+        var ssh: SSHSettings?
+        if sshEnabled {
+            guard let port = Int(sshPort.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            let configuration = SSHConfiguration(host: sshHost.trimmingCharacters(in: .whitespacesAndNewlines), port: port,
+                user: sshUser.trimmingCharacters(in: .whitespacesAndNewlines), authMethod: sshAuthMethod,
+                identityFile: sshAuthMethod == .privateKey ? sshIdentityFile : nil)
+            guard configuration.isValid else { return nil }
+            if sshAuthMethod == .privateKey, !ProfileTransfer.isLocalReadableCA(sshIdentityFile) { return nil }
+            ssh = configuration.runtime(profileId: sshProfileId,
+                password: sshAuthMethod == .password ? sshPassword : nil,
+                passphrase: sshAuthMethod == .privateKey ? sshPassphrase : nil)
+        }
         let rootCert = sslRootCert.trimmingCharacters(in: .whitespacesAndNewlines)
         let points = engine == .cassandra ? CassandraSettings.contactPoints(cleanedHost) : []
         let settings = ConnectionSettings(host: points.first ?? cleanedHost, port: portNumber, database: cleanedDatabase,
@@ -300,7 +393,7 @@ struct ConnectionDraft {
             sslRootCert: rootCert.isEmpty ? nil : rootCert, engine: engine, policy: policy,
             contactPoints: engine == .cassandra ? points : nil,
             localDatacenter: engine == .cassandra && !localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-            consistency: engine == .cassandra ? consistency : nil)
+            consistency: engine == .cassandra ? consistency : nil, ssh: ssh)
         return settings.hasValidNativeFields ? settings : nil
     }
 }

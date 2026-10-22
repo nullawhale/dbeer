@@ -85,6 +85,11 @@ final class WorkspaceModel: ObservableObject {
     @Published var contactPoints: [String]?
     @Published var localDatacenter: String?
     @Published var consistency: String?
+    @Published var ssh: SSHSettings?
+    @Published private(set) var connectionProgress: String?
+    @Published private var connectionPreparationId: UUID?
+    private var connectionAttempt = UUID()
+    var isConnecting: Bool { connectionState == .connecting || connectionPreparationId != nil }
     @Published private(set) var currentKeyspace: String?
     @Published private(set) var capabilities: Set<String> = []
     @Published var sql = "SELECT 1 AS id, 'hello'::text AS name;"
@@ -131,7 +136,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var canConnect: Bool {
-        guard !stopping, activeQueryId == nil, connectionState == .disconnected else { return false }
+        guard !stopping, connectionPreparationId == nil, activeQueryId == nil, connectionState == .disconnected else { return false }
         switch state {
         case .ready, .failed: return true
         default: return false
@@ -164,7 +169,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var connectionSummary: String {
-        guard sessionId != nil else { return connectionState.label }
+        guard sessionId != nil else { return connectionProgress ?? connectionState.label }
         if engine == .cassandra {
             return "\(host):\(port)/\(currentKeyspace ?? database) · \(consistency ?? "LOCAL_QUORUM")"
         }
@@ -208,6 +213,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func openConnection(savedProfileId: UUID?) async {
+        let attempt = connectionAttempt
         guard canConnect else { return }
         guard let portNumber = Int(port), (1...65535).contains(portNumber),
               !host.isEmpty, (engine == .cassandra || (!database.isEmpty && !user.isEmpty)) else {
@@ -221,7 +227,7 @@ final class WorkspaceModel: ObservableObject {
         let settings = ConnectionSettings(host: host, port: portNumber, database: database,
             user: user, password: password, sslMode: sslMode,
             sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine, policy: policy,
-            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency)
+            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh)
         guard settings.hasValidNativeFields else {
             errorMessage = "Enter valid connection settings for the selected database engine."
             return
@@ -229,16 +235,26 @@ final class WorkspaceModel: ObservableObject {
         let connectingProfileId = savedConnections.first { $0.id == selectedConnectionId && $0.matches(settings) }?.id
         clearQueryFeedback()
         connectionState = .connecting
+        connectionProgress = settings.ssh == nil ? "Connecting to database…" : "Verifying SSH server…"
+        defer { connectionProgress = nil }
         do {
             let client: BackendClient
             if case .ready = state, let helper { client = helper }
             else { client = try await startHelper() }
             guard !stopping else { return }
+            try await SSHConnectionReview.prepare(settings, client: client)
+            try Task.checkCancellation()
+            guard !stopping, connectionAttempt == attempt else { throw CancellationError() }
+            if let savedProfileId, let profile = savedConnections.first(where: { $0.id == savedProfileId }), !profile.matches(settings) {
+                throw CancellationError()
+            }
+            connectionProgress = settings.ssh == nil ? "Connecting to database…" : "Opening SSH tunnel and database connection…"
             let reply = try await client.request(.connect(settings))
-            if stopping, !ownsHelper {
+            if stopping || connectionAttempt != attempt || Task.isCancelled {
                 if let openedSession = reply.sessionId {
                     _ = try? await client.request(.disconnect(sessionId: openedSession))
                 }
+                if !stopping { connectionState = .disconnected }
                 return
             }
             guard !stopping, case .ready = state else { return }
@@ -259,6 +275,9 @@ final class WorkspaceModel: ObservableObject {
             if !stopping, sessionId == connectedSession, connectionState == .connected {
                 activeConnectionId = rememberedId
             }
+        } catch is CancellationError {
+            connectionState = .disconnected
+            errorMessage = nil
         } catch let error as BackendRequestError {
             guard !stopping, case .ready = state else { return }
             errorMessage = error.localizedDescription
@@ -270,6 +289,13 @@ final class WorkspaceModel: ObservableObject {
             guard !stopping else { return }
             showTransportFailure(error)
         }
+    }
+
+    func cancelConnection() {
+        connectionAttempt = UUID()
+        if let connectionPreparationId { SSHConnectionReview.cancel(profileId: connectionPreparationId.uuidString) }
+        if let ssh { SSHConnectionReview.cancel(profileId: ssh.profileId) }
+        connectionPreparationId = nil
     }
 
     func disconnect() async {
@@ -320,23 +346,47 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    func connectSavedConnection(_ id: UUID) async {
+    func connectSavedConnection(_ id: UUID, sshSnapshot: SSHSettings? = nil) async {
         guard canConnect else { return }
         await waitForConnectionMutation()
         guard canConnect,
               let profile = savedConnections.first(where: { $0.id == id }) else { return }
         await selectConnection(id)
         guard canConnect, selectedConnectionId == id else { return }
+        let attempt = UUID()
+        connectionAttempt = attempt
+        connectionPreparationId = id
+        defer { if connectionAttempt == attempt { connectionPreparationId = nil } }
         do {
             let secret = try await credentialStore.password(for: id) ?? ""
-            guard canConnect, selectedConnectionId == id else { return }
-            applyConnection(profile.settings(password: secret))
+            guard !stopping, connectionAttempt == attempt, connectionState == .disconnected, selectedConnectionId == id else { return }
+            var settings = profile.settings(password: secret)
+            if let sshSnapshot {
+                guard sshSnapshot.profileId == id.uuidString, sshSnapshot.configuration == profile.ssh else {
+                    connectionsError = "The SSH profile changed. Disconnect and reconnect before opening another session."
+                    return
+                }
+                settings.ssh = sshSnapshot
+            } else if var ssh = settings.ssh {
+                if ssh.authMethod == .password {
+                    ssh.password = try await credentialStore.secret(for: id, purpose: .sshPassword)
+                    if ssh.password == nil { ssh.password = try await SSHConnectionReview.requestSecret(passphrase: false, profileId: id.uuidString, configuration: ssh.configuration) }
+                } else if ssh.authMethod == .privateKey {
+                    ssh.passphrase = try await credentialStore.secret(for: id, purpose: .sshPassphrase)
+                    if ssh.passphrase == nil { ssh.passphrase = try await SSHConnectionReview.requestSecret(passphrase: true, profileId: id.uuidString, configuration: ssh.configuration) }
+                }
+                settings.ssh = ssh
+            }
+            guard !stopping, connectionAttempt == attempt, connectionState == .disconnected, selectedConnectionId == id else { return }
+            applyConnection(settings)
+            connectionPreparationId = nil
             await openConnection(savedProfileId: id)
-        } catch { connectionsError = ConnectionLibraryError.credentialRead.localizedDescription }
+        } catch is CancellationError { return }
+        catch { connectionsError = ConnectionLibraryError.credentialRead.localizedDescription }
     }
 
     @discardableResult
-    func saveConnection(name: String, settings: ConnectionSettings, id: UUID? = nil) async -> Bool {
+    func saveConnection(name: String, settings: ConnectionSettings, id: UUID? = nil, rememberSSHSecret: Bool = true) async -> Bool {
         guard !isSavingConnection else { return false }
         if !hasLoadedConnections { await loadConnections() }
         guard hasLoadedConnections else { return false }
@@ -357,15 +407,26 @@ final class WorkspaceModel: ObservableObject {
         defer { finishConnectionMutation() }
         connectionsError = nil
         let profile = SavedConnection(id: id ?? UUID(), name: cleanName, settings: settings)
-        let previousPassword: String?
-        do { previousPassword = try await credentialStore.password(for: profile.id) }
-        catch {
+        var previousSecrets: [ConnectionCredentialPurpose: String] = [:]
+        do {
+            for purpose in ConnectionCredentialPurpose.allCases {
+                previousSecrets[purpose] = try await credentialStore.secret(for: profile.id, purpose: purpose)
+            }
+        } catch {
             connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
             return false
         }
-        do { try await credentialStore.savePassword(settings.password, for: profile.id) }
-        catch {
-            connectionsError = ConnectionLibraryError.credentialWrite.localizedDescription
+        do {
+            try await credentialStore.savePassword(settings.password, for: profile.id)
+            for purpose in [ConnectionCredentialPurpose.sshPassword, .sshPassphrase] {
+                let value = purpose == .sshPassword ? settings.ssh?.password : settings.ssh?.passphrase
+                if rememberSSHSecret, let value { try await credentialStore.saveSecret(value, for: profile.id, purpose: purpose) }
+                else { try await credentialStore.deleteSecret(for: profile.id, purpose: purpose) }
+            }
+        } catch {
+            let restored = await restoreSecrets(previousSecrets, for: profile.id)
+            connectionsError = ConnectionLibraryError.credentialWrite.localizedDescription +
+                (restored ? "" : " The credential change could not be undone in macOS Keychain.")
             return false
         }
         var updated = savedConnections
@@ -379,12 +440,9 @@ final class WorkspaceModel: ObservableObject {
             return true
         } catch {
             connectionsError = ConnectionLibraryError.save.localizedDescription
-            do {
-                if let previousPassword { try await credentialStore.savePassword(previousPassword, for: profile.id) }
-                else { try await credentialStore.deletePassword(for: profile.id) }
-            } catch {
+            if !(await restoreSecrets(previousSecrets, for: profile.id)) {
                 connectionsError = ConnectionLibraryError.save.localizedDescription +
-                    " The password change could not be undone in macOS Keychain."
+                    " The credential change could not be undone in macOS Keychain."
             }
             return false
         }
@@ -405,14 +463,19 @@ final class WorkspaceModel: ObservableObject {
         isSavingConnection = true
         defer { finishConnectionMutation() }
         connectionsError = nil
-        let secret: String?
-        do { secret = try await credentialStore.password(for: id) }
-        catch {
+        var secrets: [ConnectionCredentialPurpose: String] = [:]
+        do {
+            for purpose in ConnectionCredentialPurpose.allCases {
+                secrets[purpose] = try await credentialStore.secret(for: id, purpose: purpose)
+            }
+        } catch {
             connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
             return false
         }
-        do { try await credentialStore.deletePassword(for: id) }
-        catch {
+        do {
+            for purpose in ConnectionCredentialPurpose.allCases { try await credentialStore.deleteSecret(for: id, purpose: purpose) }
+        } catch {
+            _ = await restoreSecrets(secrets, for: id)
             connectionsError = ConnectionLibraryError.credentialDelete.localizedDescription
             return false
         }
@@ -424,12 +487,9 @@ final class WorkspaceModel: ObservableObject {
             selectedConnectionId = selected
         } catch {
             connectionsError = ConnectionLibraryError.save.localizedDescription
-            if let secret {
-                do { try await credentialStore.savePassword(secret, for: id) }
-                catch {
-                    connectionsError = ConnectionLibraryError.save.localizedDescription +
-                        " The password could not be restored in macOS Keychain."
-                }
+            if !(await restoreSecrets(secrets, for: id)) {
+                connectionsError = ConnectionLibraryError.save.localizedDescription +
+                    " The credentials could not be restored in macOS Keychain."
             }
             return false
         }
@@ -457,7 +517,24 @@ final class WorkspaceModel: ObservableObject {
         SavedConnectionLibrary(connections: savedConnections, selectedConnectionId: selectedConnectionId)
     }
 
+    private func restoreSecrets(_ secrets: [ConnectionCredentialPurpose: String], for id: UUID) async -> Bool {
+        var success = true
+        for purpose in ConnectionCredentialPurpose.allCases {
+            do {
+                if let value = secrets[purpose] { try await credentialStore.saveSecret(value, for: id, purpose: purpose) }
+                else { try await credentialStore.deleteSecret(for: id, purpose: purpose) }
+            } catch { success = false }
+        }
+        return success
+    }
+
+    func sshSecretForConnection(_ id: UUID, purpose: ConnectionCredentialPurpose) async -> String? {
+        do { return try await credentialStore.secret(for: id, purpose: purpose) }
+        catch { connectionsError = ConnectionLibraryError.credentialRead.localizedDescription; return nil }
+    }
+
     private func applyConnection(_ settings: ConnectionSettings) {
+        ssh = settings.ssh
         engine = settings.engine
         host = settings.host
         port = String(settings.port)
@@ -604,6 +681,8 @@ final class WorkspaceModel: ObservableObject {
     func shutdown() async {
         guard !stopping else { return }
         stopping = true
+        if let ssh { SSHConnectionReview.cancel(profileId: ssh.profileId) }
+        if let connectionPreparationId { SSHConnectionReview.cancel(profileId: connectionPreparationId.uuidString) }
         state = .stopping
         if let helper {
             if ownsHelper { _ = await helper.shutdown() }
@@ -614,6 +693,8 @@ final class WorkspaceModel: ObservableObject {
         finishQuery()
         clearSession()
         password = ""
+        ssh?.password = nil
+        ssh?.passphrase = nil
         state = .stopped
     }
 

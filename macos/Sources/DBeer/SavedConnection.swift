@@ -16,8 +16,10 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     var contactPoints: [String]?
     var localDatacenter: String?
     var consistency: String?
+    var ssh: SSHConfiguration?
 
     init(id: UUID = UUID(), name: String, settings: ConnectionSettings) {
+        ssh = settings.ssh?.configuration
         self.id = id
         self.name = name
         engine = settings.engine
@@ -34,11 +36,12 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     }
 
     fileprivate enum CodingKeys: String, CodingKey {
-        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency
+        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        ssh = try values.decodeIfPresent(SSHConfiguration.self, forKey: .ssh)
         id = try values.decode(UUID.self, forKey: .id)
         name = try values.decode(String.self, forKey: .name)
         engine = try values.decodeIfPresent(DatabaseEngine.self, forKey: .engine) ?? .postgresql
@@ -57,18 +60,18 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     func settings(password: String) -> ConnectionSettings {
         ConnectionSettings(host: host, port: port, database: database, user: user,
             password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine, policy: policy, contactPoints: contactPoints,
-            localDatacenter: localDatacenter, consistency: consistency)
+            localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.runtime(profileId: id))
     }
 
     func matches(_ settings: ConnectionSettings) -> Bool {
-        engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
+        ssh == settings.ssh?.configuration && engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
             user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert && policy == settings.policy &&
             contactPoints == settings.contactPoints && localDatacenter == settings.localDatacenter && consistency == settings.consistency
     }
 }
 
 struct SavedConnectionLibrary: Codable, Equatable, Sendable {
-    static let currentVersion = 3
+    static let currentVersion = 4
     private(set) var version: Int
     var connections: [SavedConnection]
     var selectedConnectionId: UUID?
@@ -113,6 +116,22 @@ protocol ConnectionCredentialStore: Sendable {
     func password(for id: UUID) async throws -> String?
     func savePassword(_ password: String, for id: UUID) async throws
     func deletePassword(for id: UUID) async throws
+    func secret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws -> String?
+    func saveSecret(_ value: String, for id: UUID, purpose: ConnectionCredentialPurpose) async throws
+    func deleteSecret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws
+}
+
+extension ConnectionCredentialStore {
+    func secret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws -> String? {
+        purpose == .databasePassword ? try await password(for: id) : nil
+    }
+    func saveSecret(_ value: String, for id: UUID, purpose: ConnectionCredentialPurpose) async throws {
+        guard purpose == .databasePassword else { throw ConnectionLibraryError.credentialWrite }
+        try await savePassword(value, for: id)
+    }
+    func deleteSecret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws {
+        if purpose == .databasePassword { try await deletePassword(for: id) }
+    }
 }
 
 enum ConnectionLibraryError: LocalizedError {
@@ -139,10 +158,22 @@ actor MemoryConnectionLibraryStore: ConnectionLibraryStore {
 
 actor MemoryConnectionCredentialStore: ConnectionCredentialStore {
     private var passwords: [UUID: String] = [:]
+    private var sshSecrets: [String: String] = [:]
 
     func password(for id: UUID) -> String? { passwords[id] }
     func savePassword(_ password: String, for id: UUID) { passwords[id] = password }
     func deletePassword(for id: UUID) { passwords[id] = nil }
+    func secret(for id: UUID, purpose: ConnectionCredentialPurpose) async -> String? {
+        purpose == .databasePassword ? passwords[id] : sshSecrets[id.uuidString + purpose.rawValue]
+    }
+    func saveSecret(_ value: String, for id: UUID, purpose: ConnectionCredentialPurpose) async {
+        if purpose == .databasePassword { passwords[id] = value }
+        else { sshSecrets[id.uuidString + purpose.rawValue] = value }
+    }
+    func deleteSecret(for id: UUID, purpose: ConnectionCredentialPurpose) async {
+        if purpose == .databasePassword { passwords[id] = nil }
+        else { sshSecrets[id.uuidString + purpose.rawValue] = nil }
+    }
 }
 
 /// File and Keychain actors keep blocking system calls away from the UI actor.
