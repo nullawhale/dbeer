@@ -1,5 +1,10 @@
 # GPUI implementation and verification tracker
 
+**Current scope (2026-10-22):** Windows/Linux clients are outside the v0.2.0
+roadmap and release scope. Contributions are welcome; the task records and
+earlier execution policies below are historical reference for contributors,
+not an active implementation queue or prerequisites for macOS releases.
+
 The user authorized continuous implementation of Tasks 4-32 on 2026-10-19.
 Add verification cases with each change; **execute tests only at final integration**.
 Compilation/typechecking (including test targets), formatting and static checks may run

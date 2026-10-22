@@ -163,11 +163,14 @@ VERSION and BUILD_NUMBER define the application version and build number. The ap
 
 Application icons are in `macos/Resources`; after editing SVG files, run `./scripts/build-icon.sh` to regenerate PNG/ICNS files. CI uses a separate temporary signing certificate and marks builds with DBeerBuildKind=ci; these builds are not used as team updates.
 
-## Windows/Linux GPUI client (experimental)
+## Windows/Linux GPUI client — contributions welcome
 
+Contributions to the experimental Windows and Linux clients are welcome.
 Current feature development and verification target macOS only. Windows/Linux
-work and GPUI protocol compatibility are deferred; the following instructions
-remain reference material for that future work.
+clients are outside the v0.2.0 roadmap and release scope, with no release date
+announced. The existing Rust/GPUI prototype and the following instructions
+provide a starting point for contributors; platform development, paired builds,
+protocol compatibility and native acceptance need contributor ownership.
 
 The [GPUI Kit client](prototypes/gpui/README.md) is the experimental Windows/Linux
 frontend, using the existing Go helper for PostgreSQL and MySQL. CI builds native
@@ -253,7 +256,7 @@ The current local macOS prerelease is **0.2.0, build 8**. It uses the native Swi
 
 The previous **0.1.0** internal release passed installation and update acceptance from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived that release's required second-Mac check. This evidence does not cover the 0.2.0 prerelease. Finder/Gatekeeper and installation on a clean second device have not been verified.
 
-The 0.2.0 prerelease includes execution safety, grid copying and editing, contextual SQL completion, themes, and native Cassandra support. Result snapshots, SQL folders, data and schema comparison, and Windows/Linux remain later stages. MCP comes last among engineering tasks. Public overview sources: [dbeer-landing](https://github.com/nullawhale/dbeer-landing); a feature implemented in the working branch does not imply a newly published archive.
+The 0.2.0 prerelease includes execution safety, grid copying and editing, contextual SQL completion, themes, and native Cassandra support. Result snapshots, SQL folders, and data and schema comparison remain later stages. Windows/Linux contributions are welcome outside the release roadmap. MCP comes last among planned engineering tasks and does not depend on Windows/Linux clients. Public overview sources: [dbeer-landing](https://github.com/nullawhale/dbeer-landing); a feature implemented in the working branch does not imply a newly published archive.
 
 ## License
 

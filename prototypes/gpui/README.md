@@ -1,5 +1,11 @@
 # DBeer GPUI client (experimental)
 
+**Contributions welcome:** Windows and Linux clients are outside the v0.2.0
+roadmap and release scope, with no release date announced. Current product
+development focuses on native macOS and the Go helper. This prototype is a
+starting point for contributors to own platform development, protocol
+compatibility, builds and native acceptance.
+
 An isolated native Rust client built with GPUI Kit, using the existing DBeer Go
 helper and protocol v3 for real PostgreSQL and MySQL connections. It does not
 replace the SwiftUI/AppKit application or change its profiles, credentials,

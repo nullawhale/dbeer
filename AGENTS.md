@@ -3,7 +3,9 @@
 DBeer is a native SQL client for macOS 14+ on Apple Silicon, built with
 SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
 Current development targets only the native macOS SwiftUI/AppKit client and
-its shared Go helper. Windows/Linux GPUI feature development, paired builds,
+its shared Go helper. Contributions to the experimental Windows/Linux clients
+are welcome; these clients are outside the v0.2.0 roadmap and release scope.
+Windows/Linux GPUI feature development, paired builds,
 protocol compatibility updates and UI acceptance are deferred unless explicitly
 requested. The GPUI instructions below are retained for future reference;
 they are not required verification for current macOS work. GPUI on Mac is
