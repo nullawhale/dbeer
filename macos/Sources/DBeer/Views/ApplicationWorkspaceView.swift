@@ -26,10 +26,8 @@ struct ApplicationWorkspaceView: View {
         HSplitView {
             sidebar
             VStack(spacing: 0) {
-                WorkspacePanesSplitView(workspace: workspace) {
-                    workingPane(.left)
-                } right: {
-                    workingPane(.right)
+                WorkspacePanesSplitView(workspace: workspace) { pane in
+                    workingPane(pane)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     WorkspaceNotificationToast(notifications: workspace.notifications).padding(12)
@@ -286,12 +284,15 @@ struct ApplicationWorkspaceView: View {
                     }
                 } else {
                     VStack(spacing: 12) {
-                        Image(systemName: "rectangle.split.2x1").font(.largeTitle).appSecondaryText()
+                        Image(systemName: workspace.paneLayout.isSplit ? "rectangle.split.2x1" : "doc.text")
+                            .font(.largeTitle).appSecondaryText()
                             .accessibilityHidden(true)
-                        Text("No tabs in this pane").appSecondaryText()
+                        Text(workspace.paneLayout.isSplit ? "No tabs in this pane" : "No tabs open").appSecondaryText()
                         Button("New SQL Tab") { workspace.newDocument(in: pane) }.controlHover()
-                        Text("Move a tab here with its menu or drag it into this tab bar.")
-                            .font(.caption).appSecondaryText().multilineTextAlignment(.center)
+                        if workspace.paneLayout.isSplit {
+                            Text("Move a tab here with its menu or drag it into this tab bar.")
+                                .font(.caption).appSecondaryText().multilineTextAlignment(.center)
+                        }
                     }
                     .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityElement(children: .contain)
@@ -302,11 +303,11 @@ struct ApplicationWorkspaceView: View {
         }
         .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .top) {
-            Rectangle().fill(workspace.activePaneID == pane ? AppPalette.accent : Color.clear)
+            Rectangle().fill(workspace.paneLayout.isSplit && workspace.activePaneID == pane ? AppPalette.accent : Color.clear)
                 .frame(height: 2).allowsHitTesting(false).accessibilityHidden(true)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(pane == .left ? "Left working pane" : "Right working pane")
+        .accessibilityLabel(workspace.paneTitle(pane))
         .accessibilityValue(workspace.activePaneID == pane ? "Active pane" : "Inactive pane")
         .accessibilityIdentifier("workspacePaneContent-\(pane.rawValue)")
         .environment(\.colorScheme, colorScheme)
@@ -327,8 +328,14 @@ struct ApplicationWorkspaceView: View {
                                 if document.table != nil { Task { await workspace.openTableInNewTab(document) } }
                                 else { workspace.openSQLFileInNewTab(document) }
                             },
-                            otherPaneTitle: pane == .left ? "Move to Right Pane" : "Move to Left Pane",
-                            moveToOtherPane: { moveDocument(document.id, to: pane == .left ? .right : .left) },
+                            split: workspace.paneLayout.canSplit && workspace.canManageWorkspace
+                                ? { workspace.splitDocument(document.id, direction: $0) } : nil,
+                            unsplitCurrent: workspace.paneLayout.isSplit ? { workspace.unsplitPane(pane) } : nil,
+                            unsplitAll: workspace.paneLayout.isSplit ? { workspace.mergePanes() } : nil,
+                            moveToPanes: workspace.paneLayout.paneIDs.filter { $0 != pane }.map { target in
+                                DocumentTabPaneAction(id: target, title: workspace.paneTitle(target),
+                                    perform: { moveDocument(document.id, to: target) })
+                            },
                             moveEarlier: index > 0 ? { moveDocument(document.id, to: pane, at: index - 1) } : nil,
                             moveLater: index + 1 < workspace.documents(in: pane).count
                                 ? { moveDocument(document.id, to: pane, at: index + 1) } : nil,
@@ -356,12 +363,6 @@ struct ApplicationWorkspaceView: View {
     }
 
     private func moveDocument(_ id: UUID, to pane: WorkspacePaneID, at index: Int? = nil) {
-        if workspace.pane(containing: id) != pane {
-            workspace.editorState.prepareForPaneMove(id)
-            if let investigation = workspace.documents.first(where: { $0.id == id })?.investigationModel {
-                for child in investigation.allSQLDocuments { workspace.editorState.prepareForPaneMove(child.id) }
-            }
-        }
         workspace.moveDocument(id, to: pane, at: index)
     }
 
@@ -379,14 +380,22 @@ struct ApplicationWorkspaceView: View {
 
 }
 
+struct DocumentTabPaneAction: Identifiable {
+    let id: WorkspacePaneID
+    let title: String
+    let perform: () -> Void
+}
+
 struct DocumentTab: View {
     @ObservedObject var document: SQLDocument
     let isSelected: Bool
     let select: () -> Void
     let close: () -> Void
     var openInNewTab: (() -> Void)? = nil
-    var otherPaneTitle = "Move to Other Pane"
-    var moveToOtherPane: (() -> Void)? = nil
+    var split: ((WorkspaceSplitDirection) -> Void)? = nil
+    var unsplitCurrent: (() -> Void)? = nil
+    var unsplitAll: (() -> Void)? = nil
+    var moveToPanes: [DocumentTabPaneAction] = []
     var moveEarlier: (() -> Void)? = nil
     var moveLater: (() -> Void)? = nil
     var canRename = true
@@ -440,7 +449,16 @@ struct DocumentTab: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("documentTab-\(document.id.uuidString)")
         .accessibilityActions {
-            if let moveToOtherPane { Button(otherPaneTitle, action: moveToOtherPane) }
+            if let split {
+                ForEach(WorkspaceSplitDirection.allCases, id: \.self) { direction in
+                    Button(direction.title) { split(direction) }
+                }
+            }
+            if let unsplitCurrent { Button("Unsplit Current", action: unsplitCurrent) }
+            if let unsplitAll { Button("Unsplit All", action: unsplitAll) }
+            ForEach(moveToPanes) { target in
+                Button("Move to \(target.title)", action: target.perform)
+            }
             if let moveEarlier { Button("Move Tab Left", action: moveEarlier) }
             if let moveLater { Button("Move Tab Right", action: moveLater) }
         }
@@ -465,9 +483,21 @@ struct DocumentTab: View {
                     }
                 }
             }.disabled(document.isNavigatingTable || !canRename)
-            if let moveToOtherPane {
+            if let split {
                 Divider()
-                Button(otherPaneTitle, action: moveToOtherPane)
+                ForEach(WorkspaceSplitDirection.allCases, id: \.self) { direction in
+                    Button(direction.title) { split(direction) }
+                }
+            }
+            if let unsplitCurrent { Button("Unsplit Current", action: unsplitCurrent) }
+            if let unsplitAll { Button("Unsplit All", action: unsplitAll) }
+            if !moveToPanes.isEmpty {
+                Menu("Move to Pane") {
+                    ForEach(moveToPanes) { target in Button(target.title, action: target.perform) }
+                }
+            }
+            if split != nil || unsplitAll != nil {
+                Divider()
                 Button("Move Tab Left") { moveEarlier?() }.disabled(moveEarlier == nil)
                 Button("Move Tab Right") { moveLater?() }.disabled(moveLater == nil)
             }

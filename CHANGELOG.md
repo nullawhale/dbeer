@@ -23,11 +23,21 @@
   reopening restores disconnected blocks. Snapshot explanations survive missing
   artifacts, and deletion checks references in closed and unsaved investigations.
 
-- Work in two resizable panes with independent tab selection. Moving a tab
-  preserves its session, transaction, results and editor state. Run, Stop, Copy
-  and Save follow the active pane or the explicitly chosen pane's controls.
-  Workspace v8 saves pane placement, selection and width, with private migration
-  backups; restored tabs remain disconnected.
+- Start with one working pane. Split Left/Right/Up/Down in a tab's context menu
+  or the Window menu creates nested resizable panes with independent selection.
+  Each split opens and focuses a fresh disconnected SQL tab with the source
+  tab's profile, keeping the source tab in place.
+  Closing a pane's last tab removes that pane automatically; the final workspace
+  pane stays available when all tabs are closed.
+  Unsplit Current merges only that pane into a sibling; Unsplit All returns all
+  tabs to one pane. All six commands have configurable shortcuts. Moving tabs
+  preserves sessions, transactions, results and editor state; Run, Stop, Copy
+  and Save follow their owning pane. Workspace v10 saves nested pane placement,
+  selections and divider positions with private migration backups; restored
+  tabs remain disconnected.
+- Settings → Shortcuts groups commands by purpose and searches command/group
+  names and current bindings. Search accepts modifier symbols or names such as
+  Cmd+Shift+Backslash and reflects custom and cleared assignments.
 
 - Compare saved result snapshots by an explicit key or saved row order, with
   column mapping and exclusions. The shared Go comparison engine preserves

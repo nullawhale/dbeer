@@ -449,6 +449,10 @@ final class ApplicationWorkspace: ObservableObject {
 
     var activePaneID: WorkspacePaneID { paneLayout.activePaneID }
 
+    func paneTitle(_ pane: WorkspacePaneID) -> String {
+        "Working pane \((paneLayout.paneIDs.firstIndex(of: pane) ?? 0) + 1)"
+    }
+
     var selectedDocumentID: UUID? {
         get { paneLayout.selectedDocumentID }
         set {
@@ -562,7 +566,11 @@ final class ApplicationWorkspace: ObservableObject {
     func activatePane(_ pane: WorkspacePaneID) {
         paneActivationRevision &+= 1
         guard paneLayout.activePaneID != pane else { return }
-        paneLayout.activePaneID = pane
+        var layout = paneLayout
+        if pane == .left || pane == .right { layout.ensurePane(pane) }
+        guard layout.paneIDs.contains(pane) else { return }
+        layout.activePaneID = pane
+        paneLayout = layout
     }
 
     func selectDocument(_ id: UUID, in pane: WorkspacePaneID) {
@@ -579,7 +587,7 @@ final class ApplicationWorkspace: ObservableObject {
         if paneLayout != layout { paneLayout = layout }
     }
 
-    /// Moving a tab never touches its document, runtime or editor objects.
+    /// Moving a tab preserves its document, runtime and native editor objects.
     func moveDocument(_ id: UUID, to pane: WorkspacePaneID, at index: Int? = nil) {
         guard shutdownTask == nil, let source = self.pane(containing: id),
               documents.contains(where: { $0.id == id }) else { return }
@@ -587,10 +595,67 @@ final class ApplicationWorkspace: ObservableObject {
         layout.insertDocument(id, in: pane, at: index)
         layout.activePaneID = pane
         guard layout != paneLayout else { return }
+        if source != pane { prepareEditorsForPaneMove(id) }
         paneSelectionRevisions[source, default: 0] &+= 1
         if source != pane { paneSelectionRevisions[pane, default: 0] &+= 1 }
         if paneLayout.activePaneID != pane { paneActivationRevision &+= 1 }
         paneLayout = layout
+    }
+
+    @discardableResult
+    func splitDocument(_ id: UUID, direction: WorkspaceSplitDirection) -> WorkspacePaneID? {
+        guard canManageWorkspace, let source = paneLayout.pane(containing: id),
+              let origin = documents.first(where: { $0.id == id }) else { return nil }
+        var layout = paneLayout
+        guard let destination = layout.split(source, direction: direction) else { return nil }
+        let document = makeSQLDocument(profileID: origin.profileID)
+        documents.append(document)
+        observeDocument(document)
+        layout.insertDocument(document.id, in: destination)
+        layout.activePaneID = destination
+        paneSelectionRevisions[source, default: 0] &+= 1
+        paneSelectionRevisions[destination, default: 0] &+= 1
+        paneActivationRevision &+= 1
+        paneSplitRevision &+= 1
+        let activationRevision = paneActivationRevision
+        let documentID = document.id
+        editorState.requestFocus(documentID) { [weak self] in
+            guard let self else { return false }
+            return self.paneActivationRevision == activationRevision && self.activePaneID == destination &&
+                self.selectedDocumentID == documentID
+        }
+        paneLayout = layout
+        return destination
+    }
+
+    private func prepareEditorsForPaneMove(_ id: UUID) {
+        editorState.prepareForPaneMove(id)
+        if let investigation = documents.first(where: { $0.id == id })?.investigationModel {
+            for child in investigation.allSQLDocuments { editorState.prepareForPaneMove(child.id) }
+        }
+    }
+
+    func unsplitPane(_ pane: WorkspacePaneID) {
+        guard canManageWorkspace, paneLayout.isSplit else { return }
+        var layout = paneLayout
+        guard let destination = layout.unsplit(pane) else { return }
+        for id in paneLayout[pane].documentIDs { prepareEditorsForPaneMove(id) }
+        paneSelectionRevisions[pane, default: 0] &+= 1
+        paneSelectionRevisions[destination, default: 0] &+= 1
+        paneActivationRevision &+= 1
+        paneSplitRevision &+= 1
+        paneLayout = layout
+    }
+
+    func mergePanes() {
+        guard canManageWorkspace, paneLayout.isSplit else { return }
+        for pane in paneLayout.paneIDs {
+            for id in paneLayout[pane].documentIDs where pane != .left { prepareEditorsForPaneMove(id) }
+            paneSelectionRevisions[pane, default: 0] &+= 1
+        }
+        paneActivationRevision &+= 1
+        paneSplitRevision &+= 1
+        paneLayout.unsplitAll()
     }
 
     func setSplitFraction(_ fraction: Double) {
@@ -598,7 +663,20 @@ final class ApplicationWorkspace: ObservableObject {
         let clamped = min(max(fraction, WorkspacePaneLayout.splitRange.lowerBound), WorkspacePaneLayout.splitRange.upperBound)
         guard paneLayout.splitFraction != clamped else { return }
         paneSplitRevision &+= 1
-        paneLayout.splitFraction = clamped
+        var layout = paneLayout
+        layout.splitFraction = clamped
+        if let rootID = layout.root.splitIDs.first { layout.setFraction(clamped, for: rootID) }
+        paneLayout = layout
+    }
+
+    func setSplitFraction(_ fraction: Double, for splitID: UUID) {
+        guard fraction.isFinite, paneLayout.root.splitIDs.contains(splitID) else { return }
+        let clamped = min(max(fraction, WorkspacePaneLayout.splitRange.lowerBound), WorkspacePaneLayout.splitRange.upperBound)
+        var layout = paneLayout
+        layout.setFraction(clamped, for: splitID)
+        guard layout != paneLayout else { return }
+        paneSplitRevision &+= 1
+        paneLayout = layout
     }
 
     struct PaneSelectionContext {
@@ -615,6 +693,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func canSelectAfterOpening(in pane: WorkspacePaneID, context: PaneSelectionContext) -> Bool {
+        guard paneLayout.paneIDs.contains(pane) else { return false }
         guard paneSelectionRevisions[pane, default: 0] == context.selectionRevisions[pane, default: 0] else { return false }
         // A newer focus event in the same pane can keep the same tab selected.
         // Preserve that editor rather than replacing it when delayed work ends.
@@ -659,9 +738,10 @@ final class ApplicationWorkspace: ObservableObject {
         let document = restoredDocument(state, knownProfiles: library.savedConnections.map(\.id))
         documents.insert(document, at: min(max(0, closed.originalIndex), documents.count))
         observeDocument(document)
-        paneLayout.insertDocument(document.id, in: closed.paneID, at: closed.originalPaneIndex)
-        paneSelectionRevisions[closed.paneID, default: 0] &+= 1
-        activatePane(closed.paneID)
+        let pane = paneLayout.paneIDs.contains(closed.paneID) ? closed.paneID : activePaneID
+        paneLayout.insertDocument(document.id, in: pane, at: closed.originalPaneIndex)
+        paneSelectionRevisions[pane, default: 0] &+= 1
+        activatePane(pane)
         scheduleSave()
         return document
     }
@@ -715,12 +795,13 @@ final class ApplicationWorkspace: ObservableObject {
 
     @discardableResult
     func newDocument(profileID: UUID? = nil, text: String? = nil, in pane: WorkspacePaneID? = nil) -> SQLDocument {
-        let selectedProfileID = profileID ?? library.selectedConnectionId
-        let engine = library.savedConnections.first { $0.id == selectedProfileID }?.engine
+        addDocument(makeSQLDocument(profileID: profileID ?? library.selectedConnectionId, text: text), in: pane)
+    }
+
+    private func makeSQLDocument(profileID: UUID?, text: String? = nil) -> SQLDocument {
+        let engine = library.savedConnections.first { $0.id == profileID }?.engine
         let initialText = text ?? (engine == .cassandra ? "SELECT cluster_name, release_version, data_center FROM system.local;" : "SELECT 1;")
-        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: initialText,
-            profileID: selectedProfileID)
-        return addDocument(document, in: pane)
+        return SQLDocument(title: "SQL \(documents.count + 1)", text: initialText, profileID: profileID)
     }
 
     @discardableResult
@@ -889,7 +970,8 @@ final class ApplicationWorkspace: ObservableObject {
     @discardableResult
     func addDocument(_ document: SQLDocument, in requestedPane: WorkspacePaneID? = nil,
                              context: PaneSelectionContext? = nil) -> SQLDocument {
-        let pane = context?.pane ?? requestedPane ?? activePaneID
+        let requested = context?.pane ?? requestedPane ?? activePaneID
+        let pane = context != nil && !paneLayout.paneIDs.contains(requested) ? activePaneID : requested
         documents.append(document)
         observeDocument(document)
         let shouldSelect = context.map { canSelectAfterOpening(in: pane, context: $0) } ?? true
@@ -1100,8 +1182,18 @@ final class ApplicationWorkspace: ObservableObject {
         let closed = remember ? ClosedWorkspaceTab(state: document.storedState, originalIndex: index,
             paneID: pane, originalPaneIndex: paneIndex) : nil
         documents.remove(at: index)
-        paneLayout.removeDocument(document.id)
+        var layout = paneLayout
+        let removesPane = layout.isSplit && layout[pane].documentIDs.count == 1
+        // Freeze inferred legacy splits before removing their last right tab.
+        if removesPane { layout.tree = layout.root }
+        layout.removeDocument(document.id)
+        if removesPane, let destination = layout.unsplit(pane) {
+            paneSelectionRevisions[destination, default: 0] &+= 1
+            paneSplitRevision &+= 1
+        }
+        if layout.activePaneID != activePaneID { paneActivationRevision &+= 1 }
         paneSelectionRevisions[pane, default: 0] &+= 1
+        paneLayout = layout
         document.detachFileDocument()
         pruneFileDocuments()
         documentObservations[document.id] = nil
@@ -1559,7 +1651,7 @@ final class ApplicationWorkspace: ObservableObject {
         let states = confirmed.map { $0.tableNavigationSourceState ?? $0.storedState }
         let knownIDs = Set(states.map(\.id))
         var layout = paneLayout
-        for pane in WorkspacePaneID.allCases {
+        for pane in layout.storedPaneIDs {
             var state = layout[pane]
             state.documentIDs = state.documentIDs.filter { knownIDs.contains($0) }
             if let selected = selectedDocument(in: pane), selected.isProvisionalTableView,
@@ -1622,9 +1714,12 @@ final class ApplicationWorkspace: ObservableObject {
             }
             documents = restored + localDocuments
             for document in documents { observeDocument(document) }
-            var layout = saved.paneLayout
-            for pane in WorkspacePaneID.allCases {
-                var state = layout[pane]
+            var layout = paneSplitRevision > 0 ? localLayout : saved.paneLayout
+            for pane in saved.paneLayout.paneIDs + localLayout.paneIDs where !layout.paneIDs.contains(pane) {
+                layout.ensurePane(pane)
+            }
+            for pane in layout.storedPaneIDs {
+                var state = saved.paneLayout[pane]
                 let restoredIDs = Set(restored.map(\.id))
                 state.documentIDs.removeAll { localIDs.contains($0) || !restoredIDs.contains($0) }
                 state.documentIDs += localLayout[pane].documentIDs

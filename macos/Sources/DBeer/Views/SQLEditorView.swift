@@ -8,6 +8,11 @@ final class SQLEditorState {
     let languageService = SQLLanguageService()
     fileprivate var editors: [UUID: SQLTextView] = [:]
     fileprivate var scrollOrigins: [UUID: NSPoint] = [:]
+    fileprivate var focusRequest: (documentID: UUID, condition: @MainActor () -> Bool)?
+
+    func requestFocus(_ documentID: UUID, condition: @escaping @MainActor () -> Bool) {
+        focusRequest = (documentID, condition)
+    }
 
     func selection(for documentID: UUID, fallback: NSRange = NSRange(location: 0, length: 0)) -> NSRange {
         editors[documentID]?.selectedRange() ?? fallback
@@ -19,6 +24,7 @@ final class SQLEditorState {
     }
 
     func removeDocument(_ documentID: UUID) {
+        if focusRequest?.documentID == documentID { focusRequest = nil }
         languageService.close(documentID: documentID)
         editors[documentID]?.dismissCompletion?()
         editors[documentID] = nil
@@ -223,6 +229,10 @@ struct SQLEditorView: NSViewRepresentable {
             textView.smartInsertDeleteEnabled = false
             textView.setAccessibilityLabel("SQL editor")
             textView.setAccessibilityIdentifier("sqlEditor")
+            if let request = state.focusRequest, request.documentID == documentID {
+                textView.focusOnAttach = request.condition
+                state.focusRequest = nil
+            }
             state.editors[documentID] = textView
             return textView
         }
@@ -789,6 +799,7 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     var appCommandFocus: AppCommandFocus { .sqlEditor }
     var appCommandDocumentID: UUID?
     var restoreFocusAfterPaneMove = false
+    var focusOnAttach: (@MainActor () -> Bool)?
     override var undoManager: UndoManager? { documentUndo }
 
     override func becomeFirstResponder() -> Bool {
@@ -865,7 +876,14 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
                 name: NSWindow.didResignKeyNotification, object: window)
             NotificationCenter.default.addObserver(self, selector: #selector(windowGeometryChanged),
                 name: NSWindow.didResizeNotification, object: window)
-            if restoreFocusAfterPaneMove {
+            if let focusOnAttach {
+                self.focusOnAttach = nil
+                Task { @MainActor [weak self, weak window] in
+                    guard let self, let window, self.window === window, window.isKeyWindow,
+                          NSApp.modalWindow == nil, window.attachedSheet == nil, focusOnAttach() else { return }
+                    window.makeFirstResponder(self)
+                }
+            } else if restoreFocusAfterPaneMove {
                 Task { @MainActor [weak self, weak window] in
                     guard let self, let window, self.window === window, self.restoreFocusAfterPaneMove else { return }
                     self.restoreFocusAfterPaneMove = false

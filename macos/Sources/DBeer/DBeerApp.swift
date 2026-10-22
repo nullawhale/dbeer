@@ -111,6 +111,13 @@ private struct WorkspaceCommands: Commands {
             commandItem(.exportConnections)
         }
         CommandGroup(after: .windowArrangement) {
+            commandItem(.splitRight)
+            commandItem(.splitLeft)
+            commandItem(.splitUp)
+            commandItem(.splitDown)
+            commandItem(.unsplitCurrent)
+            commandItem(.unsplitAll)
+            Divider()
             commandItem(.previousTab)
             commandItem(.nextTab)
         }

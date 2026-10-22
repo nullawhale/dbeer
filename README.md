@@ -45,9 +45,10 @@ buffers adopt external changes, while changed drafts retain both versions for
 review. Missing or unreadable files keep their editable drafts. Bindings without
 a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage is v9, with exact private backups before migrating
-v0/v1/v2/v3/v4/v5/v6/v7/v8. Formats before v8 start with their tabs in the left
-pane; v8 retains its saved pane layout.
+Workspace storage is v10, with exact private backups before migrating
+v0/v1/v2/v3/v4/v5/v6/v7/v8/v9. Formats before v8 start with their tabs in the left
+pane; v8/v9 retain their saved pane layout. V10 also preserves nested horizontal
+and vertical splits and each divider's position.
 Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
@@ -72,11 +73,39 @@ require choosing a replacement. Rebind or clear the shortcut in **Settings →
 Shortcuts**. The closed-tab list is cleared on application exit and by a successful
 **Clear Drafts** action; it is never written to workspace storage.
 
-## Two working panes in the working branch
+## Split working panes in the working branch
 
-The workspace has two side-by-side panes with a draggable divider. Each pane
-keeps its own selected tab. Drag a tab or use **Move to Left Pane** / **Move to
-Right Pane** in its menu; **Move Tab Left/Right** changes its order within a pane.
+The workspace starts with one pane. A tab's context menu offers **Split Left**,
+**Split Right**, **Split Up** and **Split Down**. A fresh SQL tab opens in a new
+pane on that side, using the source tab's connection profile and focusing its
+editor. The source tab stays in place; splitting never connects automatically.
+Any pane can be split again. Each divider
+can be resized independently. **Unsplit Current** moves the current pane's tabs
+into its nearest sibling pane and removes only that split. **Unsplit All** brings
+every tab back into one pane, keeping the active tab selected. Neither action
+closes documents or database sessions.
+Closing the last tab in a split pane removes that pane automatically. Closing
+the final tab in the workspace leaves one empty pane.
+
+The six commands are also in the Window menu and **Settings → Shortcuts**:
+
+| Command | Default shortcut |
+| --- | --- |
+| Split Right | Command-Backslash |
+| Split Left | Option-Command-Backslash |
+| Split Up | Control-Command-Backslash |
+| Split Down | Control-Shift-Command-Backslash |
+| Unsplit Current | Option-Shift-Command-Backslash |
+| Unsplit All | Shift-Command-Backslash |
+
+Shortcuts are grouped by connections, tabs/navigation, split panes, SQL files,
+query execution, results/copying and history. Search by command or group name,
+the assigned shortcut's symbols, or modifier names such as `Cmd+Shift+Backslash`.
+Search follows current assignments, including cleared shortcuts (`unassigned`).
+
+Each pane keeps its own selected tab. Drag tabs between pane tab bars or use
+**Move to Pane** in a tab's context menu;
+**Move Tab Left/Right** changes the order within a pane.
 Moving a tab keeps the same document, session, transaction, running query, grid
 draft and editor state. Opening a new independent table view retains its existing
 separate-session behavior.
@@ -359,7 +388,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v9. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8 files
+History uses versioned workspace storage, currently v10. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.

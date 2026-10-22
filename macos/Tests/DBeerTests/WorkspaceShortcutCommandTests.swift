@@ -44,7 +44,8 @@ struct WorkspaceShortcutCommandTests {
         let bindings = descriptors.compactMap(\.defaultShortcut)
         #expect(Set(bindings).count == bindings.count)
         let standardCommands: [AppCommandID] = [.newConnection, .newSQLTab, .openSQL,
-            .saveSQL, .saveSQLAs, .findInConnections, .reopenClosedTab, .previousTab, .nextTab]
+            .saveSQL, .saveSQLAs, .findInConnections, .reopenClosedTab, .previousTab, .nextTab,
+            .splitRight, .splitLeft, .splitUp, .splitDown, .unsplitCurrent, .unsplitAll]
         for command in standardCommands {
             let binding = try #require(fixture.shortcuts.shortcut(for: command))
             #expect(fixture.shortcuts.validationError(for: binding, command: command) == nil)
@@ -73,6 +74,25 @@ struct WorkspaceShortcutCommandTests {
             let shortcut = try #require(AppCommandDescriptor.builtins.first { $0.id == command }?.defaultShortcut)
             #expect(shortcut.matches(event: event))
             #expect(AppShortcut(event: event)?.isCanonical == true)
+        }
+    }
+
+    @Test func paneShortcutsMatchBackslashAndItsShiftedSymbol() throws {
+        for command: AppCommandID in [.splitRight, .splitLeft, .splitUp, .splitDown, .unsplitCurrent, .unsplitAll] {
+            let shortcut = try #require(AppCommandDescriptor.builtins.first { $0.id == command }?.defaultShortcut)
+            let modifiers = shortcut.modifiers
+            let character = modifiers.contains(.shift) ? "|" : "\\"
+            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                modifierFlags: modifiers, timestamp: 0, windowNumber: 0, context: nil,
+                characters: character, charactersIgnoringModifiers: character, isARepeat: false, keyCode: 42))
+            #expect(shortcut.matches(event: event))
+            #expect(AppShortcut(event: event)?.isCanonical == true)
+            if modifiers.contains(.shift) {
+                let cyrillic = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                    modifierFlags: modifiers, timestamp: 0, windowNumber: 0, context: nil,
+                    characters: "/", charactersIgnoringModifiers: "/", isARepeat: false, keyCode: 42))
+                #expect(shortcut.matches(event: cyrillic))
+            }
         }
     }
 

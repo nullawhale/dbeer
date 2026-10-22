@@ -3,22 +3,44 @@ import SwiftUI
 
 struct ShortcutSettingsView: View {
     @ObservedObject var store: AppShortcutStore
+    private var searchText = SwiftUI.State(initialValue: "")
+
+    private var groups: [ShortcutSettingsGroup] { store.groups(matching: searchText.wrappedValue) }
 
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").appSecondaryText().accessibilityHidden(true)
+                TextField("Search commands or shortcuts", text: searchText.projectedValue)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Search keyboard shortcuts")
+                    .accessibilityIdentifier("shortcutSearch")
+                if !searchText.wrappedValue.isEmpty {
+                    ControlIconButton(systemName: "xmark.circle.fill") { searchText.wrappedValue = "" }
+                        .help("Clear search").accessibilityLabel("Clear shortcut search")
+                }
+            }
+            .padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 8)
             Form {
-                Section {
-                    ForEach(store.descriptors) { descriptor in
-                        ShortcutSettingsRow(store: store, descriptor: descriptor)
+                ForEach(groups) { group in
+                    Section(group.group.title) {
+                        ForEach(group.commands) { descriptor in
+                            ShortcutSettingsRow(store: store, descriptor: descriptor)
+                        }
                     }
-                } header: {
-                    Text("Keyboard shortcuts")
-                } footer: {
-                    Text("Click a shortcut and press a key with Command, Control, or Option. Escape cancels; Tab moves to the next control. Standard editing and navigation shortcuts stay available.")
                 }
             }.formStyle(.grouped)
                 .appFormSurface()
+                .overlay {
+                    if groups.isEmpty {
+                        ContentUnavailableView.search(text: searchText.wrappedValue)
+                    }
+                }
+            Text("Click a shortcut and press a key with Command, Control, or Option. Escape cancels; Tab moves to the next control. Standard editing and navigation shortcuts stay available.")
+                .font(.caption).appSecondaryText().padding(.horizontal, 20)
             HStack {
+                Text("\(groups.reduce(0) { $0 + $1.commands.count }) of \(store.descriptors.count) shortcuts")
+                    .font(.caption).appSecondaryText()
                 Spacer()
                 Button("Restore Defaults") { store.resetDefaults() }
                     .buttonStyle(.bordered)
@@ -30,7 +52,7 @@ struct ShortcutSettingsView: View {
             .padding(.bottom, 12)
         }
         .padding(8)
-        .frame(width: 650, height: 460)
+        .frame(width: 700, height: 560)
         .background(AppPalette.window)
         .tint(AppPalette.accent)
         .focusEffectDisabled()

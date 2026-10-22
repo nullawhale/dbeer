@@ -10,6 +10,70 @@ import UniformTypeIdentifiers
 struct WorkspacePaneCommandTests {
     @MainActor private final class Invocations { var values: [AppCommandInvocation] = [] }
 
+    @Test func splitAndMergeCommandsUseTheResolvedTabAndRespectContextGuards() async throws {
+        let fixture = try Fixture()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.defaultsName) }
+        await fixture.workspace.restoreSavedWorkspace()
+        let registry = fixture.registry
+        let workspace = fixture.workspace
+        #expect(!registry.canPerform(.splitRight, context: fixture.context(nil)))
+        #expect(!registry.canPerform(.mergePanes, context: fixture.context(nil)))
+        let first = workspace.newDocument()
+        let second = workspace.newDocument()
+        #expect(!registry.canPerform(.splitRight, context: fixture.context(first)))
+        let split = try #require(registry.perform(.splitRight, context: fixture.context(second, focus: .textInput)))
+        let created = try #require(workspace.selectedDocument)
+        #expect(workspace.paneLayout.isSplit && created !== second)
+        #expect(workspace.selectedDocument(in: .left) === second)
+        #expect(workspace.documents(in: .left).map(\.id) == [first.id, second.id])
+        #expect(registry.canPerform(.splitRight, context: fixture.context(second)))
+        for command: AppCommandID in [.splitRight, .mergePanes] {
+            #expect(registry.canPerform(command, context: fixture.context(second)))
+            for context in [fixture.context(second, modal: true), fixture.context(second, foreign: true),
+                            fixture.context(second, composing: true)] {
+                #expect(!registry.canPerform(command, context: context))
+                #expect(registry.perform(command, context: context) == nil)
+            }
+        }
+        let merge = try #require(registry.perform(.mergePanes, context: fixture.context(created)))
+        #expect(!workspace.paneLayout.isSplit && workspace.selectedDocument === created)
+        #expect(workspace.documents(in: .left).map(\.id) == [first.id, second.id, created.id])
+        #expect(workspace.closedTabs.isEmpty && fixture.captured.values.isEmpty)
+        await split.value
+        await merge.value
+        await workspace.shutdown()
+    }
+
+    @Test func directionalCommandsNestAndUnsplitCurrentLeavesOtherSplitsIntact() async throws {
+        let fixture = try Fixture()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.defaultsName) }
+        await fixture.workspace.restoreSavedWorkspace()
+        let workspace = fixture.workspace
+        let first = workspace.newDocument()
+        for command: AppCommandID in [.splitLeft, .splitUp, .splitRight, .splitDown] {
+            let tab = try #require(workspace.selectedDocument)
+            let sourcePane = workspace.pane(containing: tab.id)
+            let task = try #require(fixture.registry.perform(command, context: fixture.context(tab)))
+            await task.value
+            let created = try #require(workspace.selectedDocument)
+            #expect(workspace.selectedDocument !== tab && workspace.pane(containing: tab.id) == sourcePane)
+            #expect(workspace.pane(containing: created.id) == workspace.activePaneID)
+        }
+        #expect(workspace.paneLayout.paneIDs.count == 5)
+        let current = try #require(workspace.selectedDocument)
+        let unsplit = try #require(fixture.registry.perform(.unsplitCurrent, context: fixture.context(current)))
+        await unsplit.value
+        #expect(workspace.paneLayout.paneIDs.count == 4 && workspace.selectedDocument === current)
+        let all = try #require(fixture.registry.perform(.unsplitAll, context: fixture.context(current)))
+        await all.value
+        #expect(!workspace.paneLayout.isSplit && workspace.selectedDocument === current)
+        #expect(workspace.documents.count == 5 && workspace.documents.contains { $0 === first })
+        #expect(!fixture.registry.canPerform(.unsplitCurrent, context: fixture.context(current)))
+        #expect(!fixture.registry.canPerform(.unsplitAll, context: fixture.context(current)))
+        #expect(workspace.closedTabs.isEmpty && fixture.captured.values.isEmpty)
+        await workspace.shutdown()
+    }
+
     @MainActor private struct Fixture {
         let defaultsName = "dev.dbeer.tests.pane-commands.\(UUID().uuidString)"
         let defaults: UserDefaults

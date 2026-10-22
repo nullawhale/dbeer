@@ -15,6 +15,56 @@ struct WorkspacePaneTests {
         return workspace
     }
 
+    @Test func aFreshWorkspaceStaysSingleUntilATabIsMovedRightAndMergePreservesItsState() async throws {
+        let workspace = await workspace()
+        #expect(!workspace.paneLayout.isSplit)
+        let first = workspace.newDocument(text: "SELECT 'first'")
+        let selected = workspace.newDocument(text: "SELECT 'selected'")
+        selected.selection = NSRange(location: 3, length: 5)
+        let state = selected.storedState
+        #expect(!workspace.paneLayout.isSplit)
+        workspace.setSplitFraction(0.63)
+        workspace.moveDocument(selected.id, to: .right)
+        #expect(workspace.paneLayout.isSplit && workspace.selectedDocument === selected)
+        #expect(workspace.selectedDocument(in: .left) === first)
+        workspace.mergePanes()
+        #expect(!workspace.paneLayout.isSplit && workspace.activePaneID == .left)
+        #expect(workspace.documents(in: .left).map(\.id) == [first.id, selected.id])
+        #expect(workspace.selectedDocument === selected && selected.storedState == state)
+        #expect(selected.selection == NSRange(location: 3, length: 5))
+        #expect(workspace.paneLayout.splitFraction == 0.63)
+        #expect(workspace.closedTabs.isEmpty)
+        #expect(workspace.paneLayout.isValid(documentIDs: workspace.documents.map(\.id)))
+        await workspace.shutdown()
+    }
+
+    @Test func splittingASoleTabAndMergingAnEmptyActivePanePersistWithoutAddingDocuments() async throws {
+        let store = MemorySQLDocumentStore()
+        let workspace = await workspace(store: store)
+        let document = workspace.newDocument()
+        workspace.moveDocument(document.id, to: .right)
+        #expect(workspace.paneLayout.isSplit && workspace.documents.count == 1)
+        #expect(workspace.selectedDocument(in: .left) == nil)
+        await workspace.flushDocuments()
+        let restored = await self.workspace(store: store)
+        #expect(restored.paneLayout.isSplit && restored.paneLayout == workspace.paneLayout)
+        #expect(restored.selectedDocument?.runtime == nil)
+        await restored.shutdown()
+
+        workspace.moveDocument(document.id, to: .left)
+        #expect(!workspace.paneLayout.isSplit)
+        workspace.activatePane(.right)
+        #expect(workspace.paneLayout.isSplit && workspace.selectedDocument == nil)
+        workspace.mergePanes()
+        #expect(!workspace.paneLayout.isSplit && workspace.selectedDocument === document)
+        #expect(workspace.documents.count == 1)
+        await workspace.flushDocuments()
+        let merged = await self.workspace(store: store)
+        #expect(!merged.paneLayout.isSplit && merged.selectedDocumentID == document.id)
+        await merged.shutdown()
+        await workspace.shutdown()
+    }
+
     @Test func eachPaneRetainsItsSelectionAndTheActiveProjectionDoesNotFallBack() async {
         let workspace = await workspace()
         let first = workspace.newDocument(text: "SELECT 'left first'", in: .left)
@@ -66,7 +116,8 @@ struct WorkspacePaneTests {
         await workspace.closeDocument(reopened)
         #expect(workspace.selectedDocument === right[1])
         await workspace.closeDocument(right[1])
-        #expect(workspace.selectedDocument == nil && workspace.selectedDocumentID == nil)
+        #expect(!workspace.paneLayout.isSplit && workspace.activePaneID == .left)
+        #expect(workspace.selectedDocument === left[2])
         #expect(workspace.selectedDocument(in: .left) === left[2])
         #expect(workspace.paneLayout.isValid(documentIDs: workspace.documents.map(\.id)))
         await workspace.shutdown()

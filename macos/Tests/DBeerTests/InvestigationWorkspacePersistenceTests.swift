@@ -32,7 +32,7 @@ struct InvestigationWorkspacePersistenceTests {
         let store = FileSQLDocumentStore(fileURL: url)
         try await store.save(value)
         let restored = try await store.load()
-        #expect(restored == value && restored.version == 9)
+        #expect(restored == value && restored.version == SQLWorkspaceSnapshot.currentVersion)
         let records = try #require(try object(restored)["documents"] as? [[String: Any]])
         #expect(Set(records[1].keys) == ["id", "title", "kind", "investigationID"])
         #expect(records[1]["investigationID"] as? String == investigation.investigationID?.uuidString)
@@ -63,7 +63,7 @@ struct InvestigationWorkspacePersistenceTests {
         try bytes.write(to: url)
         let store = FileSQLDocumentStore(fileURL: url)
         let restored = try await store.load()
-        #expect(restored == expected && restored.paneLayout == layout && restored.version == 9)
+        #expect(restored == expected && restored.paneLayout == layout && restored.version == SQLWorkspaceSnapshot.currentVersion)
         let backup = url.appendingPathExtension("v8.backup")
         #expect(try Data(contentsOf: backup) == bytes)
         #expect((try FileManager.default.attributesOfItem(atPath: backup.path)[.posixPermissions] as? NSNumber)?.intValue == 0o600)
@@ -106,7 +106,7 @@ struct InvestigationWorkspacePersistenceTests {
         let reference = StoredSQLDocument(title: "Investigation", text: "", kind: .investigation, investigationID: UUID())
         let valid = try object(SQLWorkspaceSnapshot(documents: [reference], selectedDocumentID: reference.id))
         let record = try #require((valid["documents"] as? [[String: Any]])?.first)
-        var malformed = [valid.merging(["version": 10]) { _, new in new }]
+        var malformed = [valid.merging(["version": SQLWorkspaceSnapshot.currentVersion + 1]) { _, new in new }]
         for field in ["text", "profileID", "snapshotID", "table", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID",
                       "blocks", "rows", "sessionId", "password"] {
             for payload in [NSNull(), "forbidden fixture"] as [Any] {

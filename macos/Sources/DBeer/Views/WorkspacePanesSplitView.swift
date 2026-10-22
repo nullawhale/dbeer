@@ -23,7 +23,7 @@ final class WorkspacePaneContainerView: NSView {
         addSubview(host)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel(paneID == .left ? "Left working pane" : "Right working pane")
+        setAccessibilityLabel(workspace.paneTitle(paneID))
         setAccessibilityIdentifier("workspacePane-\(paneID.rawValue)")
     }
 
@@ -43,7 +43,8 @@ final class WorkspacePaneContainerView: NSView {
     }
 
     static func owningPane(of responder: NSResponder?, in workspace: ApplicationWorkspace) -> WorkspacePaneID? {
-        guard let container = container(owning: responder), container.workspace === workspace else { return nil }
+        guard let container = container(owning: responder), container.workspace === workspace,
+              workspace.paneLayout.paneIDs.contains(container.paneID) else { return nil }
         return container.paneID
     }
 
@@ -57,7 +58,8 @@ final class WorkspacePaneContainerView: NSView {
     }
 
     static func activatePane(containing responder: NSResponder?) {
-        guard let container = container(owning: responder) else { return }
+        guard let container = container(owning: responder),
+              container.workspace?.paneLayout.paneIDs.contains(container.paneID) == true else { return }
         container.acknowledgeResponder(responder)
         container.workspace?.activatePane(container.paneID)
     }
@@ -77,8 +79,7 @@ final class WorkspacePaneContainerView: NSView {
     private func acknowledgeResponder(_ responder: NSResponder?) {
         var ancestor: NSView? = self
         while let current = ancestor {
-            if let split = current as? WorkspacePanesNativeSplitView,
-               let sampling = split.delegate as? any WorkspacePaneFocusSampling {
+            if let host = current as? WorkspacePanesHostView, let sampling = host.focusSampler {
                 sampling.acknowledgeResponder(responder)
                 return
             }
@@ -87,10 +88,13 @@ final class WorkspacePaneContainerView: NSView {
     }
 }
 
-/// NSSplitView provides the native divider, cursor and dragging behavior while
-/// keeping the saved fraction independent from document/session ownership.
+/// Native split views retain stable hosting boundaries as the tree changes.
 final class WorkspacePanesNativeSplitView: NSSplitView {
+    var splitID = UUID()
+    var fraction = 0.5
+    var applyingFraction = false
     private(set) var isUserAdjustingDivider = false
+    override var isFlipped: Bool { true }
 
     override func mouseDown(with event: NSEvent) {
         isUserAdjustingDivider = true
@@ -99,64 +103,118 @@ final class WorkspacePanesNativeSplitView: NSSplitView {
     }
 }
 
-struct WorkspacePanesSplitView<Left: View, Right: View>: NSViewRepresentable {
-    @ObservedObject var workspace: ApplicationWorkspace
-    let left: Left
-    let right: Right
+final class WorkspacePanesHostView: NSView {
+    fileprivate weak var focusSampler: (any WorkspacePaneFocusSampling)?
+    override var isFlipped: Bool { true }
+    override func layout() {
+        super.layout()
+        subviews.first?.frame = bounds
+    }
+}
 
-    init(workspace: ApplicationWorkspace, @ViewBuilder left: () -> Left, @ViewBuilder right: () -> Right) {
+struct WorkspacePanesSplitView<Content: View>: NSViewRepresentable {
+    @ObservedObject var workspace: ApplicationWorkspace
+    let content: (WorkspacePaneID) -> Content
+
+    init(workspace: ApplicationWorkspace, @ViewBuilder content: @escaping (WorkspacePaneID) -> Content) {
         self.workspace = workspace
-        self.left = left()
-        self.right = right()
+        self.content = content
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(workspace: workspace) }
 
-    func makeNSView(context: Context) -> NSSplitView {
-        let split = WorkspacePanesNativeSplitView(frame: .zero)
-        split.isVertical = true
-        split.dividerStyle = .thin
-        split.setAccessibilityIdentifier("workspacePanesSplit")
-        split.addArrangedSubview(WorkspacePaneContainerView(paneID: .left, workspace: workspace, content: AnyView(left)))
-        split.addArrangedSubview(WorkspacePaneContainerView(paneID: .right, workspace: workspace, content: AnyView(right)))
-        split.delegate = context.coordinator
-        context.coordinator.install(in: split)
-        return split
+    func makeNSView(context: Context) -> WorkspacePanesHostView {
+        let host = WorkspacePanesHostView(frame: .zero)
+        host.setAccessibilityIdentifier("workspacePanesSplit")
+        context.coordinator.install(in: host)
+        context.coordinator.update(in: host, contents: contents)
+        return host
     }
 
-    func updateNSView(_ split: NSSplitView, context: Context) {
-        (split.arrangedSubviews[0] as? WorkspacePaneContainerView)?.host.rootView = AnyView(left)
-        (split.arrangedSubviews[1] as? WorkspacePaneContainerView)?.host.rootView = AnyView(right)
-        context.coordinator.applySavedFraction(in: split)
+    private var contents: [WorkspacePaneID: AnyView] {
+        Dictionary(uniqueKeysWithValues: workspace.paneLayout.paneIDs.map { ($0, AnyView(content($0))) })
     }
 
-    static func dismantleNSView(_ split: NSSplitView, coordinator: Coordinator) { coordinator.stopMonitoring() }
+    func updateNSView(_ host: WorkspacePanesHostView, context: Context) {
+        context.coordinator.update(in: host, contents: contents)
+    }
+
+    static func dismantleNSView(_ host: WorkspacePanesHostView, coordinator: Coordinator) { coordinator.stopMonitoring() }
 
     @MainActor
     final class Coordinator: NSObject, NSSplitViewDelegate, WorkspacePaneFocusSampling {
         private weak var workspace: ApplicationWorkspace?
-        private weak var split: NSSplitView?
+        private weak var host: WorkspacePanesHostView?
         private var eventMonitor: Any?
         private weak var previousResponder: NSResponder?
-        private var applyingFraction = false
-        private var savedFraction: Double?
+        private var panes: [WorkspacePaneID: WorkspacePaneContainerView] = [:]
+        private var splits: [UUID: WorkspacePanesNativeSplitView] = [:]
+        private var pendingFractions: [UUID: Double] = [:]
 
         init(workspace: ApplicationWorkspace) { self.workspace = workspace }
 
-        func install(in split: NSSplitView) {
-            self.split = split
+        func update(in host: WorkspacePanesHostView, contents: [WorkspacePaneID: AnyView]) {
+            guard let workspace else { return }
+            let root = workspace.paneLayout.root
+            let rootView = view(for: root, contents: contents, workspace: workspace)
+            if host.subviews.first !== rootView {
+                host.subviews.forEach { $0.removeFromSuperview() }
+                rootView.autoresizingMask = [.width, .height]
+                host.addSubview(rootView)
+            }
+            rootView.frame = host.bounds
+            panes = panes.filter { root.paneIDs.contains($0.key) }
+            splits = splits.filter { root.splitIDs.contains($0.key) }
+            pendingFractions = pendingFractions.filter { root.splitIDs.contains($0.key) }
+        }
+
+        private func view(for node: WorkspacePaneNode, contents: [WorkspacePaneID: AnyView], workspace: ApplicationWorkspace) -> NSView {
+            switch node {
+            case .pane(let id):
+                if let pane = panes[id] {
+                    pane.host.rootView = contents[id] ?? AnyView(EmptyView())
+                    pane.setAccessibilityLabel(workspace.paneTitle(id))
+                    return pane
+                }
+                let pane = WorkspacePaneContainerView(paneID: id, workspace: workspace, content: contents[id] ?? AnyView(EmptyView()))
+                panes[id] = pane
+                return pane
+            case .split(let id, let axis, let fraction, let first, let second):
+                let split = splits[id] ?? WorkspacePanesNativeSplitView(frame: .zero)
+                splits[id] = split
+                split.splitID = id
+                split.delegate = self
+                split.isVertical = axis == .horizontal
+                split.dividerStyle = .thin
+                split.fraction = pendingFractions[id] ?? fraction
+                let children = [view(for: first, contents: contents, workspace: workspace),
+                    view(for: second, contents: contents, workspace: workspace)]
+                if split.arrangedSubviews.count != 2 || zip(split.arrangedSubviews, children).contains(where: { $0 !== $1 }) {
+                    for child in split.arrangedSubviews {
+                        split.removeArrangedSubview(child)
+                        child.removeFromSuperview()
+                    }
+                    children.forEach { split.addArrangedSubview($0) }
+                }
+                applyFraction(in: split)
+                return split
+            }
+        }
+
+        func install(in host: WorkspacePanesHostView) {
+            self.host = host
+            host.focusSampler = self
             NotificationCenter.default.addObserver(self, selector: #selector(updateResponder),
                 name: NSApplication.willUpdateNotification, object: nil)
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-                guard let self, let workspace = self.workspace, let split = self.split,
-                      event.window === split.window, event.window === workspace.presentationWindow,
+                guard let self, let workspace = self.workspace, let host = self.host,
+                      event.window === host.window, event.window === workspace.presentationWindow,
                       NSApp.modalWindow == nil, event.window?.attachedSheet == nil else { return event }
-                let point = split.convert(event.locationInWindow, from: nil)
-                if let pane = split.arrangedSubviews.compactMap({ $0 as? WorkspacePaneContainerView })
-                    .first(where: { $0.frame.contains(point) }) { workspace.activatePane(pane.paneID) }
+                if let pane = self.panes.values.first(where: {
+                    $0.window === event.window && $0.bounds.contains($0.convert(event.locationInWindow, from: nil))
+                }) { workspace.activatePane(pane.paneID) }
                 return event
             }
-            applySavedFraction(in: split, force: true)
         }
 
         func stopMonitoring() {
@@ -165,64 +223,57 @@ struct WorkspacePanesSplitView<Left: View, Right: View>: NSViewRepresentable {
             NotificationCenter.default.removeObserver(self)
         }
 
-        func acknowledgeResponder(_ responder: NSResponder?) {
-            previousResponder = responder
-        }
+        func acknowledgeResponder(_ responder: NSResponder?) { previousResponder = responder }
 
         @objc private func updateResponder() {
-            guard let workspace, let window = split?.window, window === workspace.presentationWindow,
+            guard let workspace, let window = host?.window, window === workspace.presentationWindow,
                   window.isKeyWindow, window.attachedSheet == nil, NSApp.modalWindow == nil else { return }
             let responder = window.firstResponder
-            // A toolbar invocation deliberately preserves the opposite editor's
-            // focus. Only a new native focus transition changes the active pane.
             guard responder !== previousResponder else { return }
             previousResponder = responder
-            if let pane = WorkspacePaneContainerView.owningPane(of: responder, in: workspace) {
-                workspace.activatePane(pane)
-            }
+            if let pane = WorkspacePaneContainerView.owningPane(of: responder, in: workspace) { workspace.activatePane(pane) }
         }
 
-        private func dividerPosition(in split: NSSplitView, fraction: Double) -> CGFloat {
-            let width = max(0, split.bounds.width - split.dividerThickness)
-            let minimum = min(280, width / 2)
-            return min(max(CGFloat(fraction) * width, minimum), width - minimum)
+        private func extent(of split: NSSplitView) -> CGFloat {
+            max(0, (split.isVertical ? split.bounds.width : split.bounds.height) - split.dividerThickness)
         }
 
-        func applySavedFraction(in split: NSSplitView, force: Bool = false) {
-            guard let workspace, split.arrangedSubviews.count == 2,
-                  split.bounds.width > split.dividerThickness else { return }
-            let fraction = workspace.paneLayout.splitFraction
-            guard force || savedFraction != fraction else { return }
-            applyingFraction = true
-            defer { applyingFraction = false }
-            // The resize delegate owns the complete arrangement. setPosition
-            // cannot initialize zero-width panes because its possible divider
-            // range is derived from their existing frames.
+        private func minimumExtent(of split: NSSplitView) -> CGFloat {
+            min(split.isVertical ? 280 : 160, extent(of: split) / 2)
+        }
+
+        private func applyFraction(in split: WorkspacePanesNativeSplitView) {
+            guard split.arrangedSubviews.count == 2 else { return }
+            split.applyingFraction = true
+            defer { split.applyingFraction = false }
+            let available = extent(of: split)
+            let minimum = minimumExtent(of: split)
+            let position = min(max(CGFloat(split.fraction) * available, minimum), available - minimum)
             let bounds = split.bounds
-            let position = dividerPosition(in: split, fraction: fraction)
-            let rightOrigin = bounds.minX + position + split.dividerThickness
-            split.arrangedSubviews[0].frame = NSRect(x: bounds.minX, y: bounds.minY,
-                width: position, height: bounds.height)
-            split.arrangedSubviews[1].frame = NSRect(x: rightOrigin, y: bounds.minY,
-                width: max(0, bounds.maxX - rightOrigin), height: bounds.height)
+            if split.isVertical {
+                split.arrangedSubviews[0].frame = NSRect(x: bounds.minX, y: bounds.minY, width: position, height: bounds.height)
+                split.arrangedSubviews[1].frame = NSRect(x: bounds.minX + position + split.dividerThickness, y: bounds.minY,
+                    width: available - position, height: bounds.height)
+            } else {
+                split.arrangedSubviews[0].frame = NSRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: position)
+                split.arrangedSubviews[1].frame = NSRect(x: bounds.minX, y: bounds.minY + position + split.dividerThickness,
+                    width: bounds.width, height: available - position)
+            }
             split.needsDisplay = true
-            savedFraction = fraction
         }
 
         func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) {
-            applySavedFraction(in: splitView, force: true)
+            if let split = splitView as? WorkspacePanesNativeSplitView { applyFraction(in: split) }
         }
 
         func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat,
                        ofSubviewAt dividerIndex: Int) -> CGFloat {
-            let width = max(0, splitView.bounds.width - splitView.dividerThickness)
-            return max(min(280, width / 2), width * CGFloat(WorkspacePaneLayout.splitRange.lowerBound))
+            max(minimumExtent(of: splitView), extent(of: splitView) * CGFloat(WorkspacePaneLayout.splitRange.lowerBound))
         }
 
         func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat,
                        ofSubviewAt dividerIndex: Int) -> CGFloat {
-            let width = max(0, splitView.bounds.width - splitView.dividerThickness)
-            return min(width - min(280, width / 2), width * CGFloat(WorkspacePaneLayout.splitRange.upperBound))
+            min(extent(of: splitView) - minimumExtent(of: splitView), extent(of: splitView) * CGFloat(WorkspacePaneLayout.splitRange.upperBound))
         }
 
         func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool { false }
@@ -230,17 +281,17 @@ struct WorkspacePanesSplitView<Left: View, Right: View>: NSViewRepresentable {
                                    forDoubleClickOnDividerAt dividerIndex: Int) -> Bool { false }
 
         func splitViewDidResizeSubviews(_ notification: Notification) {
-            guard !applyingFraction, let workspace, let split,
-                  (split as? WorkspacePanesNativeSplitView)?.isUserAdjustingDivider == true,
-                  split.bounds.width > split.dividerThickness, let first = split.arrangedSubviews.first else { return }
-            let fraction = Double(first.frame.width / (split.bounds.width - split.dividerThickness))
-            savedFraction = fraction
-            // Divider callbacks can happen during SwiftUI reconciliation. The
-            // next main-actor turn publishes only the latest user position.
+            guard let split = notification.object as? WorkspacePanesNativeSplitView,
+                  !split.applyingFraction, split.isUserAdjustingDivider, let workspace,
+                  extent(of: split) > 0, let first = split.arrangedSubviews.first else { return }
+            let fraction = Double((split.isVertical ? first.frame.width : first.frame.height) / extent(of: split))
+            let id = split.splitID
+            split.fraction = fraction
+            pendingFractions[id] = fraction
             Task { @MainActor [weak self] in
-                guard let self, self.savedFraction == fraction else { return }
-                workspace.setSplitFraction(fraction)
-                self.savedFraction = workspace.paneLayout.splitFraction
+                guard let self, self.pendingFractions[id] == fraction else { return }
+                workspace.setSplitFraction(fraction, for: id)
+                self.pendingFractions[id] = nil
             }
         }
     }

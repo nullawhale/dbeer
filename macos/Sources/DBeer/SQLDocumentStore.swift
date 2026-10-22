@@ -211,7 +211,7 @@ private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) thro
 /// results and passwords never enter the format; restoring the snapshot cannot
 /// reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 9
+    static let currentVersion = 10
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -279,6 +279,8 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
             guard !values.contains(.paneLayout) else { throw SQLDocumentStoreError.read }
             paneLayout = .singlePane(documentIDs: documents.map(\.id), selectedDocumentID: selectedDocumentID)
             self.selectedDocumentID = paneLayout.selectedDocumentID
+        } else if version < 10 {
+            paneLayout = try WorkspacePaneLayout(legacyFrom: values.superDecoder(forKey: .paneLayout))
         } else {
             paneLayout = try values.decode(WorkspacePaneLayout.self, forKey: .paneLayout)
         }
@@ -331,8 +333,7 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     mutating func clearDocuments() {
         documents.removeAll()
         selectedDocumentID = nil
-        paneLayout.left = WorkspacePaneState()
-        paneLayout.right = WorkspacePaneState()
+        for pane in paneLayout.storedPaneIDs { paneLayout[pane] = WorkspacePaneState() }
     }
 
     fileprivate func current(now: Date = .now) -> SQLWorkspaceSnapshot {

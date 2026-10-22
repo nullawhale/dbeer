@@ -17,6 +17,14 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
     static let closeTab = Self(rawValue: "workspace.closeTab")
     static let nextTab = Self(rawValue: "workspace.nextTab")
     static let previousTab = Self(rawValue: "workspace.previousTab")
+    static let splitRight = Self(rawValue: "workspace.splitRight")
+    static let splitLeft = Self(rawValue: "workspace.splitLeft")
+    static let splitUp = Self(rawValue: "workspace.splitUp")
+    static let splitDown = Self(rawValue: "workspace.splitDown")
+    static let unsplitCurrent = Self(rawValue: "workspace.unsplitCurrent")
+    // Preserve the existing saved binding when renaming the merge command.
+    static let unsplitAll = Self(rawValue: "workspace.mergePanes")
+    static let mergePanes = unsplitAll
     static let openSQL = Self(rawValue: "file.openSQL")
     static let saveSQL = Self(rawValue: "file.saveSQL")
     static let saveSQLAs = Self(rawValue: "file.saveSQLAs")
@@ -35,6 +43,16 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
 
     var isGridCopyCommand: Bool {
         self == .copyAsJSON || self == .copyAsMarkdown || self == .copyAsSQLInsert
+    }
+
+    var splitDirection: WorkspaceSplitDirection? {
+        switch self {
+        case .splitLeft: .left
+        case .splitRight: .right
+        case .splitUp: .up
+        case .splitDown: .down
+        default: nil
+        }
     }
 }
 
@@ -82,6 +100,18 @@ struct AppCommandDescriptor: Identifiable, Hashable, Sendable {
             defaultShortcut: AppShortcut(key: "]", modifiers: [.command, .shift])),
         .init(id: .previousTab, title: "Select Previous Tab", scope: .workspace,
             defaultShortcut: AppShortcut(key: "[", modifiers: [.command, .shift])),
+        .init(id: .splitRight, title: "Split Right", scope: .document,
+            defaultShortcut: AppShortcut(key: "\\", modifiers: .command)),
+        .init(id: .splitLeft, title: "Split Left", scope: .document,
+            defaultShortcut: AppShortcut(key: "\\", modifiers: [.command, .option])),
+        .init(id: .splitUp, title: "Split Up", scope: .document,
+            defaultShortcut: AppShortcut(key: "\\", modifiers: [.command, .control])),
+        .init(id: .splitDown, title: "Split Down", scope: .document,
+            defaultShortcut: AppShortcut(key: "\\", modifiers: [.command, .control, .shift])),
+        .init(id: .unsplitCurrent, title: "Unsplit Current", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "\\", modifiers: [.command, .option, .shift])),
+        .init(id: .unsplitAll, title: "Unsplit All", scope: .workspace,
+            defaultShortcut: AppShortcut(key: "\\", modifiers: [.command, .shift])),
         .init(id: .openSQL, title: "Open SQL…", scope: .workspace,
             defaultShortcut: AppShortcut(key: "o", modifiers: .command)),
         .init(id: .saveSQL, title: "Save SQL", scope: .sqlDocument,
@@ -118,8 +148,8 @@ struct AppShortcut: Codable, Hashable, Sendable {
     static let supportedModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift]
 
     init(key: String, modifiers: NSEvent.ModifierFlags) {
-        let unshiftedBrackets = ["{": "[", "}": "]"]
-        self.key = Self.canonicalKey(modifiers.contains(.shift) ? unshiftedBrackets[key] ?? key : key)
+        let unshiftedSymbols = ["{": "[", "}": "]", "|": "\\"]
+        self.key = Self.canonicalKey(modifiers.contains(.shift) ? unshiftedSymbols[key] ?? key : key)
         modifierRawValue = modifiers.intersection(Self.supportedModifiers).rawValue
     }
 
@@ -133,10 +163,15 @@ struct AppShortcut: Codable, Hashable, Sendable {
         let key: String
         if let special = specialKeys[event.keyCode] { key = special }
         else if let characters = event.charactersIgnoringModifiers, !characters.isEmpty {
+            // Cyrillic Shift-Backslash produces slash on this physical key.
+            // Keep Command equivalents distinct from the normal slash key.
+            if event.modifierFlags.contains(.command), event.keyCode == 42, characters == "/" {
+                key = "\\"
+            }
             // Native Command equivalents keep their familiar physical Latin
             // letters on non-Latin layouts. Latin layouts retain their own
             // character mapping; Control/Option never use this fallback.
-            if event.modifierFlags.contains(.command),
+            else if event.modifierFlags.contains(.command),
                characters.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) && !$0.isASCII }),
                let latin = Self.commandLatinKeyCodes[event.keyCode] {
                 key = latin
@@ -342,8 +377,8 @@ final class AppShortcutStore: ObservableObject {
         if modifiers.contains(.command) {
             let editing: Set<String> = ["a", "c", "x", "v", "z", "y"]
             let baseCommands: Set<String> = ["e", "f", "g", "h", "m", "n", "o", "p", "q", "s", "t", "w",
-                ",", ".", "`", "[", "]", "?", "/"]
-            let shiftedCommands: Set<String> = ["e", "f", "g", "h", "n", "o", "p", "q", "s", "t", "w", "`", "[", "]", "?", "/"]
+                ",", ".", "`", "[", "]", "?", "/", "\\"]
+            let shiftedCommands: Set<String> = ["e", "f", "g", "h", "n", "o", "p", "q", "s", "t", "w", "`", "[", "]", "?", "/", "\\"]
             let optionCommands: Set<String> = ["d", "h", "q", "w"]
             let controlCommands: Set<String> = ["f", "q"]
             // R21 assigns grid Markdown export to Command-Option-M. Keep this
@@ -355,7 +390,9 @@ final class AppShortcutStore: ObservableObject {
             let ownsStandardBinding = AppCommandDescriptor.builtins.contains {
                 $0.id == command && $0.scope == scope && $0.defaultShortcut == shortcut
             }
+            let paneBinding = key == "\\" && AppCommandDescriptor.builtins.contains { $0.defaultShortcut == shortcut }
             let reserved = editing.contains(key) || key == " " ||
+                paneBinding ||
                 (modifiers == .command && baseCommands.contains(key)) ||
                 (modifiers == [.command, .shift] && shiftedCommands.contains(key)) ||
                 (modifiers == [.command, .option] && optionCommands.contains(key)) ||

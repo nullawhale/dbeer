@@ -168,6 +168,7 @@ struct AppCommandInvocation {
             case .newConnection: return !workspace.library.isSavingConnection
             case .newSQLTab, .openSQL, .attachSQLFolder, .checkSQLFiles: return true
             case .reopenClosedTab: return workspace.canReopenClosedTab
+            case .unsplitCurrent, .unsplitAll: return workspace.paneLayout.isSplit
             case .nextTab, .previousTab:
                 return workspace.documents(in: workspace.activePaneID).count > 1 && workspace.selectedDocument != nil
             case .findInConnections: return catalogSearchField() != nil
@@ -178,6 +179,9 @@ struct AppCommandInvocation {
             }
         }
         guard let document = resolved.document else { return false }
+        if command.splitDirection != nil {
+            return !context.isComposingText && workspace.canManageWorkspace && workspace.paneLayout.canSplit && resolved.tab != nil
+        }
         if command == .closeTab {
             return !context.isComposingText && resolved.tab.map { workspace.canStartOperation($0) } == true
         }
@@ -222,6 +226,8 @@ struct AppCommandInvocation {
         switch command {
         case .newConnection: workspace.library.isConnectionEditorPresented = true
         case .newSQLTab: workspace.newDocument()
+        case .unsplitCurrent: workspace.unsplitPane(workspace.activePaneID)
+        case .unsplitAll: workspace.mergePanes()
         case .openSQL: workspace.openSQLFile()
         case .attachSQLFolder: workspace.attachSQLFolder()
         case .checkSQLFiles: return Task { [workspace] in await workspace.reconcileSQLFiles() }
@@ -250,6 +256,10 @@ struct AppCommandInvocation {
         let tab = owner.tab
         let pane = owner.paneID
         workspace.activatePane(pane)
+        if let direction = command.splitDirection {
+            workspace.splitDocument(tab.id, direction: direction)
+            return Task {}
+        }
         if command == .closeTab {
             return Task { [workspace] in await workspace.closeDocument(tab) }
         }
