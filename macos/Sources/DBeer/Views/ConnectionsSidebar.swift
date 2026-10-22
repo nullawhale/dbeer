@@ -57,6 +57,9 @@ struct ConnectionsSidebar: View {
                     Label("PostgreSQL", systemImage: "externaldrive.connected.to.line.below")
                         .font(.callout.weight(.medium))
                         .appSecondaryText()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { expandedState.wrappedValue.toggle() }
                         .catalogRowHover()
                 }
                 .accessibilityIdentifier("postgresConnectionsGroup")

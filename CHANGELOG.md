@@ -12,6 +12,10 @@
   history. Existing New/Open/Save bindings are configurable; Shift-Command-[ and
   Shift-Command-] switch tabs with wrapping. Close Tab follows the existing
   transaction and pending-edit review. Restore Defaults has spacing above it.
+- Double-clicking a connection, expandable catalog node or SQL folder toggles
+  its disclosure. Tables and views expand their metadata; Open Data remains
+  available from their context menu. Expanded connections stay connected when
+  collapsed, and nested catalog and folder contents continue to load lazily.
 - The native connection editor uses a wider dialog with General, SSH, TLS and
   Options tabs. Test Connection checks unsaved settings in a disposable helper,
   closes the test session and reports the result without saving a profile or
@@ -39,6 +43,8 @@
   the usual session and pending-edit review. Deleted profiles retain their
   name in history with an inactive link. The last 100 messages stay in memory
   for the current workspace, including when all tabs are closed.
+- SQL folder, file and search-result rows match connection row spacing and use
+  the same full-row hover highlight, including folder disclosure arrows.
 - SQL Files attaches existing folders with a lazy `.sql` tree and background
   name/content search. Symlinks, Git metadata and build/dependency directories
   are excluded; incomplete scans are reported. Folder attachments persist.

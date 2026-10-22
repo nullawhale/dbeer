@@ -96,7 +96,7 @@ struct ProfileCatalogRow: View {
             .frame(width: 16, height: 16)
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { setExpanded(true) }
+        .onTapGesture(count: 2) { setExpanded(!expanded.wrappedValue) }
         .onTapGesture { Task { await workspace.library.selectConnection(profile.id) } }
         .catalogRowHover()
         .catalogRowContextMenu { contextMenu }
@@ -190,14 +190,16 @@ struct CatalogBranchView: View {
         }
         .font(.callout)
         .padding(.leading, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .catalogRowHover()
         .catalogRowContextMenu { contextMenu }
         .help(node.detail ?? node.name)
         .onTapGesture(count: 2) {
-            if node.kind == .object {
-                if ["table", "view"].contains(node.objectKind) { Task { await workspace.openData(node) } }
-                else { Task { await workspace.inspect(node) } }
+            if node.isExpandable {
+                node.isExpanded.toggle()
+            } else if node.kind == .object {
+                Task { await workspace.inspect(node) }
             }
         }
     }

@@ -127,9 +127,12 @@ private struct SQLFolderFilesView: View {
                         Text(preview).lineLimit(2)
                     }.font(.caption).appSecondaryText()
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }
+            .padding(.leading, 8)
+            .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).controlHover().help(match.url.path)
+        .buttonStyle(.plain).catalogRowHover().help(match.url.path)
         .contextMenu {
             Button("Open") { Task { await workspace.openSQLFile(at: match.url) } }
             Button("Open in New Tab") { Task { await workspace.openSQLFile(at: match.url, inNewTab: true) } }
@@ -170,6 +173,11 @@ private struct SQLFolderTreeRow: View {
                     }
                 } label: {
                     Label(node.name, systemImage: "folder").lineLimit(1).help(node.url.path)
+                        .padding(.leading, 8)
+                        .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { node.isExpanded.toggle() }
+                        .catalogRowHover()
                 }
                 .onChange(of: node.isExpanded) { _, expanded in
                     if expanded { Task { await library.loadChildren(node) } }
@@ -186,9 +194,12 @@ private struct SQLFolderTreeRow: View {
                     Task { await workspace.openSQLFile(at: node.url) }
                 } label: {
                     Label(node.name, systemImage: "doc.text")
-                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                        .lineLimit(1)
+                        .padding(.leading, 8)
+                        .frame(maxWidth: .infinity, minHeight: 20, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).controlHover().help(node.url.path)
+                .buttonStyle(.plain).catalogRowHover().help(node.url.path)
                 .contextMenu {
                     Button("Open") { Task { await workspace.openSQLFile(at: node.url) } }
                     Button("Open in New Tab") { Task { await workspace.openSQLFile(at: node.url, inNewTab: true) } }
