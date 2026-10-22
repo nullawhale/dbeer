@@ -8,3 +8,4 @@
 {"type":"catalog","requestId":"completion-1","sessionId":"session-1","queryId":"completion-query-1","catalog":{"kind":"completion","page":1},"stream":true}
 {"type":"connect","requestId":"cassandra-connect","connection":{"engine":"cassandra","host":"","port":9042,"database":"","user":"","password":"","sslMode":"verify-full","contactPoints":["node1.example","node2.example"],"localDatacenter":"dc1","consistency":"LOCAL_QUORUM","policy":{"environment":"development","readOnly":true}}}
 {"type":"catalog","requestId":"cassandra-browse","sessionId":"cassandra-session","queryId":"cassandra-page-2","catalog":{"kind":"browse","schema":"demo","object":"events","objectKind":"table","cursor":"opaque-page-2"}}
+{"type":"catalog","requestId":"foreign-keys-1","sessionId":"session-1","queryId":"foreign-keys-query-1","catalog":{"kind":"foreignKeys","schema":"odd\"schema","object":"Order Items","objectKind":"table"}}

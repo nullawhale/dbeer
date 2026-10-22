@@ -97,7 +97,7 @@ struct TableBrowseControls: View {
 @MainActor
 enum TableBrowseNavigation {
     static func isEnabled(document: SQLDocument, workspace: ApplicationWorkspace) -> Bool {
-        !document.isRunning && !workspace.isClosing && document.grid?.isClosing != true &&
+        !document.isRunning && !document.isNavigatingTable && !workspace.isClosing && document.grid?.isClosing != true &&
             document.grid?.hasInlineDraft != true &&
             (document.grid?.pendingCount ?? 0) == 0 && document.grid?.isApplying != true &&
             document.grid?.isReloading != true && document.grid?.isPreviewing != true &&

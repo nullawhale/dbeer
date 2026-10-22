@@ -84,6 +84,8 @@ struct CatalogRequest: Codable, Sendable, Equatable {
     /// datacenter, rack and hostId. It accepts no object or paging parameters.
     /// `completion` returns 200 objects per page with JSON column-name and
     /// structured foreign-key and function-signature arrays; rules belong to the helper.
+    /// `foreignKeys` returns one row per source/target column pair, ordered by
+    /// constraint name and 1-based position. A truncated result is incomplete.
     var kind: String
     var schema: String?
     var object: String?

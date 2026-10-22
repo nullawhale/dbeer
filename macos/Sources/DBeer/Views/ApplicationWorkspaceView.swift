@@ -213,7 +213,8 @@ struct ApplicationWorkspaceView: View {
                     ForEach(workspace.documents) { document in
                         DocumentTab(document: document, isSelected: workspace.selectedDocumentID == document.id,
                             select: { workspace.selectedDocumentID = document.id },
-                            close: { Task { await workspace.closeDocument(document) } })
+                            close: { Task { await workspace.closeDocument(document) } },
+                            openInNewTab: { Task { await workspace.openTableInNewTab(document) } })
                     }
                 }
             }
@@ -234,13 +235,16 @@ struct DocumentTab: View {
     let isSelected: Bool
     let select: () -> Void
     let close: () -> Void
+    var openInNewTab: (() -> Void)? = nil
 
     var body: some View {
         ZStack(alignment: .trailing) {
             Button(action: select) {
                 HStack(spacing: 6) {
                     Text(document.title).lineLimit(1)
-                    if document.isRunning || document.grid?.isApplying == true { ProgressView().controlSize(.mini) }
+                    if document.isRunning || document.isNavigatingTable || document.grid?.isApplying == true {
+                        ProgressView().controlSize(.mini)
+                    }
                 }
                 // Reserve the close target inside the full tab button, so its
                 // hover and selection also cover the surrounding empty space.
@@ -265,6 +269,10 @@ struct DocumentTab: View {
         .background(isSelected ? AppPalette.accent.opacity(0.12) : Color.clear,
             in: RoundedRectangle(cornerRadius: ControlHoverAppearance.cornerRadius))
         .contextMenu {
+            if document.table != nil, let openInNewTab {
+                Button("Open in New Tab", action: openInNewTab)
+                    .disabled(document.isNavigatingTable)
+            }
             Button("Rename…") {
                 let alert = NSAlert()
                 alert.messageText = "Rename SQL Tab"
@@ -277,7 +285,7 @@ struct DocumentTab: View {
                     let title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !title.isEmpty { document.title = title }
                 }
-            }
+            }.disabled(document.isNavigatingTable)
             Button("Close", action: close)
         }
     }
@@ -304,6 +312,7 @@ struct SQLDocumentPane: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
+                if document.table != nil { tableHistoryControls }
                 Picker("Connection", selection: $document.profileID) {
                     Text("Choose a connection").tag(Optional<UUID>.none)
                     if let missingProfileID {
@@ -315,7 +324,7 @@ struct SQLDocumentPane: View {
                     }
                 }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(maxWidth: 220)
                     .accessibilityIdentifier("documentConnection")
-                    .disabled(document.runtime?.sessionId != nil || document.isRunning)
+                    .disabled(document.runtime?.sessionId != nil || document.isRunning || document.isNavigatingTable)
                 if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
                    (document.runtime?.policy ?? profile.policy).readOnly {
                     Text(profile.engine == .cassandra ? "Local RO" : "RO")
@@ -363,13 +372,25 @@ struct SQLDocumentPane: View {
                     }.fixedSize(horizontal: true, vertical: false)
                 }.controlHover()
                     .buttonStyle(.borderedProminent)
-                    .disabled(!commands.canPerform(.runCurrent))
+                    .disabled(document.isNavigatingTable || !commands.canPerform(.runCurrent))
                     .help(commandHelp(.runCurrent))
                     .accessibilityIdentifier("runQuery")
             }
             .padding(.horizontal, 12)
             .frame(height: WorkspaceChrome.toolbarHeight)
             Divider()
+            if document.table != nil, let error = document.tableNavigationError {
+                HStack(alignment: .top, spacing: 8) {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange).textSelection(.enabled)
+                    Spacer(minLength: 4)
+                    ControlIconButton(systemName: "xmark") { document.tableNavigationError = nil }
+                        .help("Dismiss navigation message").accessibilityLabel("Dismiss navigation message")
+                }
+                .font(.callout).padding(.horizontal, 12).padding(.vertical, 8)
+                .accessibilityIdentifier("tableNavigationError")
+                Divider()
+            }
             if let notice = document.historyConnectionNotice {
                 Label(notice, systemImage: "info.circle")
                     .font(.caption).appSecondaryText()
@@ -437,6 +458,29 @@ struct SQLDocumentPane: View {
         return id
     }
 
+    private var tableHistoryControls: some View {
+        HStack(spacing: ControlHoverAppearance.gap) {
+            ControlIconButton(systemName: "chevron.backward") {
+                Task { await workspace.navigateTableBack(document) }
+            }
+            .disabled(!canNavigateTableHistory || !document.canNavigateTableBack)
+            .help("Back to previous table view")
+            .accessibilityLabel("Back to previous table view")
+            .accessibilityIdentifier("tableNavigateBack")
+            ControlIconButton(systemName: "chevron.forward") {
+                Task { await workspace.navigateTableForward(document) }
+            }
+            .disabled(!canNavigateTableHistory || !document.canNavigateTableForward)
+            .help("Forward to next table view")
+            .accessibilityLabel("Forward to next table view")
+            .accessibilityIdentifier("tableNavigateForward")
+        }
+    }
+
+    private var canNavigateTableHistory: Bool {
+        workspace.canStartOperation(document) && !workspace.isClosing && document.canNavigateTable
+    }
+
     private func unloadedTable(_ table: TableReference, error: String? = nil) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -496,7 +540,7 @@ struct SQLDocumentPane: View {
                 }
                 Button(error == nil ? "Load Data" : "Retry Load Data") { commands.perform(.runCurrent) }
                     .controlHover().buttonStyle(.borderedProminent)
-                    .disabled(!commands.canPerform(.runCurrent))
+                    .disabled(document.isNavigatingTable || !commands.canPerform(.runCurrent))
                     .accessibilityIdentifier("loadRestoredTable")
             }
             .padding(24)
@@ -537,7 +581,9 @@ struct SQLDocumentPane: View {
     }
 
     private var displayedResult: BackendMessage? {
-        guard var message = document.executions.isEmpty ? document.runtime?.result : displayedExecution?.result else { return nil }
+        if document.table != nil, document.grid == nil { return nil }
+        let tableResult = document.table != nil && document.grid != nil ? document.tableResult : nil
+        guard var message = tableResult ?? (document.executions.isEmpty ? document.runtime?.result : displayedExecution?.result) else { return nil }
         if let sets = message.resultSets, !sets.isEmpty {
             let index = min(resultSetIndex.wrappedValue, sets.count - 1)
             let set = sets[index]
@@ -555,7 +601,8 @@ struct SQLDocumentPane: View {
     }
 
     private var displayedFailure: WorkspaceModel.QueryFailure? {
-        document.executions.isEmpty ? document.runtime?.queryFailure : displayedExecution?.failure
+        if document.table != nil, document.tableResult != nil { return document.tableFailure }
+        return document.executions.isEmpty ? document.runtime?.queryFailure : displayedExecution?.failure
     }
 
     private var unloadedTableError: String? {
@@ -568,6 +615,7 @@ struct SQLDocumentPane: View {
             }
             return message
         }
+        if document.table != nil, document.tableResult != nil { return nil }
         return document.runtime?.errorMessage ?? document.runtime?.connectionsError
     }
 

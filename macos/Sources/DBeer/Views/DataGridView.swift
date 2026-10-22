@@ -18,11 +18,19 @@ struct DataGridView: View {
     }
 
     private var canNavigate: Bool { TableBrowseNavigation.isEnabled(document: document, workspace: workspace) }
+    private var canFollowRelationship: Bool {
+        workspace.canStartOperation(document) && !workspace.isClosing && document.canNavigateTable
+    }
+    private var selectedRelationshipRowID: UUID? {
+        guard grid.selectedRows.count == 1, let row = grid.selectedRows.first,
+              grid.rows.indices.contains(row) else { return nil }
+        return grid.rows[row].id
+    }
     private var usesCursors: Bool { document.runtime?.usesCursorPagination == true }
-    private var canEdit: Bool { grid.canEdit && !document.isRunning && !workspace.isClosing }
+    private var canEdit: Bool { grid.canEdit && !document.isRunning && !document.isNavigatingTable && !workspace.isClosing }
     private var canPreview: Bool {
         (grid.pendingCount > 0 || grid.hasInlineDraft) && !grid.isApplying && !grid.isPreviewing && !document.isRunning &&
-            !grid.isReloading && !grid.isClosing && !workspace.isClosing && !grid.outcomeUnknown
+            !document.isNavigatingTable && !grid.isReloading && !grid.isClosing && !workspace.isClosing && !grid.outcomeUnknown
     }
 
     var body: some View {
@@ -36,11 +44,23 @@ struct DataGridView: View {
             if grid.outcomeUnknown {
                 HStack {
                     Text("Write outcome unknown. Verify data before making further changes.").foregroundStyle(.orange)
-                    Button("Review Data in New Tab") { Task { await workspace.reviewGridData(document) } }.controlHover()
+                    Button("Review Data in New Tab") { Task { await workspace.reviewGridData(document) } }
+                        .controlHover().disabled(document.isNavigatingTable)
                 }.font(.callout).padding(8)
             }
             if let error = grid.error { Text(error).foregroundStyle(.orange).textSelection(.enabled).padding(8) }
             if let notice = grid.notice { Text(notice).appSecondaryText().padding(8) }
+            if let error = document.foreignKeysError {
+                HStack(alignment: .top, spacing: 8) {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange).textSelection(.enabled)
+                    Spacer(minLength: 4)
+                    Button("Retry Foreign Keys") { Task { await workspace.loadForeignKeys(document) } }
+                        .controlHover().disabled(!canFollowRelationship || document.isLoadingForeignKeys)
+                }
+                .font(.caption).padding(8)
+                .accessibilityIdentifier("foreignKeysError")
+            }
             HSplitView {
                 table.frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
                 if showingRowDetails.wrappedValue {
@@ -109,7 +129,7 @@ struct DataGridView: View {
         }
         view.documentID = document.id
         view.copySettings = workspace.copySettings
-        view.copyAllowed = !document.isRunning && !workspace.isClosing && !grid.isApplying && !grid.isReloading && !grid.isClosing
+        view.copyAllowed = !document.isRunning && !document.isNavigatingTable && !workspace.isClosing && !grid.isApplying && !grid.isReloading && !grid.isClosing
         view.onCopyError = { workspace.reportCopyError($0) }
         view.onSQLInsertCopy = { payload, pasteboard in
             workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)
@@ -129,6 +149,7 @@ struct DataGridView: View {
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
                 .popover(isPresented: showingColumns.projectedValue) { columnDetails }
+            relatedRowsMenu
             Spacer(minLength: 4)
             if !usesCursors {
                 ControlIconButton(systemName: "chevron.left") {
@@ -149,6 +170,39 @@ struct DataGridView: View {
         .accessibilityElement(children: .contain).accessibilityIdentifier("gridNavigationToolbar")
     }
 
+    private var relatedRowsMenu: some View {
+        Menu("Related Rows") {
+            if document.isLoadingForeignKeys {
+                Text("Loading foreign keys…")
+            } else if let error = document.foreignKeysError {
+                Text(error)
+            } else if document.tableForeignKeys.isEmpty {
+                Text("No foreign keys")
+            } else if let rowID = selectedRelationshipRowID {
+                ForEach(document.tableForeignKeys) { key in
+                    Menu(key.displayLabel) {
+                        Button("Open Related Rows") {
+                            Task { await workspace.followForeignKey(key, rowID: rowID, in: document) }
+                        }
+                        Button("Open Related Rows in New Tab") {
+                            Task { await workspace.followForeignKey(key, rowID: rowID, in: document, inNewTab: true) }
+                        }
+                    }
+                }
+            } else {
+                Text("Select one row to follow a foreign key")
+            }
+            Divider()
+            Button(document.foreignKeysError == nil ? "Refresh Foreign Keys" : "Retry Foreign Keys") {
+                Task { await workspace.loadForeignKeys(document) }
+            }.disabled(document.isLoadingForeignKeys)
+        }
+        .fixedSize().controlHover()
+        .disabled(!canFollowRelationship)
+        .help("Follow a selected row's foreign key in this view or an independent tab")
+        .accessibilityIdentifier("gridRelatedRows")
+    }
+
     private var changesToolbar: some View {
         HStack(spacing: 6) {
             Text("\(grid.selectedRows.count) of \(grid.rows.count) selected")
@@ -160,7 +214,7 @@ struct DataGridView: View {
                     Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
                 }
             }.fixedSize().controlHover().help("Export loaded rows")
-                .disabled(result == nil || grid.pendingCount > 0 || grid.hasInlineDraft || grid.isApplying || grid.outcomeUnknown || document.isRunning)
+                .disabled(result == nil || grid.pendingCount > 0 || grid.hasInlineDraft || grid.isApplying || grid.outcomeUnknown || document.isRunning || document.isNavigatingTable)
                 .accessibilityIdentifier("gridExport")
             Spacer(minLength: 4)
             if grid.pendingCount > 0 {
@@ -191,7 +245,7 @@ struct DataGridView: View {
             }
             if grid.supportsEditing {
                 Button("Discard") { finishEditing(); Task { await workspace.discardGrid(document) } }.controlHover()
-                    .disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || grid.isApplying || grid.isReloading || document.isRunning || grid.isClosing || workspace.isClosing)
+                    .disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || grid.isApplying || grid.isReloading || document.isRunning || document.isNavigatingTable || grid.isClosing || workspace.isClosing)
                     .accessibilityIdentifier("gridDiscard")
                 Button("Apply") { finishEditing(); Task { await workspace.applyGrid(document) } }.controlHover()
                     .buttonStyle(.borderedProminent).disabled((grid.pendingCount == 0 && !grid.hasInlineDraft) || !canEdit || (!grid.hasInlineDraft && !grid.canApply))

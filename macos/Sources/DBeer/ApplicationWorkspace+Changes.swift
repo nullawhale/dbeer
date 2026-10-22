@@ -87,7 +87,7 @@ extension ApplicationWorkspace {
         guard let table = document.table, let profileID = document.profileID else { return }
         let node = CatalogNode(profileID: profileID, name: table.name, kind: .object,
             schema: table.schema, object: table.name, objectKind: table.kind)
-        await openData(node)
+        await openData(node, inNewTab: true)
     }
 
     private func performChanges(_ document: SQLDocument, grid: GridDraft, request: ChangesRequest,

@@ -127,7 +127,7 @@ struct CopyCommandTests {
 
     private enum BlockedState: CaseIterable {
         case sqlEditor, textInput, workspaceFocus, foreignWindow, modal, staleDocument
-        case responderFocus, responderDocument, emptySelection, running, applying, reloading, closing
+        case responderFocus, responderDocument, emptySelection, running, applying, reloading, closing, navigating
     }
 
     @Test(arguments: BlockedState.allCases)
@@ -152,6 +152,7 @@ struct CopyCommandTests {
         case .applying: fixture.grid.isApplying = true
         case .reloading: fixture.grid.isReloading = true
         case .closing: fixture.grid.isClosing = true
+        case .navigating: fixture.document.isNavigatingTable = true
         }
         let context = AppCommandContext(documentID: documentID, focus: focus,
             isWorkspaceWindow: isWorkspaceWindow, hasModal: hasModal)
@@ -161,6 +162,28 @@ struct CopyCommandTests {
         }
         #expect(fixture.responder.capturedCommands.isEmpty)
         #expect(fixture.responder.copiedSelections.isEmpty)
+        await fixture.workspace.shutdown()
+    }
+
+    @Test func navigationBlocksQueryAndCopyCommandsButKeepsStopAvailable() async throws {
+        let fixture = try Fixture()
+        defer { fixture.defaults.removePersistentDomain(forName: fixture.defaultsName) }
+        try #require(await fixture.workspace.library.saveConnection(name: "Navigation fixture",
+            settings: ConnectionSettings(host: "localhost", port: 5432, database: "fixture",
+                user: "fixture", password: "", sslMode: "disable")))
+        fixture.document.profileID = try #require(fixture.workspace.library.selectedConnectionId)
+        fixture.document.table = fixture.grid.reference
+        #expect(fixture.registry.canPerform(.runCurrent, context: fixture.context))
+        fixture.document.isNavigatingTable = true
+        #expect(!fixture.registry.canPerform(.runCurrent, context: fixture.context))
+        #expect(fixture.registry.perform(.runCurrent, context: fixture.context) == nil)
+        #expect(!fixture.registry.canPerform(.copyAsJSON, context: fixture.context))
+        fixture.document.isRunning = true
+        #expect(fixture.registry.canPerform(.stop, context: fixture.context))
+        fixture.document.isRunning = false
+        fixture.document.isNavigatingTable = false
+        #expect(fixture.registry.canPerform(.runCurrent, context: fixture.context))
+        #expect(fixture.registry.canPerform(.copyAsJSON, context: fixture.context))
         await fixture.workspace.shutdown()
     }
 

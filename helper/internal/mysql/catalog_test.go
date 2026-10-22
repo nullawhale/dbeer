@@ -15,12 +15,24 @@ func TestMySQLCatalogQuotesIdentifiersAndParameterizesNames(t *testing.T) {
 	if QuoteIdentifier("a`b; DROP TABLE x") != "`a``b; DROP TABLE x`" {
 		t.Fatal("identifier was not escaped")
 	}
-	for _, kind := range []string{"columns", "keys", "indexes", "constraints", "triggers"} {
+	for _, kind := range []string{"columns", "keys", "foreignKeys", "indexes", "constraints", "triggers"} {
 		request := protocol.CatalogRequest{Kind: kind, Schema: "private' OR 1=1", Object: "x';DROP TABLE x--", ObjectKind: "table"}
 		query, args := catalogQuery(request)
 		if strings.Contains(query, request.Schema) || strings.Contains(query, request.Object) || len(args) != 2 || args[0] != request.Schema || args[1] != request.Object {
 			t.Fatal("metadata name was inserted into SQL syntax")
 		}
+	}
+}
+
+func TestMySQLForeignKeyCatalogPreservesConstraintColumnOrder(t *testing.T) {
+	query, args := catalogQuery(protocol.CatalogRequest{Kind: "foreignKeys", Schema: "source", Object: "child", ObjectKind: "table"})
+	for _, fragment := range []string{"AS targetSchema", "AS targetTable", "AS sourceColumn", "AS targetColumn", "AS position", "ORDER BY k.CONSTRAINT_NAME,k.ORDINAL_POSITION"} {
+		if !strings.Contains(query, fragment) {
+			t.Fatal("foreign key catalog lost a structured field or composite order")
+		}
+	}
+	if strings.Contains(query, "GROUP_CONCAT") || strings.Contains(query, "JSON_ARRAYAGG") || len(args) != 2 {
+		t.Fatal("foreign key pairs must be ordered rows with bound source names")
 	}
 }
 

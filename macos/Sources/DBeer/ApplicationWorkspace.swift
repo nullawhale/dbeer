@@ -17,6 +17,15 @@ final class SQLDocument: ObservableObject, Identifiable {
         didSet {
             if profileID != oldValue {
                 clearExecutionSuccess()
+                tableForeignKeys = []
+                foreignKeysError = nil
+                tableResult = nil
+                tableFailure = nil
+                tableNavigationError = nil
+                foreignKeysRequestID = UUID()
+                isLoadingForeignKeys = false
+                tableBackHistory = []
+                tableForwardHistory = []
                 if profileID != nil { historyConnectionNotice = nil }
             }
         }
@@ -50,6 +59,19 @@ final class SQLDocument: ObservableObject, Identifiable {
         }
     }
     @Published var tableColumns: [[String: String]] = []
+    @Published var tableResult: BackendMessage?
+    @Published var tableFailure: WorkspaceModel.QueryFailure?
+    @Published var tableForeignKeys: [TableForeignKey] = []
+    @Published var foreignKeysError: String?
+    @Published var tableNavigationError: String?
+    @Published var isLoadingForeignKeys = false
+    @Published var isNavigatingTable = false
+    @Published var tableBackHistory: [TableViewLocation] = []
+    @Published var tableForwardHistory: [TableViewLocation] = []
+    var foreignKeysRequestID = UUID()
+    var tableNavigationSourceState: StoredSQLDocument?
+    var isProvisionalTableView = false
+    var provisionalPreviousSelection: UUID?
     @Published private(set) var grid: GridDraft?
     private var runtimeObservation: AnyCancellable?
     private var gridObservation: AnyCancellable?
@@ -60,6 +82,16 @@ final class SQLDocument: ObservableObject, Identifiable {
         self.text = text
         self.profileID = profileID
     }
+
+    /// The persisted document identity distinguishes independent views of the
+    /// same database relation, including views restored by R09.
+    var tableViewID: UUID? { table == nil ? nil : id }
+    var canNavigateTable: Bool {
+        table != nil && !isRunning && !isNavigatingTable && grid?.isApplying != true &&
+            grid?.isReloading != true && grid?.isPreviewing != true && grid?.isClosing != true
+    }
+    var canNavigateTableBack: Bool { canNavigateTable && !tableBackHistory.isEmpty }
+    var canNavigateTableForward: Bool { canNavigateTable && !tableForwardHistory.isEmpty }
 
     /// Reopening a saved document creates presentation state only. Runtime,
     /// cursors, result rows, executions and pending grid writes stay absent.
@@ -320,7 +352,7 @@ final class ApplicationWorkspace: ObservableObject {
     @discardableResult func disconnectProfile(_ id: UUID) async -> Bool {
         // A profile's working and service sessions close together. Other
         // profiles keep their connections and in-flight queries.
-        guard !isClosing, !documents.contains(where: { $0.profileID == id && closingDocuments.contains($0.id) }),
+        guard !isClosing, !documents.contains(where: { $0.profileID == id && (closingDocuments.contains($0.id) || $0.isNavigatingTable) }),
               disconnectingProfiles.insert(id).inserted else { return false }
         let grids = documents.filter { $0.profileID == id }.compactMap(\.grid)
         for grid in grids { grid.commitEditing?() }
@@ -373,9 +405,9 @@ final class ApplicationWorkspace: ObservableObject {
         await closeDocumentImmediately(document, remember: true)
     }
 
-    func canStartOperation(_ document: SQLDocument, forClosing: Bool = false) -> Bool {
+    func canStartOperation(_ document: SQLDocument, forClosing: Bool = false, forNavigating: Bool = false) -> Bool {
         guard shutdownTask == nil, documents.contains(where: { $0 === document }) else { return false }
-        return forClosing || (!isClosing && !closingDocuments.contains(document.id) &&
+        return forClosing || (!isClosing && (!document.isNavigatingTable || forNavigating) && !closingDocuments.contains(document.id) &&
             document.profileID.map { !disconnectingProfiles.contains($0) } != false)
     }
 
@@ -447,11 +479,12 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
-                         isScript: Bool = false, sourceSQL: String? = nil) async {
-        guard canStartOperation(document), !document.isRunning, let profileID = document.profileID else { return }
+                         isScript: Bool = false, sourceSQL: String? = nil, forNavigating: Bool = false) async {
+        guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning, let profileID = document.profileID else { return }
         guard document.table != nil || !statements.isEmpty else { return }
         guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
         let boundText = document.text
+        if !forNavigating { document.tableNavigationError = nil }
         document.clearExecutionSuccess()
         let executionRevision = document.executionRevision
         let previousGrid = document.table == nil ? nil : document.grid
@@ -471,7 +504,7 @@ final class ApplicationWorkspace: ObservableObject {
             if export?.destination != nil, !(await client.supportsCapturedExport()) {
                 throw ExecutionPolicyError(message: "The helper does not support captured full export. SQL was not executed.")
             }
-            guard canStartOperation(document), !document.stopRequested, document.text == boundText,
+            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested, document.text == boundText,
                   document.profileID == profileID,
                   library.savedConnections.first(where: { $0.id == profileID }) == profile else {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
@@ -495,6 +528,15 @@ final class ApplicationWorkspace: ObservableObject {
                 for index in document.executions.indices { document.executions[index].status = "Not executed" }
                 return
             }
+            guard runtime.activeConnectionId == profileID, runtime.policy == profile.policy,
+                  runtime.engine == profile.engine, runtime.host == profile.host,
+                  Int(runtime.port) == profile.port, runtime.database == profile.database,
+                  runtime.contactPoints == profile.contactPoints, runtime.localDatacenter == profile.localDatacenter,
+                  runtime.consistency == profile.consistency, runtime.ssh?.configuration == profile.ssh,
+                  runtime.user == profile.user, runtime.sslMode == profile.sslMode,
+                  (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
+                throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before loading data or executing SQL.")
+            }
             runtime.sql = document.text
             if let table = document.table {
                 if runtime.usesCursorPagination, document.tableCursor == nil {
@@ -512,11 +554,13 @@ final class ApplicationWorkspace: ObservableObject {
                     document.localError = error.localizedDescription
                     return
                 }
-                guard canStartOperation(document), !document.stopRequested else { return }
+                guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested else { return }
                 await runtime.run(catalog: CatalogRequest(kind: "browse", schema: table.schema,
                     object: table.name, objectKind: table.kind, page: runtime.usesCursorPagination ? 0 : document.page,
                     cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: document.tableSort, filters: document.tableFilters))
                 if runtime.queryFailure == nil, let result = runtime.result {
+                    document.tableFailure = nil
+                    document.tableResult = result
                     document.tableColumns = metadata
                     document.tableNextCursor = result.nextCursor
                     let grid = GridDraft(reference: table, result: result, metadata: metadata)
@@ -524,20 +568,13 @@ final class ApplicationWorkspace: ObservableObject {
                     grid.supportsEditing = runtime.supportsGridEditing
                     document.attachGrid(grid)
                     document.tableNeedsExplicitLoad = false
-                } else if runtime.queryFailure?.category == "cursor" {
-                    document.resetTablePaging()
+                    await loadForeignKeys(document, forNavigating: forNavigating)
+                } else {
+                    document.tableFailure = runtime.queryFailure
+                    if runtime.queryFailure?.category == "cursor" { document.resetTablePaging() }
                 }
             } else {
                 guard let sessionID = runtime.sessionId else { return }
-                guard runtime.activeConnectionId == profileID, runtime.policy == profile.policy,
-                      runtime.engine == profile.engine, runtime.host == profile.host,
-                      Int(runtime.port) == profile.port, runtime.database == profile.database,
-                      runtime.contactPoints == profile.contactPoints, runtime.localDatacenter == profile.localDatacenter,
-                      runtime.consistency == profile.consistency, runtime.ssh?.configuration == profile.ssh,
-                      runtime.user == profile.user, runtime.sslMode == profile.sslMode,
-                      (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
-                    throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before executing SQL.")
-                }
                 let operations = statements.map { OperationRequest(type: "execute", sql: $0.sql, export: export) }
                 guard let authorization = try await authorizeOperations(operations, sessionID: sessionID,
                     profile: profile, client: client, isScript: isScript || statements.count > 1,
@@ -685,7 +722,8 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func clearRestoredDocuments() async {
-        guard !isClosing, !isClearingDocuments, closingDocuments.isEmpty, disconnectingProfiles.isEmpty else { return }
+        guard !isClosing, !isClearingDocuments, closingDocuments.isEmpty, disconnectingProfiles.isEmpty,
+              !documents.contains(where: \.isNavigatingTable) else { return }
         isClearingDocuments = true
         defer { isClearingDocuments = false }
         let previousClosedIDs = Set(closedTabs.map(\.id))
@@ -714,6 +752,7 @@ final class ApplicationWorkspace: ObservableObject {
         case .profile(let id): affected = documents.filter { $0.profileID == id }
         case .application: affected = documents
         }
+        guard !affected.contains(where: \.isNavigatingTable) else { return false }
         for document in affected { document.grid?.commitEditing?() }
         isClosing = true
         defer { isClosing = false }
@@ -766,9 +805,15 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func snapshot() -> SQLWorkspaceSnapshot {
-        SQLWorkspaceSnapshot(documents: documents.map(\.storedState),
-            selectedDocumentID: selectedDocumentID, history: history, historyEnabled: historyEnabled,
-            historySettings: historySettings)
+        let confirmed = documents.filter { !$0.isProvisionalTableView }
+        let states = confirmed.map { $0.tableNavigationSourceState ?? $0.storedState }
+        let knownIDs = Set(states.map(\.id))
+        let selected = documents.first { $0.id == selectedDocumentID }
+        let requestedSelection = selected?.isProvisionalTableView == true
+            ? selected?.provisionalPreviousSelection : selectedDocumentID
+        return SQLWorkspaceSnapshot(documents: states,
+            selectedDocumentID: requestedSelection.flatMap { knownIDs.contains($0) ? $0 : nil },
+            history: history, historyEnabled: historyEnabled, historySettings: historySettings)
     }
 
     /// Loads local workspace state without launching a helper, requesting
@@ -1129,7 +1174,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func scheduleSave() {
-        guard draftsLoaded else { return }
+        guard draftsLoaded, shutdownTask == nil else { return }
         autosave?.cancel()
         autosave = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(1)) } catch { return }
@@ -1286,16 +1331,288 @@ final class ApplicationWorkspace: ObservableObject {
         return pasteboard.setString(name, forType: .string)
     }
 
-    func openData(_ node: CatalogNode) async {
+    @discardableResult
+    func openData(_ node: CatalogNode, inNewTab: Bool = false) async -> SQLDocument? {
+        guard shutdownTask == nil, !isClosing, !disconnectingProfiles.contains(node.profileID),
+              ["table", "view"].contains(node.objectKind) else { return nil }
+        let reference = TableReference(schema: node.schema, name: node.name, kind: node.objectKind)
+        if !inNewTab, let existing = documents.first(where: { $0.profileID == node.profileID && $0.table == reference }) {
+            selectedDocumentID = existing.id
+            return existing
+        }
         let document = newDocument(profileID: node.profileID, text: "Table data")
         document.title = node.name
-        document.table = TableReference(schema: node.schema, name: node.name, kind: node.objectKind)
-        do {
-            let structure = try await catalog(CatalogRequest(kind: "columns", schema: node.schema,
-                object: node.name, objectKind: node.objectKind), profileID: node.profileID)
-            document.tableColumns = structure.catalogRecords
-        } catch { document.localError = error.localizedDescription }
+        document.table = reference
+        document.tableNeedsExplicitLoad = true
         await run(document)
+        return documents.contains(where: { $0 === document }) ? document : nil
+    }
+
+    @discardableResult
+    func openTableInNewTab(_ source: SQLDocument) async -> SQLDocument? {
+        guard canStartOperation(source), let table = source.table, let profileID = source.profileID else { return nil }
+        return await openData(CatalogNode(profileID: profileID, name: table.name, kind: .object,
+            schema: table.schema, object: table.name, objectKind: table.kind), inNewTab: true)
+    }
+
+    func loadForeignKeys(_ document: SQLDocument, forNavigating: Bool = false) async {
+        guard canStartOperation(document, forNavigating: forNavigating), !document.isLoadingForeignKeys,
+              let table = document.table, let profileID = document.profileID else { return }
+        document.tableForeignKeys = []
+        document.foreignKeysError = nil
+        if library.savedConnections.first(where: { $0.id == profileID })?.engine == .cassandra {
+            document.foreignKeysError = "Foreign-key navigation is not supported for Cassandra."
+            return
+        }
+        let requestID = UUID()
+        document.foreignKeysRequestID = requestID
+        document.isLoadingForeignKeys = true
+        defer { if document.foreignKeysRequestID == requestID { document.isLoadingForeignKeys = false } }
+        do {
+            let response = try await catalog(CatalogRequest(kind: "foreignKeys", schema: table.schema,
+                object: table.name, objectKind: table.kind), profileID: profileID)
+            guard canStartOperation(document, forNavigating: forNavigating), document.profileID == profileID,
+                  document.table == table, document.foreignKeysRequestID == requestID else { return }
+            document.tableForeignKeys = try TableForeignKey.parse(response)
+        } catch {
+            guard canStartOperation(document, forNavigating: forNavigating), document.profileID == profileID,
+                  document.table == table, document.foreignKeysRequestID == requestID else { return }
+            document.foreignKeysError = error.localizedDescription
+        }
+    }
+
+    func followForeignKey(_ key: TableForeignKey, rowID: UUID, in document: SQLDocument, inNewTab: Bool = false) async {
+        guard canStartOperation(document), document.canNavigateTable else { return }
+        document.grid?.commitEditing?()
+        guard let source = TableViewLocation(document), let grid = document.grid,
+              document.tableForeignKeys.contains(key), let row = grid.rows.first(where: { $0.id == rowID }) else {
+            document.tableNavigationError = "The source row or foreign-key metadata changed. Select the row again after reloading."
+            return
+        }
+        document.isNavigatingTable = true
+        let wasClosing = grid.isClosing
+        grid.isClosing = true
+        defer { grid.isClosing = wasClosing; document.isNavigatingTable = false }
+        document.tableNavigationError = nil
+        do {
+            let columns = try await navigationColumns(key.target, profileID: source.profileID,
+                required: Set(key.columns.map(\.target)))
+            guard navigationIsCurrent(document, source: source) else { return }
+            let filters: [CatalogFilter]
+            if inNewTab {
+                guard let original = row.original else {
+                    throw TableNavigationFailure("Apply the new row and reload it before opening related rows in another tab.")
+                }
+                let originalFilters = try key.filters(sourceColumns: grid.columns, values: original)
+                let editedFilters = try key.filters(sourceColumns: grid.columns, values: row.values)
+                guard originalFilters == editedFilters else {
+                    throw TableNavigationFailure("Apply or discard the changed foreign-key values before opening related rows in another tab.")
+                }
+                filters = originalFilters
+            } else {
+                guard let resolved = try await navigationFiltersAfterReview(document, grid: grid, key: key, row: row) else { return }
+                filters = resolved
+            }
+            guard navigationIsCurrent(document, source: source) else { return }
+            let target = TableViewLocation(reference: key.target, profileID: source.profileID, filters: filters)
+            if inNewTab {
+                await openRelatedTable(target, columns: columns, source: document)
+            } else if await moveTable(document, from: source, to: target, columns: columns) {
+                document.tableBackHistory.append(source)
+                if document.tableBackHistory.count > 100 { document.tableBackHistory.removeFirst() }
+                document.tableForwardHistory = []
+            }
+        } catch { if navigationIsCurrent(document, source: source) { document.tableNavigationError = error.localizedDescription } }
+    }
+
+    func navigateTableBack(_ document: SQLDocument) async { await navigateTableHistory(document, backwards: true) }
+    func navigateTableForward(_ document: SQLDocument) async { await navigateTableHistory(document, backwards: false) }
+
+    private func navigateTableHistory(_ document: SQLDocument, backwards: Bool) async {
+        guard canStartOperation(document), document.canNavigateTable,
+              let target = backwards ? document.tableBackHistory.last : document.tableForwardHistory.last,
+              let source = TableViewLocation(document) else { return }
+        guard source.profileID == target.profileID else {
+            document.tableNavigationError = "The connection changed. Reopen the target table with its original connection."
+            return
+        }
+        document.grid?.commitEditing?()
+        let grid = document.grid
+        document.isNavigatingTable = true
+        let wasClosing = grid?.isClosing ?? false
+        grid?.isClosing = true
+        defer { grid?.isClosing = wasClosing; document.isNavigatingTable = false }
+        document.tableNavigationError = nil
+        do {
+            let columns = try await navigationColumns(target.reference, profileID: target.profileID,
+                required: Set(target.filters.map(\.column) + target.sort.map(\.column)))
+            guard navigationIsCurrent(document, source: source),
+                  try await prepareNavigationDraft(document, grid: grid) else { return }
+            if await moveTable(document, from: source, to: target, columns: columns) {
+                if backwards {
+                    document.tableBackHistory.removeLast()
+                    document.tableForwardHistory.append(source)
+                } else {
+                    document.tableForwardHistory.removeLast()
+                    document.tableBackHistory.append(source)
+                }
+            }
+        } catch { if navigationIsCurrent(document, source: source) { document.tableNavigationError = error.localizedDescription } }
+    }
+
+    private func navigationColumns(_ reference: TableReference, profileID: UUID, required: Set<String>) async throws -> [[String: String]] {
+        let response = try await catalog(CatalogRequest(kind: "columns", schema: reference.schema,
+            object: reference.name, objectKind: reference.kind), profileID: profileID)
+        let columns = response.catalogRecords
+        guard response.truncated != true, !columns.isEmpty,
+              required.isSubset(of: Set(columns.compactMap { $0["name"] })) else {
+            throw TableNavigationFailure("The target table or its key columns are unavailable. Check the table name and SELECT permissions.")
+        }
+        return columns
+    }
+
+    private func navigationIsCurrent(_ document: SQLDocument, source: TableViewLocation) -> Bool {
+        canStartOperation(document, forNavigating: true) && TableViewLocation(document) == source
+    }
+
+    private func prepareNavigationDraft(_ document: SQLDocument, grid: GridDraft?, key: TableForeignKey? = nil,
+                                        row: GridRow? = nil) async throws -> Bool {
+        guard let grid else { return true }
+        guard !grid.hasInlineDraft else { throw TableNavigationFailure("Finish editing the cell before following related rows.") }
+        let request = grid.request()
+        let decision: WorkspaceCloseDecision
+        if grid.outcomeUnknown { decision = await closeDecision(.unknownApply(document.title)) }
+        else if grid.pendingCount > 0 { decision = await closeDecision(.changes(document.title, count: grid.pendingCount)) }
+        else { return true }
+        guard canStartOperation(document, forNavigating: true), document.grid === grid, grid.request() == request else { return false }
+        switch decision {
+        case .apply:
+            guard !grid.outcomeUnknown else { return false }
+            if let key, let row { _ = try key.filters(sourceColumns: grid.columns, values: row.values) }
+            // Navigation already owns the view lock. Applying without the
+            // ordinary automatic reload uses the same preview/confirmation path.
+            guard await applyGrid(document, forClosing: true) else { return false }
+            await execute(document, statements: [], forNavigating: true)
+            return document.grid != nil && document.runtime?.queryFailure == nil && document.localError == nil
+        case .discard:
+            let unknown = grid.outcomeUnknown
+            grid.isClosing = false
+            grid.discard()
+            grid.isClosing = true
+            grid.outcomeUnknown = unknown
+            return true
+        default: return false
+        }
+    }
+
+    private func navigationFiltersAfterReview(_ document: SQLDocument, grid: GridDraft,
+                                        key: TableForeignKey, row: GridRow) async throws -> [CatalogFilter]? {
+        let pending = grid.pendingCount > 0 || grid.outcomeUnknown
+        let before = grid.rows.map { ($0.id, $0.values) }
+        guard try await prepareNavigationDraft(document, grid: grid, key: key, row: row) else { return nil }
+        let values: [ChangeValue]
+        if !pending { values = row.values }
+        else if document.grid === grid, grid.pendingCount == 0 {
+            guard let original = row.original else { throw TableNavigationFailure("The inserted source row was discarded and has no related stored row.") }
+            values = original
+        } else {
+            // Apply may reload/reorder rows. Use the captured edited values,
+            // never the row at the old ordinal in the refreshed result.
+            values = before.first { $0.0 == row.id }?.1 ?? row.values
+        }
+        return try key.filters(sourceColumns: grid.columns, values: values)
+    }
+
+    private func installTableLocation(_ location: TableViewLocation, in document: SQLDocument) {
+        document.table = location.reference
+        document.profileID = location.profileID
+        document.title = location.title
+        document.tableFilters = location.filters
+        document.tableSort = location.sort
+        document.page = location.page
+        document.tableCursor = nil
+        document.tableNextCursor = nil
+        document.tableForeignKeys = []
+        document.foreignKeysError = nil
+        document.foreignKeysRequestID = UUID()
+        document.isLoadingForeignKeys = false
+    }
+
+    private func moveTable(_ document: SQLDocument, from source: TableViewLocation, to target: TableViewLocation,
+                           columns: [[String: String]]) async -> Bool {
+        guard navigationIsCurrent(document, source: source) else { return false }
+        let oldGrid = document.grid
+        let oldResult = document.tableResult
+        let oldFailure = document.tableFailure
+        let oldColumns = document.tableColumns
+        let oldCursor = document.tableCursor
+        let oldNextCursor = document.tableNextCursor
+        let oldNeedsLoad = document.tableNeedsExplicitLoad
+        let oldError = document.localError
+        let oldKeys = document.tableForeignKeys
+        let oldKeysError = document.foreignKeysError
+        document.tableNavigationSourceState = document.storedState
+        defer {
+            document.tableNavigationSourceState = nil
+            scheduleSave()
+        }
+        installTableLocation(target, in: document)
+        document.attachGrid(nil)
+        document.tableResult = nil
+        document.tableFailure = nil
+        document.tableColumns = columns
+        document.tableNeedsExplicitLoad = true
+        document.localError = nil
+        await execute(document, statements: [], forNavigating: true)
+        guard canStartOperation(document, forNavigating: true), TableViewLocation(document) == target else { return false }
+        guard document.grid != nil, document.localError == nil, document.runtime?.queryFailure == nil else {
+            let message = document.localError ?? document.runtime?.queryFailure?.message ?? document.runtime?.errorMessage ?? "The target table could not be loaded."
+            installTableLocation(source, in: document)
+            document.attachGrid(oldGrid)
+            document.tableResult = oldResult
+            document.tableFailure = oldFailure
+            document.tableColumns = oldColumns
+            document.tableCursor = oldCursor
+            document.tableNextCursor = oldNextCursor
+            document.tableNeedsExplicitLoad = oldNeedsLoad
+            document.localError = oldError
+            document.tableForeignKeys = oldKeys
+            document.foreignKeysError = oldKeysError
+            document.tableNavigationError = "Could not load \(target.reference.schema).\(target.reference.name): \(message)"
+            scheduleSave()
+            return false
+        }
+        document.tableNavigationError = nil
+        scheduleSave()
+        return true
+    }
+
+    private func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument) async {
+        guard canStartOperation(source, forNavigating: true) else { return }
+        let selected = selectedDocumentID
+        let document = newDocument(profileID: location.profileID, text: "Table data")
+        document.isProvisionalTableView = true
+        document.provisionalPreviousSelection = selected ?? source.id
+        defer {
+            document.isProvisionalTableView = false
+            document.provisionalPreviousSelection = nil
+            scheduleSave()
+        }
+        installTableLocation(location, in: document)
+        document.tableColumns = columns
+        document.tableNeedsExplicitLoad = true
+        await run(document)
+        guard documents.contains(where: { $0 === document }) else { return }
+        if document.grid == nil || document.localError != nil || document.runtime?.queryFailure != nil {
+            let message = document.localError ?? document.runtime?.queryFailure?.message ?? document.runtime?.errorMessage ?? "The related rows could not be loaded."
+            guard closingDocuments.insert(document.id).inserted else { return }
+            defer { closingDocuments.remove(document.id) }
+            if selectedDocumentID == document.id, let selected, documents.contains(where: { $0.id == selected }) {
+                selectedDocumentID = selected
+            }
+            await closeDocumentImmediately(document)
+            if canStartOperation(source, forNavigating: true) { source.tableNavigationError = message }
+        }
     }
 
     func searchCatalog() async {

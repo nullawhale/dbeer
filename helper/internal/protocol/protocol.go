@@ -207,7 +207,7 @@ func (request CatalogRequest) Valid() bool {
 		return request.Schema != "" && request.Object == "" && objectKindValid && request.Identity == ""
 	case "columns":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view" || objectKind == "type") && request.Identity == ""
-	case "keys", "indexes", "constraints", "triggers":
+	case "keys", "foreignKeys", "indexes", "constraints", "triggers":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view") && request.Identity == ""
 	case "definition":
 		return request.Schema != "" && request.Object != "" && objectKindValid
@@ -387,9 +387,12 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 	if json.Unmarshal(raw, &fields) != nil || fields == nil || !stringField(fields, "kind", &request.Kind) {
 		return request, false
 	}
-	if request.Kind == "name" {
+	if request.Kind == "name" || request.Kind == "foreignKeys" {
 		for name := range fields {
 			if name != "kind" && name != "schema" && name != "object" && name != "objectKind" && name != "identity" {
+				return request, false
+			}
+			if request.Kind == "foreignKeys" && name == "identity" {
 				return request, false
 			}
 		}

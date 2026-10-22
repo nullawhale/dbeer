@@ -72,6 +72,9 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 	if request.Kind == "browse" {
 		return s.browse(ctx, command, sink)
 	}
+	if request.Kind == "foreignKeys" {
+		return s.failure(command, "unsupported", "Cassandra does not support foreign keys.")
+	}
 	if request.Kind == "select" {
 		response := s.response(command)
 		response.Columns = []protocol.Column{{Index: 0, Name: "sql", Engine: "cassandra", NativeType: "text"}}

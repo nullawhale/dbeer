@@ -3,6 +3,18 @@
   "commands": [
     {
       "type": "catalog",
+      "requestId": "foreign-keys-1",
+      "sessionId": "session-1",
+      "queryId": "foreign-keys-query-1",
+      "catalog": {
+        "kind": "foreignKeys",
+        "schema": "odd\"schema",
+        "object": "Order Items",
+        "objectKind": "table"
+      }
+    },
+    {
+      "type": "catalog",
       "requestId": "catalog-schemas",
       "sessionId": "contract-session",
       "queryId": "catalog-schemas-query",
@@ -823,6 +835,62 @@
     }
   ],
   "responses": [
+    {
+      "type": "query.result",
+      "requestId": "foreign-keys-1",
+      "sessionId": "session-1",
+      "queryId": "foreign-keys-query-1",
+      "durationMs": 1,
+      "columns": [
+        {
+          "index": 0,
+          "name": "name"
+        },
+        {
+          "index": 1,
+          "name": "targetSchema"
+        },
+        {
+          "index": 2,
+          "name": "targetTable"
+        },
+        {
+          "index": 3,
+          "name": "sourceColumn"
+        },
+        {
+          "index": 4,
+          "name": "targetColumn"
+        },
+        {
+          "index": 5,
+          "name": "position"
+        }
+      ],
+      "rows": [
+        [
+          "order_customer_fk",
+          "odd\"schema",
+          "Customers",
+          "tenant_id",
+          "tenant",
+          "1"
+        ],
+        [
+          "order_customer_fk",
+          "odd\"schema",
+          "Customers",
+          "customer_id",
+          "id",
+          "2"
+        ]
+      ],
+      "rowCount": 2,
+      "displayedRowCount": 2,
+      "truncated": false,
+      "transactionStatus": "idle",
+      "commandTag": "SELECT 2"
+    },
     {
       "type": "query.result",
       "requestId": "ordered-results",

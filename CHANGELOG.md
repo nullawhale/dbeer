@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Table/view tabs have independent view identities and sessions. Open Data
+  selects an existing view without resetting its context; Open in New Tab opens
+  a clean view from the catalog or a table tab's context menu.
+- Related Rows follows a selected row's PostgreSQL/MySQL foreign key in the
+  current view or a new tab, using ordered composite column mappings and exact
+  values. Back/Forward restores table browsing context within each view.
+  Navigation reviews pending edits through Apply/Discard/Cancel. Failed target
+  loads preserve the source view; NULL or unresolved DEFAULT values, incomplete
+  metadata and unavailable or denied targets are reported explicitly. Autosave
+  retains confirmed context while navigation loads and excludes temporary tabs.
 - File → Reopen Closed Tab (Shift-Command-T, configurable in Shortcuts) restores
   up to 20 successfully closed SQL/table tabs in reverse closing order, including
   from an empty workspace. Text, connection/file bindings and table browsing

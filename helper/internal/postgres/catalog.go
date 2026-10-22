@@ -199,6 +199,17 @@ FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespac
 JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
 WHERE n.nspname::text=$1::text AND c.relname::text=$2::text AND c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + ` ORDER BY a.attnum`, objectParams, ""
+	case "foreignKeys":
+		return `SELECT k.conname::text AS name, tn.nspname::text AS "targetSchema", tc.relname::text AS "targetTable",
+sa.attname::text AS "sourceColumn", ta.attname::text AS "targetColumn", pair.ordinality::text AS position
+FROM pg_catalog.pg_constraint k
+JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+JOIN pg_catalog.pg_class tc ON tc.oid=k.confrelid JOIN pg_catalog.pg_namespace tn ON tn.oid=tc.relnamespace
+CROSS JOIN LATERAL unnest(k.conkey,k.confkey) WITH ORDINALITY pair(source,target,ordinality)
+JOIN pg_catalog.pg_attribute sa ON sa.attrelid=k.conrelid AND sa.attnum=pair.source AND NOT sa.attisdropped
+JOIN pg_catalog.pg_attribute ta ON ta.attrelid=k.confrelid AND ta.attnum=pair.target AND NOT ta.attisdropped
+WHERE n.nspname::text=$1::text AND c.relname::text=$2::text AND k.contype='f' AND ` + relationAccess + `
+ORDER BY k.conname,pair.ordinality`, objectParams, ""
 	case "keys", "constraints":
 		filter := ""
 		if request.Kind == "keys" {

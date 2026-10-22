@@ -170,6 +170,7 @@ struct CatalogBranchView: View {
             menu.addCatalogAction("Structure and Definition…") { Task { await workspace.inspect(node) } }
             if ["table", "view"].contains(node.objectKind) {
                 menu.addCatalogAction("Open Data") { Task { await workspace.openData(node) } }
+                menu.addCatalogAction("Open in New Tab") { Task { await workspace.openData(node, inNewTab: true) } }
                 menu.addCatalogAction("Generate SELECT") {
                     Task {
                         if let sql = await workspace.generatedSelect(node) {

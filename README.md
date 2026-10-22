@@ -8,7 +8,7 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 
 - **⌘N** creates a PostgreSQL, MySQL, or Cassandra profile. Save stores the settings; Save and Connect opens a connection. Passwords live in macOS Keychain, and settings in `~/Library/Application Support/DBeer/connections.json`.
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
-- The tree loads on demand and provides search, Refresh, structure, definitions, Copy Name, and Generate SELECT. Double-click a table to open its first 200 rows. Filtering and sorting run on the server; pagination uses the primary key for stable ordering without automatic COUNT queries.
+- The tree loads on demand and provides search, Refresh, structure, definitions, Copy Name, and Generate SELECT. Double-click a table to select an existing data view or load its first 200 rows; Open in New Tab creates an independent view. Filtering and sorting run on the server; pagination uses the primary key for stable ordering without automatic COUNT queries.
 - Double-clicking an editable cell creates a local change. Insert Row, Delete Selected, Preview SQL, Apply, and Discard manage the batch. Apply uses a separate transaction and checks original rows under locks. A conflict or constraint error rolls back the entire batch. An unknown COMMIT outcome blocks another Apply until the outcome is checked and data is reloaded.
 - Arbitrary SQL, views, and tables without a primary key are read-only; MySQL editing requires InnoDB. Computed and unsupported types cannot be edited, with the reason shown in the interface.
 - Copy cells, rows, and ranges with **⌘C** or the context menu. Export Loaded saves rows already received. The separate **Run to File** action executes one statement once and publishes the complete file only after successful completion.
@@ -61,6 +61,32 @@ files. Run or Load Data opens a new session explicitly. Missing connections
 require choosing a replacement. Rebind or clear the shortcut in **Settings →
 Shortcuts**. The closed-tab list is cleared on application exit and by a successful
 **Clear Drafts** action; it is never written to workspace storage.
+
+## Independent table views in the working branch
+
+**Open Data** selects an already open view of that table without resetting its
+filters, page or pending changes. **Open in New Tab**, available in the catalog
+and a table tab's context menu, opens a separate view with its own session and
+clean browsing settings. Opening one view does not copy another view's edits.
+
+Select one loaded row and use **Related Rows** to follow a PostgreSQL or MySQL
+foreign key in the current view or a new tab. Composite keys use every mapped
+column in constraint order. Exact numeric text, empty strings and binary values
+retain their transport representation. A NULL or unresolved DEFAULT cannot
+identify a related row. Incomplete metadata and unavailable or denied targets
+show an explicit message.
+
+**Back** and **Forward** restore a view's table, page, filters and sorting.
+Navigation in the current view with pending edits offers the existing
+Apply/Discard/Cancel review; Apply still previews and confirms the generated
+changes. Opening related rows in a new tab uses confirmed source values and
+preserves unrelated pending edits; changed key values require Apply or Discard
+first. A failed relationship load preserves the source view. Other table views
+keep their own context and drafts. Autosave keeps the last confirmed location
+while a transition loads and excludes temporary related tabs until they load
+successfully. Navigation history stays in memory; workspace restoration saves the
+current location and remains disconnected until explicit Load Data. Cassandra
+supports independent views but has no foreign keys.
 
 ## Result copying in the working branch
 

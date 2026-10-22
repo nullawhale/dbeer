@@ -128,6 +128,7 @@ struct AppCommandInvocation {
             return gridHandlers[command] != nil
         }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true }
+        guard !document.isNavigatingTable else { return false }
         guard context.focus != .textInput else { return false }
         guard workspace.canStartOperation(document), !document.isRunning, document.grid?.isApplying != true,
               let profileID = document.profileID, workspace.library.savedConnections.contains(where: { $0.id == profileID }) else { return false }
@@ -183,7 +184,7 @@ struct AppCommandInvocation {
     }
 
     private static func canCopyGrid(in document: SQLDocument, workspace: ApplicationWorkspace) -> Bool {
-        workspace.canStartOperation(document) && !document.isRunning && document.grid?.isApplying != true &&
+        workspace.canStartOperation(document) && !document.isRunning && !document.isNavigatingTable && document.grid?.isApplying != true &&
             document.grid?.isReloading != true && document.grid?.isClosing != true
     }
 

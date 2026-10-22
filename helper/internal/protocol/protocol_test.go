@@ -34,7 +34,7 @@ func TestSharedCommandFixtures(t *testing.T) {
 		}
 		count++
 	}
-	if count != 10 {
+	if count != 11 {
 		t.Fatalf("expected one fixture per command, got %d", count)
 	}
 }

@@ -41,6 +41,7 @@ func TestSharedV5OperationContract(t *testing.T) {
 		}
 	}
 	kinds := map[string]bool{}
+	foreignKeyRequest, foreignKeyResponse := false, false
 	for index, raw := range fixture.Commands {
 		var value any
 		if json.Unmarshal(raw, &value) != nil {
@@ -53,6 +54,12 @@ func TestSharedV5OperationContract(t *testing.T) {
 			t.Fatalf("command fixture %d failed the existing parser", index)
 		}
 		kinds[command.Type] = true
+		if command.RequestID == "foreign-keys-1" {
+			foreignKeyRequest = command.Catalog != nil && command.Catalog.Kind == "foreignKeys" && command.Catalog.ObjectKind == "table"
+			if !foreignKeyRequest {
+				t.Fatal("lost structured foreign key catalog request")
+			}
+		}
 		if command.RequestID == "cassandra-cluster-nodes" && (command.Catalog == nil || command.Catalog.Kind != "clusterNodes") {
 			t.Fatal("lost Cassandra cluster snapshot request")
 		}
@@ -76,6 +83,22 @@ func TestSharedV5OperationContract(t *testing.T) {
 		if json.Unmarshal(raw, &response) != nil {
 			t.Fatalf("invalid response fixture %d", index)
 		}
+		if response.RequestID == "foreign-keys-1" {
+			foreignKeyResponse = true
+			if response.Type != "query.result" || response.Truncated || len(response.Columns) != 6 || len(response.Rows) != 2 {
+				t.Fatal("lost composite foreign key catalog response")
+			}
+			for row, expected := range [][]string{{"order_customer_fk", `odd"schema`, "Customers", "tenant_id", "tenant", "1"}, {"order_customer_fk", `odd"schema`, "Customers", "customer_id", "id", "2"}} {
+				if len(response.Rows[row]) != len(expected) {
+					t.Fatal("foreign key response lost a paired column")
+				}
+				for column, value := range expected {
+					if response.Rows[row][column] == nil || *response.Rows[row][column] != value {
+						t.Fatal("foreign key response changed constraint order or identifiers")
+					}
+				}
+			}
+		}
 		encoded, err := json.Marshal(response)
 		if err != nil {
 			t.Fatalf("cannot encode response fixture %d", index)
@@ -89,5 +112,8 @@ func TestSharedV5OperationContract(t *testing.T) {
 		if string(a) != string(b) {
 			t.Fatalf("response fixture %d did not preserve the wire shape", index)
 		}
+	}
+	if !foreignKeyRequest || !foreignKeyResponse {
+		t.Fatal("missing structured foreign key fixtures")
 	}
 }
