@@ -193,16 +193,20 @@ private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) thro
     guard Set(values.allKeys.map(\.stringValue)).isSubset(of: allowed) else { throw SQLDocumentStoreError.read }
 }
 
-/// Contains documents and history only. Sessions, results and passwords never
-/// enter the format; restoring the snapshot cannot reconnect or execute SQL.
+/// Contains documents, pane presentation state and history only. Sessions,
+/// results and passwords never enter the format; restoring the snapshot cannot
+/// reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 7
+    static let currentVersion = 8
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
     private(set) var version: Int
     var documents: [StoredSQLDocument]
+    // Compatibility mirror only; decode and file saves require the active
+    // pane's selection so there is no second persisted selection authority.
     var selectedDocumentID: UUID?
+    var paneLayout: WorkspacePaneLayout
     var history: [SQLHistoryEntry]
     var historyEnabled: Bool
     var historySettings: SQLHistoryRetentionSettings
@@ -212,10 +216,12 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     init(documents: [StoredSQLDocument] = [], selectedDocumentID: UUID? = nil,
          history: [SQLHistoryEntry] = [], historyEnabled: Bool = true,
          historySettings: SQLHistoryRetentionSettings = .default, sqlFolders: [SQLFolderAttachment] = [],
-         sqlLibrary: SQLLibrarySnapshot = SQLLibrarySnapshot()) {
+         sqlLibrary: SQLLibrarySnapshot = SQLLibrarySnapshot(), paneLayout: WorkspacePaneLayout? = nil) {
         version = Self.currentVersion
         self.documents = documents
-        self.selectedDocumentID = selectedDocumentID
+        let layout = paneLayout ?? .singlePane(documentIDs: documents.map(\.id), selectedDocumentID: selectedDocumentID)
+        self.paneLayout = layout
+        self.selectedDocumentID = selectedDocumentID ?? layout.selectedDocumentID
         self.history = history
         self.historyEnabled = historyEnabled
         self.historySettings = historySettings
@@ -223,10 +229,10 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
         self.sqlLibrary = sqlLibrary
     }
 
-    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, history, historyEnabled, historySettings, sqlFolders, sqlLibrary }
+    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, paneLayout, history, historyEnabled, historySettings, sqlFolders, sqlLibrary }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["version", "documents", "selectedDocumentID", "history", "historyEnabled", "historySettings", "sqlFolders", "sqlLibrary"])
+        try requireWorkspaceKeys(decoder, allowed: ["version", "documents", "selectedDocumentID", "paneLayout", "history", "historyEnabled", "historySettings", "sqlFolders", "sqlLibrary"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = values.contains(.version) ? try values.decode(Int.self, forKey: .version) : 0
         guard (0...Self.currentVersion).contains(version) else { throw SQLDocumentStoreError.read }
@@ -248,6 +254,17 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
             // selected. Preserve the available SQL drafts during migration.
             self.selectedDocumentID = documents.first?.id
         }
+        if version < 8 {
+            // Older formats never carried pane ownership. Accepting this key,
+            // including null, would silently discard a newer operational layout.
+            guard !values.contains(.paneLayout) else { throw SQLDocumentStoreError.read }
+            paneLayout = .singlePane(documentIDs: documents.map(\.id), selectedDocumentID: selectedDocumentID)
+            self.selectedDocumentID = paneLayout.selectedDocumentID
+        } else {
+            paneLayout = try values.decode(WorkspacePaneLayout.self, forKey: .paneLayout)
+        }
+        guard paneLayout.isValid(documentIDs: documents.map(\.id)),
+              self.selectedDocumentID == paneLayout.selectedDocumentID else { throw SQLDocumentStoreError.read }
         history = try values.decodeIfPresent([SQLHistoryEntry].self, forKey: .history) ?? []
         if version < 2 {
             // Legacy status strings never established typed outcomes or timing,
@@ -292,11 +309,17 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     mutating func clearHistory(includeFavorites: Bool = false) {
         history.removeAll { includeFavorites || !$0.isFavorite }
     }
-    mutating func clearDocuments() { documents.removeAll(); selectedDocumentID = nil }
+    mutating func clearDocuments() {
+        documents.removeAll()
+        selectedDocumentID = nil
+        paneLayout.left = WorkspacePaneState()
+        paneLayout.right = WorkspacePaneState()
+    }
 
     fileprivate func current(now: Date = .now) -> SQLWorkspaceSnapshot {
         var result = SQLWorkspaceSnapshot(documents: documents, selectedDocumentID: selectedDocumentID,
-            history: history, historyEnabled: historyEnabled, historySettings: historySettings, sqlFolders: sqlFolders, sqlLibrary: sqlLibrary)
+            history: history, historyEnabled: historyEnabled, historySettings: historySettings,
+            sqlFolders: sqlFolders, sqlLibrary: sqlLibrary, paneLayout: paneLayout)
         result.trimHistory(now: now)
         return result
     }
@@ -375,6 +398,8 @@ actor FileSQLDocumentStore: SQLDocumentStore {
               snapshot.historySettings.isValid,
               snapshot.sqlLibrary.isValid,
               snapshot.documents.allSatisfy(\.isValid),
+              snapshot.paneLayout.isValid(documentIDs: snapshot.documents.map(\.id)),
+              snapshot.selectedDocumentID == snapshot.paneLayout.selectedDocumentID,
               snapshot.selectedDocumentID.map({ id in snapshot.documents.contains { $0.id == id } }) != false,
               snapshot.history.allSatisfy(\.isValid) else { throw SQLDocumentStoreError.read }
         guard snapshot.sqlFolders.count <= 32, Set(snapshot.sqlFolders.map(\.id)).count == snapshot.sqlFolders.count,

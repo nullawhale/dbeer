@@ -54,6 +54,11 @@ struct AppCommandInvocation {
     private var previousContext: AppCommandContext?
     private var previousScopedCommands: Set<AppCommandID> = []
 
+    private struct ResolvedContext {
+        let context: AppCommandContext
+        let document: SQLDocument?
+    }
+
     convenience init(workspace: ApplicationWorkspace, shortcuts: AppShortcutStore,
                      invocationHandler: ((AppCommandInvocation) async -> Void)? = nil) {
         self.init(workspace: workspace, shortcuts: shortcuts, gridCopyResponderProvider: nil,
@@ -97,12 +102,39 @@ struct AppCommandInvocation {
             focus = scoped.appCommandFocus
             documentID = scoped.appCommandDocumentID
         }
-        else if responder is NSTextView || responder is NSTextField { focus = .textInput }
+        else if responder is NSTextView || responder is NSTextField {
+            focus = .textInput
+            if let pane = WorkspacePaneContainerView.owningPane(of: responder, in: workspace) {
+                documentID = workspace.selectedDocument(in: pane)?.id
+            }
+        }
         else { focus = .workspace }
         return AppCommandContext(documentID: documentID, focus: focus,
             isWorkspaceWindow: window != nil && NSApp.keyWindow === window,
             hasModal: NSApp.modalWindow != nil || window?.attachedSheet != nil || workspace.library.isConnectionEditorPresented,
             isComposingText: (responder as? NSTextView)?.hasMarkedText() == true)
+    }
+
+    /// Toolbar buttons preserve the native responder, which may belong to the
+    /// other pane. Their target is the visible document that owns the toolbar.
+    func context(for document: SQLDocument) -> AppCommandContext {
+        let current = context()
+        return AppCommandContext(documentID: document.id, focus: .workspace,
+            isWorkspaceWindow: current.isWorkspaceWindow, hasModal: current.hasModal,
+            isComposingText: current.isComposingText)
+    }
+
+    private func resolve(_ context: AppCommandContext) -> ResolvedContext? {
+        guard context.isWorkspaceWindow, !context.hasModal else { return nil }
+        let document: SQLDocument?
+        if let id = context.documentID {
+            // Both panes are visible. A responder in a hidden tab must never
+            // retarget execution to whichever tab happens to be active.
+            document = workspace.documents.first { $0.id == id && workspace.isSelectedVisibleDocument(id) }
+        } else if context.focus == .workspace || context.focus == .textInput {
+            document = workspace.selectedDocument
+        } else { document = nil }
+        return ResolvedContext(context: context, document: document)
     }
 
     /// Extension point for grid commands that operate on a document. Copy as
@@ -117,9 +149,13 @@ struct AppCommandInvocation {
     }
 
     func canPerform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Bool {
-        let context = context ?? self.context()
-        guard context.isWorkspaceWindow, !context.hasModal,
-              let descriptor = shortcuts.descriptors.first(where: { $0.id == command }) else { return false }
+        guard let resolved = resolve(context ?? self.context()) else { return false }
+        return canPerform(command, resolved: resolved)
+    }
+
+    private func canPerform(_ command: AppCommandID, resolved: ResolvedContext) -> Bool {
+        let context = resolved.context
+        guard let descriptor = shortcuts.descriptors.first(where: { $0.id == command }) else { return false }
         if descriptor.scope == .workspace {
             guard !context.isComposingText, workspace.canManageWorkspace else { return false }
             switch command {
@@ -127,7 +163,7 @@ struct AppCommandInvocation {
             case .newSQLTab, .openSQL, .attachSQLFolder, .checkSQLFiles: return true
             case .reopenClosedTab: return workspace.canReopenClosedTab
             case .nextTab, .previousTab:
-                return workspace.documents.count > 1 && workspace.selectedDocument != nil
+                return workspace.documents(in: workspace.activePaneID).count > 1 && workspace.selectedDocument != nil
             case .findInConnections: return catalogSearchField() != nil
             case .showSQLHistory: return !workspace.isHistoryPresented
             case .importConnections: return !workspace.isImportingProfiles && workspace.importPreview == nil
@@ -135,7 +171,7 @@ struct AppCommandInvocation {
             default: return false
             }
         }
-        guard let document = workspace.selectedDocument, context.documentID == document.id else { return false }
+        guard let document = resolved.document else { return false }
         if command == .closeTab {
             return !context.isComposingText && workspace.canStartOperation(document)
         }
@@ -151,6 +187,7 @@ struct AppCommandInvocation {
             return gridHandlers[command] != nil
         }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true }
+        guard !context.isComposingText else { return false }
         guard !document.isSnapshot else { return false }
         guard !document.isNavigatingTable else { return false }
         guard context.focus != .textInput else { return false }
@@ -166,7 +203,11 @@ struct AppCommandInvocation {
 
     @discardableResult
     func perform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Task<Void, Never>? {
-        guard canPerform(command, context: context) else { return nil }
+        guard let resolved = resolve(context ?? self.context()), canPerform(command, resolved: resolved) else { return nil }
+        return perform(command, resolved: resolved)
+    }
+
+    private func perform(_ command: AppCommandID, resolved: ResolvedContext) -> Task<Void, Never>? {
         switch command {
         case .newConnection: workspace.library.isConnectionEditorPresented = true
         case .newSQLTab: workspace.newDocument()
@@ -178,21 +219,24 @@ struct AppCommandInvocation {
         case .importConnections: workspace.previewProfileImport()
         case .exportConnections: workspace.exportProfiles()
         case .nextTab, .previousTab:
-            guard let index = workspace.documents.firstIndex(where: { $0.id == workspace.selectedDocumentID }) else { return nil }
-            let count = workspace.documents.count
+            let pane = workspace.activePaneID
+            let documents = workspace.documents(in: pane)
+            guard let index = documents.firstIndex(where: { $0.id == workspace.selectedDocument(in: pane)?.id }) else { return nil }
+            let count = documents.count
             let offset = command == .nextTab ? 1 : -1
-            workspace.selectedDocumentID = workspace.documents[(index + offset + count) % count].id
+            workspace.selectDocument(documents[(index + offset + count) % count].id, in: pane)
         case .reopenClosedTab:
             // Pop synchronously so repeated keypresses consume distinct entries
             // even before the next task can run, including with zero open tabs.
             guard workspace.reopenClosedTab() != nil else { return nil }
-        default: return performDocumentCommand(command)
+        default: return performDocumentCommand(command, resolved: resolved)
         }
         return Task {}
     }
 
-    private func performDocumentCommand(_ command: AppCommandID) -> Task<Void, Never>? {
-        guard let document = workspace.selectedDocument else { return nil }
+    private func performDocumentCommand(_ command: AppCommandID, resolved: ResolvedContext) -> Task<Void, Never>? {
+        guard let document = resolved.document, let pane = workspace.pane(containing: document.id) else { return nil }
+        workspace.activatePane(pane)
         if command == .closeTab {
             return Task { [workspace] in await workspace.closeDocument(document) }
         }
@@ -261,13 +305,13 @@ struct AppCommandInvocation {
 
     func handleKeyEvent(_ event: NSEvent, documentID: UUID, selection: NSRange? = nil) -> Bool {
         let context = self.context()
-        guard context.documentID == documentID, context.documentID == workspace.selectedDocumentID,
-              context.isWorkspaceWindow, !context.hasModal,
+        guard context.documentID == documentID, let resolved = resolve(context),
+              let document = resolved.document, document.id == documentID,
               event.window === workspace.presentationWindow else { return false }
-        if context.focus == .sqlEditor, let selection { workspace.selectedDocument?.selection = selection }
+        if context.focus == .sqlEditor, let selection { document.selection = selection }
         guard let descriptor = shortcuts.descriptors.first(where: {
-            shortcuts.shortcut(for: $0.id)?.matches(event: event) == true && canPerform($0.id, context: context)
+            shortcuts.shortcut(for: $0.id)?.matches(event: event) == true && canPerform($0.id, resolved: resolved)
         }) else { return false }
-        return perform(descriptor.id, context: context) != nil
+        return perform(descriptor.id, resolved: resolved) != nil
     }
 }

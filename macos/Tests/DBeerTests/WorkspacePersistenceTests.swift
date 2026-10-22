@@ -59,6 +59,7 @@ struct WorkspacePersistenceTests {
         let restored = try await store.load()
         #expect(restored.documents == [StoredSQLDocument(id: id, title: "Legacy", text: "SELECT '🧪';", profileID: profileID)])
         #expect(restored.selectedDocumentID == id && restored.version == SQLWorkspaceSnapshot.currentVersion && !restored.historyEnabled)
+        #expect(restored.paneLayout == .singlePane(documentIDs: [id], selectedDocumentID: id))
         #expect(restored.historySettings == (version >= 3 ? SQLHistoryRetentionSettings(maxEntries: 75, retentionDays: 12) : .default))
         let backup = url.appendingPathExtension("v\(version).backup")
         #expect(try Data(contentsOf: backup) == original)
@@ -166,7 +167,7 @@ struct WorkspacePersistenceTests {
         }
     }
 
-    @Test(arguments: ["null", "\"4\"", "true", "-1", "5", "4.5"])
+    @Test(arguments: ["null", "\"4\"", "true", "-1", String(SQLWorkspaceSnapshot.currentVersion + 1), "4.5"])
     func malformedOrFutureVersionNeverBecomesAnEmptyLegacyWorkspace(version: String) async throws {
         let directory = directory()
         defer { try? FileManager.default.removeItem(at: directory) }

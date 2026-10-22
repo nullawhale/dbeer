@@ -1,8 +1,10 @@
+import AppKit
 import Foundation
 import Testing
 @testable import DBeer
 
-/// Exercise publication ownership without reading or writing a native clipboard.
+/// Publication ownership and exact representations, including an isolated named
+/// pasteboard. These tests do not create windows or activate the application.
 struct ResultCopyPublicationTests {
     private func payload() throws -> ResultClipboardPayload {
         try ResultCopy.selection(columns: [
@@ -40,6 +42,23 @@ struct ResultCopyPublicationTests {
         #expect(!publisher.isCurrent(first))
         #expect(!publisher.canPublish(first, changeCount: 42))
         #expect(publisher.canPublish(second, changeCount: 42))
+    }
+
+    @Test @MainActor func nativePublicationWritesTextAndTheExactTypedSelectionForEveryFormat() throws {
+        let source = try payload()
+        let publisher = ResultCopyPublication()
+        let board = NSPasteboard(name: NSPasteboard.Name("dev.dbeer.tests.publication.\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        for format in ResultCopyFormat.allCases {
+            let prepared = try PreparedResultCopy(payload: source, format: format, includesHeaders: true,
+                insertSQL: format == .sqlInsert ? "INSERT INTO fixture VALUES ('exact');" : nil)
+            let ticket = publisher.capture(changeCount: board.changeCount)
+            try #require(publisher.publish(prepared, to: board, ticket: ticket))
+            #expect(board.string(forType: .string) == prepared.text)
+            let data = try #require(board.data(forType: ResultTableView.clipboardType))
+            #expect(data == prepared.typedData)
+            #expect(try JSONDecoder().decode(ResultClipboardPayload.self, from: data) == source)
+        }
     }
 
     @Test func explicitTargetMappingKeepsDuplicateSourceNamesAndTypedValues() throws {

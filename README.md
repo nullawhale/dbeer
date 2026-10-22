@@ -23,17 +23,18 @@ The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN A
 
 ## Workspace restoration in the working branch
 
-DBeer restores mixed SQL and table/view tabs in their saved order, with the
-selected tab, titles, SQL text and original connection bindings. Table tabs keep
-their schema/table reference, page, server filters and sort order. They initially
+DBeer restores SQL, table/view and snapshot tabs in their saved panes and order,
+with each pane's selection, titles, SQL text and original connection bindings.
+Table tabs keep their schema/table reference, page, server filters and sort order. They initially
 show this context with an explicit **Load Data** action. SQL tabs remain
 disconnected until Run; table tabs remain disconnected until Load Data or Refresh.
 A missing connection stays unavailable until you explicitly choose a replacement.
 PostgreSQL/MySQL reopen the saved page on loading; Cassandra starts from the first
 page because its server cursors cannot survive a session restart.
 
-Sessions, transactions, running operations, results, cursor tokens and pending
-grid changes are excluded. A recovered tab cannot resume an old Apply or repeat
+Sessions, transactions, running operations, live results, cursor tokens and pending
+grid changes are excluded. Snapshot tabs retain local artifact references.
+A recovered tab cannot resume an old Apply or repeat
 SQL automatically. Text and browsing changes autosave without fetching table data.
 
 SQL file bindings retain the last accepted file-content fingerprint and the draft
@@ -42,28 +43,45 @@ buffers adopt external changes, while changed drafts retain both versions for
 review. Missing or unreadable files keep their editable drafts. Bindings without
 a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage advances to v6, with exact private backups before migrating
-v0/v1/v2/v3/v4/v5. Folder attachments and shared file identities are saved alongside
+Workspace storage is v8, with exact private backups before migrating
+v0/v1/v2/v3/v4/v5/v6/v7. Older layouts start with their tabs in the left pane.
+Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
 Unknown document kinds, malformed state and future workspace versions are left
 unchanged. These changes require rebuilding the native app and are not part of
 the existing build 8 archive.
 
-**File → Reopen Closed Tab** (**⇧⌘T**) returns the most recently closed SQL or
-table/view tab, including when no tabs remain open. Up to 20 successfully closed
-tabs are kept in memory for the current application run. Repeated reopening
-returns them in reverse closing order, at their former position where possible,
-and selects each reopened tab. Cancelled or rejected closes are excluded.
+**File → Reopen Closed Tab** (**⇧⌘T**) returns the most recently closed SQL,
+table/view or snapshot tab, including when no tabs remain open. Up to 20
+successfully closed tabs are kept in memory for the current application run.
+Repeated reopening returns them in reverse closing order, in their former pane
+and position where possible, and selects each reopened tab. Cancelled or rejected
+closes are excluded.
 
-Reopened tabs have fresh document identities and no session, transaction, result,
-cursor or pending edits. Their SQL, connection reference, file binding and table
-browsing settings are restored without reconnecting or executing SQL. Reopening
+Reopened tabs have fresh document identities and no session, transaction, live
+result, cursor or pending edits. Snapshot tabs read their local artifacts. SQL,
+connection reference, file binding and table browsing settings are restored
+without reconnecting or executing SQL. Reopening
 a view of an already open file uses its current shared buffer. Run or Load Data
 opens a new session explicitly. Missing connections
 require choosing a replacement. Rebind or clear the shortcut in **Settings →
 Shortcuts**. The closed-tab list is cleared on application exit and by a successful
 **Clear Drafts** action; it is never written to workspace storage.
+
+## Two working panes in the working branch
+
+The workspace has two side-by-side panes with a draggable divider. Each pane
+keeps its own selected tab. Drag a tab or use **Move to Left Pane** / **Move to
+Right Pane** in its menu; **Move Tab Left/Right** changes its order within a pane.
+Moving a tab keeps the same document, session, transaction, running query, grid
+draft and editor state. Opening a new independent table view retains its existing
+separate-session behavior.
+
+Editor and grid focus activate their pane. Run, Stop, Copy and Save resolve that
+document, and toolbar actions address the pane containing the clicked control.
+Previous/Next Tab cycles within the active pane. Pane placement, selections,
+active pane and divider width survive restart without reconnecting to a server.
 
 ## SQL folders and files in the working branch
 
@@ -118,7 +136,7 @@ before each script statement. A changed scope stops pending execution.
 
 Edits and safe saves use the same file model as SQL folders. Observed file
 renames update the index reference; Save As to another path detaches only that
-view. Workspace v6 restores the index, groups and view bindings disconnected,
+view. Workspace restoration keeps the index, groups and view bindings disconnected,
 with an exact private backup before migrating v5. Restoring or editing library
 metadata does not connect or execute SQL.
 
@@ -238,7 +256,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v7. Existing v0/v1/v2/v3/v4/v5/v6 files
+History uses versioned workspace storage, currently v8. Existing v0/v1/v2/v3/v4/v5/v6/v7 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.

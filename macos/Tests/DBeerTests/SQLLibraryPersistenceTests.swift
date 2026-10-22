@@ -39,6 +39,7 @@ struct SQLLibraryPersistenceTests {
             history: [favorite], historyEnabled: false, historySettings: settings, sqlFolders: folders)
         var legacy = try #require(JSONSerialization.jsonObject(with: encoded(snapshot)) as? [String: Any])
         legacy["version"] = 5
+        legacy["paneLayout"] = nil
         legacy["sqlLibrary"] = nil
         var documents = try #require(legacy["documents"] as? [[String: Any]])
         for index in documents.indices {
@@ -137,7 +138,10 @@ struct SQLLibraryPersistenceTests {
         changedIndex["future"] = true
         invalid.append(object.merging(["sqlLibrary": changedIndex]) { _, newer in newer })
         invalid.append(object.merging(["version": SQLWorkspaceSnapshot.currentVersion + 1]) { _, newer in newer })
-        invalid.append(object.merging(["version": 5]) { _, newer in newer })
+        var legacyWithLibrary = object
+        legacyWithLibrary["version"] = 5
+        legacyWithLibrary["paneLayout"] = nil
+        invalid.append(legacyWithLibrary)
         var missing = object
         missing["sqlLibrary"] = nil
         invalid.append(missing)

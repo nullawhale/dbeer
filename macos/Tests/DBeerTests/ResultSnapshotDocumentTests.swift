@@ -186,7 +186,7 @@ struct ResultSnapshotDocumentTests {
         let url = directory.appendingPathComponent("workspace.json")
         try await FileSQLDocumentStore(fileURL: url).save(workspace)
         let restored = try await FileSQLDocumentStore(fileURL: url).load()
-        #expect(restored == workspace && restored.version == 7)
+        #expect(restored == workspace && restored.version == SQLWorkspaceSnapshot.currentVersion)
         let data = try Data(contentsOf: url)
         let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         let records = try #require(object["documents"] as? [[String: Any]])
@@ -211,11 +211,12 @@ struct ResultSnapshotDocumentTests {
             table: StoredTableDocument(reference: TableReference(schema: "public", name: "items", kind: "table"), page: 3))
         var object = try workspaceObject(SQLWorkspaceSnapshot(documents: [sql, table], selectedDocumentID: table.id))
         object["version"] = 6
+        object["paneLayout"] = nil
         let original = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         let url = directory.appendingPathComponent("workspace.json")
         try original.write(to: url)
         let migrated = try await FileSQLDocumentStore(fileURL: url).load()
-        #expect(migrated.version == 7 && migrated.documents == [sql, table] && migrated.selectedDocumentID == table.id)
+        #expect(migrated.version == SQLWorkspaceSnapshot.currentVersion && migrated.documents == [sql, table] && migrated.selectedDocumentID == table.id)
         let backup = url.appendingPathExtension("v6.backup")
         #expect(try Data(contentsOf: backup) == original)
         #expect((try FileManager.default.attributesOfItem(atPath: backup.path)[.posixPermissions] as? NSNumber)?.intValue == 0o600)
@@ -282,13 +283,17 @@ struct ResultSnapshotDocumentTests {
             var record = baseRecord; record[field] = NSNull()
             malformed.append(object.merging(["documents": [record]]) { _, new in new })
         }
-        malformed.append(object.merging(["version": 6]) { _, new in new })
+        var legacySnapshot = object
+        legacySnapshot["version"] = 6
+        legacySnapshot["paneLayout"] = nil
+        malformed.append(legacySnapshot)
         let sql = StoredSQLDocument(title: "SQL", text: "SELECT 1;")
         var oldSQL = try workspaceObject(SQLWorkspaceSnapshot(documents: [sql], selectedDocumentID: sql.id))
         var oldRecord = try #require((oldSQL["documents"] as? [[String: Any]])?.first)
         oldRecord["snapshotID"] = NSNull()
         oldSQL["documents"] = [oldRecord]
         oldSQL["version"] = 6
+        oldSQL["paneLayout"] = nil
         malformed.append(oldSQL)
         for document in malformed {
             let directory = directory()

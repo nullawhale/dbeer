@@ -42,6 +42,7 @@ struct SQLFileWorkspacePersistenceTests {
         let snapshot = SQLWorkspaceSnapshot(documents: [draft], selectedDocumentID: draft.id)
         var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
         object["version"] = 4
+        object["paneLayout"] = nil
         object["sqlFolders"] = nil
         object["sqlLibrary"] = nil
         var documents = try #require(object["documents"] as? [[String: Any]])

@@ -30,8 +30,12 @@ struct WorkspaceRestorationTests {
         var favorite = SQLHistoryEntry(date: .now, profileID: available.id, sql: "SELECT 1", outcome: "Completed")
         favorite.isFavorite = true
         let settings = SQLHistoryRetentionSettings(maxEntries: 19, retentionDays: 6)
+        let layout = WorkspacePaneLayout(left: WorkspacePaneState(documentIDs: [sql.id], selectedDocumentID: sql.id),
+            right: WorkspacePaneState(documentIDs: [browse.id], selectedDocumentID: browse.id),
+            activePaneID: .right, splitFraction: 0.64)
         let store = MemorySQLDocumentStore(snapshot: SQLWorkspaceSnapshot(documents: [sql, browse],
-            selectedDocumentID: browse.id, history: [favorite], historyEnabled: false, historySettings: settings))
+            selectedDocumentID: browse.id, history: [favorite], historyEnabled: false,
+            historySettings: settings, paneLayout: layout))
         var starts = 0
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(library:
             SavedConnectionLibrary(connections: [available], selectedConnectionId: available.id)),
@@ -45,6 +49,8 @@ struct WorkspaceRestorationTests {
         #expect(workspace.documents.map(\.id) == [sql.id, browse.id])
         #expect(workspace.documents.map(\.storedState) == [sql, browse])
         #expect(workspace.selectedDocumentID == browse.id)
+        #expect(workspace.paneLayout == layout)
+        #expect(workspace.selectedDocument(in: .left)?.id == sql.id && workspace.selectedDocument(in: .right)?.id == browse.id)
         #expect(workspace.history == [favorite] && !workspace.historyEnabled && workspace.historySettings == settings)
         for document in workspace.documents {
             #expect(document.runtime == nil && document.grid == nil && !document.isRunning)
@@ -61,7 +67,8 @@ struct WorkspaceRestorationTests {
         await workspace.run(restoredTable)
         #expect(starts == 0 && restoredTable.runtime == nil)
         await workspace.flushDocuments()
-        #expect(await store.load().documents == [sql, browse])
+        let saved = await store.load()
+        #expect(saved.documents == [sql, browse] && saved.paneLayout == layout)
         await workspace.shutdown()
     }
 
@@ -165,6 +172,107 @@ struct WorkspaceRestorationTests {
         await workspace.flushDocuments()
         #expect(try await store.load().documents.map(\.id) == [saved.id, local.id])
         await workspace.shutdown()
+    }
+
+    @Test func localPaneAssignmentsSelectionsAndWidthSurviveDeferredRestoration() async throws {
+        let savedLeft = StoredSQLDocument(title: "Saved left", text: "SELECT 'left';")
+        let savedRight = StoredSQLDocument(title: "Saved right", text: "SELECT 'right';")
+        let savedLayout = WorkspacePaneLayout(
+            left: WorkspacePaneState(documentIDs: [savedLeft.id], selectedDocumentID: savedLeft.id),
+            right: WorkspacePaneState(documentIDs: [savedRight.id], selectedDocumentID: savedRight.id),
+            activePaneID: .left, splitFraction: 0.3)
+        let store = DeferredWorkspaceStore(snapshot: SQLWorkspaceSnapshot(documents: [savedLeft, savedRight],
+            paneLayout: savedLayout), delayLoad: true)
+        var starts = 0
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore(), documentStore: store, helperFactory: {
+                starts += 1
+                return BackendClient(executableURL: URL(fileURLWithPath: "/workspace-fixtures/unused-helper"))
+            })
+        let restore = Task { await workspace.restoreSavedWorkspace() }
+        try await eventually { await store.waitingForLoad }
+        let moved = workspace.newDocument(text: "SELECT 'moved local';")
+        workspace.activatePane(.right)
+        let localRight = workspace.newDocument(text: "SELECT 'local right';")
+        workspace.moveDocument(moved.id, to: .right, at: 0)
+        workspace.activatePane(.left)
+        let localLeft = workspace.newDocument(text: "SELECT 'local left';")
+        workspace.selectDocument(localRight.id, in: .right)
+        workspace.setSplitFraction(0.72)
+        await store.releaseLoad()
+        await restore.value
+        #expect(workspace.documents.map(\.id) == [savedLeft.id, savedRight.id, moved.id, localRight.id, localLeft.id])
+        #expect(workspace.documents(in: .left).map(\.id) == [savedLeft.id, localLeft.id])
+        #expect(workspace.documents(in: .right).map(\.id) == [savedRight.id, moved.id, localRight.id])
+        #expect(workspace.selectedDocument(in: .left) === localLeft && workspace.selectedDocument(in: .right) === localRight)
+        #expect(workspace.selectedDocument === localRight && workspace.activePaneID == .right)
+        #expect(workspace.paneLayout.splitFraction == 0.72 && starts == 0 && workspace.services.isEmpty)
+        #expect(workspace.documents.first(where: { $0.id == moved.id }) === moved)
+        #expect(workspace.documents.allSatisfy { $0.runtime == nil && $0.grid == nil && !$0.isRunning })
+        await workspace.flushDocuments()
+        let stored = try await store.load()
+        #expect(stored.paneLayout == workspace.paneLayout && stored.selectedDocumentID == localRight.id)
+        #expect(stored.documents.map(\.id) == workspace.documents.map(\.id))
+        await workspace.shutdown()
+    }
+
+    @Test func aDeferredSaveCannotOverwriteNewerPaneAssignmentsSelectionsOrWidth() async throws {
+        let left = StoredSQLDocument(title: "Left", text: "SELECT 'left';")
+        let right = StoredSQLDocument(title: "Right", text: "SELECT 'right';")
+        let layout = WorkspacePaneLayout(left: WorkspacePaneState(documentIDs: [left.id], selectedDocumentID: left.id),
+            right: WorkspacePaneState(documentIDs: [right.id], selectedDocumentID: right.id), activePaneID: .right)
+        let store = DeferredWorkspaceStore(snapshot: SQLWorkspaceSnapshot(documents: [left, right], paneLayout: layout),
+            delayFirstSave: true)
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore(), documentStore: store)
+        await workspace.restoreSavedWorkspace()
+        workspace.moveDocument(left.id, to: .right, at: 0)
+        workspace.setSplitFraction(0.61)
+        let firstSave = Task { await workspace.flushDocuments() }
+        try await eventually { await store.saveCalls == 1 }
+        workspace.moveDocument(right.id, to: .left)
+        workspace.setSplitFraction(0.34)
+        let newest = workspace.paneLayout
+        let secondSave = Task { await workspace.flushDocuments() }
+        for _ in 0..<10 { await Task.yield() }
+        #expect(await store.saveCalls == 1)
+        await store.releaseSave()
+        await firstSave.value
+        await secondSave.value
+        let stored = try await store.load()
+        #expect(stored.paneLayout == newest && stored.selectedDocumentID == right.id)
+        #expect(await store.saveCalls == 2)
+        await workspace.shutdown()
+    }
+
+    @Test func aSnapshotOnlyTwoPaneWorkspaceStartsAndRestoresWithoutAHelper() async throws {
+        let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("build/r11/snapshot-only-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let left = StoredSQLDocument(title: "Offline left", text: "", kind: .snapshot, snapshotID: UUID())
+        let right = StoredSQLDocument(title: "Offline right", text: "", kind: .snapshot, snapshotID: UUID())
+        let layout = WorkspacePaneLayout(left: WorkspacePaneState(documentIDs: [left.id], selectedDocumentID: left.id),
+            right: WorkspacePaneState(documentIDs: [right.id], selectedDocumentID: right.id),
+            activePaneID: .right, splitFraction: 0.58)
+        let store = MemorySQLDocumentStore(snapshot: SQLWorkspaceSnapshot(documents: [left, right], paneLayout: layout))
+        var starts = 0
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
+            credentialStore: MemoryConnectionCredentialStore(), documentStore: store,
+            resultSnapshots: ResultSnapshotsModel(store: ResultSnapshotStore(rootURL: directory)), helperFactory: {
+                starts += 1
+                return BackendClient(executableURL: directory.appendingPathComponent("unused-helper"))
+            })
+        await workspace.start()
+        #expect(starts == 0 && workspace.services.isEmpty && workspace.error == nil)
+        #expect(workspace.documents.map(\.storedState) == [left, right] && workspace.paneLayout == layout)
+        #expect(workspace.selectedDocument(in: .left)?.snapshotID == left.snapshotID)
+        #expect(workspace.selectedDocument(in: .right)?.snapshotID == right.snapshotID)
+        #expect(workspace.documents.allSatisfy { $0.isSnapshot && $0.runtime == nil && $0.grid == nil && !$0.isRunning })
+        await workspace.flushDocuments()
+        #expect(await store.load().paneLayout == layout)
+        await workspace.shutdown()
+        #expect(starts == 0)
     }
 
     @Test func failedRestorationCannotPublishAnEmptyOrReplacementWorkspace() async {

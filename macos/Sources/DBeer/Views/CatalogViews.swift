@@ -167,11 +167,7 @@ struct CatalogBranchView: View {
                 menu.addCatalogAction("Open Data") { Task { await workspace.openData(node) } }
                 menu.addCatalogAction("Open in New Tab") { Task { await workspace.openData(node, inNewTab: true) } }
                 menu.addCatalogAction("Generate SELECT") {
-                    Task {
-                        if let sql = await workspace.generatedSelect(node) {
-                            workspace.newDocument(profileID: node.profileID, text: sql)
-                        }
-                    }
+                    Task { await workspace.openGeneratedSelect(node) }
                 }
             }
             menu.addCatalogAction("Copy Name") { Task { await workspace.copyName(node) } }

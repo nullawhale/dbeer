@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Work in two resizable panes with independent tab selection. Moving a tab
+  preserves its session, transaction, results and editor state. Run, Stop, Copy
+  and Save follow the active pane or the explicitly chosen pane's controls.
+  Workspace v8 saves pane placement, selection and width, with private migration
+  backups; restored tabs remain disconnected.
+
 - Compare saved result snapshots by an explicit key or saved row order, with
   column mapping and exclusions. The shared Go comparison engine preserves
   exact types and values, reports duplicate keys as ambiguous and distinguishes

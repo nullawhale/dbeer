@@ -20,6 +20,12 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
     weak var copyCoordinator: ResultTableView.Coordinator?
     var commandHandler: ((NSEvent) -> Bool)?
 
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { WorkspacePaneContainerView.activatePane(containing: self) }
+        return accepted
+    }
+
     func canPerformGridCopy(_ command: AppCommandID) -> Bool {
         guard let format = command.resultCopyFormat else { return false }
         return copyCoordinator?.canCopy(format: format) == true
@@ -200,6 +206,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+        WorkspacePaneContainerView.activatePane(containing: self)
         if commandHandler?(event) == true { return true }
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.charactersIgnoringModifiers?.lowercased() == "c" {
@@ -210,6 +217,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
     }
 
     override func keyDown(with event: NSEvent) {
+        WorkspacePaneContainerView.activatePane(containing: self)
         if commandHandler?(event) == true { return }
         if [51, 117].contains(event.keyCode), copyCoordinator?.supportsEditing == true {
             copyCoordinator?.deleteSelectedRows()
@@ -415,7 +423,7 @@ private final class ResultGridHeaderView: NSTableHeaderView {
 }
 
 struct ResultTableView: NSViewRepresentable {
-    static let clipboardType = NSPasteboard.PasteboardType("dev.dbeer.result-selection+json")
+    static let clipboardType = NSPasteboard.PasteboardType("dev.dbeer.result-selection.json")
     static let nullMarker = ResultCopy.nullMarker
     let columns: [ResultColumn]
     let rows: [[String?]]

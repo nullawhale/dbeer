@@ -452,7 +452,7 @@ struct SQLEditorTests {
         #expect(secondEditor.string == "SELECT 2;")
     }
 
-    @Test func nativeCommandReturnUsesSelectionAndEditorProvidesGutterHighlightAndCompletions() throws {
+    @Test func nativeCommandReturnUsesSelectionAndEditorProvidesGutterHighlightAndCompletions() async throws {
         let storage = TextStorage()
         storage.text = "SELECT user_table; -- comment"
         let coordinator = SQLEditorView.Coordinator(text: storage.binding)
@@ -462,11 +462,13 @@ struct SQLEditorTests {
         coordinator.update(text: storage.binding, isEditable: true, in: scroll,
             selectionChanged: { selectionEvents.append($0) }, onRunSelection: { executed = $0 },
             completions: ["user_table", "user_id"], errorPosition: 7)
+        let window = try await window(containing: scroll)
+        defer { window.close() }
         let editor = try #require(scroll.documentView as? NSTextView)
         let selection = NSRange(location: 7, length: 10)
         editor.setSelectedRange(selection)
         let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
-            timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r",
+            timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "\r", charactersIgnoringModifiers: "\r",
             isARepeat: false, keyCode: 36))
         #expect(editor.performKeyEquivalent(with: event))
         #expect(executed == selection)

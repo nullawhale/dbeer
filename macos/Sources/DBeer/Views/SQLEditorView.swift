@@ -13,6 +13,11 @@ final class SQLEditorState {
         editors[documentID]?.selectedRange() ?? fallback
     }
 
+    func prepareForPaneMove(_ documentID: UUID) {
+        guard let editor = editors[documentID], editor.window?.firstResponder === editor else { return }
+        editor.restoreFocusAfterPaneMove = true
+    }
+
     func removeDocument(_ documentID: UUID) {
         languageService.close(documentID: documentID)
         editors[documentID]?.dismissCompletion?()
@@ -131,13 +136,17 @@ struct SQLEditorView: NSViewRepresentable {
         init(text: Binding<String>) { self.text = text }
 
         func detach(from scrollView: NSScrollView) {
-            if let activeDocumentID { activeState?.scrollOrigins[activeDocumentID] = scrollView.contentView.bounds.origin }
             dismissCompletions()
             dismissSignatures()
             if let diagnosticsObserver { languageService?.removeDiagnosticsObserver(diagnosticsObserver) }
             diagnosticsObserver = nil
             languageService = nil
-            if let editor = scrollView.documentView as? SQLTextView {
+            // A move can mount the cached editor in its new pane before the old
+            // representable dismantles. Only its current coordinator may clear
+            // delegates, command closures or the saved viewport.
+            if let editor = scrollView.documentView as? SQLTextView,
+               editor.delegate === self, editor.enclosingScrollView === scrollView {
+                if let activeDocumentID { activeState?.scrollOrigins[activeDocumentID] = scrollView.contentView.bounds.origin }
                 editor.delegate = nil
                 editor.requestCompletion = nil
                 editor.dismissCompletion = nil
@@ -167,6 +176,10 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func editor(in state: SQLEditorState, documentID: UUID) -> SQLTextView {
             if let cached = state.editors[documentID] {
+                if let oldScroll = cached.enclosingScrollView {
+                    state.scrollOrigins[documentID] = oldScroll.contentView.bounds.origin
+                }
+                cached.dismissCompletion?()
                 cached.delegate = self
                 return cached
             }
@@ -234,7 +247,7 @@ struct SQLEditorView: NSViewRepresentable {
                 self.languageService = languageService
                 diagnosticsObserver = languageService?.addDiagnosticsObserver { [weak self] documentID, _ in
                     guard let self, self.activeDocumentID == documentID,
-                          let editor = self.activeState?.editors[documentID] else { return }
+                          let editor = self.activeState?.editors[documentID], editor.delegate === self else { return }
                     self.highlight(editor)
                 }
             }
@@ -255,13 +268,18 @@ struct SQLEditorView: NSViewRepresentable {
             isUpdating = true
             defer { isUpdating = false }
             if activeState !== state || activeDocumentID != id {
-                if let oldID = activeDocumentID { activeState?.scrollOrigins[oldID] = scrollView.contentView.bounds.origin }
+                if let oldID = activeDocumentID, let oldEditor = scrollView.documentView as? SQLTextView,
+                   oldEditor.delegate === self, oldEditor.enclosingScrollView === scrollView {
+                    activeState?.scrollOrigins[oldID] = scrollView.contentView.bounds.origin
+                }
                 dismissCompletions()
                 dismissSignatures()
                 let hadFocus = scrollView.window?.firstResponder === scrollView.documentView
+                let cachedHadFocus = state.editors[id].map { $0.window?.firstResponder === $0 } ?? false
                 let next = editor(in: state, documentID: id)
+                if cachedHadFocus { next.restoreFocusAfterPaneMove = true }
                 scrollView.documentView = next
-                if hadFocus { scrollView.window?.makeFirstResponder(next) }
+                if hadFocus || cachedHadFocus { scrollView.window?.makeFirstResponder(next) }
                 installRuler(in: scrollView, textView: next)
                 activeState = state
                 activeDocumentID = id
@@ -271,7 +289,8 @@ struct SQLEditorView: NSViewRepresentable {
                     scrollView.reflectScrolledClipView(scrollView.contentView)
                 }
             }
-            guard let textView = scrollView.documentView as? SQLTextView else { return }
+            guard let textView = scrollView.documentView as? SQLTextView,
+                  textView.enclosingScrollView === scrollView else { return }
             textView.applyTheme(editorTheme)
             scrollView.appearance = textView.appearance
             scrollView.backgroundColor = textView.backgroundColor
@@ -483,7 +502,7 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func isActiveEditor(_ textView: NSTextView) -> Bool {
             guard let activeDocumentID else { return false }
-            return activeState?.editors[activeDocumentID] === textView
+            return activeState?.editors[activeDocumentID] === textView && textView.delegate === self
         }
 
         func textDidChange(_ notification: Notification) {
@@ -769,7 +788,14 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     var completionKey: ((NSEvent) -> Bool)?
     var appCommandFocus: AppCommandFocus { .sqlEditor }
     var appCommandDocumentID: UUID?
+    var restoreFocusAfterPaneMove = false
     override var undoManager: UndoManager? { documentUndo }
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { WorkspacePaneContainerView.activatePane(containing: self) }
+        return accepted
+    }
 
     /// Theme changes affect presentation attributes only. The document, native
     /// undo manager, selection and scroll position remain owned by this view.
@@ -804,6 +830,8 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+        WorkspacePaneContainerView.activatePane(containing: self)
         if commandEvent?(event, selectedRange()) == true { return true }
         if commandEvent == nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 36, let runSelection {
@@ -814,6 +842,7 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     }
 
     override func keyDown(with event: NSEvent) {
+        WorkspacePaneContainerView.activatePane(containing: self)
         if completionKey?(event) == true { return }
         if commandEvent?(event, selectedRange()) == true { return }
         if commandEvent == nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
@@ -836,6 +865,16 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
                 name: NSWindow.didResignKeyNotification, object: window)
             NotificationCenter.default.addObserver(self, selector: #selector(windowGeometryChanged),
                 name: NSWindow.didResizeNotification, object: window)
+            if restoreFocusAfterPaneMove {
+                Task { @MainActor [weak self, weak window] in
+                    guard let self, let window, self.window === window, self.restoreFocusAfterPaneMove else { return }
+                    self.restoreFocusAfterPaneMove = false
+                    let responder = window.firstResponder
+                    if responder == nil || responder === window || responder === window.contentView || responder === self {
+                        window.makeFirstResponder(self)
+                    }
+                }
+            }
         } else { dismissCompletion?() }
     }
 

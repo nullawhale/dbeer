@@ -93,6 +93,13 @@ struct TableViewNavigationTests {
                         if table == 'orders':
                             rows = [['orders_customer_fk','linked schema','customers','customer_id','id','2'],
                                     ['orders_customer_fk','linked schema','customers','tenant_id','tenant','1']]
+                    elif operation == 'select':
+                        if mode == 'wait-select':
+                            (directory / 'entered').touch()
+                            deadline = time.monotonic()+8
+                            while not (directory / 'release').exists() and time.monotonic() < deadline: time.sleep(.005)
+                            assert (directory / 'release').exists()
+                        names,rows = ['sql'], [['SELECT * FROM "source schema"."orders";']]
                     elif operation == 'browse':
                         if table == 'customers' and mode in ['wait-browse','denied-browse-wait']:
                             (directory / 'entered').touch()
@@ -432,6 +439,105 @@ struct TableViewNavigationTests {
         fixture.evidence.unblock()
         await navigation.value
         #expect(source.table == key.target && !source.isNavigatingTable && source.tableNavigationError == nil)
+        await fixture.finish()
+    }
+
+    @Test(arguments: [false, true])
+    func delayedRelatedTabKeepsItsOriginPaneAndDoesNotReplaceNewerPaneSelections(changeSourceSelection: Bool) async throws {
+        let fixture = try await fixture()
+        let source = try await fixture.source()
+        let right = fixture.workspace.newDocument(text: "SELECT 'right';", in: .right)
+        fixture.workspace.selectDocument(source.id, in: .left)
+        let key = try #require(source.tableForeignKeys.first)
+        let row = try #require(source.grid?.rows.first)
+        try fixture.evidence.setMode("wait")
+        let navigation = Task { await fixture.workspace.followForeignKey(key, rowID: row.id, in: source, inNewTab: true) }
+        defer { fixture.evidence.unblock() }
+        try await eventually { FileManager.default.fileExists(atPath: fixture.evidence.entered.path) }
+        let laterLeft = changeSourceSelection ? fixture.workspace.newDocument(text: "SELECT 'later left';", in: .left) : nil
+        fixture.workspace.selectDocument(right.id, in: .right)
+        let laterRight = fixture.workspace.newDocument(text: "SELECT 'later right';", in: .right)
+        fixture.evidence.unblock()
+        await navigation.value
+        let target = try #require(fixture.workspace.documents.first { $0.table?.name == "customers" })
+        #expect(fixture.workspace.pane(containing: target.id) == .left)
+        #expect(fixture.workspace.selectedDocument(in: .left) === (laterLeft ?? target))
+        #expect(fixture.workspace.selectedDocument(in: .right) === laterRight)
+        #expect(fixture.workspace.selectedDocument === laterRight && fixture.workspace.activePaneID == .right)
+        #expect(source.tableNavigationError == nil && target.grid != nil)
+        await fixture.finish()
+    }
+
+    @Test func failedMovedProvisionalTabCannotChangeEitherNewerPaneSelectionOrPersistItsReference() async throws {
+        let fixture = try await fixture()
+        let source = try await fixture.source()
+        let right = fixture.workspace.newDocument(text: "SELECT 'right';", in: .right)
+        fixture.workspace.selectDocument(source.id, in: .left)
+        let key = try #require(source.tableForeignKeys.first)
+        let row = try #require(source.grid?.rows.first)
+        try fixture.evidence.setMode("denied-browse-wait")
+        let navigation = Task { await fixture.workspace.followForeignKey(key, rowID: row.id, in: source, inNewTab: true) }
+        defer { fixture.evidence.unblock() }
+        try await eventually { FileManager.default.fileExists(atPath: fixture.evidence.entered.path) }
+        let target = try #require(fixture.workspace.documents.first { $0.isProvisionalTableView })
+        fixture.workspace.moveDocument(target.id, to: .right, at: 0)
+        await fixture.workspace.flushDocuments()
+        let pending = await fixture.store.load()
+        #expect(!pending.documents.contains { $0.id == target.id })
+        #expect(pending.paneLayout.right.documentIDs == [right.id])
+        #expect(pending.paneLayout.right.selectedDocumentID == right.id && pending.paneLayout.left.selectedDocumentID == source.id)
+        let laterLeft = fixture.workspace.newDocument(text: "SELECT 'later left';", in: .left)
+        let laterRight = fixture.workspace.newDocument(text: "SELECT 'later right';", in: .right)
+        fixture.evidence.unblock()
+        await navigation.value
+        #expect(!fixture.workspace.documents.contains { $0 === target })
+        #expect(fixture.workspace.selectedDocument(in: .left) === laterLeft)
+        #expect(fixture.workspace.selectedDocument(in: .right) === laterRight)
+        #expect(fixture.workspace.selectedDocument === laterRight && source.tableNavigationError != nil)
+        await fixture.workspace.flushDocuments()
+        let completed = await fixture.store.load()
+        #expect(completed.paneLayout.isValid(documentIDs: completed.documents.map(\.id)))
+        #expect(!completed.paneLayout.left.documentIDs.contains(target.id) && !completed.paneLayout.right.documentIDs.contains(target.id))
+        await fixture.finish()
+    }
+
+    @Test func delayedGeneratedSelectStaysInItsInvocationPaneWithoutTakingTheOtherPanesFocus() async throws {
+        let fixture = try await fixture()
+        let left = fixture.workspace.newDocument(text: "SELECT 'left';", in: .left)
+        try fixture.evidence.setMode("wait-select")
+        let opening = Task { await fixture.workspace.openGeneratedSelect(fixture.node) }
+        defer { fixture.evidence.unblock() }
+        try await eventually { FileManager.default.fileExists(atPath: fixture.evidence.entered.path) }
+        let right = fixture.workspace.newDocument(text: "SELECT 'right';", in: .right)
+        fixture.evidence.unblock()
+        let document = try #require(await opening.value)
+        #expect(document.text == "SELECT * FROM \"source schema\".\"orders\";")
+        #expect(fixture.workspace.pane(containing: document.id) == .left && document !== left)
+        #expect(fixture.workspace.selectedDocument(in: .left) === document)
+        #expect(fixture.workspace.selectedDocument === right && fixture.workspace.activePaneID == .right)
+        #expect(document.runtime == nil && !document.isRunning)
+        await fixture.finish()
+    }
+
+    @Test func delayedGeneratedSelectDoesNotReplaceTheSameEditorAfterTheUserResumesEditing() async throws {
+        let fixture = try await fixture()
+        let source = fixture.workspace.newDocument(text: "SELECT 'before';", in: .left)
+        try fixture.evidence.setMode("wait-select")
+        let opening = Task { await fixture.workspace.openGeneratedSelect(fixture.node) }
+        defer { fixture.evidence.unblock() }
+        try await eventually { FileManager.default.fileExists(atPath: fixture.evidence.entered.path) }
+        // The native pane bridge reports a click or keystroke even when the
+        // active pane and selected document identity remain unchanged.
+        fixture.workspace.activatePane(.left)
+        source.text = "SELECT 'typed while waiting';"
+        source.selection = NSRange(location: 12, length: 5)
+        fixture.evidence.unblock()
+        let generated = try #require(await opening.value)
+        #expect(generated !== source && fixture.workspace.pane(containing: generated.id) == .left)
+        #expect(fixture.workspace.documents(in: .left).contains { $0 === generated })
+        #expect(fixture.workspace.selectedDocument === source && fixture.workspace.activePaneID == .left)
+        #expect(source.text == "SELECT 'typed while waiting';" && source.selection == NSRange(location: 12, length: 5))
+        #expect(generated.runtime == nil && !generated.isRunning)
         await fixture.finish()
     }
 

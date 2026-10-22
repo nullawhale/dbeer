@@ -14,6 +14,7 @@ struct ApplicationWorkspaceView: View {
     @Environment(\.colorScheme) private var colorScheme
     private var connectionEditorRequest = SwiftUI.State<ConnectionEditorRequest>(initialValue: .new)
     private var deletion = SwiftUI.State<SavedConnection?>(initialValue: nil)
+    private var tabDragSessionID = SwiftUI.State(initialValue: UUID())
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
@@ -25,30 +26,10 @@ struct ApplicationWorkspaceView: View {
         HSplitView {
             sidebar
             VStack(spacing: 0) {
-                documentBar
-                Divider()
-                Group {
-                    if let document = workspace.selectedDocument {
-                        if document.isSnapshot {
-                            if let model = document.snapshotModel {
-                                ResultSnapshotDocumentView(document: document, model: model, workspace: workspace)
-                                    .id(document.id)
-                            } else {
-                                Text("Snapshot unavailable. Its saved reference is missing.")
-                                    .appSecondaryText().frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
-                        } else {
-                            SQLDocumentPane(document: document, workspace: workspace)
-                                .id(document.id)
-                        }
-                    } else {
-                        VStack(spacing: 12) {
-                            Image(systemName: "doc.text").font(.largeTitle).appSecondaryText()
-                                .accessibilityHidden(true)
-                            Button("New SQL Tab") { workspace.newDocument() }.controlHover()
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                WorkspacePanesSplitView(workspace: workspace) {
+                    workingPane(.left)
+                } right: {
+                    workingPane(.right)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     WorkspaceNotificationToast(notifications: workspace.notifications).padding(12)
@@ -58,6 +39,7 @@ struct ApplicationWorkspaceView: View {
             }
             .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
         }
+        .accessibilityElement(children: .contain)
         .background(AppPalette.background).tint(AppPalette.accent)
         .applicationTheme(appearance: appearance)
         .focusEffectDisabled()
@@ -219,23 +201,80 @@ struct ApplicationWorkspaceView: View {
         workspace.library.isConnectionEditorPresented = true
     }
 
-    private var documentBar: some View {
+    private func workingPane(_ pane: WorkspacePaneID) -> some View {
+        VStack(spacing: 0) {
+            documentBar(in: pane)
+            Divider()
+            Group {
+                if let document = workspace.selectedDocument(in: pane) {
+                    if document.isSnapshot {
+                        if let model = document.snapshotModel {
+                            ResultSnapshotDocumentView(document: document, model: model, workspace: workspace)
+                                .id(document.id)
+                        } else {
+                            Text("Snapshot unavailable. Its saved reference is missing.")
+                                .appSecondaryText().frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        SQLDocumentPane(document: document, workspace: workspace).id(document.id)
+                    }
+                } else {
+                    VStack(spacing: 12) {
+                        Image(systemName: "rectangle.split.2x1").font(.largeTitle).appSecondaryText()
+                            .accessibilityHidden(true)
+                        Text("No tabs in this pane").appSecondaryText()
+                        Button("New SQL Tab") { workspace.newDocument(in: pane) }.controlHover()
+                        Text("Move a tab here with its menu or drag it into this tab bar.")
+                            .font(.caption).appSecondaryText().multilineTextAlignment(.center)
+                    }
+                    .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("emptyWorkspacePane-\(pane.rawValue)")
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .top) {
+            Rectangle().fill(workspace.activePaneID == pane ? AppPalette.accent : Color.clear)
+                .frame(height: 2).allowsHitTesting(false).accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(pane == .left ? "Left working pane" : "Right working pane")
+        .accessibilityValue(workspace.activePaneID == pane ? "Active pane" : "Inactive pane")
+        .accessibilityIdentifier("workspacePaneContent-\(pane.rawValue)")
+        .environment(\.colorScheme, colorScheme)
+        .applicationTheme(appearance: appearance)
+        .tint(AppPalette.accent)
+        .focusEffectDisabled()
+    }
+
+    private func documentBar(in pane: WorkspacePaneID) -> some View {
         HStack(spacing: ControlHoverAppearance.gap) {
             ScrollView(.horizontal) {
                 HStack(spacing: ControlHoverAppearance.gap) {
-                    ForEach(workspace.documents) { document in
-                        DocumentTab(document: document, isSelected: workspace.selectedDocumentID == document.id,
-                            select: { workspace.selectedDocumentID = document.id },
+                    ForEach(Array(workspace.documents(in: pane).enumerated()), id: \.element.id) { index, document in
+                        DocumentTab(document: document, isSelected: workspace.selectedDocument(in: pane)?.id == document.id,
+                            select: { workspace.selectDocument(document.id, in: pane) },
                             close: { Task { await workspace.closeDocument(document) } },
                             openInNewTab: {
                                 if document.table != nil { Task { await workspace.openTableInNewTab(document) } }
                                 else { workspace.openSQLFileInNewTab(document) }
-                            })
+                            },
+                            otherPaneTitle: pane == .left ? "Move to Right Pane" : "Move to Left Pane",
+                            moveToOtherPane: { moveDocument(document.id, to: pane == .left ? .right : .left) },
+                            moveEarlier: index > 0 ? { moveDocument(document.id, to: pane, at: index - 1) } : nil,
+                            moveLater: index + 1 < workspace.documents(in: pane).count
+                                ? { moveDocument(document.id, to: pane, at: index + 1) } : nil)
+                            .draggable(WorkspaceTabTransfer(workspaceSessionID: tabDragSessionID.wrappedValue, documentID: document.id))
+                            .dropDestination(for: WorkspaceTabTransfer.self) { values, _ in
+                                moveDroppedTab(values, to: pane, before: document.id)
+                            }
                     }
                 }
             }
             .scrollIndicators(.hidden)
-            ControlIconButton(systemName: "plus") { workspace.newDocument() }
+            ControlIconButton(systemName: "plus") { workspace.newDocument(in: pane) }
                 .help(commands.help(for: .newSQLTab))
                 .accessibilityLabel("New SQL Tab")
                 .accessibilityIdentifier("newSQLTab")
@@ -243,7 +282,29 @@ struct ApplicationWorkspaceView: View {
         .padding(ControlHoverAppearance.gap)
         .frame(height: WorkspaceChrome.headerHeight)
         .background(AppPalette.isCustom ? AppPalette.panel : Color.primary.opacity(0.025))
+        .contentShape(Rectangle())
+        .dropDestination(for: WorkspaceTabTransfer.self) { values, _ in moveDroppedTab(values, to: pane) }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("documentBar-\(pane.rawValue)")
     }
+
+    private func moveDocument(_ id: UUID, to pane: WorkspacePaneID, at index: Int? = nil) {
+        if workspace.pane(containing: id) != pane { workspace.editorState.prepareForPaneMove(id) }
+        workspace.moveDocument(id, to: pane, at: index)
+    }
+
+    private func moveDroppedTab(_ values: [WorkspaceTabTransfer], to pane: WorkspacePaneID, before target: UUID? = nil) -> Bool {
+        guard values.count == 1, let id = values[0].validatedDocumentID(in: workspace, sessionID: tabDragSessionID.wrappedValue),
+              id != target else { return false }
+        var index = target.flatMap { target in workspace.documents(in: pane).firstIndex { $0.id == target } }
+        if let destination = index, workspace.pane(containing: id) == pane,
+           let source = workspace.documents(in: pane).firstIndex(where: { $0.id == id }), source < destination {
+            index = destination - 1
+        }
+        moveDocument(id, to: pane, at: index)
+        return true
+    }
+
 }
 
 struct DocumentTab: View {
@@ -252,6 +313,10 @@ struct DocumentTab: View {
     let select: () -> Void
     let close: () -> Void
     var openInNewTab: (() -> Void)? = nil
+    var otherPaneTitle = "Move to Other Pane"
+    var moveToOtherPane: (() -> Void)? = nil
+    var moveEarlier: (() -> Void)? = nil
+    var moveLater: (() -> Void)? = nil
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -293,6 +358,13 @@ struct DocumentTab: View {
         .font(.system(size: 12)).frame(height: 23)
         .background(isSelected ? AppPalette.accent.opacity(0.12) : Color.clear,
             in: RoundedRectangle(cornerRadius: ControlHoverAppearance.cornerRadius))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("documentTab-\(document.id.uuidString)")
+        .accessibilityActions {
+            if let moveToOtherPane { Button(otherPaneTitle, action: moveToOtherPane) }
+            if let moveEarlier { Button("Move Tab Left", action: moveEarlier) }
+            if let moveLater { Button("Move Tab Right", action: moveLater) }
+        }
         .contextMenu {
             if document.table != nil || document.fileURL != nil, let openInNewTab {
                 Button("Open in New Tab", action: openInNewTab)
@@ -311,6 +383,12 @@ struct DocumentTab: View {
                     if !title.isEmpty { document.title = title }
                 }
             }.disabled(document.isNavigatingTable)
+            if let moveToOtherPane {
+                Divider()
+                Button(otherPaneTitle, action: moveToOtherPane)
+                Button("Move Tab Left") { moveEarlier?() }.disabled(moveEarlier == nil)
+                Button("Move Tab Right") { moveLater?() }.disabled(moveLater == nil)
+            }
             Button("Close", action: close)
         }
     }
@@ -337,74 +415,11 @@ struct SQLDocumentPane: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                if document.table != nil { tableHistoryControls }
-                Picker("Connection", selection: $document.profileID) {
-                    Text("Choose a connection").tag(Optional<UUID>.none)
-                    if let missingProfileID {
-                        Text(workspace.library.savedConnections.contains { $0.id == missingProfileID }
-                            ? "Connection outside library scope" : "Unavailable saved connection").tag(Optional(missingProfileID))
-                            .help("Saved connection \(missingProfileID.uuidString)")
-                    }
-                    ForEach(workspace.availableSQLLibraryProfiles(for: document)) { profile in
-                        Text(document.sqlLibraryEntryID == nil ? profile.name : profile.name + " · " + profile.policy.label)
-                            .tag(Optional(profile.id))
-                    }
-                }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(maxWidth: 220)
-                    .accessibilityIdentifier("documentConnection")
-                    .disabled(document.runtime?.sessionId != nil || document.isRunning || document.isNavigatingTable)
-                if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
-                   (document.runtime?.policy ?? profile.policy).readOnly {
-                    Text(profile.engine == .cassandra ? "Local RO" : "RO")
-                        .font(.caption2.weight(.regular)).foregroundStyle(.tertiary)
-                        .help(profile.engine == .cassandra ? "Local readonly; use restricted server roles for strict protection" : "Readonly")
-                        .accessibilityLabel(profile.engine == .cassandra ? "Local readonly" : "Readonly")
-                        .accessibilityIdentifier("documentReadOnly")
-                }
-                if document.table != nil, document.grid != nil {
-                    Button {
-                        showingFilters.wrappedValue.toggle()
-                    } label: {
-                        Label(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))",
-                            systemImage: "line.3.horizontal.decrease")
-                    }.controlHover().controlSize(.small)
-                        .disabled(!TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
-                        .accessibilityIdentifier("gridFilter")
-                        .popover(isPresented: showingFilters.projectedValue) {
-                            TableBrowseControls(document: document, workspace: workspace)
-                        }
-                }
-                Spacer()
-                Button("Stop") { commands.perform(.stop) }.controlHover()
-                    .disabled(!commands.canPerform(.stop))
-                    .help(commandHelp(.stop))
-                if document.table == nil {
-                    Button("Run Script") { commands.perform(.runScript) }.controlHover()
-                        .disabled(!commands.canPerform(.runScript))
-                        .help(commandHelp(.runScript) + " · Run the entire document, stopping at the first error")
-                    Menu("Run to File") {
-                        Button("JSON…") { commands.perform(.runToJSON) }
-                        Button("CSV…") { commands.perform(.runToCSV) }
-                    }.fixedSize().controlHover().disabled(!commands.canPerform(.runToJSON))
-                        .accessibilityIdentifier("runToFile")
-                }
-                Button {
-                    commands.perform(.runCurrent)
-                } label: {
-                    HStack(spacing: 6) {
-                        Label(document.table == nil ? "Run" : (document.grid == nil ? "Load Data" : "Refresh"),
-                            systemImage: document.table == nil ? "play" : "arrow.clockwise")
-                        if let shortcut = commands.shortcuts.shortcut(for: .runCurrent) {
-                            Text(shortcut.displayString).opacity(0.65)
-                        }
-                    }.fixedSize(horizontal: true, vertical: false)
-                }.controlHover()
-                    .buttonStyle(.borderedProminent)
-                    .disabled(document.isNavigatingTable || !commands.canPerform(.runCurrent))
-                    .help(commandHelp(.runCurrent))
-                    .accessibilityIdentifier("runQuery")
+            ViewThatFits(in: .horizontal) {
+                documentToolbar(compact: false).frame(minWidth: 620)
+                documentToolbar(compact: true)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 8)
             .frame(height: WorkspaceChrome.toolbarHeight)
             Divider()
             if document.table == nil, let url = document.fileURL {
@@ -487,6 +502,119 @@ struct SQLDocumentPane: View {
         .onChange(of: document.isRunning) { _, value in if value { resultSetIndex.wrappedValue = 0 } }
         .sheet(item: editingLibrary.projectedValue) { request in
             SQLLibraryEntryEditor(workspace: workspace, fileURL: request.url)
+        }
+    }
+
+    private func canPerform(_ command: AppCommandID) -> Bool {
+        commands.canPerform(command, context: commands.context(for: document))
+    }
+
+    private func perform(_ command: AppCommandID) {
+        commands.perform(command, context: commands.context(for: document))
+    }
+
+    private func documentToolbar(compact: Bool) -> some View {
+        HStack(spacing: compact ? 6 : 8) {
+            if document.table != nil, !compact { tableHistoryControls }
+            Picker("Connection", selection: $document.profileID) {
+                Text("Choose a connection").tag(Optional<UUID>.none)
+                if let missingProfileID {
+                    Text(workspace.library.savedConnections.contains { $0.id == missingProfileID }
+                        ? "Connection outside library scope" : "Unavailable saved connection").tag(Optional(missingProfileID))
+                        .help("Saved connection \(missingProfileID.uuidString)")
+                }
+                ForEach(workspace.availableSQLLibraryProfiles(for: document)) { profile in
+                    Text(document.sqlLibraryEntryID == nil ? profile.name : profile.name + " · " + profile.policy.label)
+                        .tag(Optional(profile.id))
+                }
+            }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(minWidth: 64, maxWidth: compact ? .infinity : 220)
+                .accessibilityIdentifier("documentConnection")
+                .disabled(document.runtime?.sessionId != nil || document.isRunning || document.isNavigatingTable)
+            if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
+               (document.runtime?.policy ?? profile.policy).readOnly {
+                Text(profile.engine == .cassandra ? "Local RO" : "RO")
+                    .font(.caption2.weight(.regular)).foregroundStyle(.tertiary)
+                    .help(profile.engine == .cassandra ? "Local readonly; use restricted server roles for strict protection" : "Readonly")
+                    .accessibilityLabel(profile.engine == .cassandra ? "Local readonly" : "Readonly")
+                    .accessibilityIdentifier("documentReadOnly")
+            }
+            if document.table != nil, document.grid != nil {
+                Button {
+                    showingFilters.wrappedValue.toggle()
+                } label: {
+                    if compact {
+                        Image(systemName: "line.3.horizontal.decrease")
+                    } else {
+                        Label(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))",
+                            systemImage: "line.3.horizontal.decrease")
+                    }
+                }.controlHover().controlSize(.small)
+                    .disabled(!TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
+                    .accessibilityLabel(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))")
+                    .accessibilityIdentifier("gridFilter")
+                    .popover(isPresented: showingFilters.projectedValue) {
+                        TableBrowseControls(document: document, workspace: workspace)
+                    }
+            }
+            Spacer(minLength: 0)
+            Button { perform(.stop) } label: {
+                if compact { Image(systemName: "stop.fill") } else { Text("Stop") }
+            }.controlHover()
+                .accessibilityLabel("Stop")
+                .accessibilityIdentifier("stopQuery")
+                .disabled(!canPerform(.stop))
+                .help(commandHelp(.stop))
+            if compact {
+                Menu {
+                    if document.table == nil {
+                        Button("Run Script") { perform(.runScript) }.disabled(!canPerform(.runScript))
+                        Menu("Run to File") {
+                            Button("JSON…") { perform(.runToJSON) }.disabled(!canPerform(.runToJSON))
+                            Button("CSV…") { perform(.runToCSV) }.disabled(!canPerform(.runToCSV))
+                        }
+                    } else {
+                        Button("Back to Previous Table View") {
+                            Task { await workspace.navigateTableBack(document) }
+                        }.disabled(!canNavigateTableHistory || !document.canNavigateTableBack)
+                        Button("Forward to Next Table View") {
+                            Task { await workspace.navigateTableForward(document) }
+                        }.disabled(!canNavigateTableHistory || !document.canNavigateTableForward)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis").frame(width: 18)
+                }.menuIndicator(.hidden).fixedSize().controlHover()
+                    .accessibilityLabel("More query actions")
+                    .accessibilityIdentifier("queryActions")
+            } else if document.table == nil {
+                Button("Run Script") { perform(.runScript) }.controlHover()
+                    .disabled(!canPerform(.runScript))
+                    .help(commandHelp(.runScript) + " · Run the entire document, stopping at the first error")
+                Menu("Run to File") {
+                    Button("JSON…") { perform(.runToJSON) }
+                    Button("CSV…") { perform(.runToCSV) }
+                }.fixedSize().controlHover().disabled(!canPerform(.runToJSON))
+                    .accessibilityIdentifier("runToFile")
+            }
+            Button {
+                perform(.runCurrent)
+            } label: {
+                HStack(spacing: 6) {
+                    if compact {
+                        Image(systemName: document.table == nil ? "play.fill" : "arrow.clockwise")
+                    } else {
+                        Label(document.table == nil ? "Run" : (document.grid == nil ? "Load Data" : "Refresh"),
+                            systemImage: document.table == nil ? "play" : "arrow.clockwise")
+                    }
+                    if !compact, let shortcut = commands.shortcuts.shortcut(for: .runCurrent) {
+                        Text(shortcut.displayString).opacity(0.65)
+                    }
+                }.fixedSize(horizontal: true, vertical: false)
+            }.controlHover()
+                .buttonStyle(.borderedProminent)
+                .disabled(document.isNavigatingTable || !canPerform(.runCurrent))
+                .help(commandHelp(.runCurrent))
+                .accessibilityLabel(document.table == nil ? "Run" : (document.grid == nil ? "Load Data" : "Refresh"))
+                .accessibilityIdentifier("runQuery")
         }
     }
 
@@ -601,9 +729,9 @@ struct SQLDocumentPane: View {
                     Text("Choose a connection above before loading this table.")
                         .font(.callout).foregroundStyle(.orange)
                 }
-                Button(error == nil ? "Load Data" : "Retry Load Data") { commands.perform(.runCurrent) }
+                Button(error == nil ? "Load Data" : "Retry Load Data") { perform(.runCurrent) }
                     .controlHover().buttonStyle(.borderedProminent)
-                    .disabled(document.isNavigatingTable || !commands.canPerform(.runCurrent))
+                    .disabled(document.isNavigatingTable || !canPerform(.runCurrent))
                     .accessibilityIdentifier("loadRestoredTable")
             }
             .padding(24)

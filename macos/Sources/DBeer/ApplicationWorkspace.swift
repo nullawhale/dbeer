@@ -254,7 +254,7 @@ final class ApplicationWorkspace: ObservableObject {
     let library: WorkspaceModel
     @Published private(set) var documents: [SQLDocument] = []
     @Published private(set) var closedTabs: [ClosedWorkspaceTab] = []
-    @Published var selectedDocumentID: UUID? { didSet { scheduleSave() } }
+    @Published private(set) var paneLayout = WorkspacePaneLayout() { didSet { scheduleSave() } }
     @Published private(set) var services: [UUID: WorkspaceModel] = [:]
     @Published private(set) var error: String?
     let notifications = WorkspaceNotifications()
@@ -307,6 +307,9 @@ final class ApplicationWorkspace: ObservableObject {
     private var profileConnections: [UUID: Task<Void, Never>] = [:]
     private var disconnectingProfiles: Set<UUID> = []
     private var closingDocuments: Set<UUID> = []
+    private var paneSelectionRevisions: [WorkspacePaneID: UInt64] = [:]
+    private var paneActivationRevision: UInt64 = 0
+    private var paneSplitRevision: UInt64 = 0
     @Published private var isClearingDocuments = false
     private var catalogRequests: [UUID: (id: UUID, task: Task<BackendMessage, Error>)] = [:]
     private var completionLoads: [UUID: (id: UUID, task: Task<Void, Never>)] = [:]
@@ -371,7 +374,112 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
-    var selectedDocument: SQLDocument? { documents.first { $0.id == selectedDocumentID } }
+    var activePaneID: WorkspacePaneID { paneLayout.activePaneID }
+
+    var selectedDocumentID: UUID? {
+        get { paneLayout.selectedDocumentID }
+        set {
+            guard let newValue, let pane = pane(containing: newValue) else { return }
+            selectDocument(newValue, in: pane)
+        }
+    }
+
+    var selectedDocument: SQLDocument? { selectedDocument(in: activePaneID) }
+
+    func documents(in pane: WorkspacePaneID) -> [SQLDocument] {
+        let indexed = Dictionary(uniqueKeysWithValues: documents.map { ($0.id, $0) })
+        return paneLayout[pane].documentIDs.compactMap { indexed[$0] }
+    }
+
+    func selectedDocument(in pane: WorkspacePaneID) -> SQLDocument? {
+        guard let id = paneLayout[pane].selectedDocumentID else { return nil }
+        return documents.first { $0.id == id }
+    }
+
+    func pane(containing id: UUID) -> WorkspacePaneID? { paneLayout.pane(containing: id) }
+
+    func isSelectedVisibleDocument(_ id: UUID) -> Bool {
+        guard let pane = pane(containing: id) else { return false }
+        return paneLayout[pane].selectedDocumentID == id && documents.contains { $0.id == id }
+    }
+
+    func activatePane(_ pane: WorkspacePaneID) {
+        paneActivationRevision &+= 1
+        guard paneLayout.activePaneID != pane else { return }
+        paneLayout.activePaneID = pane
+    }
+
+    func selectDocument(_ id: UUID, in pane: WorkspacePaneID) {
+        guard self.pane(containing: id) == pane, documents.contains(where: { $0.id == id }) else { return }
+        // An explicit re-selection still represents newer user intent than an
+        // asynchronous open or restoration that began before this call.
+        paneSelectionRevisions[pane, default: 0] &+= 1
+        paneActivationRevision &+= 1
+        var layout = paneLayout
+        if layout[pane].selectedDocumentID != id {
+            layout[pane].selectedDocumentID = id
+        }
+        layout.activePaneID = pane
+        if paneLayout != layout { paneLayout = layout }
+    }
+
+    /// Moving a tab never touches its document, runtime or editor objects.
+    func moveDocument(_ id: UUID, to pane: WorkspacePaneID, at index: Int? = nil) {
+        guard shutdownTask == nil, let source = self.pane(containing: id),
+              documents.contains(where: { $0.id == id }) else { return }
+        var layout = paneLayout
+        layout.insertDocument(id, in: pane, at: index)
+        layout.activePaneID = pane
+        guard layout != paneLayout else { return }
+        paneSelectionRevisions[source, default: 0] &+= 1
+        if source != pane { paneSelectionRevisions[pane, default: 0] &+= 1 }
+        if paneLayout.activePaneID != pane { paneActivationRevision &+= 1 }
+        paneLayout = layout
+    }
+
+    func setSplitFraction(_ fraction: Double) {
+        guard fraction.isFinite else { return }
+        let clamped = min(max(fraction, WorkspacePaneLayout.splitRange.lowerBound), WorkspacePaneLayout.splitRange.upperBound)
+        guard paneLayout.splitFraction != clamped else { return }
+        paneSplitRevision &+= 1
+        paneLayout.splitFraction = clamped
+    }
+
+    private struct PaneSelectionContext {
+        let pane: WorkspacePaneID
+        let selectionRevisions: [WorkspacePaneID: UInt64]
+        let activationRevision: UInt64
+        let selectedDocumentID: UUID?
+    }
+
+    private func capturePaneSelection(in pane: WorkspacePaneID? = nil) -> PaneSelectionContext {
+        let pane = pane ?? activePaneID
+        return PaneSelectionContext(pane: pane, selectionRevisions: paneSelectionRevisions,
+            activationRevision: paneActivationRevision, selectedDocumentID: paneLayout[pane].selectedDocumentID)
+    }
+
+    private func canSelectAfterOpening(in pane: WorkspacePaneID, context: PaneSelectionContext) -> Bool {
+        guard paneSelectionRevisions[pane, default: 0] == context.selectionRevisions[pane, default: 0] else { return false }
+        // A newer focus event in the same pane can keep the same tab selected.
+        // Preserve that editor rather than replacing it when delayed work ends.
+        // An inactive origin pane may still reveal its result without taking
+        // focus from the pane the user has since activated.
+        return paneActivationRevision == context.activationRevision || (pane == context.pane && activePaneID != pane)
+    }
+
+    private func selectAfterOpening(_ document: SQLDocument, context: PaneSelectionContext) {
+        guard let pane = pane(containing: document.id), canSelectAfterOpening(in: pane, context: context) else { return }
+        var layout = paneLayout
+        if layout[pane].selectedDocumentID != document.id {
+            paneSelectionRevisions[pane, default: 0] &+= 1
+            layout[pane].selectedDocumentID = document.id
+        }
+        if paneActivationRevision == context.activationRevision {
+            if layout.activePaneID != pane { paneActivationRevision &+= 1 }
+            layout.activePaneID = pane
+        }
+        if paneLayout != layout { paneLayout = layout }
+    }
 
     var canManageWorkspace: Bool {
         shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
@@ -390,7 +498,9 @@ final class ApplicationWorkspace: ObservableObject {
         let document = restoredDocument(state, knownProfiles: library.savedConnections.map(\.id))
         documents.insert(document, at: min(max(0, closed.originalIndex), documents.count))
         observeDocument(document)
-        selectedDocumentID = document.id
+        paneLayout.insertDocument(document.id, in: closed.paneID, at: closed.originalPaneIndex)
+        paneSelectionRevisions[closed.paneID, default: 0] &+= 1
+        activatePane(closed.paneID)
         scheduleSave()
         return document
     }
@@ -430,13 +540,13 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     @discardableResult
-    func newDocument(profileID: UUID? = nil, text: String? = nil) -> SQLDocument {
+    func newDocument(profileID: UUID? = nil, text: String? = nil, in pane: WorkspacePaneID? = nil) -> SQLDocument {
         let selectedProfileID = profileID ?? library.selectedConnectionId
         let engine = library.savedConnections.first { $0.id == selectedProfileID }?.engine
         let initialText = text ?? (engine == .cassandra ? "SELECT cluster_name, release_version, data_center FROM system.local;" : "SELECT 1;")
         let document = SQLDocument(title: "SQL \(documents.count + 1)", text: initialText,
             profileID: selectedProfileID)
-        return addDocument(document)
+        return addDocument(document, in: pane)
     }
 
     @discardableResult
@@ -474,7 +584,7 @@ final class ApplicationWorkspace: ObservableObject {
         document.historyConnectionNotice = manifest.engine == .cassandra
             ? "Choose a connection before running this captured SQL. It starts a new read; the original paging cursor is not encoded."
             : "Choose a connection before running this captured SQL."
-        return addDocument(document)
+        return addDocument(document, in: pane(containing: source.id))
     }
 
     func snapshotCapture(for document: SQLDocument, resultSetIndex: Int = 0) -> ResultSnapshotCapture? {
@@ -504,10 +614,23 @@ final class ApplicationWorkspace: ObservableObject {
         return nil
     }
 
-    private func addDocument(_ document: SQLDocument) -> SQLDocument {
+    @discardableResult
+    private func addDocument(_ document: SQLDocument, in requestedPane: WorkspacePaneID? = nil,
+                             context: PaneSelectionContext? = nil) -> SQLDocument {
+        let pane = context?.pane ?? requestedPane ?? activePaneID
         documents.append(document)
         observeDocument(document)
-        selectedDocumentID = document.id
+        let shouldSelect = context.map { canSelectAfterOpening(in: pane, context: $0) } ?? true
+        var layout = paneLayout
+        layout.insertDocument(document.id, in: pane, select: shouldSelect)
+        if shouldSelect && (context.map { paneActivationRevision == $0.activationRevision } ?? true) {
+            if layout.activePaneID != pane { paneActivationRevision &+= 1 }
+            layout.activePaneID = pane
+        }
+        if layout[pane].selectedDocumentID != paneLayout[pane].selectedDocumentID {
+            paneSelectionRevisions[pane, default: 0] &+= 1
+        }
+        paneLayout = layout
         scheduleSave()
         return document
     }
@@ -605,13 +728,17 @@ final class ApplicationWorkspace: ObservableObject {
     private func closeDocumentImmediately(_ document: SQLDocument, remember: Bool = false) async {
         if let runtime = document.runtime { await runtime.shutdown() }
         guard shutdownTask == nil, let index = documents.firstIndex(where: { $0 === document }) else { return }
-        let closed = remember ? ClosedWorkspaceTab(state: document.storedState, originalIndex: index) : nil
+        let pane = self.pane(containing: document.id) ?? .left
+        let paneIndex = paneLayout[pane].documentIDs.firstIndex(of: document.id) ?? 0
+        let closed = remember ? ClosedWorkspaceTab(state: document.storedState, originalIndex: index,
+            paneID: pane, originalPaneIndex: paneIndex) : nil
         documents.remove(at: index)
+        paneLayout.removeDocument(document.id)
+        paneSelectionRevisions[pane, default: 0] &+= 1
         document.detachFileDocument()
         pruneFileDocuments()
         documentObservations[document.id] = nil
         editorState.removeDocument(document.id)
-        if selectedDocumentID == document.id { selectedDocumentID = documents.last?.id }
         if let closed {
             closedTabs.append(closed)
             if closedTabs.count > 20 { closedTabs.removeFirst(closedTabs.count - 20) }
@@ -1029,13 +1156,23 @@ final class ApplicationWorkspace: ObservableObject {
         let confirmed = documents.filter { !$0.isProvisionalTableView }
         let states = confirmed.map { $0.tableNavigationSourceState ?? $0.storedState }
         let knownIDs = Set(states.map(\.id))
-        let selected = documents.first { $0.id == selectedDocumentID }
-        let requestedSelection = selected?.isProvisionalTableView == true
-            ? selected?.provisionalPreviousSelection : selectedDocumentID
+        var layout = paneLayout
+        for pane in WorkspacePaneID.allCases {
+            var state = layout[pane]
+            state.documentIDs = state.documentIDs.filter { knownIDs.contains($0) }
+            if let selected = selectedDocument(in: pane), selected.isProvisionalTableView,
+               let previous = selected.provisionalPreviousSelection, state.documentIDs.contains(previous) {
+                state.selectedDocumentID = previous
+            }
+            if state.selectedDocumentID.map(state.documentIDs.contains) != true {
+                state.selectedDocumentID = state.documentIDs.first
+            }
+            layout[pane] = state
+        }
         return SQLWorkspaceSnapshot(documents: states,
-            selectedDocumentID: requestedSelection.flatMap { knownIDs.contains($0) ? $0 : nil },
+            selectedDocumentID: layout.selectedDocumentID,
             history: history, historyEnabled: historyEnabled, historySettings: historySettings,
-            sqlFolders: sqlFolders.attachments, sqlLibrary: sqlLibrary.snapshot)
+            sqlFolders: sqlFolders.attachments, sqlLibrary: sqlLibrary.snapshot, paneLayout: layout)
     }
 
     /// Loads local workspace state without launching a helper, requesting
@@ -1055,7 +1192,7 @@ final class ApplicationWorkspace: ObservableObject {
             let knownProfiles = try? await connectionStore.load().connections.map(\.id)
             guard shutdownTask == nil else { return }
             let localDocuments = documents
-            let localSelection = selectedDocumentID
+            let localLayout = paneLayout
             history = saved.history
             historySettings = saved.historySettings
             historyEnabled = saved.historyEnabled
@@ -1077,12 +1214,25 @@ final class ApplicationWorkspace: ObservableObject {
             }
             documents = restored + localDocuments
             for document in documents { observeDocument(document) }
-            selectedDocumentID = localSelection.flatMap { id in documents.contains { $0.id == id } ? id : nil }
-                ?? saved.selectedDocumentID.flatMap { id in documents.contains { $0.id == id } ? id : nil }
-                ?? documents.first?.id
+            var layout = saved.paneLayout
+            for pane in WorkspacePaneID.allCases {
+                var state = layout[pane]
+                state.documentIDs.removeAll { localIDs.contains($0) }
+                state.documentIDs += localLayout[pane].documentIDs
+                let localSelection = localLayout[pane].selectedDocumentID
+                if let localSelection, state.documentIDs.contains(localSelection) {
+                    state.selectedDocumentID = localSelection
+                } else if state.selectedDocumentID.map(state.documentIDs.contains) != true {
+                    state.selectedDocumentID = state.documentIDs.first
+                }
+                layout[pane] = state
+            }
+            if paneActivationRevision > 0 || !localDocuments.isEmpty { layout.activePaneID = localLayout.activePaneID }
+            if paneSplitRevision > 0 { layout.splitFraction = localLayout.splitFraction }
+            paneLayout = layout
             draftsLoaded = true
             if !localDocuments.isEmpty || !attached.isEmpty || localLibrary != SQLLibrarySnapshot() ||
-                documents.map(\.storedState) != saved.documents {
+                documents.map(\.storedState) != saved.documents || layout != saved.paneLayout {
                 scheduleSave()
             }
         } catch { reportError(error.localizedDescription) }
@@ -1221,6 +1371,8 @@ final class ApplicationWorkspace: ObservableObject {
     @discardableResult
     func openSQLFile(at url: URL, inNewTab: Bool = false) async -> SQLDocument? {
         guard shutdownTask == nil, !isClosing else { return nil }
+        let context = capturePaneSelection()
+        let profileID = library.selectedConnectionId
         let location = url.standardizedFileURL
         do {
             let file: SQLFileDocument
@@ -1238,11 +1390,11 @@ final class ApplicationWorkspace: ObservableObject {
             }
             if !inNewTab, let existing = documents.first(where: { $0.fileDocument === file }) {
                 bindIndexedSQLView(existing)
-                selectedDocumentID = existing.id
+                selectAfterOpening(existing, context: context)
                 return existing
             }
-            let document = newDocument(text: file.text)
-            document.title = file.url.lastPathComponent
+            let document = SQLDocument(title: file.url.lastPathComponent, text: file.text, profileID: profileID)
+            addDocument(document, context: context)
             document.attachFileDocument(file)
             bindIndexedSQLView(document)
             if automaticallyWatchFiles { file.startWatching() }
@@ -1254,7 +1406,7 @@ final class ApplicationWorkspace: ObservableObject {
     @discardableResult
     func openSQLFileInNewTab(_ source: SQLDocument) -> SQLDocument? {
         guard canStartOperation(source), source.isSQLDocument, let file = boundFileDocument(source) else { return nil }
-        let document = newDocument(profileID: source.profileID, text: file.text)
+        let document = newDocument(profileID: source.profileID, text: file.text, in: pane(containing: source.id))
         document.title = source.title
         document.attachFileDocument(file)
         bindIndexedSQLView(document)
@@ -1288,11 +1440,14 @@ final class ApplicationWorkspace: ObservableObject {
 
     func openPreservedSQLFileVersion(_ source: SQLDocument) async {
         guard canStartOperation(source), let url = source.fileRecoveryURL else { return }
+        let context = capturePaneSelection(in: pane(containing: source.id))
+        let profileID = source.profileID
         do {
             let preserved = try await Task.detached { try SQLFileBinding.read(url) }.value
             guard canStartOperation(source), source.fileRecoveryURL == url else { return }
-            let document = newDocument(profileID: source.profileID, text: preserved.text)
-            document.title = "Preserved " + (source.fileURL?.lastPathComponent ?? "SQL")
+            let document = SQLDocument(title: "Preserved " + (source.fileURL?.lastPathComponent ?? "SQL"),
+                text: preserved.text, profileID: profileID)
+            addDocument(document, context: context)
             error = nil
         } catch { reportError(error.localizedDescription) }
     }
@@ -1836,6 +1991,15 @@ final class ApplicationWorkspace: ObservableObject {
         } catch { reportError(error.localizedDescription, connection: profile); return nil }
     }
 
+    @discardableResult
+    func openGeneratedSelect(_ node: CatalogNode) async -> SQLDocument? {
+        guard shutdownTask == nil, !isClosing else { return nil }
+        let context = capturePaneSelection()
+        guard let sql = await generatedSelect(node), shutdownTask == nil, !isClosing else { return nil }
+        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: sql, profileID: node.profileID)
+        return addDocument(document, context: context)
+    }
+
     func generatedName(_ node: CatalogNode) async -> String? {
         let profile = library.savedConnections.first { $0.id == node.profileID }
         do {
@@ -1854,7 +2018,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     @discardableResult
-    func openData(_ node: CatalogNode, inNewTab: Bool = false) async -> SQLDocument? {
+    func openData(_ node: CatalogNode, inNewTab: Bool = false, in pane: WorkspacePaneID? = nil) async -> SQLDocument? {
         guard shutdownTask == nil, !isClosing, !disconnectingProfiles.contains(node.profileID),
               ["table", "view"].contains(node.objectKind) else { return nil }
         let reference = TableReference(schema: node.schema, name: node.name, kind: node.objectKind)
@@ -1862,7 +2026,7 @@ final class ApplicationWorkspace: ObservableObject {
             selectedDocumentID = existing.id
             return existing
         }
-        let document = newDocument(profileID: node.profileID, text: "Table data")
+        let document = newDocument(profileID: node.profileID, text: "Table data", in: pane)
         document.title = node.name
         document.table = reference
         document.tableNeedsExplicitLoad = true
@@ -1874,7 +2038,8 @@ final class ApplicationWorkspace: ObservableObject {
     func openTableInNewTab(_ source: SQLDocument) async -> SQLDocument? {
         guard canStartOperation(source), let table = source.table, let profileID = source.profileID else { return nil }
         return await openData(CatalogNode(profileID: profileID, name: table.name, kind: .object,
-            schema: table.schema, object: table.name, objectKind: table.kind), inNewTab: true)
+            schema: table.schema, object: table.name, objectKind: table.kind), inNewTab: true,
+            in: pane(containing: source.id))
     }
 
     func loadForeignKeys(_ document: SQLDocument, forNavigating: Bool = false) async {
@@ -1905,6 +2070,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func followForeignKey(_ key: TableForeignKey, rowID: UUID, in document: SQLDocument, inNewTab: Bool = false) async {
         guard canStartOperation(document), document.canNavigateTable else { return }
+        let context = capturePaneSelection(in: pane(containing: document.id))
         document.grid?.commitEditing?()
         guard let source = TableViewLocation(document), let grid = document.grid,
               document.tableForeignKeys.contains(key), let row = grid.rows.first(where: { $0.id == rowID }) else {
@@ -1938,7 +2104,7 @@ final class ApplicationWorkspace: ObservableObject {
             guard navigationIsCurrent(document, source: source) else { return }
             let target = TableViewLocation(reference: key.target, profileID: source.profileID, filters: filters)
             if inNewTab {
-                await openRelatedTable(target, columns: columns, source: document)
+                await openRelatedTable(target, columns: columns, source: document, context: context)
             } else if await moveTable(document, from: source, to: target, columns: columns) {
                 document.tableBackHistory.append(source)
                 if document.tableBackHistory.count > 100 { document.tableBackHistory.removeFirst() }
@@ -2112,12 +2278,13 @@ final class ApplicationWorkspace: ObservableObject {
         return true
     }
 
-    private func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument) async {
+    private func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument,
+                                  context: PaneSelectionContext) async {
         guard canStartOperation(source, forNavigating: true) else { return }
-        let selected = selectedDocumentID
-        let document = newDocument(profileID: location.profileID, text: "Table data")
+        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: "Table data", profileID: location.profileID)
         document.isProvisionalTableView = true
-        document.provisionalPreviousSelection = selected ?? source.id
+        document.provisionalPreviousSelection = context.selectedDocumentID ?? source.id
+        addDocument(document, context: context)
         defer {
             document.isProvisionalTableView = false
             document.provisionalPreviousSelection = nil
@@ -2132,8 +2299,10 @@ final class ApplicationWorkspace: ObservableObject {
             let message = document.localError ?? document.runtime?.queryFailure?.message ?? document.runtime?.errorMessage ?? "The related rows could not be loaded."
             guard closingDocuments.insert(document.id).inserted else { return }
             defer { closingDocuments.remove(document.id) }
-            if selectedDocumentID == document.id, let selected, documents.contains(where: { $0.id == selected }) {
-                selectedDocumentID = selected
+            if let pane = pane(containing: document.id), paneLayout[pane].selectedDocumentID == document.id,
+               let selected = document.provisionalPreviousSelection, paneLayout[pane].documentIDs.contains(selected) {
+                paneLayout[pane].selectedDocumentID = selected
+                paneSelectionRevisions[pane, default: 0] &+= 1
             }
             await closeDocumentImmediately(document)
             if canStartOperation(source, forNavigating: true) { source.tableNavigationError = message }
