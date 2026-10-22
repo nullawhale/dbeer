@@ -431,7 +431,7 @@ struct ExecutionPolicyTests {
         for (theme, scheme, appearance) in [("light", ColorScheme.light, NSAppearance.Name.aqua), ("dark", .dark, .darkAqua)] {
             let host = NSHostingView(rootView: ConnectionEditorView(model: workspace.library, connection: profile) {}
                 .background(AppPalette.background).preferredColorScheme(scheme).tint(AppPalette.accent))
-            let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 650, height: 840),
+            let window = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 820, height: 620),
                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.appearance = NSAppearance(named: appearance)
@@ -441,6 +441,7 @@ struct ExecutionPolicyTests {
             defer { window.close() }
             try await Task.sleep(for: .milliseconds(180))
             host.layoutSubtreeIfNeeded()
+            try await NativeConnectionEditorTabs.select("Options", in: host)
             let objects = accessibilityObjects(host)
             for identifier in ["connectionEnvironment", "connectionReadOnly"] {
                 #expect(objects.contains { accessibilityIdentifier($0) == identifier }, "Missing policy accessibility element \(identifier)/\(theme)")

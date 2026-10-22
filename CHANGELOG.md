@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- General connection settings can import single-host PostgreSQL and MySQL URLs,
+  including JDBC-prefixed addresses, IPv6, encoded credentials and supported TLS
+  options. Use URL fills the existing fields; omitted credentials and TLS options
+  stay unchanged. URL previews exclude passwords, and saved credentials continue
+  to use Keychain. Unsupported or ambiguous URL options are rejected explicitly.
+- The native connection editor uses a wider dialog with General, SSH, TLS and
+  Options tabs. Test Connection checks unsaved settings in a disposable helper,
+  closes the test session and reports the result without saving a profile or
+  changing workspace sessions. Tests can be stopped or cancelled by closing
+  the dialog. Trusted CA files can be selected from the TLS tab.
+- Editing a saved connection keeps its database engine fixed. Duplicate
+  Connection opens the New Connection dialog with copied fields and saved
+  credentials, a fresh profile identity and an editable engine choice. The copy
+  is created only on Save; the original profile and its sessions are unchanged.
 - Shared SQL Library indexes real `.sql` files with local tags, logical folders
   and connection, named group or global scope. Search and metadata filters find
   entries; groups retain opaque profile references without copying SQL or
@@ -13,6 +27,13 @@
 - Workspace v6 persists the SQL index, named groups and per-view library
   bindings with exact private v5 migration backups. Observed file renames update
   index references; Save As to another file detaches only the current view.
+- Workspace and connection-library errors appear in a notification list opened
+  from the right side of the footer, with unread indicators, timestamps and
+  individual dismissal or Clear All. Connection-specific messages show the
+  affected profile's name; clicking it opens that profile's settings through
+  the usual session and pending-edit review. Deleted profiles retain their
+  name in history with an inactive link. The last 100 messages stay in memory
+  for the current workspace, including when all tabs are closed.
 - SQL Files attaches existing folders with a lazy `.sql` tree and background
   name/content search. Symlinks, Git metadata and build/dependency directories
   are excluded; incomplete scans are reported. Folder attachments persist.

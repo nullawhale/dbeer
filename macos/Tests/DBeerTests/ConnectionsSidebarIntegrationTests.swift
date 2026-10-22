@@ -190,6 +190,24 @@ struct ConnectionsSidebarIntegrationTests {
         ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { descendants($0, of: type) }
     }
 
+    private func captureCompositedWindow(_ window: NSWindow, named name: String) throws {
+        guard let directory = ProcessInfo.processInfo.environment["DBEER_QA_OUTPUT_DIR"], !directory.isEmpty else { return }
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        // Capture only this process's test window. Native fields and sheet
+        // materials need WindowServer compositing to appear in the image.
+        typealias WindowCapture = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        let library = try #require(dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW))
+        defer { dlclose(library) }
+        let capture = unsafeBitCast(try #require(dlsym(library, "CGWindowListCreateImage")), to: WindowCapture.self)
+        let image = try #require(capture(.null, CGWindowListOption.optionIncludingWindow.rawValue,
+            UInt32(window.windowNumber), CGWindowImageOption.boundsIgnoreFraming.rawValue)?.takeRetainedValue())
+        let png = try #require(NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]))
+        let destination = URL(fileURLWithPath: directory, isDirectory: true)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        try png.write(to: destination.appendingPathComponent("\(name).png"))
+    }
+
     private func contextMenu(for row: Int, in window: NSWindow) throws -> NSMenu {
         let content = try #require(window.contentView)
         let list = try #require(descendants(content, of: NSTableView.self).first)
@@ -211,6 +229,112 @@ struct ConnectionsSidebarIntegrationTests {
         guard item.isEnabled else { throw TestFailure("Disabled context menu action: \(title)") }
         menu.performActionForItem(at: menu.index(of: item))
         try await settle()
+    }
+
+    @Test func duplicateConnectionOpensPrefilledNewEditorAndSavesAnIndependentProfile() async throws {
+        let credentials = MemoryConnectionCredentialStore()
+        let store = MemoryConnectionLibraryStore()
+        var helperStarts = 0
+        let workspace = ApplicationWorkspace(connectionStore: store, credentialStore: credentials,
+            helperFactory: { helperStarts += 1; return helper() })
+        let settings = ConnectionSettings(host: "original.example.test", port: 5432, database: "warehouse",
+            user: "analyst", password: "duplicate-ui-fixture", sslMode: "verify-full",
+            policy: ExecutionPolicy(environment: .staging, readOnly: true))
+        try #require(await workspace.library.saveConnection(name: "Original UI profile", settings: settings))
+        let original = try #require(workspace.library.savedConnections.first)
+        let window = window(for: ApplicationWorkspaceView(workspace: workspace))
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        defer { window.close(); Task { await workspace.shutdown() } }
+        try await settle()
+
+        func field(_ identifier: String) throws -> NSTextField {
+            let object = try element(identifier, in: window).object
+            return try #require((object as? NSTextField) ?? ((object as? NSCell)?.controlView as? NSTextField))
+        }
+
+        func expectTitle(_ title: String, in sheet: NSWindow) {
+            let found = elements(in: sheet).contains { element in
+                let label: String? = element.objectValue("accessibilityLabel")
+                let value: String? = element.objectValue("accessibilityValue")
+                return label == title || value == title
+            }
+            #expect(found, "Expected connection editor title: \(title)")
+        }
+
+        try await pressMenuItem("Duplicate Connection…", for: 0, in: window)
+        try await waitFor({ window.attachedSheet != nil &&
+            (try? self.element("saveConnection", in: window).isAccessibilityEnabled()) == true },
+            "Duplicating did not open a ready New Connection sheet.")
+        let newSheet = try #require(window.attachedSheet)
+        expectTitle("New Connection", in: newSheet)
+        #expect(try field("connectionName").stringValue == "Original UI profile Copy")
+        #expect(try field("Host").stringValue == settings.host)
+        #expect(try field("Port").stringValue == "5432")
+        #expect(try field("Database").stringValue == settings.database)
+        #expect(try field("User").stringValue == settings.user)
+        let duplicatePasswordIsPrefilled = try field("password").stringValue == settings.password
+        #expect(duplicatePasswordIsPrefilled)
+        #expect(workspace.library.savedConnections == [original])
+        try captureCompositedWindow(newSheet, named: "duplicate-connection-prefilled")
+
+        let selector = try element("connectionEngine", in: window)
+        let selectorButton = try #require((selector.object as? NSButton) ?? ((selector.object as? NSCell)?.controlView as? NSButton))
+        try await NativeThemeMenuActions.select("MySQL", in: selectorButton)
+        try await settle()
+        let engineName: String? = try element("connectionEngine", in: window).objectValue("accessibilityValue")
+        #expect(engineName == "MySQL")
+        #expect(try field("Port").stringValue == "3306")
+        #expect(try field("Host").stringValue == settings.host)
+        #expect(try field("Database").stringValue == settings.database)
+        #expect(try field("User").stringValue == settings.user)
+        try captureCompositedWindow(newSheet, named: "duplicate-connection-mysql")
+        try await enter("Saved UI copy", into: "connectionName", in: window)
+        try await press("saveConnection", in: window)
+        try await waitFor({ window.attachedSheet == nil && workspace.library.savedConnections.count == 2 },
+            "Saving the duplicated connection did not create a separate profile and close the sheet.")
+        let copy = try #require(workspace.library.savedConnections.first { $0.id != original.id })
+        #expect(copy.name == "Saved UI copy" && copy.engine == .mysql && copy.port == 3306)
+        #expect(copy.host == settings.host && copy.database == settings.database && copy.user == settings.user)
+        #expect(copy.sslMode == settings.sslMode && copy.policy == settings.policy)
+        #expect(workspace.library.savedConnections.first { $0.id == original.id } == original)
+        let originalPasswordIsUnchanged = await credentials.password(for: original.id) == settings.password
+        let copyPasswordIsSavedSeparately = await credentials.password(for: copy.id) == settings.password
+        #expect(originalPasswordIsUnchanged && copyPasswordIsSavedSeparately)
+        #expect(await store.load().connections == workspace.library.savedConnections)
+        try captureCompositedWindow(window, named: "duplicate-connection-saved-profiles")
+
+        try await pressMenuItem("Edit Connection…", for: 0, in: window)
+        try await waitFor({ window.attachedSheet != nil &&
+            (try? self.element("saveConnection", in: window).isAccessibilityEnabled()) == true },
+            "The original profile did not reopen in the editor.")
+        let originalSheet = try #require(window.attachedSheet)
+        expectTitle("Edit Connection", in: originalSheet)
+        #expect(try field("connectionName").stringValue == original.name)
+        #expect(try field("Host").stringValue == settings.host)
+        #expect(try field("Port").stringValue == "5432")
+        #expect(try field("Database").stringValue == settings.database)
+        #expect(try field("User").stringValue == settings.user)
+        let originalPasswordIsStillPrefilled = try field("password").stringValue == settings.password
+        #expect(originalPasswordIsStillPrefilled)
+        #expect((try? element("connectionEngine", in: window)) == nil)
+        try captureCompositedWindow(originalSheet, named: "duplicate-connection-original-unchanged")
+        try await press("cancelConnectionEditor", in: window)
+        try await waitFor({ window.attachedSheet == nil }, "The original editor did not close.")
+
+        try await pressMenuItem("Edit Connection…", for: 1, in: window)
+        try await waitFor({ window.attachedSheet != nil &&
+            (try? self.element("saveConnection", in: window).isAccessibilityEnabled()) == true },
+            "The saved copy did not reopen in its own editor.")
+        #expect(try field("connectionName").stringValue == copy.name)
+        #expect(try field("Port").stringValue == "3306")
+        #expect((try? element("connectionEngine", in: window)) == nil)
+        try captureCompositedWindow(try #require(window.attachedSheet), named: "duplicate-connection-copy-reopened")
+        try await press("cancelConnectionEditor", in: window)
+        try await waitFor({ window.attachedSheet == nil }, "The copied profile editor did not close.")
+        #expect(workspace.library.savedConnections.first { $0.id == original.id } == original)
+        #expect(helperStarts == 0 && workspace.services.isEmpty)
+        await workspace.shutdown()
     }
 
     @Test func SSHAuthenticationControlsRemainFocusableAndScrollableInBothThemes() async throws {
@@ -241,7 +365,7 @@ struct ConnectionsSidebarIntegrationTests {
                 let view = ConnectionEditorView(model: model, connection: profile) {}
                     .background(AppPalette.background)
                     .preferredColorScheme(scheme)
-                let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 520, height: 780),
+                let window = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 820, height: 620),
                     styleMask: [.titled, .closable], backing: .buffered, defer: false)
                 window.title = "DBeer SSH connection verification"
                 window.isReleasedWhenClosed = false
@@ -253,6 +377,7 @@ struct ConnectionsSidebarIntegrationTests {
                 try await settle()
                 try await waitFor({ (try? self.element("saveConnection", in: window).isAccessibilityEnabled()) == true }, "The SSH editor did not finish loading its credentials.")
                 let host = try #require(window.contentView)
+                try await NativeConnectionEditorTabs.select("SSH", in: host)
                 host.layoutSubtreeIfNeeded()
                 #expect(!descendants(host, of: NSScrollView.self).isEmpty)
                 for identifier in ["sshEnabled", "sshHost", "sshPort", "sshUser", "sshAuthentication"] {
@@ -305,9 +430,10 @@ struct ConnectionsSidebarIntegrationTests {
                 #expect(id == profile.id)
                 captured = ssh
             }, onClose: { closed = true }))
-        window.setContentSize(NSSize(width: 520, height: 780))
+        window.setContentSize(NSSize(width: 820, height: 620))
         defer { window.close() }
         try await waitFor({ (try? self.element("saveAndConnect", in: window).isAccessibilityEnabled()) == true }, "The SSH editor did not load.")
+        try await NativeConnectionEditorTabs.select("SSH", in: #require(window.contentView))
         let object = try element("sshPassword", in: window).object
         let field = try #require((object as? NSTextField) ?? ((object as? NSCell)?.controlView as? NSTextField))
         field.scrollToVisible(field.bounds)
@@ -327,7 +453,7 @@ struct ConnectionsSidebarIntegrationTests {
         await model.start()
         var closed = false
         let window = window(for: ConnectionEditorView(model: model, connection: nil) { closed = true })
-        window.setContentSize(NSSize(width: 520, height: 680))
+        window.setContentSize(NSSize(width: 820, height: 620))
         defer { window.close(); Task { await model.shutdown() } }
         try await settle()
 

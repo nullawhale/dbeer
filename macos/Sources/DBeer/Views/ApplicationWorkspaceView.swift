@@ -22,7 +22,7 @@ struct ApplicationWorkspaceView: View {
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var appearance: AppAppearance
     @Environment(\.colorScheme) private var colorScheme
-    private var editing = SwiftUI.State<SavedConnection?>(initialValue: nil)
+    private var connectionEditorRequest = SwiftUI.State<ConnectionEditorRequest>(initialValue: .new)
     private var deletion = SwiftUI.State<SavedConnection?>(initialValue: nil)
 
     init(workspace: ApplicationWorkspace) {
@@ -36,12 +36,6 @@ struct ApplicationWorkspaceView: View {
             VStack(spacing: 0) {
                 documentBar
                 Divider()
-                if let error = workspace.error {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange).font(.callout).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(12)
-                    Divider()
-                }
                 if let document = workspace.selectedDocument {
                     SQLDocumentPane(document: document, workspace: workspace)
                         .id(document.id)
@@ -53,6 +47,8 @@ struct ApplicationWorkspaceView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                Divider()
+                WorkspaceStatusBar(workspace: workspace, editConnection: editConnection)
             }
             .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -74,11 +70,12 @@ struct ApplicationWorkspaceView: View {
             }
         }
         .sheet(isPresented: Binding(get: { workspace.library.isConnectionEditorPresented },
-            set: { workspace.library.isConnectionEditorPresented = $0 })) {
-            ConnectionEditorView(model: workspace.library, connection: editing.wrappedValue,
+            set: { workspace.library.isConnectionEditorPresented = $0 }),
+            onDismiss: { connectionEditorRequest.wrappedValue = .new }) {
+            ConnectionEditorView(model: workspace.library, request: connectionEditorRequest.wrappedValue,
                 onConnect: { id, ssh in await workspace.connectProfile(id, sshSnapshot: ssh) }) {
                 workspace.library.isConnectionEditorPresented = false
-                editing.wrappedValue = nil
+                connectionEditorRequest.wrappedValue = .new
             }
             .applicationTheme(appearance: appearance)
         }
@@ -151,7 +148,7 @@ struct ApplicationWorkspaceView: View {
                 Text("Connections").font(.headline)
                 Spacer()
                 ControlIconButton(systemName: "plus") {
-                    editing.wrappedValue = nil
+                    connectionEditorRequest.wrappedValue = .new
                     workspace.library.isConnectionEditorPresented = true
                 }
                 .help("New Connection")
@@ -196,23 +193,30 @@ struct ApplicationWorkspaceView: View {
             .listStyle(.sidebar)
             .catalogContextMenu()
             .scrollContentBackground(.hidden)
-            if let error = workspace.library.connectionsError {
-                Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled).padding(12)
-            }
         }
         .frame(minWidth: 210, idealWidth: 260, maxWidth: 340)
         .background(AppPalette.isCustom ? AppPalette.sidebar : AppPalette.background)
     }
 
     private func profileRow(_ profile: SavedConnection) -> some View {
-        ProfileCatalogRow(profile: profile, workspace: workspace, edit: {
-                Task {
-                    guard await workspace.disconnectProfile(profile.id),
-                          let current = workspace.library.savedConnections.first(where: { $0.id == profile.id }) else { return }
-                    editing.wrappedValue = current
-                    workspace.library.isConnectionEditorPresented = true
-                }
-            }, delete: { deletion.wrappedValue = profile })
+        ProfileCatalogRow(profile: profile, workspace: workspace,
+            edit: { editConnection(profile.id) }, duplicate: { duplicateConnection(profile.id) },
+            delete: { deletion.wrappedValue = profile })
+    }
+
+    private func editConnection(_ id: UUID) {
+        Task {
+            guard let current = await workspace.prepareConnectionEditor(id) else { return }
+            connectionEditorRequest.wrappedValue = .edit(current)
+            workspace.library.isConnectionEditorPresented = true
+        }
+    }
+
+    private func duplicateConnection(_ id: UUID) {
+        guard !workspace.library.isSavingConnection,
+              let current = workspace.library.savedConnections.first(where: { $0.id == id }) else { return }
+        connectionEditorRequest.wrappedValue = .duplicate(current)
+        workspace.library.isConnectionEditorPresented = true
     }
 
     private var documentBar: some View {
@@ -475,12 +479,6 @@ struct SQLDocumentPane: View {
             } else {
                 result.frame(maxHeight: .infinity)
             }
-            Divider()
-            HStack {
-                Text(document.runtime?.transactionLabel ?? "No session")
-                Spacer()
-                Text(document.runtime?.connectionSummary ?? (document.table == nil ? "Session opens on first Run" : "Session opens on Load Data"))
-            }.font(.caption).appSecondaryText().padding(8)
         }
         .onChange(of: document.selectedExecution) { _, _ in resultSetIndex.wrappedValue = 0 }
         .onChange(of: document.isRunning) { _, value in if value { resultSetIndex.wrappedValue = 0 } }

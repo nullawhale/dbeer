@@ -5,15 +5,17 @@ struct ProfileCatalogRow: View {
     let profile: SavedConnection
     @ObservedObject var workspace: ApplicationWorkspace
     let edit: () -> Void
+    let duplicate: () -> Void
     let delete: () -> Void
     private var expanded = SwiftUI.State(initialValue: false)
     private var isExpanding = SwiftUI.State(initialValue: false)
-    private var expansionError = SwiftUI.State<String?>(initialValue: nil)
 
-    init(profile: SavedConnection, workspace: ApplicationWorkspace, edit: @escaping () -> Void, delete: @escaping () -> Void) {
+    init(profile: SavedConnection, workspace: ApplicationWorkspace, edit: @escaping () -> Void,
+         duplicate: @escaping () -> Void, delete: @escaping () -> Void) {
         self.profile = profile
         self.workspace = workspace
         self.edit = edit
+        self.duplicate = duplicate
         self.delete = delete
     }
 
@@ -28,12 +30,6 @@ struct ProfileCatalogRow: View {
         .onChange(of: isConnected) { _, value in
             if !value { expanded.wrappedValue = false }
         }
-        .alert("Connection Failed", isPresented: Binding(get: { expansionError.wrappedValue != nil },
-            set: { if !$0 { expansionError.wrappedValue = nil } })) {
-            Button("OK", role: .cancel) { expansionError.wrappedValue = nil }
-        } message: {
-            Text(expansionError.wrappedValue ?? "The connection could not be opened.")
-        }
         .accessibilityIdentifier("profile-\(profile.id.uuidString)")
     }
 
@@ -44,10 +40,7 @@ struct ProfileCatalogRow: View {
         Task { @MainActor in
             defer { isExpanding.wrappedValue = false }
             await workspace.connectProfile(profile.id)
-            guard isConnected else {
-                expansionError.wrappedValue = workspace.error ?? "The connection could not be opened."
-                return
-            }
+            guard isConnected else { return }
             expanded.wrappedValue = true
             await workspace.loadSchemas(profile.id)
         }
@@ -131,6 +124,8 @@ struct ProfileCatalogRow: View {
         menu.addItem(.separator())
         menu.addCatalogAction("Export Connection…") { workspace.exportProfiles([profile]) }
         menu.addCatalogAction("Edit Connection…") { edit() }
+        menu.addCatalogAction("Duplicate Connection…", enabled: !workspace.library.isSavingConnection,
+            identifier: "duplicateConnection") { duplicate() }
         menu.addCatalogAction("Delete Connection…") { delete() }
         return menu
     }

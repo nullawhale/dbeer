@@ -110,6 +110,7 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var savedConnections: [SavedConnection] = []
     @Published private(set) var selectedConnectionId: UUID?
     @Published private(set) var activeConnectionId: UUID?
+    private(set) var connectionsErrorProfileID: UUID?
     @Published private(set) var connectionsError: String?
     @Published private(set) var isSavingConnection = false
     @Published var isConnectionEditorPresented = false
@@ -319,14 +320,19 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    func dismissConnectionsError() { connectionsError = nil }
+    private func reportConnectionsError(_ message: String, profileID: UUID? = nil) {
+        connectionsErrorProfileID = profileID
+        connectionsError = message
+    }
+
+    func dismissConnectionsError() { connectionsErrorProfileID = nil; connectionsError = nil }
 
     /// nil is a read failure; an empty string is a successfully read empty/missing password.
     func passwordForConnection(_ id: UUID) async -> String? {
         guard savedConnections.contains(where: { $0.id == id }) else { return nil }
         do { return try await credentialStore.password(for: id) ?? "" }
         catch {
-            connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
+            reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
             return nil
         }
     }
@@ -338,7 +344,7 @@ final class WorkspaceModel: ObservableObject {
         selectedConnectionId = id
         if hasLoadedConnections {
             do { try await connectionStore.save(librarySnapshot()) }
-            catch { connectionsError = ConnectionLibraryError.save.localizedDescription }
+            catch { reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id) }
         }
         // Selection is independent of the live session, including connection transitions.
         if connectionState == .disconnected {
@@ -363,7 +369,7 @@ final class WorkspaceModel: ObservableObject {
             var settings = profile.settings(password: secret)
             if let sshSnapshot {
                 guard sshSnapshot.profileId == id.uuidString, sshSnapshot.configuration == profile.ssh else {
-                    connectionsError = "The SSH profile changed. Disconnect and reconnect before opening another session."
+                    reportConnectionsError("The SSH profile changed. Disconnect and reconnect before opening another session.", profileID: id)
                     return
                 }
                 settings.ssh = sshSnapshot
@@ -382,7 +388,7 @@ final class WorkspaceModel: ObservableObject {
             connectionPreparationId = nil
             await openConnection(savedProfileId: id)
         } catch is CancellationError { return }
-        catch { connectionsError = ConnectionLibraryError.credentialRead.localizedDescription }
+        catch { reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id) }
     }
 
     @discardableResult
@@ -392,20 +398,20 @@ final class WorkspaceModel: ObservableObject {
         guard hasLoadedConnections else { return false }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty, cleanName.count <= 128 else {
-            connectionsError = "Enter a connection name with 1 to 128 characters."
+            reportConnectionsError("Enter a connection name with 1 to 128 characters.", profileID: id)
             return false
         }
         guard settings.hasValidNativeFields else {
-            connectionsError = "Enter a host, database, user, valid port, and supported TLS mode."
+            reportConnectionsError("Enter a host, database, user, valid port, and supported TLS mode.", profileID: id)
             return false
         }
         if let id, !savedConnections.contains(where: { $0.id == id }) {
-            connectionsError = "This saved connection is no longer available."
+            reportConnectionsError("This saved connection is no longer available.", profileID: id)
             return false
         }
         isSavingConnection = true
         defer { finishConnectionMutation() }
-        connectionsError = nil
+        dismissConnectionsError()
         let profile = SavedConnection(id: id ?? UUID(), name: cleanName, settings: settings)
         var previousSecrets: [ConnectionCredentialPurpose: String] = [:]
         do {
@@ -413,7 +419,7 @@ final class WorkspaceModel: ObservableObject {
                 previousSecrets[purpose] = try await credentialStore.secret(for: profile.id, purpose: purpose)
             }
         } catch {
-            connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
+            reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
             return false
         }
         do {
@@ -425,8 +431,8 @@ final class WorkspaceModel: ObservableObject {
             }
         } catch {
             let restored = await restoreSecrets(previousSecrets, for: profile.id)
-            connectionsError = ConnectionLibraryError.credentialWrite.localizedDescription +
-                (restored ? "" : " The credential change could not be undone in macOS Keychain.")
+            reportConnectionsError(ConnectionLibraryError.credentialWrite.localizedDescription +
+                (restored ? "" : " The credential change could not be undone in macOS Keychain."), profileID: id)
             return false
         }
         var updated = savedConnections
@@ -439,10 +445,10 @@ final class WorkspaceModel: ObservableObject {
             selectedConnectionId = profile.id
             return true
         } catch {
-            connectionsError = ConnectionLibraryError.save.localizedDescription
+            reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id)
             if !(await restoreSecrets(previousSecrets, for: profile.id)) {
-                connectionsError = ConnectionLibraryError.save.localizedDescription +
-                    " The credential change could not be undone in macOS Keychain."
+                reportConnectionsError(ConnectionLibraryError.save.localizedDescription +
+                    " The credential change could not be undone in macOS Keychain.", profileID: id)
             }
             return false
         }
@@ -453,30 +459,30 @@ final class WorkspaceModel: ObservableObject {
         guard !isSavingConnection, hasLoadedConnections,
               savedConnections.contains(where: { $0.id == id }) else { return false }
         guard activeConnectionId != id else {
-            connectionsError = "Disconnect this connection before deleting it."
+            reportConnectionsError("Disconnect this connection before deleting it.", profileID: id)
             return false
         }
         guard connectionState != .connecting, connectionState != .disconnecting else {
-            connectionsError = "Wait for the connection operation to finish before deleting a connection."
+            reportConnectionsError("Wait for the connection operation to finish before deleting a connection.", profileID: id)
             return false
         }
         isSavingConnection = true
         defer { finishConnectionMutation() }
-        connectionsError = nil
+        dismissConnectionsError()
         var secrets: [ConnectionCredentialPurpose: String] = [:]
         do {
             for purpose in ConnectionCredentialPurpose.allCases {
                 secrets[purpose] = try await credentialStore.secret(for: id, purpose: purpose)
             }
         } catch {
-            connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
+            reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
             return false
         }
         do {
             for purpose in ConnectionCredentialPurpose.allCases { try await credentialStore.deleteSecret(for: id, purpose: purpose) }
         } catch {
             _ = await restoreSecrets(secrets, for: id)
-            connectionsError = ConnectionLibraryError.credentialDelete.localizedDescription
+            reportConnectionsError(ConnectionLibraryError.credentialDelete.localizedDescription, profileID: id)
             return false
         }
         let updated = savedConnections.filter { $0.id != id }
@@ -486,10 +492,10 @@ final class WorkspaceModel: ObservableObject {
             savedConnections = updated
             selectedConnectionId = selected
         } catch {
-            connectionsError = ConnectionLibraryError.save.localizedDescription
+            reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id)
             if !(await restoreSecrets(secrets, for: id)) {
-                connectionsError = ConnectionLibraryError.save.localizedDescription +
-                    " The credentials could not be restored in macOS Keychain."
+                reportConnectionsError(ConnectionLibraryError.save.localizedDescription +
+                    " The credentials could not be restored in macOS Keychain.", profileID: id)
             }
             return false
         }
@@ -510,7 +516,7 @@ final class WorkspaceModel: ObservableObject {
                let profile = savedConnections.first(where: { $0.id == selectedConnectionId }) {
                 applyConnection(profile.settings(password: ""))
             }
-        } catch { connectionsError = ConnectionLibraryError.load.localizedDescription }
+        } catch { reportConnectionsError(ConnectionLibraryError.load.localizedDescription) }
     }
 
     private func librarySnapshot() -> SavedConnectionLibrary {
@@ -530,7 +536,7 @@ final class WorkspaceModel: ObservableObject {
 
     func sshSecretForConnection(_ id: UUID, purpose: ConnectionCredentialPurpose) async -> String? {
         do { return try await credentialStore.secret(for: id, purpose: purpose) }
-        catch { connectionsError = ConnectionLibraryError.credentialRead.localizedDescription; return nil }
+        catch { reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id); return nil }
     }
 
     private func applyConnection(_ settings: ConnectionSettings) {

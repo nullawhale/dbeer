@@ -230,6 +230,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var selectedDocumentID: UUID? { didSet { scheduleSave() } }
     @Published private(set) var services: [UUID: WorkspaceModel] = [:]
     @Published private(set) var error: String?
+    let notifications = WorkspaceNotifications()
     @Published private(set) var isStarting = false
     @Published private(set) var catalogRoots: [UUID: [CatalogNode]] = [:]
     @Published private(set) var catalogErrors: [UUID: String] = [:]
@@ -284,6 +285,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var started = false
     private var observations: [UUID: AnyCancellable] = [:]
     private var libraryObservation: AnyCancellable?
+    private var libraryErrorObservation: AnyCancellable?
     private var folderObservation: AnyCancellable?
     private var folderSaveObservation: AnyCancellable?
     private var sqlLibraryObservation: AnyCancellable?
@@ -322,6 +324,11 @@ final class ApplicationWorkspace: ObservableObject {
         self.executionDecision = executionDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        libraryErrorObservation = library.$connectionsError.sink { [weak self] error in
+            guard let self, let error else { return }
+            let profile = self.library.savedConnections.first { $0.id == self.library.connectionsErrorProfileID }
+            self.notifications.post(error, source: "Connections", connection: profile.map(WorkspaceNotification.Connection.init))
+        }
         folderObservation = self.sqlFolders.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
         sqlLibraryObservation = self.sqlLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -353,7 +360,18 @@ final class ApplicationWorkspace: ObservableObject {
         return document
     }
 
-    func reportCopyError(_ message: String) { error = message }
+    private func reportError(_ message: String?, connection: SavedConnection? = nil) {
+        error = message
+        if let message { notifications.post(message, connection: connection.map(WorkspaceNotification.Connection.init)) }
+    }
+
+    func reportCopyError(_ message: String) { reportError(message) }
+
+    func prepareConnectionEditor(_ id: UUID) async -> SavedConnection? {
+        guard library.savedConnections.contains(where: { $0.id == id }),
+              await disconnectProfile(id) else { return nil }
+        return library.savedConnections.first { $0.id == id }
+    }
 
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil) async {
         guard !started else { return }
@@ -367,9 +385,9 @@ final class ApplicationWorkspace: ObservableObject {
                 let existing = library.savedConnections.first { $0.matches(settings) }
                 if await library.saveConnection(name: existing?.name ?? (settings.database.isEmpty ? settings.host : settings.database), settings: settings, id: existing?.id),
                    let id = library.selectedConnectionId { await connectProfile(id) }
-            } else if case .failure(let failure) = startupConnection { error = failure.localizedDescription }
+            } else if case .failure(let failure) = startupConnection { reportError(failure.localizedDescription) }
             if documents.isEmpty { newDocument(profileID: library.selectedConnectionId) }
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
 
     @discardableResult
@@ -412,6 +430,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func openProfile(_ id: UUID, sshSnapshot: SSHSettings?) async {
+        let profile = library.savedConnections.first { $0.id == id }
         do {
             let client = try await ensureHelper()
             if let service = services[id], service.connectionState == .connected { return }
@@ -420,12 +439,13 @@ final class ApplicationWorkspace: ObservableObject {
             observations[id] = service.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
             await service.start(sharedHelper: client)
             await service.connectSavedConnection(id, sshSnapshot: sshSnapshot)
-            if service.connectionState != .connected { error = service.errorMessage ?? service.connectionsError }
-            else {
+            if service.connectionState != .connected {
+                reportError(service.errorMessage ?? service.connectionsError, connection: profile)
+            } else {
                 error = nil
                 Task { @MainActor [weak self] in await self?.loadCompletionCatalog(id) }
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription, connection: profile) }
     }
 
     @discardableResult func disconnectProfile(_ id: UUID) async -> Bool {
@@ -756,7 +776,7 @@ final class ApplicationWorkspace: ObservableObject {
             } catch {
                 if documentSaveID == saveID {
                     let message = error.localizedDescription
-                    self.error = message
+                    self.reportError(message)
                     documentSaveError = message
                     historyError = "Workspace and history changes remain in memory but could not be saved. Try saving again before closing the application."
                 }
@@ -961,7 +981,7 @@ final class ApplicationWorkspace: ObservableObject {
                 documents.map(\.storedState) != saved.documents {
                 scheduleSave()
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
 
     private func restoredDocument(_ stored: StoredSQLDocument, knownProfiles: [UUID]?) -> SQLDocument {
@@ -984,7 +1004,7 @@ final class ApplicationWorkspace: ObservableObject {
             do {
                 _ = try self.sqlLibrary.upsertEntry(id: id, fileURL: newURL, folder: entry.folder,
                     tags: entry.tags, scope: entry.scope)
-            } catch { self.error = error.localizedDescription }
+            } catch { self.reportError(error.localizedDescription) }
         }
         documentObservations[document.id] = [
             document.$text.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
@@ -1078,7 +1098,7 @@ final class ApplicationWorkspace: ObservableObject {
     @discardableResult
     func openSQLLibraryEntry(_ entry: SQLLibraryEntry) async -> SQLDocument? {
         guard let current = sqlLibrary.entry(id: entry.id), current.fileURL == entry.fileURL else {
-            error = SQLLibraryError.missingEntry.localizedDescription
+            reportError(SQLLibraryError.missingEntry.localizedDescription)
             return nil
         }
         guard let document = await openSQLFile(at: current.fileURL, inNewTab: true) else { return nil }
@@ -1118,7 +1138,7 @@ final class ApplicationWorkspace: ObservableObject {
             if automaticallyWatchFiles { file.startWatching() }
             scheduleSave()
             return document
-        } catch { self.error = error.localizedDescription; return nil }
+        } catch { reportError(error.localizedDescription); return nil }
     }
 
     @discardableResult
@@ -1144,7 +1164,7 @@ final class ApplicationWorkspace: ObservableObject {
         Task {
             for url in urls {
                 do { _ = try await sqlFolders.attach(url) }
-                catch { self.error = error.localizedDescription }
+                catch { self.reportError(error.localizedDescription) }
             }
         }
     }
@@ -1164,7 +1184,7 @@ final class ApplicationWorkspace: ObservableObject {
             let document = newDocument(profileID: source.profileID, text: preserved.text)
             document.title = "Preserved " + (source.fileURL?.lastPathComponent ?? "SQL")
             error = nil
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
 
     func resolveSQLFileConflict(_ document: SQLDocument, conflictID: UUID, decision: SQLFileConflictDecision,
@@ -1174,7 +1194,7 @@ final class ApplicationWorkspace: ObservableObject {
             try await file.resolve(conflictID: conflictID, decision: decision, expectedText: expectedText)
             error = nil
         }
-        catch { self.error = error.localizedDescription }
+        catch { reportError(error.localizedDescription) }
     }
 
     func saveSQLFile(_ document: SQLDocument, chooseLocation: Bool = false) {
@@ -1182,7 +1202,7 @@ final class ApplicationWorkspace: ObservableObject {
         let file = boundFileDocument(document)
         guard file?.isSaving != true else { return }
         if !chooseLocation, let file, file.requiresSaveAs {
-            error = file.statusMessage
+            reportError(file.statusMessage)
             return
         }
         let capturedText = document.text
@@ -1210,7 +1230,7 @@ final class ApplicationWorkspace: ObservableObject {
                 throw SQLFileDocumentFailure(message: "The local draft changed while choosing a destination. Review it and save again.")
             }
             try saveSQLFile(document, to: destination, reviewedVersion: reviewed)
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
 
     /// Headless entry point shared by Save As and the conflict copy action.
@@ -1322,7 +1342,7 @@ final class ApplicationWorkspace: ObservableObject {
         do {
             let data = format == "csv" ? try ResultExport.csv(result, nullMarker: marker!) : try ResultExport.json([result])
             try ResultExport.write(data, to: destination)
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
 
     func runToFile(_ document: SQLDocument, format: String, fragment: SQLExecutionFragment? = nil) async {
@@ -1401,7 +1421,7 @@ final class ApplicationWorkspace: ObservableObject {
         alert.addButton(withTitle: "Continue")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        guard !field.stringValue.isEmpty else { error = ResultExportError.nullMarker.localizedDescription; return nil }
+        guard !field.stringValue.isEmpty else { reportError(ResultExportError.nullMarker.localizedDescription); return nil }
         return field.stringValue
     }
 
@@ -1422,7 +1442,7 @@ final class ApplicationWorkspace: ObservableObject {
                 self.profileExportPanel = nil
                 guard response == .OK, let destination = panel.url else { return }
                 do { try ProfileTransfer.write(profiles, to: destination) }
-                catch { self.error = error.localizedDescription }
+                catch { self.reportError(error.localizedDescription) }
             }
             if let window = self.presentationWindow ?? NSApp.mainWindow {
                 panel.beginSheetModal(for: window, completionHandler: completion)
@@ -1439,7 +1459,7 @@ final class ApplicationWorkspace: ObservableObject {
         do {
             importPreview = try ProfileTransfer.preview(Data(contentsOf: source))
             importError = nil
-        } catch { self.error = error.localizedDescription }
+        } catch { reportError(error.localizedDescription) }
     }
 
     func chooseImportedCA(_ id: UUID) {
@@ -1698,20 +1718,22 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func generatedSelect(_ node: CatalogNode) async -> String? {
+        let profile = library.savedConnections.first { $0.id == node.profileID }
         do {
             let result = try await catalog(CatalogRequest(kind: "select", schema: node.schema,
                 object: node.name, objectKind: node.objectKind), profileID: node.profileID)
             return result.catalogRecords.first?["sql"]
-        } catch { self.error = error.localizedDescription; return nil }
+        } catch { reportError(error.localizedDescription, connection: profile); return nil }
     }
 
     func generatedName(_ node: CatalogNode) async -> String? {
+        let profile = library.savedConnections.first { $0.id == node.profileID }
         do {
             let identity = ["function", "procedure", "trigger"].contains(node.objectKind) ? node.identity : nil
             let result = try await catalog(CatalogRequest(kind: "name", schema: node.schema,
                 object: node.name, objectKind: node.objectKind, identity: identity), profileID: node.profileID)
             return result.catalogRecords.first?["name"]
-        } catch { self.error = error.localizedDescription; return nil }
+        } catch { reportError(error.localizedDescription, connection: profile); return nil }
     }
 
     @discardableResult
@@ -2102,7 +2124,7 @@ final class ApplicationWorkspace: ObservableObject {
                 guard let self, self.shutdownTask == nil, self.helperGeneration == generation else { return }
                 self.helperFailed = true
                 self.clusterInspection = nil
-                self.error = failure.localizedDescription
+                self.reportError(failure.localizedDescription)
             }
             return client
         }

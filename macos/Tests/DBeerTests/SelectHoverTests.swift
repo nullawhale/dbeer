@@ -102,7 +102,7 @@ struct SelectHoverTests {
         let screens: [(String, AnyView, Int)] = [
             ("workspace", AnyView(ApplicationWorkspaceView(workspace: workspace)), 2),
             ("filters", AnyView(TableBrowseControls(document: document, workspace: workspace)), 2),
-            ("connection", AnyView(ConnectionEditorView(model: workspace.library, connection: nil) {}), 3),
+            ("connection", AnyView(ConnectionEditorView(model: workspace.library, connection: nil) {}), 2),
         ]
         var usesNativePickers = false
         for (name, screen, nativeCount) in screens {
@@ -131,7 +131,8 @@ struct SelectHoverTests {
                     let policy = NativeButtonFocusPolicy()
                     policy.apply(to: window)
                     policy.apply(to: window)
-                    let popups = descendants(host, of: NSPopUpButton.self)
+                    if name == "connection" { try await NativeConnectionEditorTabs.select("Options", in: host) }
+                    let popups = descendants(host, of: NSPopUpButton.self).filter { !$0.isHiddenOrHasHiddenAncestor && !$0.visibleRect.isEmpty }
                     if name == "workspace" { usesNativePickers = !popups.isEmpty }
                     #expect(popups.count == (usesNativePickers ? nativeCount : (name == "connection" ? 1 : 0)))
                     let regions = descendants(host, of: ControlFeedbackView.self)

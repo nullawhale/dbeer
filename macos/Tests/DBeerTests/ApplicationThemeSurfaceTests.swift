@@ -64,13 +64,13 @@ struct ApplicationThemeSurfaceTests {
         }
         let model = WorkspaceModel(connectionStore: MemoryConnectionLibraryStore(),
             credentialStore: MemoryConnectionCredentialStore())
-        let parent = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 760, height: 850),
+        let parent = NSWindow(contentRect: NSRect(x: 80, y: 80, width: 920, height: 760),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         parent.isReleasedWhenClosed = false
         parent.contentView = NSHostingView(rootView: Text("DBeer").applicationTheme(appearance: appearance))
         let content = NSHostingView(rootView: ConnectionEditorView(model: model, connection: nil) {}
             .applicationTheme(appearance: appearance))
-        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 780),
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 620),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         sheet.isReleasedWhenClosed = false
         sheet.contentView = content
@@ -84,22 +84,24 @@ struct ApplicationThemeSurfaceTests {
         }
         try await settle(content, window: sheet)
         #expect(sheet.sheetParent === parent)
+        try await NativeConnectionEditorTabs.select("TLS", in: content)
+        let tls = try #require(NativeThemeMenuActions.buttons(in: content).first { $0.title == "verify-full" })
+        let nativePopupBezel = tls.bezelStyle
+        try await NativeThemeMenuActions.select("require", in: tls)
+        try await NativeConnectionEditorTabs.select("Options", in: content)
+        let readonly = try #require(descendants(content, of: NSSwitch.self).first { !$0.isHiddenOrHasHiddenAncestor })
+        let nativeToggleSize = readonly.controlSize
+        readonly.performClick(nil)
+        try await settle(content, window: sheet)
+        #expect(readonly.state == .on)
+        try await NativeConnectionEditorTabs.select("General", in: content)
         let host = try #require(descendants(content, of: NSTextField.self)
             .first { $0.isEditable && !($0 is NSSecureTextField) && $0.stringValue == "localhost" })
-        let tls = try #require(NativeThemeMenuActions.buttons(in: content).first { $0.title == "verify-full" })
-        let readonly = try #require(descendants(content, of: NSSwitch.self).first)
         let nativeText = host.textColor
         let nativeBackground = host.backgroundColor
         let nativeWindow = sheet.backgroundColor
-        let nativePopupBezel = tls.bezelStyle
-        let nativeToggleSize = readonly.controlSize
         let nativeBorder = host.isBordered
         let nativeBezel = host.isBezeled
-        try await NativeThemeMenuActions.select("require", in: tls)
-        readonly.performClick(nil)
-        try await settle(content, window: sheet)
-        #expect(tls.title == "require")
-        #expect(readonly.state == .on)
         #expect(sheet.makeFirstResponder(host))
         let editor = try #require(host.currentEditor() as? NSTextView)
         editor.setSelectedRange(NSRange(location: 1, length: 4))
@@ -115,10 +117,6 @@ struct ApplicationThemeSurfaceTests {
             #expect(host.currentEditor() === editor)
             #expect(editor.selectedRange() == selection)
             #expect(editor.undoManager === undo)
-            #expect(tls.title == "require")
-            #expect(readonly.state == .on)
-            #expect(tls.bezelStyle == nativePopupBezel)
-            #expect(readonly.controlSize == nativeToggleSize)
             #expect(host.isBordered == nativeBorder)
             #expect(host.isBezeled == nativeBezel)
             #expect(sheet.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
@@ -134,11 +132,17 @@ struct ApplicationThemeSurfaceTests {
         #expect(!AppPalette.isCustom)
         #expect(host.currentEditor() === editor)
         #expect(editor.selectedRange() == selection)
-        #expect(tls.title == "require")
-        #expect(readonly.state == .on)
         try expectColor(host.textColor, nativeText, in: sheet.effectiveAppearance)
         try expectColor(host.backgroundColor, nativeBackground, in: sheet.effectiveAppearance)
         try expectColor(sheet.backgroundColor, nativeWindow, in: sheet.effectiveAppearance)
+        // Revisit the other tabs after checking the active text editor's focus
+        // and undo state. Their settings must survive tab and theme changes.
+        try await NativeConnectionEditorTabs.select("TLS", in: content)
+        let restoredTLS = try #require(NativeThemeMenuActions.buttons(in: content).first { $0.title == "require" })
+        #expect(restoredTLS.bezelStyle == nativePopupBezel)
+        try await NativeConnectionEditorTabs.select("Options", in: content)
+        let restoredReadonly = try #require(descendants(content, of: NSSwitch.self).first { !$0.isHiddenOrHasHiddenAncestor })
+        #expect(restoredReadonly.state == .on && restoredReadonly.controlSize == nativeToggleSize)
     }
 
     @Test func editorCompletionChildWindowRetainsItsIndependentLightPaletteInsideDarkApplication() async throws {
