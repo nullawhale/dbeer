@@ -128,6 +128,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
         // row view must still repaint the cell range and clear the old border.
         enumerateAvailableRowViews { rowView, _ in rowView.needsDisplay = true }
         copyCoordinator?.refreshVisibleTextColors(in: self)
+        copyCoordinator?.publishInspection()
     }
 
     private func cell(at event: NSEvent) -> ResultGridCell? {
@@ -435,6 +436,7 @@ struct ResultTableView: NSViewRepresentable {
     var onInlineDraftChanged: ((Bool) -> Void)?
     var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
     var onSelectedRows: ((IndexSet) -> Void)?
+    var onInspectValue: ((InspectedValue?) -> Void)?
     var onDeleteRows: (() -> Void)?
     var onShowRowDetails: (() -> Void)?
     var onToggleRowDetails: (() -> Void)?
@@ -474,6 +476,7 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onInlineDraftChanged = onInlineDraftChanged
         coordinator.onSetCellValue = onSetCellValue
         coordinator.onSelectedRows = onSelectedRows
+        coordinator.onInspectValue = onInspectValue
         coordinator.onDeleteRows = onDeleteRows
         coordinator.onShowRowDetails = onShowRowDetails
         coordinator.onToggleRowDetails = onToggleRowDetails
@@ -517,6 +520,8 @@ struct ResultTableView: NSViewRepresentable {
         var onInlineDraftChanged: ((Bool) -> Void)?
         var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
         var onSelectedRows: ((IndexSet) -> Void)?
+        var onInspectValue: ((InspectedValue?) -> Void)?
+        private var inspectionRevision: UInt64 = 0
         var onDeleteRows: (() -> Void)?
         var onShowRowDetails: (() -> Void)?
         var onToggleRowDetails: (() -> Void)?
@@ -648,6 +653,7 @@ struct ResultTableView: NSViewRepresentable {
             defer {
                 previousSelection = table?.selectedRowIndexes ?? []
                 isSynchronizingSelection = wasSynchronizing
+                if !wasSynchronizing { publishInspection() }
             }
             changes()
         }
@@ -898,6 +904,22 @@ struct ResultTableView: NSViewRepresentable {
             guard !isSynchronizingSelection, let table, previousSelection != table.selectedRowIndexes else { return }
             previousSelection = table.selectedRowIndexes
             onSelectedRows?(previousSelection)
+            publishInspection()
+        }
+
+        func publishInspection() {
+            guard !isSynchronizingSelection, onInspectValue != nil else { return }
+            inspectionRevision &+= 1
+            let revision = inspectionRevision
+            // Representable updates may replace rows or clamp selection. Deliver
+            // only the final snapshot after SwiftUI has finished that update.
+            Task { @MainActor [weak self] in
+                guard let self, self.inspectionRevision == revision, let table = self.table else { return }
+                let cell = table.cellSelection?.focus
+                self.onInspectValue?(InspectedValue.capture(
+                    cell: cell.flatMap { table.selectedRowIndexes.contains($0.row) ? $0 : nil },
+                    columns: self.columns, rows: self.rows, valueKinds: self.valueKinds))
+            }
         }
 
         @objc func copyRows(_ sender: Any?) {

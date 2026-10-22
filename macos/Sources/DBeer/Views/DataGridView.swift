@@ -61,14 +61,7 @@ struct DataGridView: View {
                 .font(.caption).padding(8)
                 .accessibilityIdentifier("foreignKeysError")
             }
-            HSplitView {
-                table.frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
-                if showingRowDetails.wrappedValue {
-                    GridRowDetailsView(grid: grid, canEdit: canEdit, edit: openEditor,
-                        close: { showingRowDetails.wrappedValue = false })
-                        .frame(minWidth: 240, idealWidth: 280, maxWidth: 380)
-                }
-            }
+            table.frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             changesToolbar
             Divider()
@@ -135,7 +128,9 @@ struct DataGridView: View {
             workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)
         }
         view.commandHandler = { workspace.commands.handleKeyEvent($0, documentID: document.id) }
-        return view
+        return InspectedResultTableView(table: view, rowDetails: showingRowDetails.wrappedValue
+            ? GridRowDetailsView(grid: grid, canEdit: canEdit, edit: openEditor,
+                close: { showingRowDetails.wrappedValue = false }) : nil)
     }
 
     private var navigationToolbar: some View {

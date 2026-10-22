@@ -729,7 +729,7 @@ struct SQLDocumentPane: View {
                     if document.table != nil, let grid = document.grid {
                         DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
-                        ResultTableView(columns: columns, rows: result.rows ?? [],
+                        InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [],
                             copySettings: workspace.copySettings,
                             onSQLInsertCopy: { payload, pasteboard in
                                 workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)
@@ -737,7 +737,7 @@ struct SQLDocumentPane: View {
                             onCopyError: { workspace.reportCopyError($0) },
                             copyAllowed: !document.isRunning && !workspace.isClosing,
                             commandHandler: { commands.handleKeyEvent($0, documentID: document.id) },
-                            documentID: document.id)
+                            documentID: document.id))
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }
             }

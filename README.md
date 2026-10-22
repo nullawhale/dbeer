@@ -148,6 +148,26 @@ successfully. Navigation history stays in memory; workspace restoration saves th
 current location and remains disconnected until explicit Load Data. Cassandra
 supports independent views but has no foreign keys.
 
+## Value inspector in the working branch
+
+SQL results and table grids include a resizable **Value Inspector** beside the
+grid. Select a cell and use the arrow keys to inspect adjacent values without
+opening a dialog. The panel shows the column, row, native type and exact source
+text; SQL NULL, DEFAULT, empty strings and Base64 binary values have distinct
+labels. Text remains selectable and read only. **Wrap** changes line wrapping,
+and **Find in value** searches the displayed text with previous/next navigation.
+**Row Details** uses the same sidebar; closing it returns to the value inspector.
+
+JSON and XML have syntax highlighting. **Format JSON** changes only the preview:
+numbers retain their exact spelling, and key order, duplicate keys and escapes
+are preserved. Turning formatting off restores the original text. XML never
+loads external entities; DTD/entity declarations are displayed as plain text.
+Parsing and search run in cancellable background tasks. Structured previews have
+size, depth and token limits; invalid or oversized values retain their complete
+source text. Search highlights up to 10,000 matches. Inspection never executes
+SQL, connects to a server or changes pending grid edits; use the existing cell
+editor and Preview/Apply workflow to make changes.
+
 ## Result copying in the working branch
 
 Copy cells, rows or ranges as TSV, CSV, JSON, Markdown or SQL INSERT. Ordinary

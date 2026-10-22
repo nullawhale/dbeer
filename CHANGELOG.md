@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- SQL results and table grids have a permanent, resizable Value Inspector that
+  follows cell selection and arrow-key navigation. It offers read-only source
+  text, line wrapping, search, JSON/XML highlighting and lossless formatted JSON.
+  NULL, DEFAULT, empty strings and Base64 binary stay distinct. Cancellable
+  background previews preserve exact numbers, duplicate keys and original text;
+  XML external entities and DTDs are never loaded. Inspection leaves sessions,
+  grid edits and the existing Preview/Apply workflow unchanged.
 - General connection settings can import single-host PostgreSQL and MySQL URLs,
   including JDBC-prefixed addresses, IPv6, encoded credentials and supported TLS
   options. Use URL fills the existing fields; omitted credentials and TLS options
