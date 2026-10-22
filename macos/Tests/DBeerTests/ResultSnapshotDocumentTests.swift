@@ -172,6 +172,28 @@ struct ResultSnapshotDocumentTests {
         #expect(!model.canLoadPrevious && !model.canLoadNext)
     }
 
+    @Test func revisitingACachedPageDetectsExternalRemovalAndRecoversWithoutResettingThePage() async throws {
+        let directory = directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let root = directory.appendingPathComponent("snapshots")
+        let store = ResultSnapshotStore(rootURL: root)
+        let original = capture()
+        let summary = try await store.save(original)
+        let model = ResultSnapshotDocumentModel(id: summary.id, store: store, pageSize: 2)
+        await model.loadPage(2)
+        #expect(model.isAvailable && model.pageIndex == 2 && model.result?.rows == [original.rows[4]])
+        let artifact = root.appendingPathComponent(summary.id.uuidString.lowercased())
+        let moved = directory.appendingPathComponent("temporarily-unavailable-artifact")
+        try FileManager.default.moveItem(at: artifact, to: moved)
+        await model.revalidateCurrentPage()
+        #expect(!model.isAvailable && model.result == nil && model.error?.contains("no longer available") == true)
+        #expect(model.pageIndex == 2 && model.pageOffset == 4 && model.manifest?.sql == original.sql)
+        try FileManager.default.moveItem(at: moved, to: artifact)
+        await model.revalidateCurrentPage()
+        #expect(model.isAvailable && model.error == nil && model.pageIndex == 2 && model.pageOffset == 4)
+        #expect(model.result?.rows == [original.rows[4]])
+    }
+
     @Test func snapshotWorkspaceAndClosedTabStoreOnlyTheOpaqueArtifactReference() async throws {
         let directory = directory()
         defer { try? FileManager.default.removeItem(at: directory) }

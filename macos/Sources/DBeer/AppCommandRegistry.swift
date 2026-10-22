@@ -40,6 +40,10 @@ struct AppCommandInvocation {
     let documentText: String
     let profile: SavedConnection?
     let fragment: SQLExecutionFragment?
+    let parentDocumentID: UUID
+    let investigationID: UUID?
+    let blockID: UUID?
+    let paneID: WorkspacePaneID
 }
 
 /// Menus, toolbar controls and native key events all enter here. A synchronous
@@ -57,6 +61,7 @@ struct AppCommandInvocation {
     private struct ResolvedContext {
         let context: AppCommandContext
         let document: SQLDocument?
+        let tab: SQLDocument?
     }
 
     convenience init(workspace: ApplicationWorkspace, shortcuts: AppShortcutStore,
@@ -130,11 +135,12 @@ struct AppCommandInvocation {
         if let id = context.documentID {
             // Both panes are visible. A responder in a hidden tab must never
             // retarget execution to whichever tab happens to be active.
-            document = workspace.documents.first { $0.id == id && workspace.isSelectedVisibleDocument(id) }
+            document = workspace.commandDocument(for: id)
         } else if context.focus == .workspace || context.focus == .textInput {
-            document = workspace.selectedDocument
+            document = workspace.selectedDocument.flatMap { workspace.commandDocument(for: $0.id) }
         } else { document = nil }
-        return ResolvedContext(context: context, document: document)
+        return ResolvedContext(context: context, document: document,
+            tab: document.flatMap { workspace.ownedSQLContext(for: $0)?.tab })
     }
 
     /// Extension point for grid commands that operate on a document. Copy as
@@ -173,9 +179,13 @@ struct AppCommandInvocation {
         }
         guard let document = resolved.document else { return false }
         if command == .closeTab {
-            return !context.isComposingText && workspace.canStartOperation(document)
+            return !context.isComposingText && resolved.tab.map { workspace.canStartOperation($0) } == true
         }
         if command == .saveSQL || command == .saveSQLAs {
+            if let tab = resolved.tab, tab.isInvestigation {
+                return command == .saveSQL && !context.isComposingText && workspace.canStartOperation(tab) &&
+                    tab.investigationModel?.isAvailable == true && tab.investigationModel?.isSaving != true
+            }
             return !context.isComposingText && workspace.canStartOperation(document) &&
                 document.isSQLDocument && document.fileDocument?.isSaving != true
         }
@@ -188,7 +198,7 @@ struct AppCommandInvocation {
         }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true }
         guard !context.isComposingText else { return false }
-        guard !document.isSnapshot else { return false }
+        guard !document.isSnapshot, !document.isInvestigation else { return false }
         guard !document.isNavigatingTable else { return false }
         guard context.focus != .textInput else { return false }
         guard workspace.canStartOperation(document), !document.isRunning, document.grid?.isApplying != true,
@@ -208,6 +218,7 @@ struct AppCommandInvocation {
     }
 
     private func perform(_ command: AppCommandID, resolved: ResolvedContext) -> Task<Void, Never>? {
+        WorkspacePaneContainerView.acknowledgeCurrentResponder(in: workspace)
         switch command {
         case .newConnection: workspace.library.isConnectionEditorPresented = true
         case .newSQLTab: workspace.newDocument()
@@ -235,12 +246,17 @@ struct AppCommandInvocation {
     }
 
     private func performDocumentCommand(_ command: AppCommandID, resolved: ResolvedContext) -> Task<Void, Never>? {
-        guard let document = resolved.document, let pane = workspace.pane(containing: document.id) else { return nil }
+        guard let document = resolved.document, let owner = workspace.ownedSQLContext(for: document) else { return nil }
+        let tab = owner.tab
+        let pane = owner.paneID
         workspace.activatePane(pane)
         if command == .closeTab {
-            return Task { [workspace] in await workspace.closeDocument(document) }
+            return Task { [workspace] in await workspace.closeDocument(tab) }
         }
         if command == .saveSQL || command == .saveSQLAs {
+            if tab.isInvestigation {
+                return Task { [workspace] in _ = await workspace.saveInvestigation(tab) }
+            }
             workspace.saveSQLFile(document, chooseLocation: command == .saveSQLAs)
             return Task {}
         }
@@ -253,12 +269,14 @@ struct AppCommandInvocation {
         }
         let invocation = AppCommandInvocation(command: command, documentID: document.id, documentText: document.text,
             profile: workspace.library.savedConnections.first { $0.id == document.profileID },
-            fragment: document.table == nil && command != .stop ? workspace.executionFragment(document, script: command == .runScript) : nil)
+            fragment: document.table == nil && command != .stop ? workspace.executionFragment(document, script: command == .runScript) : nil,
+            parentDocumentID: tab.id, investigationID: owner.investigationID, blockID: owner.blockID, paneID: pane)
         let handler = gridHandlers[command]
         return Task { [workspace, invocationHandler] in
             if let invocationHandler { await invocationHandler(invocation); return }
             // Tab switches after the click do not retarget the operation.
-            guard workspace.documents.contains(where: { $0 === document }) else { return }
+            guard let currentOwner = workspace.ownedSQLContext(for: document), currentOwner.tab === tab,
+                  currentOwner.blockID == invocation.blockID else { return }
             if command == .stop { await workspace.stop(document); return }
             guard SQLFileDocument.sameBytes(document.text, invocation.documentText),
                   document.profileID == invocation.profile?.id,
@@ -290,7 +308,8 @@ struct AppCommandInvocation {
     }
 
     private static func canCopyGrid(in document: SQLDocument, workspace: ApplicationWorkspace) -> Bool {
-        workspace.canStartOperation(document) && !document.isRunning && !document.isNavigatingTable && document.grid?.isApplying != true &&
+        if document.isSnapshot, document.snapshotModel?.isAvailable != true { return false }
+        return workspace.canStartOperation(document) && !document.isRunning && !document.isNavigatingTable && document.grid?.isApplying != true &&
             document.grid?.isReloading != true && document.grid?.isClosing != true
     }
 

@@ -6,6 +6,11 @@ import Testing
 /// Keychain, helper process or database connection is created.
 @MainActor
 struct ResultSnapshotsModelTests {
+    @MainActor private final class ReferenceLookupState {
+        var fails = true
+        var count = 0
+    }
+
     private func directory() -> URL {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -85,6 +90,36 @@ struct ResultSnapshotsModelTests {
         }
     }
 
+    @Test func deletionIsBlockedWhenInvestigationReferencesCannotBeReadOrRechecked() async throws {
+        enum LookupFailure: Error { case unavailable }
+        let root = directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ResultSnapshotStore(rootURL: root)
+        let summary = try await store.save(capture())
+        let lookup = ReferenceLookupState()
+        let model = ResultSnapshotsModel(store: store, investigationReferences: { _ in
+            lookup.count += 1
+            if lookup.fails { throw LookupFailure.unavailable }
+            return []
+        })
+        await model.refresh()
+        #expect(model.requestDeletion(summary.id) == nil)
+        #expect(lookup.count == 1 && model.error?.contains("references could not be checked") == true)
+        #expect(try await store.list().map(\.id) == [summary.id])
+        lookup.fails = false
+        let request = try #require(model.requestDeletion(summary.id))
+        #expect(lookup.count == 2 && model.error == nil)
+        lookup.fails = true
+        #expect(!(await model.deleteConfirmed(request)))
+        #expect(lookup.count == 3 && model.error?.contains("references could not be checked") == true)
+        #expect(!model.isBusy && model.snapshots.map(\.id) == [summary.id])
+        #expect(try await store.list().map(\.id) == [summary.id])
+        lookup.fails = false
+        #expect(await model.deleteConfirmed(request))
+        #expect(lookup.count == 4 && model.error == nil)
+        #expect(try await store.list().isEmpty)
+    }
+
     @Test func unavailableArtifactsCanBeDeletedWithoutHidingOrRemovingIntactSnapshots() async throws {
         let root = directory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -105,5 +140,27 @@ struct ResultSnapshotsModelTests {
         #expect(model.error == nil && model.snapshots.map(\.id) == [intact.id])
         #expect(try await store.load(id: intact.id).rows == [[nil], [""], ["NULL"]])
         #expect(model.usedBytes == intact.byteCount)
+    }
+
+    @Test func deletionInvalidatesTrackedOfflineDocumentsWithoutRetainingTheirLifetime() async throws {
+        let root = directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = ResultSnapshotStore(rootURL: root)
+        let saved = try await store.save(capture())
+        let model = ResultSnapshotsModel(store: store)
+        var released: ResultSnapshotDocumentModel? = ResultSnapshotDocumentModel(id: saved.id, store: store)
+        weak var weakReleased = released
+        model.trackDocument(try #require(released))
+        released = nil
+        #expect(weakReleased == nil)
+        let hidden = ResultSnapshotDocumentModel(id: saved.id, store: store, pageSize: 2)
+        await hidden.loadPage(1)
+        #expect(hidden.isAvailable && hidden.pageOffset == 2)
+        model.trackDocument(hidden)
+        await model.refresh()
+        let request = try #require(model.requestDeletion(saved.id))
+        #expect(await model.deleteConfirmed(request))
+        #expect(!hidden.isAvailable && hidden.result == nil && hidden.error?.contains("no longer available") == true)
+        #expect(hidden.pageIndex == 1 && hidden.pageOffset == 2)
     }
 }

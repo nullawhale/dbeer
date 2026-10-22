@@ -112,11 +112,12 @@ struct ResultSnapshotsView: View {
         .alert("Delete Snapshot?", isPresented: Binding(get: { deletion.wrappedValue != nil },
             set: { if !$0 { deletion.wrappedValue = nil } })) {
             Button("Cancel", role: .cancel) { deletion.wrappedValue = nil }
+                .accessibilityIdentifier("cancelDeleteSnapshot")
             Button("Delete", role: .destructive) {
                 guard let request = deletion.wrappedValue else { return }
                 deletion.wrappedValue = nil
                 Task { _ = await model.deleteConfirmed(request) }
-            }
+            }.accessibilityIdentifier("confirmDeleteSnapshot")
         } message: {
             if let request = deletion.wrappedValue, !request.investigationIDs.isEmpty {
                 Text("This snapshot is used by \(request.investigationIDs.count.formatted()) investigation documents. Delete its saved data? The documents will retain their explanations and show the snapshot as missing.")
@@ -143,16 +144,20 @@ struct ResultSnapshotDocumentView: View {
     @ObservedObject var document: SQLDocument
     @ObservedObject var model: ResultSnapshotDocumentModel
     @ObservedObject var workspace: ApplicationWorkspace
+    @ObservedObject private var snapshots: ResultSnapshotsModel
+
+    init(document: SQLDocument, model: ResultSnapshotDocumentModel, workspace: ApplicationWorkspace) {
+        self.document = document
+        self.model = model
+        self.workspace = workspace
+        self.snapshots = workspace.resultSnapshots
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Label("Offline Snapshot", systemImage: "pin.fill").font(.headline)
-                Spacer()
-                Button("Open SQL in New Tab") { workspace.openSnapshotSQLInNewTab(document) }
-                    .controlHover().disabled(!model.isAvailable || !workspace.canStartOperation(document))
-                    .help("Create a SQL draft, then choose a connection before running it")
-                    .accessibilityIdentifier("openSnapshotSQLInNewTab")
+            ViewThatFits(in: .horizontal) {
+                snapshotToolbar(compact: false).frame(minWidth: 360)
+                snapshotToolbar(compact: true)
             }.padding(.horizontal, 12).frame(height: 40)
             Divider()
             if let manifest = model.manifest {
@@ -194,7 +199,7 @@ struct ResultSnapshotDocumentView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Label("Snapshot unavailable", systemImage: "exclamationmark.triangle").font(.headline)
                     Text(error).textSelection(.enabled)
-                    Button("Retry Local Read") { Task { await model.load() } }.controlHover().disabled(model.isLoading)
+                    Button("Retry Local Read") { Task { await model.revalidateCurrentPage() } }.controlHover().disabled(model.isLoading)
                 }
                 .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .accessibilityElement(children: .contain)
@@ -203,7 +208,12 @@ struct ResultSnapshotDocumentView: View {
                 InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [],
                     copySettings: workspace.copySettings,
                     onCopyError: { workspace.reportCopyError($0) },
-                    copyAllowed: !model.isLoading && !workspace.isClosing,
+                    copyAllowed: model.isAvailable && !workspace.isClosing,
+                    copyAvailability: { [weak model, weak workspace, weak document] in
+                        guard let model, let workspace, let document else { return false }
+                        return model.isAvailable && workspace.canStartOperation(document) &&
+                            workspace.commandDocument(for: document.id) === document
+                    },
                     commandHandler: { workspace.commands.handleKeyEvent($0, documentID: document.id) },
                     documentID: document.id))
                 Divider()
@@ -230,6 +240,29 @@ struct ResultSnapshotDocumentView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("offlineSnapshotDocument")
-        .task { if model.result == nil && model.error == nil { await model.load() } }
+        .task {
+            snapshots.trackDocument(model)
+            await model.revalidateCurrentPage()
+        }
+    }
+
+    private func snapshotToolbar(compact: Bool) -> some View {
+        HStack(spacing: 10) {
+            if compact {
+                Image(systemName: "pin.fill").accessibilityLabel("Offline Snapshot")
+            } else {
+                Label("Offline Snapshot", systemImage: "pin.fill").font(.headline)
+            }
+            Spacer(minLength: 0)
+            ControlIconButton(systemName: "arrow.clockwise") { Task { await model.revalidateCurrentPage() } }
+                .disabled(model.isLoading).help("Reload saved snapshot from local storage")
+                .accessibilityLabel("Reload Local Snapshot").accessibilityIdentifier("reloadLocalSnapshot")
+            Button { workspace.openSnapshotSQLInNewTab(document) } label: {
+                if compact { Image(systemName: "doc.badge.plus") }
+                else { Text("Open SQL in New Tab") }
+            }.controlHover().disabled(!model.isAvailable || !workspace.canStartOperation(document))
+                .help("Create a SQL draft, then choose a connection before running it")
+                .accessibilityLabel("Open SQL in New Tab").accessibilityIdentifier("openSnapshotSQLInNewTab")
+        }
     }
 }

@@ -1,8 +1,9 @@
 import Foundation
 
 /// A launch-local undo record contains only restorable document context.
-/// Snapshot tabs retain only their opaque local artifact reference. The record
-/// cannot encode sessions, execution results or grid drafts.
+/// Snapshot and investigation tabs retain only their opaque local reference.
+/// Closing an investigation never removes its durable library record. The undo
+/// record cannot encode block SQL, sessions, execution results or grid drafts.
 struct ClosedWorkspaceTab: Identifiable, Equatable, Sendable {
     let id = UUID()
     let state: StoredSQLDocument

@@ -279,7 +279,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = copyCoordinator
-            item.isEnabled = enabled && copyCoordinator.copyAllowed
+            item.isEnabled = enabled && copyCoordinator.isCopyAllowed
             menu.addItem(item)
         }
         let formats = NSMenu(title: "Copy as")
@@ -455,6 +455,7 @@ struct ResultTableView: NSViewRepresentable {
     var onSQLInsertCopy: ((ResultClipboardPayload, NSPasteboard) -> Void)?
     var onCopyError: ((String) -> Void)?
     var copyAllowed = true
+    var copyAvailability: (@MainActor () -> Bool)?
     var commandHandler: ((NSEvent) -> Bool)?
     var documentID: UUID?
 
@@ -495,6 +496,7 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onSQLInsertCopy = onSQLInsertCopy
         coordinator.onCopyError = onCopyError
         coordinator.copyAllowed = copyAllowed
+        coordinator.copyAvailability = copyAvailability
         coordinator.update(columns: columns, rows: rows, dataIdentity: dataIdentity, in: scrollView)
         (scrollView.documentView as? ResultGridTableView)?.appCommandDocumentID = documentID
         (scrollView.documentView as? ResultGridTableView)?.commandHandler = commandHandler
@@ -514,6 +516,8 @@ struct ResultTableView: NSViewRepresentable {
         var onSQLInsertCopy: ((ResultClipboardPayload, NSPasteboard) -> Void)?
         var onCopyError: ((String) -> Void)?
         var copyAllowed = true
+        var copyAvailability: (@MainActor () -> Bool)?
+        var isCopyAllowed: Bool { copyAllowed && (copyAvailability?() ?? true) }
         private weak var table: ResultGridTableView?
         var editableColumns: IndexSet = []
         var canSetNullColumns: IndexSet = []
@@ -942,7 +946,7 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         private func copy(rowIndices: [Int], columnIndices: [Int]) {
-            guard copyAllowed else { return }
+            guard isCopyAllowed else { return }
             var options = copySettings.options
             // Inspection grids do not own a target chooser. Their ordinary
             // Copy remains available when INSERT is the default for data grids.
@@ -973,7 +977,7 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         func canCopy(format: ResultCopyFormat) -> Bool {
-            guard copyAllowed, let table, !columns.isEmpty, !rows.isEmpty,
+            guard isCopyAllowed, let table, !columns.isEmpty, !rows.isEmpty,
                   format != .sqlInsert || onSQLInsertCopy != nil else { return false }
             return table.cellSelection != nil || !table.selectedRowIndexes.isEmpty
         }
@@ -991,7 +995,7 @@ struct ResultTableView: NSViewRepresentable {
 
         private func captureCopy(format: ResultCopyFormat, rowIndices: [Int],
                                  columnIndices: [Int]) -> (@MainActor () async -> Void)? {
-            guard copyAllowed else { return nil }
+            guard isCopyAllowed else { return nil }
             let payload: ResultClipboardPayload
             do {
                 payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds,
@@ -1005,24 +1009,26 @@ struct ResultTableView: NSViewRepresentable {
             let options = copySettings.options
             let publisher = ResultCopyPublication.shared
             let ticket = publisher.capture(changeCount: board.changeCount)
+            let availability = copyAvailability
             if format == .sqlInsert {
                 guard let onSQLInsertCopy else { return nil }
                 return {
-                    guard publisher.isCurrent(ticket) else { return }
+                    guard availability?() != false, publisher.isCurrent(ticket) else { return }
                     onSQLInsertCopy(payload, board)
                 }
             }
             return {
+                guard availability?() != false else { return }
                 do {
                     let prepared = try await Task.detached(priority: .userInitiated) {
                         try PreparedResultCopy(payload: payload, format: format, includesHeaders: options.includesHeaders)
                     }.value
-                    guard publisher.isCurrent(ticket) else { return }
+                    guard availability?() != false, publisher.isCurrent(ticket) else { return }
                     if !publisher.publish(prepared, to: board, ticket: ticket) {
                         reportError?("The clipboard changed while preparing this selection. Copy again.")
                     }
                 } catch {
-                    guard publisher.isCurrent(ticket) else { return }
+                    guard availability?() != false, publisher.isCurrent(ticket) else { return }
                     reportError?(error.localizedDescription)
                 }
             }

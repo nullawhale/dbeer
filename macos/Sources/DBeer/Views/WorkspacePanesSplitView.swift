@@ -1,6 +1,11 @@
 import AppKit
 import SwiftUI
 
+@MainActor
+private protocol WorkspacePaneFocusSampling: AnyObject {
+    func acknowledgeResponder(_ responder: NSResponder?)
+}
+
 /// The hosting boundary also records native responder ownership. Field editors
 /// are shared by NSWindow, so their NSTextField delegate supplies the ancestry.
 @MainActor
@@ -33,33 +38,51 @@ final class WorkspacePaneContainerView: NSView {
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
-        if accepted { workspace?.activatePane(paneID) }
+        if accepted { Self.activatePane(containing: self) }
         return accepted
     }
 
     static func owningPane(of responder: NSResponder?, in workspace: ApplicationWorkspace) -> WorkspacePaneID? {
+        guard let container = container(owning: responder), container.workspace === workspace else { return nil }
+        return container.paneID
+    }
+
+    /// Accepted commands may target the opposite pane while keeping native
+    /// focus. Consume its current baseline before that explicit activation, so
+    /// the deferred focus sampler cannot replay an earlier transition over it.
+    static func acknowledgeCurrentResponder(in workspace: ApplicationWorkspace) {
+        let responder = workspace.presentationWindow?.firstResponder
+        guard let container = container(owning: responder), container.workspace === workspace else { return }
+        container.acknowledgeResponder(responder)
+    }
+
+    static func activatePane(containing responder: NSResponder?) {
+        guard let container = container(owning: responder) else { return }
+        container.acknowledgeResponder(responder)
+        container.workspace?.activatePane(container.paneID)
+    }
+
+    private static func container(owning responder: NSResponder?) -> WorkspacePaneContainerView? {
         var view: NSView?
         if let editor = responder as? NSTextView, editor.isFieldEditor {
             view = editor.delegate as? NSView
         } else { view = responder as? NSView }
         while let current = view {
-            if let container = current as? WorkspacePaneContainerView, container.workspace === workspace {
-                return container.paneID
-            }
+            if let container = current as? WorkspacePaneContainerView { return container }
             view = current.superview
         }
         return nil
     }
 
-    static func activatePane(containing responder: NSResponder?) {
-        var view = responder as? NSView
-        if let editor = responder as? NSTextView, editor.isFieldEditor { view = editor.delegate as? NSView }
-        while let current = view {
-            if let container = current as? WorkspacePaneContainerView {
-                container.workspace?.activatePane(container.paneID)
+    private func acknowledgeResponder(_ responder: NSResponder?) {
+        var ancestor: NSView? = self
+        while let current = ancestor {
+            if let split = current as? WorkspacePanesNativeSplitView,
+               let sampling = split.delegate as? any WorkspacePaneFocusSampling {
+                sampling.acknowledgeResponder(responder)
                 return
             }
-            view = current.superview
+            ancestor = current.superview
         }
     }
 }
@@ -110,7 +133,7 @@ struct WorkspacePanesSplitView<Left: View, Right: View>: NSViewRepresentable {
     static func dismantleNSView(_ split: NSSplitView, coordinator: Coordinator) { coordinator.stopMonitoring() }
 
     @MainActor
-    final class Coordinator: NSObject, NSSplitViewDelegate {
+    final class Coordinator: NSObject, NSSplitViewDelegate, WorkspacePaneFocusSampling {
         private weak var workspace: ApplicationWorkspace?
         private weak var split: NSSplitView?
         private var eventMonitor: Any?
@@ -140,6 +163,10 @@ struct WorkspacePanesSplitView<Left: View, Right: View>: NSViewRepresentable {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
             eventMonitor = nil
             NotificationCenter.default.removeObserver(self)
+        }
+
+        func acknowledgeResponder(_ responder: NSResponder?) {
+            previousResponder = responder
         }
 
         @objc private func updateResponder() {

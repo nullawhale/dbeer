@@ -36,6 +36,22 @@ struct SQLEditorTests {
             charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
     }
 
+    /// This fixture owns one balanced Undo group per synthetic input event.
+    /// Prefix typing and Tab acceptance stay separate without draining AppKit's
+    /// automatic event groups or depending on when the run loop closes them.
+    private func performSyntheticTypingEvent(in editor: NSTextView, _ action: () throws -> Void) throws {
+        let undo = try #require(editor.undoManager)
+        try #require(!undo.groupsByEvent && undo.groupingLevel == 0)
+        undo.beginUndoGrouping()
+        defer {
+            if undo.groupingLevel == 1 { undo.endUndoGrouping() }
+        }
+        try action()
+        try #require(undo.groupingLevel == 1)
+        editor.breakUndoCoalescing()
+        try #require(undo.groupingLevel == 1)
+    }
+
     private func saveQA(_ view: NSView, name: String) throws {
         guard let directory = ProcessInfo.processInfo.environment["DBEER_QA_OUTPUT_DIR"] else { return }
         let destination = URL(fileURLWithPath: directory, isDirectory: true)
@@ -671,13 +687,16 @@ struct SQLEditorTests {
             let language = SQLLanguageService(helperURL: executable)
             let coordinator = SQLEditorView.Coordinator(text: storage.binding)
             let scroll = coordinator.makeScrollView()
+            let editor = try #require(scroll.documentView as? NSTextView)
+            let undo = try #require(editor.undoManager)
+            try #require(undo.groupingLevel == 0)
+            undo.groupsByEvent = false
             let context = SQLCompletionContext(profileID: UUID(), catalog: [
                 SQLCompletionRelation(schema: "public", name: "order_items", kind: "table", columns: ["order_id"]),
                 SQLCompletionRelation(schema: "public", name: "orders", kind: "table", columns: ["count_items"])
             ])
             coordinator.update(text: storage.binding, isEditable: true, in: scroll, engine: engine,
                 languageService: language, completionContext: context)
-            let editor = try #require(scroll.documentView as? NSTextView)
             let window = try await window(containing: scroll)
             defer { window.close() }
             let quote = engine == .postgresql ? "\"" : "`"
@@ -690,13 +709,21 @@ struct SQLEditorTests {
                 editor.breakUndoCoalescing()
                 editor.undoManager?.removeAllActions()
                 editor.setSelectedRange(NSRange(location: storage.text.utf16.count, length: 0))
-                editor.insertText(typed, replacementRange: editor.selectedRange())
+                try performSyntheticTypingEvent(in: editor) {
+                    editor.insertText(typed, replacementRange: editor.selectedRange())
+                }
                 let original = storage.text
+                // This scenario tests server matching and native acceptance.
+                // Request completion after the programmatic source/Undo reset;
+                // automatic debounce is covered by its own native test.
+                editor.complete(nil)
                 for _ in 0..<100 where coordinator.visibleCompletionLabels.first != label {
                     try await Task.sleep(for: .milliseconds(20))
                 }
                 #expect(coordinator.visibleCompletionLabels.first == label)
-                editor.keyDown(with: try key(48, characters: "\t"))
+                try performSyntheticTypingEvent(in: editor) {
+                    editor.keyDown(with: try key(48, characters: "\t"))
+                }
                 #expect(storage.text == "SELECT * FROM " + quote + "public" + quote + "." + quote + label + quote)
                 #expect(window.firstResponder === editor)
                 editor.undoManager?.undo()
@@ -711,13 +738,18 @@ struct SQLEditorTests {
             editor.breakUndoCoalescing()
             editor.undoManager?.removeAllActions()
             editor.setSelectedRange(NSRange(location: 7, length: 0))
-            editor.insertText("co", replacementRange: editor.selectedRange())
+            try performSyntheticTypingEvent(in: editor) {
+                editor.insertText("co", replacementRange: editor.selectedRange())
+            }
+            editor.complete(nil)
             for _ in 0..<100 where !coordinator.visibleCompletionLabels.contains("COUNT") {
                 try await Task.sleep(for: .milliseconds(20))
             }
             #expect(coordinator.visibleCompletionLabels.first == "count_items")
             #expect(coordinator.visibleCompletionLabels.contains("COUNT"))
-            editor.keyDown(with: try key(48, characters: "\t"))
+            try performSyntheticTypingEvent(in: editor) {
+                editor.keyDown(with: try key(48, characters: "\t"))
+            }
             #expect(storage.text == "SELECT " + quote + "count_items" + quote + " FROM orders o")
             editor.undoManager?.undo()
             #expect(storage.text == "SELECT co FROM orders o")

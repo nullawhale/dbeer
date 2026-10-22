@@ -88,6 +88,10 @@ struct ApplicationWorkspaceView: View {
             }
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(isPresented: $workspace.isInvestigationsPresented) {
+            InvestigationLibraryView(workspace: workspace)
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(item: $workspace.insertCopySelection) { selection in
             InsertCopyView(workspace: workspace, selection: selection)
                 .applicationTheme(appearance: appearance)
@@ -116,9 +120,27 @@ struct ApplicationWorkspaceView: View {
     }
 
     private var sidebar: some View {
-        VSplitView {
-            connectionsSidebar.frame(minHeight: 180)
-            SQLFilesSidebarView(workspace: workspace).frame(minHeight: 180)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Button {
+                    workspace.isInvestigationsPresented = true
+                } label: { Label("Investigations", systemImage: "doc.richtext") }
+                    .buttonStyle(.plain).controlHover()
+                    .accessibilityIdentifier("openInvestigationsLibrary")
+                Spacer(minLength: 0)
+                ControlIconButton(systemName: "plus") {
+                    Task { _ = await workspace.newInvestigation() }
+                }
+                .disabled(!workspace.canManageWorkspace)
+                .help("New investigation")
+                .accessibilityLabel("New Investigation")
+                .accessibilityIdentifier("newInvestigation")
+            }.padding(.horizontal, 12).frame(height: WorkspaceChrome.headerHeight)
+            Divider()
+            VSplitView {
+                connectionsSidebar.frame(minHeight: 180)
+                SQLFilesSidebarView(workspace: workspace).frame(minHeight: 180)
+            }
         }
         .frame(minWidth: 210, idealWidth: 260, maxWidth: 340)
         .background(AppPalette.isCustom ? AppPalette.sidebar : AppPalette.background)
@@ -207,7 +229,10 @@ struct ApplicationWorkspaceView: View {
             Divider()
             Group {
                 if let document = workspace.selectedDocument(in: pane) {
-                    if document.isSnapshot {
+                    if document.isInvestigation, let model = document.investigationModel {
+                        InvestigationDocumentView(document: document, model: model, workspace: workspace)
+                            .id(document.id)
+                    } else if document.isSnapshot {
                         if let model = document.snapshotModel {
                             ResultSnapshotDocumentView(document: document, model: model, workspace: workspace)
                                 .id(document.id)
@@ -265,7 +290,8 @@ struct ApplicationWorkspaceView: View {
                             moveToOtherPane: { moveDocument(document.id, to: pane == .left ? .right : .left) },
                             moveEarlier: index > 0 ? { moveDocument(document.id, to: pane, at: index - 1) } : nil,
                             moveLater: index + 1 < workspace.documents(in: pane).count
-                                ? { moveDocument(document.id, to: pane, at: index + 1) } : nil)
+                                ? { moveDocument(document.id, to: pane, at: index + 1) } : nil,
+                            canRename: !document.isInvestigation || workspace.canEditInvestigation(document))
                             .draggable(WorkspaceTabTransfer(workspaceSessionID: tabDragSessionID.wrappedValue, documentID: document.id))
                             .dropDestination(for: WorkspaceTabTransfer.self) { values, _ in
                                 moveDroppedTab(values, to: pane, before: document.id)
@@ -289,7 +315,12 @@ struct ApplicationWorkspaceView: View {
     }
 
     private func moveDocument(_ id: UUID, to pane: WorkspacePaneID, at index: Int? = nil) {
-        if workspace.pane(containing: id) != pane { workspace.editorState.prepareForPaneMove(id) }
+        if workspace.pane(containing: id) != pane {
+            workspace.editorState.prepareForPaneMove(id)
+            if let investigation = workspace.documents.first(where: { $0.id == id })?.investigationModel {
+                for child in investigation.allSQLDocuments { workspace.editorState.prepareForPaneMove(child.id) }
+            }
+        }
         workspace.moveDocument(id, to: pane, at: index)
     }
 
@@ -317,6 +348,7 @@ struct DocumentTab: View {
     var moveToOtherPane: (() -> Void)? = nil
     var moveEarlier: (() -> Void)? = nil
     var moveLater: (() -> Void)? = nil
+    var canRename = true
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -325,6 +357,12 @@ struct DocumentTab: View {
                     if document.fileDocument?.isDirty == true {
                         Image(systemName: "circle.fill").font(.system(size: 5)).accessibilityHidden(true)
                     }
+                    if document.investigationModel?.isDirty == true {
+                        Image(systemName: "circle.fill").font(.system(size: 5)).accessibilityHidden(true)
+                    }
+                    if document.isInvestigation {
+                        Image(systemName: "doc.richtext").font(.caption).accessibilityLabel("Investigation")
+                    }
                     if document.isSnapshot {
                         Image(systemName: "pin.fill").font(.caption).accessibilityLabel("Offline snapshot")
                     }
@@ -332,7 +370,7 @@ struct DocumentTab: View {
                         Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).accessibilityHidden(true)
                     }
                     Text(document.title).lineLimit(1)
-                    if document.isRunning || document.isNavigatingTable || document.grid?.isApplying == true {
+                    if isBusy {
                         ProgressView().controlSize(.mini)
                     }
                 }
@@ -372,7 +410,7 @@ struct DocumentTab: View {
             }
             Button("Rename…") {
                 let alert = NSAlert()
-                alert.messageText = document.isSnapshot ? "Rename Snapshot Tab" : "Rename SQL Tab"
+                alert.messageText = document.isInvestigation ? "Rename Investigation" : document.isSnapshot ? "Rename Snapshot Tab" : "Rename SQL Tab"
                 let field = NSTextField(string: document.title)
                 field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
                 alert.accessoryView = field
@@ -380,9 +418,12 @@ struct DocumentTab: View {
                 alert.addButton(withTitle: "Cancel")
                 if alert.runModal() == .alertFirstButtonReturn {
                     let title = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !title.isEmpty { document.title = title }
+                    if !title.isEmpty {
+                        if let investigation = document.investigationModel { investigation.title = title }
+                        else { document.title = title }
+                    }
                 }
-            }.disabled(document.isNavigatingTable)
+            }.disabled(document.isNavigatingTable || !canRename)
             if let moveToOtherPane {
                 Divider()
                 Button(otherPaneTitle, action: moveToOtherPane)
@@ -391,6 +432,14 @@ struct DocumentTab: View {
             }
             Button("Close", action: close)
         }
+    }
+
+    private var isBusy: Bool {
+        document.isRunning || document.isNavigatingTable || document.grid?.isApplying == true ||
+            document.investigationModel?.isSaving == true ||
+            document.investigationModel?.allSQLDocuments.contains {
+                $0.isRunning || $0.isNavigatingTable || $0.grid?.isApplying == true || $0.runtime?.isConnecting == true
+            } == true
     }
 }
 
@@ -516,8 +565,8 @@ struct SQLDocumentPane: View {
     private func documentToolbar(compact: Bool) -> some View {
         HStack(spacing: compact ? 6 : 8) {
             if document.table != nil, !compact { tableHistoryControls }
-            Picker("Connection", selection: $document.profileID) {
-                Text("Choose a connection").tag(Optional<UUID>.none)
+            Picker("Connection", selection: profileBinding) {
+                Text(isInvestigationBlock ? "Unbound connection" : "Choose a connection").tag(Optional<UUID>.none)
                 if let missingProfileID {
                     Text(workspace.library.savedConnections.contains { $0.id == missingProfileID }
                         ? "Connection outside library scope" : "Unavailable saved connection").tag(Optional(missingProfileID))
@@ -529,7 +578,8 @@ struct SQLDocumentPane: View {
                 }
             }.controlHover().labelsHidden().accessibilityLabel("Connection").frame(minWidth: 64, maxWidth: compact ? .infinity : 220)
                 .accessibilityIdentifier("documentConnection")
-                .disabled(document.runtime?.sessionId != nil || document.isRunning || document.isNavigatingTable)
+                .disabled(isInvestigationBlock ? !workspace.canBindInvestigationProfile(document) :
+                    document.runtime?.sessionId != nil || document.isRunning || document.isNavigatingTable)
             if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
                (document.runtime?.policy ?? profile.policy).readOnly {
                 Text(profile.engine == .cassandra ? "Local RO" : "RO")
@@ -567,7 +617,11 @@ struct SQLDocumentPane: View {
             if compact {
                 Menu {
                     if document.table == nil {
-                        Button("Run Script") { perform(.runScript) }.disabled(!canPerform(.runScript))
+                        if isInvestigationBlock {
+                            Button("Run Statement") { perform(.runCurrent) }.disabled(!canPerform(.runCurrent))
+                        } else {
+                            Button("Run Script") { perform(.runScript) }.disabled(!canPerform(.runScript))
+                        }
                         Menu("Run to File") {
                             Button("JSON…") { perform(.runToJSON) }.disabled(!canPerform(.runToJSON))
                             Button("CSV…") { perform(.runToCSV) }.disabled(!canPerform(.runToCSV))
@@ -586,9 +640,12 @@ struct SQLDocumentPane: View {
                     .accessibilityLabel("More query actions")
                     .accessibilityIdentifier("queryActions")
             } else if document.table == nil {
-                Button("Run Script") { perform(.runScript) }.controlHover()
-                    .disabled(!canPerform(.runScript))
-                    .help(commandHelp(.runScript) + " · Run the entire document, stopping at the first error")
+                Button(isInvestigationBlock ? "Run Statement" : "Run Script") {
+                    perform(isInvestigationBlock ? .runCurrent : .runScript)
+                }.controlHover()
+                    .disabled(!canPerform(isInvestigationBlock ? .runCurrent : .runScript))
+                    .help(isInvestigationBlock ? "Run the current statement or selection in this block" :
+                        commandHelp(.runScript) + " · Run the entire document, stopping at the first error")
                 Menu("Run to File") {
                     Button("JSON…") { perform(.runToJSON) }
                     Button("CSV…") { perform(.runToCSV) }
@@ -596,26 +653,38 @@ struct SQLDocumentPane: View {
                     .accessibilityIdentifier("runToFile")
             }
             Button {
-                perform(.runCurrent)
+                perform(primaryRunCommand)
             } label: {
                 HStack(spacing: 6) {
                     if compact {
                         Image(systemName: document.table == nil ? "play.fill" : "arrow.clockwise")
                     } else {
-                        Label(document.table == nil ? "Run" : (document.grid == nil ? "Load Data" : "Refresh"),
+                        Label(primaryRunTitle,
                             systemImage: document.table == nil ? "play" : "arrow.clockwise")
                     }
-                    if !compact, let shortcut = commands.shortcuts.shortcut(for: .runCurrent) {
+                    if !compact, let shortcut = commands.shortcuts.shortcut(for: primaryRunCommand) {
                         Text(shortcut.displayString).opacity(0.65)
                     }
                 }.fixedSize(horizontal: true, vertical: false)
             }.controlHover()
                 .buttonStyle(.borderedProminent)
-                .disabled(document.isNavigatingTable || !canPerform(.runCurrent))
-                .help(commandHelp(.runCurrent))
-                .accessibilityLabel(document.table == nil ? "Run" : (document.grid == nil ? "Load Data" : "Refresh"))
-                .accessibilityIdentifier("runQuery")
+                .disabled(document.isNavigatingTable || !canPerform(primaryRunCommand))
+                .help(isInvestigationBlock ? "Run only this SQL block, stopping at its first error" : commandHelp(.runCurrent))
+                .accessibilityLabel(primaryRunTitle)
+                .accessibilityIdentifier(isInvestigationBlock ? "runInvestigationBlock" : "runQuery")
         }
+    }
+
+    private var isInvestigationBlock: Bool { workspace.isInvestigationSQLDocument(document) }
+    private var primaryRunCommand: AppCommandID { isInvestigationBlock ? .runScript : .runCurrent }
+    private var primaryRunTitle: String {
+        isInvestigationBlock ? "Run Block" : document.table == nil ? "Run" : document.grid == nil ? "Load Data" : "Refresh"
+    }
+    private var profileBinding: Binding<UUID?> {
+        Binding(get: { document.profileID }, set: { value in
+            if isInvestigationBlock { _ = workspace.bindInvestigationProfile(document, profileID: value) }
+            else { document.profileID = value }
+        })
     }
 
     private func libraryContext(_ url: URL) -> some View {

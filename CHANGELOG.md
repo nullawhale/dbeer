@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Keep local investigation documents with ordered Markdown, SQL and snapshot
+  blocks, a table of contents and durable library storage. Each SQL block has an
+  explicit profile and an independent working session; Run Block addresses only
+  the selected block. Save and close preserve complete document content, while
+  reopening restores disconnected blocks. Snapshot explanations survive missing
+  artifacts, and deletion checks references in closed and unsaved investigations.
+
 - Work in two resizable panes with independent tab selection. Moving a tab
   preserves its session, transaction, results and editor state. Run, Stop, Copy
   and Save follow the active pane or the explicitly chosen pane's controls.

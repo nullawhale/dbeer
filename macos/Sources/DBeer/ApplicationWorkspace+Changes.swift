@@ -66,10 +66,10 @@ extension ApplicationWorkspace {
     }
 
     func stopGridApply(_ document: SQLDocument) async {
-        guard let grid = document.grid, grid.isApplying else { return }
+        guard ownedSQLContext(for: document) != nil, let grid = document.grid, grid.isApplying else { return }
         grid.cancelRequested = true
         guard let sessionID = grid.applySessionID, let queryID = grid.applyQueryID,
-              let client = try? await ensureHelper() else { return }
+              let client = try? await ensureHelper(), ownedSQLContext(for: document) != nil else { return }
         _ = try? await client.request(.cancel(sessionId: sessionID, queryId: queryID))
     }
 
@@ -104,7 +104,8 @@ extension ApplicationWorkspace {
             contactPoints: runtime.contactPoints, localDatacenter: runtime.localDatacenter, consistency: runtime.consistency,
             ssh: runtime.ssh, passwordCommand: runtime.passwordCommand)
         func validateConnectionBinding() throws {
-            guard document.profileID == profileID, document.runtime === runtime, document.grid === grid,
+            guard ownedSQLContext(for: document) != nil,
+                  document.profileID == profileID, document.runtime === runtime, document.grid === grid,
                   runtime.connectionState == .connected, runtime.sessionId == boundSessionID,
                   runtime.activeConnectionId == profileID,
                   profile.matches(boundSettings),

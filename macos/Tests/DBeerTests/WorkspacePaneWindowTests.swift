@@ -145,6 +145,26 @@ struct WorkspacePaneWindowTests {
         NativeButtonFocusPolicy().apply(to: window)
     }
 
+    /// Restore only this synthetic window before checking native Save routing;
+    /// the registry must still validate the actual focused command context.
+    private func prepareSaveWindow(_ window: NSWindow, responder: NSResponder,
+                                   workspace: ApplicationWorkspace, documentID: UUID) async throws {
+        let application = NSApplication.shared
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while application.keyWindow !== window || !window.isKeyWindow || !application.isActive {
+            guard ContinuousClock.now < deadline else { break }
+            application.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try #require(application.keyWindow === window && window.isKeyWindow && application.isActive)
+        if window.firstResponder !== responder { try #require(window.makeFirstResponder(responder)) }
+        try #require(window.firstResponder === responder)
+        let context = workspace.commands.context()
+        try #require(context.isWorkspaceWindow && !context.hasModal && !context.isComposingText)
+        try #require(context.documentID == documentID)
+    }
+
     private func host(_ workspace: ApplicationWorkspace, width: CGFloat = 1120,
                       scheme: ColorScheme = .light) async throws -> NSWindow {
         let application = NSApplication.shared
@@ -225,6 +245,7 @@ struct WorkspacePaneWindowTests {
         fixture.left.text = "SELECT 111;"
         fixture.right.text = "SELECT 222;"
         try await settle(window)
+        try await prepareSaveWindow(window, responder: leftEditor, workspace: workspace, documentID: fixture.left.id)
         workspace.activatePane(.right)
         #expect(workspace.commands.context().documentID == fixture.left.id)
         let save = try #require(workspace.commands.perform(.saveSQL))

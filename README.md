@@ -23,17 +23,19 @@ The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN A
 
 ## Workspace restoration in the working branch
 
-DBeer restores SQL, table/view and snapshot tabs in their saved panes and order,
-with each pane's selection, titles, SQL text and original connection bindings.
-Table tabs keep their schema/table reference, page, server filters and sort order. They initially
-show this context with an explicit **Load Data** action. SQL tabs remain
+DBeer restores SQL, table/view, snapshot and investigation tabs in their saved
+panes and order, with each pane's selection, titles, SQL text and original
+connection bindings. Table tabs keep their schema/table reference, page, server
+filters and sort order. They initially show this context with an explicit
+**Load Data** action. SQL tabs remain
 disconnected until Run; table tabs remain disconnected until Load Data or Refresh.
 A missing connection stays unavailable until you explicitly choose a replacement.
 PostgreSQL/MySQL reopen the saved page on loading; Cassandra starts from the first
 page because its server cursors cannot survive a session restart.
 
 Sessions, transactions, running operations, live results, cursor tokens and pending
-grid changes are excluded. Snapshot tabs retain local artifact references.
+grid changes are excluded. Snapshot and investigation tabs retain local artifact
+references.
 A recovered tab cannot resume an old Apply or repeat
 SQL automatically. Text and browsing changes autosave without fetching table data.
 
@@ -43,8 +45,9 @@ buffers adopt external changes, while changed drafts retain both versions for
 review. Missing or unreadable files keep their editable drafts. Bindings without
 a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage is v8, with exact private backups before migrating
-v0/v1/v2/v3/v4/v5/v6/v7. Older layouts start with their tabs in the left pane.
+Workspace storage is v9, with exact private backups before migrating
+v0/v1/v2/v3/v4/v5/v6/v7/v8. Formats before v8 start with their tabs in the left
+pane; v8 retains its saved pane layout.
 Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
@@ -53,15 +56,15 @@ unchanged. These changes require rebuilding the native app and are not part of
 the existing build 8 archive.
 
 **File → Reopen Closed Tab** (**⇧⌘T**) returns the most recently closed SQL,
-table/view or snapshot tab, including when no tabs remain open. Up to 20
-successfully closed tabs are kept in memory for the current application run.
+table/view, snapshot or investigation tab, including when no tabs remain open.
+Up to 20 successfully closed tabs are kept in memory for the current application run.
 Repeated reopening returns them in reverse closing order, in their former pane
 and position where possible, and selects each reopened tab. Cancelled or rejected
 closes are excluded.
 
 Reopened tabs have fresh document identities and no session, transaction, live
-result, cursor or pending edits. Snapshot tabs read their local artifacts. SQL,
-connection reference, file binding and table browsing settings are restored
+result, cursor or pending edits. Snapshot and investigation tabs read their local
+artifacts. SQL, connection reference, file binding and table browsing settings are restored
 without reconnecting or executing SQL. Reopening
 a view of an already open file uses its current shared buffer. Run or Load Data
 opens a new session explicitly. Missing connections
@@ -82,6 +85,37 @@ Editor and grid focus activate their pane. Run, Stop, Copy and Save resolve that
 document, and toolbar actions address the pane containing the clicked control.
 Previous/Next Tab cycles within the active pane. Pane placement, selections,
 active pane and divider width survive restart without reconnecting to a server.
+
+## Investigation documents in the working branch
+
+Open **Investigations** in the sidebar to create or reopen a local document.
+Give it a title, add Markdown, SQL or snapshot blocks, and use the table of
+contents to select and reorder them. Markdown has editable source and a rendered
+preview. The editor displays one selected block at a time.
+
+Every SQL block has an explicit connection profile and its own working session,
+including when several blocks use the same profile. **Run Block** executes only
+the selected block through the normal SQL preview and execution policy.
+**Run Statement** addresses its current statement. Choosing another block or
+moving the parent tab retains existing sessions and transactions. An unbound or
+missing profile requires an explicit choice before execution.
+
+**Save** from a block writes the complete investigation, including all current
+Markdown, SQL, profile references and block order. Closing a tab keeps its
+document in the local library. Reopening creates fresh disconnected blocks;
+restoration never retrieves credentials, connects or executes SQL. Live results,
+sessions and transactions are excluded from saved content.
+
+Snapshot blocks retain an artifact reference and editable explanation, and read
+local pages only. Missing or damaged artifacts show an unavailable state while
+keeping that explanation. Snapshot deletion checks saved investigations even
+when closed, plus unsaved open changes; an unreadable library blocks deletion
+until its references can be checked.
+
+Storage accepts up to 4,096 documents and 4,096 blocks per document, with at most
+16 MiB of text per block, 64 MiB per document and a 256 MiB encoded library.
+SQL execution retains the normal query-size checks. Failed writes preserve the
+previous library and leave current edits available for retry.
 
 ## SQL folders and files in the working branch
 
@@ -256,7 +290,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v8. Existing v0/v1/v2/v3/v4/v5/v6/v7 files
+History uses versioned workspace storage, currently v9. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.

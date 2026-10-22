@@ -92,9 +92,14 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published private(set) var snapshotID: UUID?
     @Published private(set) var snapshotModel: ResultSnapshotDocumentModel?
     @Published private(set) var isSnapshot = false
+    @Published private(set) var investigationID: UUID?
+    @Published private(set) var investigationModel: InvestigationDocumentModel?
+    @Published private(set) var isInvestigation = false
     private var runtimeObservation: AnyCancellable?
     private var gridObservation: AnyCancellable?
     private var snapshotObservation: AnyCancellable?
+    private var investigationObservations: [AnyCancellable] = []
+    private var isSynchronizingInvestigationTitle = false
 
     init(id: UUID = UUID(), title: String = "SQL", text: String = "SELECT 1;", profileID: UUID? = nil) {
         self.id = id
@@ -106,7 +111,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     /// The persisted document identity distinguishes independent views of the
     /// same database relation, including views restored by R09.
     var tableViewID: UUID? { table == nil ? nil : id }
-    var isSQLDocument: Bool { table == nil && !isSnapshot }
+    var isSQLDocument: Bool { table == nil && !isSnapshot && !isInvestigation }
     var canNavigateTable: Bool {
         table != nil && !isRunning && !isNavigatingTable && grid?.isApplying != true &&
             grid?.isReloading != true && grid?.isPreviewing != true && grid?.isClosing != true
@@ -118,8 +123,13 @@ final class SQLDocument: ObservableObject, Identifiable {
     /// cursors, result rows, executions and pending grid writes stay absent.
     convenience init(restoring stored: StoredSQLDocument) {
         self.init(id: stored.id, title: stored.title,
-            text: stored.kind == .snapshot ? "" : stored.text,
-            profileID: stored.kind == .snapshot ? nil : stored.profileID)
+            text: stored.kind == .snapshot || stored.kind == .investigation ? "" : stored.text,
+            profileID: stored.kind == .snapshot || stored.kind == .investigation ? nil : stored.profileID)
+        if stored.kind == .investigation {
+            isInvestigation = true
+            investigationID = stored.investigationID
+            return
+        }
         if stored.kind == .snapshot {
             isSnapshot = true
             snapshotID = stored.snapshotID
@@ -144,6 +154,9 @@ final class SQLDocument: ObservableObject, Identifiable {
     /// This state can also be used by future closed-tab and pane restoration.
     /// A table's loaded rows and local edit draft are deliberately excluded.
     var storedState: StoredSQLDocument {
+        if isInvestigation {
+            return StoredSQLDocument(id: id, title: title, text: "", kind: .investigation, investigationID: investigationID)
+        }
         if isSnapshot {
             return StoredSQLDocument(id: id, title: title, text: "", kind: .snapshot, snapshotID: snapshotID)
         }
@@ -158,7 +171,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     }
 
     func attachFileDocument(_ file: SQLFileDocument) {
-        guard !isSnapshot else { return }
+        guard isSQLDocument else { return }
         fileObservations = []
         fileDocument = file
         restoredFileDocumentID = file.id
@@ -203,7 +216,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     }
 
     func attach(_ model: WorkspaceModel, preserveTablePage: Bool = false) {
-        guard !isSnapshot else { return }
+        guard !isSnapshot && !isInvestigation else { return }
         if preserveTablePage {
             tableCursor = nil
             tableNextCursor = nil
@@ -237,6 +250,38 @@ final class SQLDocument: ObservableObject, Identifiable {
         snapshotModel = model
         snapshotObservation = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
+
+    func attachInvestigation(_ model: InvestigationDocumentModel) {
+        isInvestigation = true
+        investigationID = model.id
+        investigationModel = model
+        title = model.title
+        investigationObservations = [
+            model.$title.dropFirst().sink { [weak self] title in
+                guard let self, self.title != title else { return }
+                self.isSynchronizingInvestigationTitle = true
+                self.title = title
+                self.isSynchronizingInvestigationTitle = false
+            },
+            model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        ]
+    }
+
+    func updateInvestigationTitle(_ title: String) {
+        guard !isSynchronizingInvestigationTitle, let model = investigationModel, model.title != title else { return }
+        model.title = title
+    }
+}
+
+/// Operation ownership stays valid when selection changes. Command routing adds
+/// the requirement that the owning tab and block are currently visible.
+@MainActor
+struct OwnedSQLContext {
+    let tab: SQLDocument
+    let sql: SQLDocument
+    let investigationID: UUID?
+    let blockID: UUID?
+    let paneID: WorkspacePaneID
 }
 
 struct SQLExecution: Identifiable {
@@ -272,6 +317,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
     @Published var isSnapshotsPresented = false
+    @Published var isInvestigationsPresented = false
     @Published private(set) var isClosing = false
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
@@ -285,6 +331,7 @@ final class ApplicationWorkspace: ObservableObject {
     let sqlFolders: SQLFolderLibrary
     let sqlLibrary: SQLLibrary
     let resultSnapshots: ResultSnapshotsModel
+    let investigations: InvestigationLibraryModel
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
@@ -323,6 +370,8 @@ final class ApplicationWorkspace: ObservableObject {
     private var sqlLibraryObservation: AnyCancellable?
     private var sqlLibrarySaveObservation: AnyCancellable?
     private var resultSnapshotsObservation: AnyCancellable?
+    private var investigationsObservation: AnyCancellable?
+    private var investigationSnapshotDocuments: [UUID: [UUID: SQLDocument]] = [:]
     private var fileDocuments: [UUID: SQLFileDocument] = [:]
     private let automaticallyWatchFiles: Bool
     weak var presentationWindow: NSWindow?
@@ -338,6 +387,7 @@ final class ApplicationWorkspace: ObservableObject {
          sqlFolders: SQLFolderLibrary? = nil,
          sqlLibrary: SQLLibrary? = nil,
          resultSnapshots: ResultSnapshotsModel? = nil,
+         investigations: InvestigationLibraryModel? = nil,
          automaticallyWatchFiles: Bool = true,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
@@ -350,7 +400,9 @@ final class ApplicationWorkspace: ObservableObject {
         self.copySettings = copySettings ?? .shared
         self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
         self.sqlLibrary = sqlLibrary ?? SQLLibrary()
-        self.resultSnapshots = resultSnapshots ?? ResultSnapshotsModel()
+        let snapshots = resultSnapshots ?? ResultSnapshotsModel()
+        self.resultSnapshots = snapshots
+        self.investigations = investigations ?? InvestigationLibraryModel(snapshotStore: snapshots.store)
         self.automaticallyWatchFiles = automaticallyWatchFiles
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
         self.editorThemes = themes
@@ -368,6 +420,11 @@ final class ApplicationWorkspace: ObservableObject {
         folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
         sqlLibraryObservation = self.sqlLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         resultSnapshotsObservation = self.resultSnapshots.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        investigationsObservation = self.investigations.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        self.resultSnapshots.investigationReferences = { [weak self] id in
+            guard let self else { throw InvestigationReferenceError() }
+            return try self.investigations.referencingInvestigations(snapshotID: id)
+        }
         sqlLibrarySaveObservation = self.sqlLibrary.$snapshot.dropFirst().sink { [weak self] snapshot in
             self?.bindIndexedSQLViews(snapshot)
             self?.scheduleSave()
@@ -396,11 +453,94 @@ final class ApplicationWorkspace: ObservableObject {
         return documents.first { $0.id == id }
     }
 
-    func pane(containing id: UUID) -> WorkspacePaneID? { paneLayout.pane(containing: id) }
+    func pane(containing id: UUID) -> WorkspacePaneID? {
+        if let pane = paneLayout.pane(containing: id) { return pane }
+        guard let parent = documents.first(where: { parent in
+            parent.investigationModel?.allSQLDocuments.contains(where: { $0.id == id }) == true ||
+                investigationSnapshotDocuments[parent.investigationID ?? parent.id]?.values.contains(where: { $0.id == id }) == true
+        }) else { return nil }
+        return paneLayout.pane(containing: parent.id)
+    }
 
     func isSelectedVisibleDocument(_ id: UUID) -> Bool {
-        guard let pane = pane(containing: id) else { return false }
-        return paneLayout[pane].selectedDocumentID == id && documents.contains { $0.id == id }
+        commandDocument(for: id) != nil
+    }
+
+    /// Include top-level table sessions as well as SQL tabs and embedded SQL.
+    /// Presentation-only investigation and snapshot envelopes have no runtime.
+    var allOwnedRuntimeDocuments: [SQLDocument] {
+        documents.flatMap { document in
+            if let investigation = document.investigationModel { return investigation.allSQLDocuments }
+            return document.isInvestigation || document.isSnapshot ? [] : [document]
+        }
+    }
+
+    var allOwnedSQLDocuments: [SQLDocument] { allOwnedRuntimeDocuments }
+
+    func ownedSQLContext(for document: SQLDocument) -> OwnedSQLContext? {
+        for tab in documents {
+            guard let pane = paneLayout.pane(containing: tab.id) else { continue }
+            if tab === document {
+                return OwnedSQLContext(tab: tab, sql: document, investigationID: tab.investigationID,
+                    blockID: nil, paneID: pane)
+            }
+            guard let investigation = tab.investigationModel else { continue }
+            if let blockID = investigation.blockID(for: document) {
+                return OwnedSQLContext(tab: tab, sql: document, investigationID: investigation.id,
+                    blockID: blockID, paneID: pane)
+            }
+            if let blockID = investigationSnapshotDocuments[investigation.id]?.first(where: { $0.value === document })?.key,
+               investigation.blocks.contains(where: { $0.id == blockID && $0.kind == .snapshot && $0.snapshotID == document.snapshotID }) {
+                return OwnedSQLContext(tab: tab, sql: document, investigationID: investigation.id,
+                    blockID: blockID, paneID: pane)
+            }
+        }
+        return nil
+    }
+
+    func ownedDocument(forRuntimeID id: UUID) -> SQLDocument? {
+        if let document = documents.first(where: { $0.id == id }) { return document }
+        if let document = allOwnedRuntimeDocuments.first(where: { $0.id == id }) { return document }
+        return investigationSnapshotDocuments.values.lazy.flatMap { $0.values }.first { document in
+            document.id == id && ownedSQLContext(for: document) != nil
+        }
+    }
+
+    /// An explicit stale child responder never falls back to another block or
+    /// the active pane. Background operation ownership uses the resolver above.
+    func commandDocument(for id: UUID) -> SQLDocument? {
+        guard let source = ownedDocument(forRuntimeID: id), let owner = ownedSQLContext(for: source),
+              paneLayout[owner.paneID].selectedDocumentID == owner.tab.id else { return nil }
+        guard let investigation = owner.tab.investigationModel else { return source }
+        if let blockID = owner.blockID {
+            return investigation.selectedBlockID == blockID ? source : nil
+        }
+        if let sql = investigation.selectedSQLDocument { return sql }
+        if let block = investigation.selectedBlock, block.kind == .snapshot {
+            return investigationSnapshotDocument(owner.tab, blockID: block.id)
+        }
+        return owner.tab
+    }
+
+    func isInvestigationSQLDocument(_ document: SQLDocument) -> Bool {
+        guard let owner = ownedSQLContext(for: document) else { return false }
+        return owner.blockID != nil && owner.investigationID != nil && document.isSQLDocument
+    }
+
+    func investigationSnapshotDocument(_ parent: SQLDocument, blockID: UUID) -> SQLDocument? {
+        guard documents.contains(where: { $0 === parent }), let model = parent.investigationModel,
+              let block = model.blocks.first(where: { $0.id == blockID && $0.kind == .snapshot }),
+              let snapshotID = block.snapshotID else { return nil }
+        if let cached = investigationSnapshotDocuments[model.id]?[blockID], cached.snapshotID == snapshotID { return cached }
+        guard let snapshot = model.snapshotModel(for: blockID) else { return nil }
+        let document = SQLDocument(title: "Investigation Snapshot", text: "")
+        document.attachSnapshot(snapshot)
+        investigationSnapshotDocuments[model.id, default: [:]][blockID] = document
+        return document
+    }
+
+    func investigationSnapshotModel(parent: SQLDocument, blockID: UUID) -> ResultSnapshotDocumentModel? {
+        investigationSnapshotDocument(parent, blockID: blockID)?.snapshotModel
     }
 
     func activatePane(_ pane: WorkspacePaneID) {
@@ -492,6 +632,11 @@ final class ApplicationWorkspace: ObservableObject {
     func reopenClosedTab() -> SQLDocument? {
         guard canReopenClosedTab, let closed = closedTabs.popLast() else { return nil }
         var state = closed.state
+        if state.kind == .investigation, let id = state.investigationID,
+           let existing = documents.first(where: { $0.investigationID == id }) {
+            selectedDocumentID = existing.id
+            return existing
+        }
         // Callbacks belonging to the old document must not acquire a new tab
         // with the same identity while this application is still running.
         state.id = UUID()
@@ -524,7 +669,7 @@ final class ApplicationWorkspace: ObservableObject {
         await restoreSavedWorkspace()
         isStarting = true
         defer { isStarting = false }
-        if startupConnection == nil, !documents.isEmpty, documents.allSatisfy(\.isSnapshot) {
+        if startupConnection == nil, !documents.isEmpty, documents.allSatisfy({ $0.isSnapshot || $0.isInvestigation }) {
             await library.loadConnections()
             return
         }
@@ -547,6 +692,104 @@ final class ApplicationWorkspace: ObservableObject {
         let document = SQLDocument(title: "SQL \(documents.count + 1)", text: initialText,
             profileID: selectedProfileID)
         return addDocument(document, in: pane)
+    }
+
+    @discardableResult
+    func newInvestigation(title: String = "Investigation") async -> SQLDocument? {
+        guard canManageWorkspace else { return nil }
+        let context = capturePaneSelection()
+        await investigations.restore()
+        guard canManageWorkspace, let model = investigations.create(title: title) else {
+            if let message = investigations.error { reportError(message) }
+            return nil
+        }
+        let parent = SQLDocument(title: model.title, text: "")
+        parent.attachInvestigation(model)
+        addDocument(parent, context: context)
+        if !(await investigations.saveInvestigation(model.id)), let message = investigations.error { reportError(message) }
+        return parent
+    }
+
+    @discardableResult
+    func openInvestigation(id: UUID) -> SQLDocument? {
+        guard canManageWorkspace else { return nil }
+        if let existing = documents.first(where: { $0.investigationID == id }) {
+            selectedDocumentID = existing.id
+            return existing
+        }
+        let stored = StoredSQLDocument(id: UUID(), title: "Investigation", text: "", kind: .investigation, investigationID: id)
+        return addDocument(restoredDocument(stored, knownProfiles: library.savedConnections.map(\.id)))
+    }
+
+    func canEditInvestigation(_ parent: SQLDocument) -> Bool {
+        guard parent.isInvestigation, parent.investigationModel?.isAvailable == true,
+              canStartOperation(parent) else { return false }
+        return parent.investigationModel?.allSQLDocuments.allSatisfy { child in
+            !closingDocuments.contains(child.id) && child.profileID.map { !disconnectingProfiles.contains($0) } != false
+        } == true
+    }
+
+    @discardableResult
+    func addInvestigationMarkdown(_ parent: SQLDocument, text: String = "") -> UUID? {
+        guard canEditInvestigation(parent) else { return nil }
+        return parent.investigationModel?.addMarkdown(text: text)
+    }
+
+    @discardableResult
+    func addInvestigationSQL(_ parent: SQLDocument, text: String = "SELECT 1;", profileID: UUID? = nil) -> UUID? {
+        guard canEditInvestigation(parent) else { return nil }
+        return parent.investigationModel?.addSQL(text: text, profileID: profileID)
+    }
+
+    @discardableResult
+    func addInvestigationSnapshot(_ parent: SQLDocument, snapshotID: UUID, explanation: String = "") -> UUID? {
+        guard canEditInvestigation(parent) else { return nil }
+        return parent.investigationModel?.addSnapshot(id: snapshotID, explanation: explanation)
+    }
+
+    func canBindInvestigationProfile(_ child: SQLDocument) -> Bool {
+        guard isInvestigationSQLDocument(child), let owner = ownedSQLContext(for: child), canEditInvestigation(owner.tab),
+              !child.isRunning, !child.isNavigatingTable, child.runtime?.sessionId == nil,
+              child.runtime?.isConnecting != true, child.runtime?.queryFailure?.outcomeUnknown != true,
+              child.grid?.isApplying != true, child.grid?.isPreviewing != true,
+              child.grid?.isReloading != true, child.grid?.outcomeUnknown != true else { return false }
+        return true
+    }
+
+    @discardableResult
+    func bindInvestigationProfile(_ child: SQLDocument, profileID: UUID?) -> Bool {
+        guard canBindInvestigationProfile(child), let owner = ownedSQLContext(for: child), let blockID = owner.blockID,
+              profileID == nil || library.savedConnections.contains(where: { $0.id == profileID }) else { return false }
+        owner.tab.investigationModel?.setProfileID(profileID, for: blockID)
+        return child.profileID == profileID
+    }
+
+    @discardableResult
+    func saveInvestigation(_ document: SQLDocument) async -> Bool {
+        guard let owner = ownedSQLContext(for: document), owner.tab.isInvestigation,
+              canStartOperation(owner.tab), commitNativeEditors(in: [owner.tab] + runtimeDocuments(in: owner.tab)) else { return false }
+        return await saveInvestigationContent(owner.tab)
+    }
+
+    private func saveInvestigationContent(_ parent: SQLDocument) async -> Bool {
+        guard let model = parent.investigationModel, model.isAvailable else {
+            reportError(parent.investigationModel?.unavailableReason ?? "This investigation is unavailable. Its saved content has been preserved.")
+            return false
+        }
+        let saved = await investigations.saveInvestigation(model.id)
+        if !saved { reportError(investigations.error ?? model.error ?? "The investigation could not be saved. Its draft remains open.") }
+        return saved
+    }
+
+    private func runtimeDocuments(in tab: SQLDocument) -> [SQLDocument] {
+        if let model = tab.investigationModel { return model.allSQLDocuments }
+        return tab.isInvestigation || tab.isSnapshot ? [] : [tab]
+    }
+
+    private func commitNativeEditors(in affected: [SQLDocument]) -> Bool {
+        if let window = presentationWindow, !window.makeFirstResponder(nil) { return false }
+        for document in affected { document.grid?.commitEditing?() }
+        return true
     }
 
     @discardableResult
@@ -666,31 +909,42 @@ final class ApplicationWorkspace: ObservableObject {
     @discardableResult func disconnectProfile(_ id: UUID) async -> Bool {
         // A profile's working and service sessions close together. Other
         // profiles keep their connections and in-flight queries.
-        guard !isClosing, !documents.contains(where: { $0.profileID == id && (closingDocuments.contains($0.id) || $0.isNavigatingTable) }),
+        guard !isClosing, !allOwnedRuntimeDocuments.contains(where: {
+            $0.profileID == id && (closingDocuments.contains($0.id) ||
+                ownedSQLContext(for: $0).map { closingDocuments.contains($0.tab.id) } == true || $0.isNavigatingTable)
+        }),
               disconnectingProfiles.insert(id).inserted else { return false }
-        let grids = documents.filter { $0.profileID == id }.compactMap(\.grid)
-        for grid in grids { grid.commitEditing?() }
+        let affected = allOwnedRuntimeDocuments.filter { $0.profileID == id }
+        guard commitNativeEditors(in: affected) else { disconnectingProfiles.remove(id); return false }
+        let grids = affected.compactMap(\.grid)
         for grid in grids { grid.isClosing = true }
         defer {
             disconnectingProfiles.remove(id)
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.profile(id)) else { return false }
-        if clusterInspection?.profileID == id { clusterInspection = nil }
-        completionLoads.removeValue(forKey: id)?.task.cancel()
         if let connecting = profileConnections[id] {
             services[id]?.cancelConnection()
             connecting.cancel()
             await connecting.value
         }
-        let sessions = documents.filter { $0.profileID == id }.compactMap(\.runtime)
-        for session in sessions { await session.shutdown() }
+        guard await disconnectRuntimeDocuments(affected) else { return false }
+        if let service = services[id], service.sessionId != nil {
+            await service.disconnect()
+            guard service.sessionId == nil else {
+                reportError(service.errorMessage ?? "The profile's service session could not be closed. Try disconnecting again.")
+                return false
+            }
+        }
+        for document in affected { await document.runtime?.shutdown() }
         if let service = services.removeValue(forKey: id) { await service.shutdown() }
+        if clusterInspection?.profileID == id { clusterInspection = nil }
+        completionLoads.removeValue(forKey: id)?.task.cancel()
         observations[id] = nil
         catalogRoots[id] = nil
         completionCatalog.remove(profileID: id)
         catalogErrors[id] = nil
-        for document in documents where document.profileID == id {
+        for document in affected {
             document.runtime = nil
             document.attachGrid(nil)
         }
@@ -698,36 +952,116 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func closeDocument(_ document: SQLDocument) async {
-        guard canStartOperation(document), closingDocuments.insert(document.id).inserted else { return }
-        let grid = document.grid
-        grid?.commitEditing?()
-        grid?.isClosing = true
+        guard let owner = ownedSQLContext(for: document), canStartOperation(owner.tab) else { return }
+        let parent = owner.tab
+        let affected = runtimeDocuments(in: parent)
+        let ids = Set(([parent] + affected).map(\.id))
+        guard closingDocuments.isDisjoint(with: ids) else { return }
+        closingDocuments.formUnion(ids)
+        let grids = affected.compactMap(\.grid)
+        guard commitNativeEditors(in: [parent] + affected) else { closingDocuments.subtract(ids); return }
+        for grid in grids { grid.isClosing = true }
         defer {
-            closingDocuments.remove(document.id)
-            grid?.isClosing = false
+            closingDocuments.subtract(ids)
+            for grid in grids { grid.isClosing = false }
         }
-        guard await prepareToClose(.document(document.id)) else { return }
-        if let runtime = document.runtime, runtime.sessionId != nil {
-            // A rejected disconnect leaves the original tab and its session
-            // available for retry instead of publishing a successful close.
-            await runtime.disconnect()
-            guard runtime.sessionId == nil else {
-                document.localError = runtime.errorMessage ?? "The tab's session could not be closed. Try closing the tab again."
-                return
-            }
+        guard await prepareToClose(.document(parent.id)) else { return }
+        if parent.investigationModel?.isAvailable == true {
+            guard await saveInvestigationContent(parent) else { return }
         }
-        await closeDocumentImmediately(document, remember: true)
+        guard await disconnectRuntimeDocuments(affected) else { return }
+        await closeDocumentImmediately(parent, remember: true)
     }
 
     func canStartOperation(_ document: SQLDocument, forClosing: Bool = false, forNavigating: Bool = false) -> Bool {
-        guard shutdownTask == nil, documents.contains(where: { $0 === document }) else { return false }
-        return forClosing || (!isClosing && (!document.isNavigatingTable || forNavigating) && !closingDocuments.contains(document.id) &&
-            document.profileID.map { !disconnectingProfiles.contains($0) } != false)
+        guard shutdownTask == nil, let owner = ownedSQLContext(for: document) else { return false }
+        if forClosing { return true }
+        if document === owner.tab, let model = owner.tab.investigationModel,
+           model.allSQLDocuments.contains(where: {
+               closingDocuments.contains($0.id) || $0.profileID.map { disconnectingProfiles.contains($0) } == true
+           }) { return false }
+        return !isClosing && (!document.isNavigatingTable || forNavigating) &&
+            !closingDocuments.contains(owner.tab.id) && !closingDocuments.contains(document.id) &&
+            document.profileID.map { !disconnectingProfiles.contains($0) } != false
     }
 
-    private func closeDocumentImmediately(_ document: SQLDocument, remember: Bool = false) async {
-        if let runtime = document.runtime { await runtime.shutdown() }
-        guard shutdownTask == nil, let index = documents.firstIndex(where: { $0 === document }) else { return }
+    private func disconnectRuntimeDocuments(_ affected: [SQLDocument]) async -> Bool {
+        for document in affected {
+            guard ownedSQLContext(for: document) != nil else { return false }
+            if let runtime = document.runtime, runtime.sessionId != nil {
+                await runtime.disconnect()
+                guard runtime.sessionId == nil else {
+                    document.localError = runtime.errorMessage ?? "The session could not be closed. Try closing it again."
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    @discardableResult
+    func deleteInvestigationBlock(_ parent: SQLDocument, blockID: UUID) async -> Bool {
+        guard canEditInvestigation(parent), let model = parent.investigationModel,
+              model.blocks.contains(where: { $0.id == blockID }) else { return false }
+        let child = model.sqlDocument(for: blockID)
+        let affected = child.map { [$0] } ?? []
+        let ids = Set(([parent] + affected).map(\.id))
+        guard closingDocuments.isDisjoint(with: ids) else { return false }
+        closingDocuments.formUnion(ids)
+        let grid = child?.grid
+        guard commitNativeEditors(in: [parent] + affected) else { closingDocuments.subtract(ids); return false }
+        grid?.isClosing = true
+        defer { closingDocuments.subtract(ids); grid?.isClosing = false }
+        guard await prepareToClose(affected), await disconnectRuntimeDocuments(affected) else { return false }
+        grid?.isClosing = false
+        guard await investigations.saveRemovingBlock(in: model.id, blockID: blockID) else {
+            reportError(investigations.error ?? model.error ?? "The block could not be removed. Its saved content and draft remain available.")
+            return false
+        }
+        if let child {
+            await child.runtime?.shutdown()
+            editorState.removeDocument(child.id)
+        }
+        if let snapshot = investigationSnapshotDocuments[model.id]?.removeValue(forKey: blockID) {
+            editorState.removeDocument(snapshot.id)
+        }
+        return true
+    }
+
+    @discardableResult
+    func disconnectInvestigationBlock(_ child: SQLDocument) async -> Bool {
+        guard isInvestigationSQLDocument(child), canStartOperation(child),
+              let owner = ownedSQLContext(for: child) else { return false }
+        let ids: Set<UUID> = [owner.tab.id, child.id]
+        guard closingDocuments.isDisjoint(with: ids) else { return false }
+        closingDocuments.formUnion(ids)
+        let grid = child.grid
+        guard commitNativeEditors(in: [owner.tab, child]) else { closingDocuments.subtract(ids); return false }
+        grid?.isClosing = true
+        defer { closingDocuments.subtract(ids); grid?.isClosing = false }
+        guard await prepareToClose([child]), await disconnectRuntimeDocuments([child]) else { return false }
+        await child.runtime?.shutdown()
+        child.runtime = nil
+        child.attachGrid(nil)
+        return true
+    }
+
+    @discardableResult
+    private func closeDocumentImmediately(_ document: SQLDocument, remember: Bool = false) async -> Bool {
+        let runtimeDocuments = runtimeDocuments(in: document)
+        for child in runtimeDocuments {
+            await child.runtime?.shutdown()
+            child.runtime = nil
+            child.attachGrid(nil)
+        }
+        if let model = document.investigationModel, model.isAvailable {
+            if model.isDirty { guard await saveInvestigationContent(document) else { return false } }
+            guard investigations.releaseDocument(model.id) else {
+                reportError("The investigation changed while closing. Save it and try closing again.")
+                return false
+            }
+        }
+        guard shutdownTask == nil, let index = documents.firstIndex(where: { $0 === document }) else { return false }
         let pane = self.pane(containing: document.id) ?? .left
         let paneIndex = paneLayout[pane].documentIDs.firstIndex(of: document.id) ?? 0
         let closed = remember ? ClosedWorkspaceTab(state: document.storedState, originalIndex: index,
@@ -739,15 +1073,22 @@ final class ApplicationWorkspace: ObservableObject {
         pruneFileDocuments()
         documentObservations[document.id] = nil
         editorState.removeDocument(document.id)
+        for child in runtimeDocuments { editorState.removeDocument(child.id) }
+        if let id = document.investigationID {
+            if let snapshots = investigationSnapshotDocuments.removeValue(forKey: id) {
+                for child in snapshots.values { editorState.removeDocument(child.id) }
+            }
+        }
         if let closed {
             closedTabs.append(closed)
             if closedTabs.count > 20 { closedTabs.removeFirst(closedTabs.count - 20) }
         }
         scheduleSave()
+        return true
     }
 
     func run(_ document: SQLDocument, sql: String? = nil) async {
-        guard canStartOperation(document), !document.isSnapshot else { return }
+        guard canStartOperation(document), !document.isSnapshot, !document.isInvestigation else { return }
         if document.table != nil {
             document.grid?.commitEditing?()
             guard !isClosing, document.grid?.isApplying != true else { return }
@@ -802,7 +1143,7 @@ final class ApplicationWorkspace: ObservableObject {
     private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
                          isScript: Bool = false, sourceSQL: String? = nil, forNavigating: Bool = false) async {
         guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning else { return }
-        guard !document.isSnapshot else { return }
+        guard !document.isSnapshot, !document.isInvestigation else { return }
         if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
         guard let profileID = document.profileID else { return }
         guard document.table != nil || !statements.isEmpty else { return }
@@ -836,7 +1177,9 @@ final class ApplicationWorkspace: ObservableObject {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
             }
             if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
-            guard documents.contains(where: { $0.id == document.id }), !document.stopRequested,
+            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested,
+                  document.profileID == profileID, SQLFileDocument.sameBytes(document.text, boundText),
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile,
                   services[profileID]?.connectionState == .connected else { return }
             guard hasSQLLibraryExecutionBinding(document, libraryBinding) else {
                 throw ExecutionPolicyError(message: "The SQL library scope changed while connecting. Review the file and connection before running again.")
@@ -848,7 +1191,8 @@ final class ApplicationWorkspace: ObservableObject {
                 await runtime.connectSavedConnection(profileID, sshSnapshot: services[profileID]?.ssh)
             }
             guard let runtime = document.runtime else { return }
-            guard !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText), document.profileID == profileID,
+            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested,
+                  SQLFileDocument.sameBytes(document.text, boundText), document.profileID == profileID,
                   hasSQLLibraryExecutionBinding(document, libraryBinding),
                   library.savedConnections.first(where: { $0.id == profileID }) == profile else {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed while connecting. Review it and run again.")
@@ -930,7 +1274,7 @@ final class ApplicationWorkspace: ObservableObject {
                     return
                 }
                 for (index, statement) in statements.enumerated() {
-                    guard !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText),
+                    guard canStartOperation(document), !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText),
                           document.profileID == profileID, runtime.sessionId == sessionID,
                           hasSQLLibraryExecutionBinding(document, libraryBinding),
                           library.savedConnections.first(where: { $0.id == profileID }) == profile else { break }
@@ -976,6 +1320,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func stop(_ document: SQLDocument) async {
+        guard ownedSQLContext(for: document) != nil else { return }
         if document.grid?.isApplying == true { await stopGridApply(document); return }
         document.stopRequested = true
         if document.runtime?.isConnecting == true { document.runtime?.cancelConnection() }
@@ -1071,37 +1416,59 @@ final class ApplicationWorkspace: ObservableObject {
 
     func clearRestoredDocuments() async {
         guard !isClosing, !isClearingDocuments, closingDocuments.isEmpty, disconnectingProfiles.isEmpty,
-              !documents.contains(where: \.isNavigatingTable) else { return }
+              !allOwnedRuntimeDocuments.contains(where: \.isNavigatingTable) else { return }
         isClearingDocuments = true
         defer { isClearingDocuments = false }
         let previousClosedIDs = Set(closedTabs.map(\.id))
         let affected = documents
-        let ids = Set(affected.map(\.id))
+        let runtimeDocuments = allOwnedRuntimeDocuments
+        let ids = Set((affected + runtimeDocuments).map(\.id))
         guard closingDocuments.isDisjoint(with: ids) else { return }
         closingDocuments.formUnion(ids)
-        let grids = affected.compactMap(\.grid)
-        for grid in grids { grid.commitEditing?() }
+        let grids = runtimeDocuments.compactMap(\.grid)
+        guard commitNativeEditors(in: affected + runtimeDocuments) else { closingDocuments.subtract(ids); return }
         for grid in grids { grid.isClosing = true }
         defer {
             closingDocuments.subtract(ids)
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.application) else { return }
-        for document in affected { await closeDocumentImmediately(document) }
+        guard await disconnectRuntimeDocuments(runtimeDocuments) else { return }
+        for document in affected { guard await closeDocumentImmediately(document) else { return } }
         if draftsLoaded { guard await persistDocuments() else { return } }
         closedTabs.removeAll { previousClosedIDs.contains($0.id) }
     }
 
     func prepareToClose(_ scope: WorkspaceCloseScope) async -> Bool {
-        guard !isClosing else { return false }
         let affected: [SQLDocument]
         switch scope {
-        case .document(let id): affected = documents.filter { $0.id == id }
-        case .profile(let id): affected = documents.filter { $0.profileID == id }
-        case .application: affected = documents
+        case .document(let id):
+            if let tab = documents.first(where: { $0.id == id }) { affected = runtimeDocuments(in: tab) }
+            else if let child = ownedDocument(forRuntimeID: id) { affected = [child] }
+            else { return false }
+        case .profile(let id): affected = allOwnedRuntimeDocuments.filter { $0.profileID == id }
+        case .application:
+            guard closingDocuments.isEmpty || isClearingDocuments else { return false }
+            affected = allOwnedRuntimeDocuments
         }
+        guard await prepareToClose(affected) else { return false }
+        if case .application = scope {
+            isClosing = true
+            defer { isClosing = false }
+            guard commitNativeEditors(in: documents + affected) else { return false }
+            if investigations.isLoaded, !(await investigations.flush()) {
+                reportError(investigations.error ?? "The investigations could not be saved. Their drafts remain open.")
+                return false
+            }
+            if draftsLoaded { guard await persistDocuments() else { return false } }
+        }
+        return true
+    }
+
+    private func prepareToClose(_ affected: [SQLDocument]) async -> Bool {
+        guard !isClosing else { return false }
         guard !affected.contains(where: \.isNavigatingTable) else { return false }
-        for document in affected { document.grid?.commitEditing?() }
+        guard commitNativeEditors(in: affected) else { return false }
         isClosing = true
         defer { isClosing = false }
         let gridLocks = affected.compactMap(\.grid).map { ($0, $0.isClosing) }
@@ -1127,6 +1494,11 @@ final class ApplicationWorkspace: ObservableObject {
                     return false
                 }
             }
+            guard ownedSQLContext(for: document) != nil else { return false }
+            if document.runtime?.queryFailure?.outcomeUnknown == true {
+                document.localError = "The SQL outcome is unknown. Review the database outcome before closing this session. The document remains open."
+                return false
+            }
             if let runtime = document.runtime, runtime.transactionStatus == .transaction || runtime.transactionStatus == .failedTransaction {
                 let decision = await closeDecision(.transaction(document.title, failed: runtime.transactionStatus == .failedTransaction))
                 guard decision == .commit || decision == .rollback else { return false }
@@ -1145,9 +1517,6 @@ final class ApplicationWorkspace: ObservableObject {
                 default: return false
                 }
             }
-        }
-        if case .application = scope, draftsLoaded {
-            guard await persistDocuments() else { return false }
         }
         return true
     }
@@ -1187,6 +1556,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func loadSavedWorkspace() async {
+        await investigations.restore()
         do {
             let saved = try await documentStore.load()
             let knownProfiles = try? await connectionStore.load().connections.map(\.id)
@@ -1209,7 +1579,12 @@ final class ApplicationWorkspace: ObservableObject {
             }) else { throw SQLDocumentStoreError.read }
             guard sqlLibrary.restore(mergedLibrary) else { throw SQLDocumentStoreError.read }
             let localIDs = Set(localDocuments.map(\.id))
-            let restored = saved.documents.filter { !localIDs.contains($0.id) }.map { stored in
+            var investigationIDs = Set(localDocuments.compactMap(\.investigationID))
+            let restored = saved.documents.filter { stored in
+                guard !localIDs.contains(stored.id) else { return false }
+                if let id = stored.investigationID { return investigationIDs.insert(id).inserted }
+                return true
+            }.map { stored in
                 restoredDocument(stored, knownProfiles: knownProfiles)
             }
             documents = restored + localDocuments
@@ -1217,7 +1592,8 @@ final class ApplicationWorkspace: ObservableObject {
             var layout = saved.paneLayout
             for pane in WorkspacePaneID.allCases {
                 var state = layout[pane]
-                state.documentIDs.removeAll { localIDs.contains($0) }
+                let restoredIDs = Set(restored.map(\.id))
+                state.documentIDs.removeAll { localIDs.contains($0) || !restoredIDs.contains($0) }
                 state.documentIDs += localLayout[pane].documentIDs
                 let localSelection = localLayout[pane].selectedDocumentID
                 if let localSelection, state.documentIDs.contains(localSelection) {
@@ -1240,6 +1616,23 @@ final class ApplicationWorkspace: ObservableObject {
 
     private func restoredDocument(_ stored: StoredSQLDocument, knownProfiles: [UUID]?) -> SQLDocument {
         let document = SQLDocument(restoring: stored)
+        if document.isInvestigation {
+            if let id = document.investigationID {
+                do { document.attachInvestigation(try investigations.openDocument(id: id)) }
+                catch {
+                    document.attachInvestigation(InvestigationDocumentModel(unavailableID: id, title: stored.title,
+                        reason: error.localizedDescription))
+                }
+                for child in document.investigationModel?.allSQLDocuments ?? [] {
+                    if child.profileID == nil {
+                        child.historyConnectionNotice = "This SQL block is unbound. Choose a connection before running it."
+                    } else if let knownProfiles, !knownProfiles.contains(child.profileID!) {
+                        child.historyConnectionNotice = "This SQL block's original connection is no longer available. Choose a connection before running it."
+                    }
+                }
+            }
+            return document
+        }
         if document.isSnapshot {
             if let snapshotID = document.snapshotID {
                 document.attachSnapshot(ResultSnapshotDocumentModel(id: snapshotID, store: resultSnapshots.store))
@@ -1268,7 +1661,10 @@ final class ApplicationWorkspace: ObservableObject {
         }
         documentObservations[document.id] = [
             document.$text.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
-            document.$title.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$title.dropFirst().sink { [weak self, weak document] title in
+                document?.updateInvestigationTitle(title)
+                self?.scheduleSave()
+            },
             document.$profileID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$table.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$page.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
@@ -1463,7 +1859,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func saveSQLFile(_ document: SQLDocument, chooseLocation: Bool = false) {
-        guard canStartOperation(document), document.isSQLDocument else { return }
+        guard canStartOperation(document), document.isSQLDocument, !isInvestigationSQLDocument(document) else { return }
         let file = boundFileDocument(document)
         guard file?.isSaving != true else { return }
         if !chooseLocation, let file, file.requiresSaveAs {
@@ -1501,7 +1897,7 @@ final class ApplicationWorkspace: ObservableObject {
     /// Headless entry point shared by Save As and the conflict copy action.
     /// Existing targets require the exact version shown in the comparison.
     func saveSQLFile(_ document: SQLDocument, to destination: URL, reviewedVersion: SQLFileVersion?) throws {
-        guard canStartOperation(document), document.isSQLDocument else {
+        guard canStartOperation(document), document.isSQLDocument, !isInvestigationSQLDocument(document) else {
             throw SQLFileDocumentFailure(message: "This SQL document is no longer available for saving.")
         }
         let location = destination.standardizedFileURL
@@ -1561,7 +1957,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func restoreFileDocument(_ document: SQLDocument) {
-        guard document.table == nil, let url = document.fileURL else { return }
+        guard document.isSQLDocument, !isInvestigationSQLDocument(document), let url = document.fileURL else { return }
         let state = document.storedState
         if let id = state.fileDocumentID, let existing = fileDocuments[id] {
             document.attachFileDocument(existing)
@@ -1611,7 +2007,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func runToFile(_ document: SQLDocument, format: String, fragment: SQLExecutionFragment? = nil) async {
-        guard document.isSQLDocument, !document.isRunning else { return }
+        guard canStartOperation(document), document.isSQLDocument, !document.isRunning else { return }
         if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
         let libraryBinding = sqlLibraryExecutionBinding(document)
         let boundText = document.text
@@ -1632,7 +2028,7 @@ final class ApplicationWorkspace: ObservableObject {
         panel.nameFieldStringValue = document.title + "." + format
         panel.message = "Run this SQL once and save all rows. The final file appears only after successful completion."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        guard SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
+        guard canStartOperation(document), SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
               hasSQLLibraryExecutionBinding(document, libraryBinding),
               library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
             document.localError = "The SQL or connection changed while choosing the export file. Review it and run again."
@@ -1640,7 +2036,7 @@ final class ApplicationWorkspace: ObservableObject {
         }
         do {
             let captured = try await Task.detached { try Self.captureExportDestination(destination) }.value
-            guard SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
+            guard canStartOperation(document), SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
                   hasSQLLibraryExecutionBinding(document, libraryBinding),
                   library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
                 document.localError = "The SQL or connection changed while capturing the export file. Review it and run again."
@@ -2376,9 +2772,10 @@ final class ApplicationWorkspace: ObservableObject {
         closedTabs.removeAll()
         let task = Task { @MainActor in
             await self.flushDocuments()
+            if self.investigations.isLoaded { _ = await self.investigations.flush() }
             for load in self.completionLoads.values { load.task.cancel() }
             for service in self.services.values { service.cancelConnection() }
-            for document in self.documents { document.runtime?.cancelConnection() }
+            for document in self.allOwnedRuntimeDocuments { document.runtime?.cancelConnection() }
             for task in self.profileConnections.values { task.cancel() }
             await self.editorState.languageService.shutdown()
             if let start = self.helperStart { _ = try? await start.value }
@@ -2416,4 +2813,8 @@ final class ApplicationWorkspace: ObservableObject {
         if started { await library.start(sharedHelper: client) }
         return client
     }
+}
+
+private struct InvestigationReferenceError: LocalizedError {
+    var errorDescription: String? { "The investigation library is unavailable. Snapshot references could not be checked." }
 }
