@@ -361,6 +361,14 @@ struct SQLDocumentPane: View {
             .padding(.horizontal, 12)
             .frame(height: WorkspaceChrome.toolbarHeight)
             Divider()
+            if let notice = document.historyConnectionNotice {
+                Label(notice, systemImage: "info.circle")
+                    .font(.caption).appSecondaryText()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .accessibilityIdentifier("historyConnectionNotice")
+                Divider()
+            }
             if document.table == nil {
                 VSplitView {
                     SQLEditorView(text: $document.text, editorState: workspace.editorState, documentID: document.id,

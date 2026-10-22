@@ -14,8 +14,14 @@ final class SQLDocument: ObservableObject, Identifiable {
         didSet { if text != oldValue { clearExecutionSuccess() } }
     }
     @Published var profileID: UUID? {
-        didSet { if profileID != oldValue { clearExecutionSuccess() } }
+        didSet {
+            if profileID != oldValue {
+                clearExecutionSuccess()
+                if profileID != nil { historyConnectionNotice = nil }
+            }
+        }
     }
+    @Published var historyConnectionNotice: String?
     @Published private(set) var successfulExecutionRanges: [NSRange] = []
     private(set) var executionRevision: UInt64 = 0
     @Published var runtime: WorkspaceModel?
@@ -195,6 +201,22 @@ final class ApplicationWorkspace: ObservableObject {
         let initialText = text ?? (engine == .cassandra ? "SELECT cluster_name, release_version, data_center FROM system.local;" : "SELECT 1;")
         let document = SQLDocument(title: "SQL \(documents.count + 1)", text: initialText,
             profileID: selectedProfileID)
+        return addDocument(document)
+    }
+
+    @discardableResult
+    func openHistoryEntry(_ entry: SQLHistoryEntry) -> SQLDocument {
+        let profileID = entry.profileID.flatMap { id in library.savedConnections.contains { $0.id == id } ? id : nil }
+        let document = SQLDocument(title: "SQL \(documents.count + 1)", text: entry.sql, profileID: profileID)
+        if profileID == nil {
+            document.historyConnectionNotice = entry.profileID == nil
+                ? "This history entry has no saved connection. Choose a connection above before running this SQL."
+                : "The original connection is no longer available. Choose a connection above before running this SQL."
+        }
+        return addDocument(document)
+    }
+
+    private func addDocument(_ document: SQLDocument) -> SQLDocument {
         documents.append(document)
         observeDocument(document)
         selectedDocumentID = document.id

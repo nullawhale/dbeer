@@ -35,6 +35,16 @@ the profile name, engine, endpoint, database or keyspace, user and execution pol
 from the time the statement started, even after the profile is renamed or deleted.
 Credentials, SSH settings, certificate paths and result values are excluded.
 
+Search matches fragments anywhere in the complete SQL text, including long
+statements and Unicode. By default it searches all connections. Combine the
+search with connection, period and outcome filters; custom dates include both
+selected calendar days, using the execution's finish date. Older entries with
+unavailable outcome details are included under **Unknown / unavailable**.
+
+**Open in SQL Tab** creates a new disconnected draft with the original SQL and
+never executes it. If its connection has been deleted or is unavailable, choose
+a connection in the new tab before running the SQL.
+
 History storage advances to v2. Existing v0/v1 files receive exact backups before
 migration; older entries retain their original outcome text and show unavailable
 execution details rather than inferred values. These working-branch changes are

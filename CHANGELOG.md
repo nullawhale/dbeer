@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- SQL history searches the complete SQL text and combines connection, date and
+  outcome filters. Searches run in the background and cancel obsolete requests.
+  Opening an entry creates a disconnected SQL tab; entries whose original
+  connection was deleted require choosing a connection before execution.
 - Native SQL history records start and finish times, duration, typed execution
   outcomes, separate loaded/affected/exported row counts, truncation and partial
   counts, SQLSTATE and safe error descriptions. Each executed script statement
