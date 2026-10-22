@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- SQL Files attaches existing folders with a lazy `.sql` tree and background
+  name/content search. Symlinks, Git metadata and build/dependency directories
+  are excluded; incomplete scans are reported. Folder attachments persist.
+- Multiple views of one SQL file share exact UTF-8 text while retaining
+  independent selections, connection bindings, sessions and transactions.
+  Existing BOM and line endings are preserved. Save As rebinds only its view.
+- File observation handles external edits, rename/delete and atomic checkout.
+  Clean buffers adopt disk changes; dirty buffers retain both versions for
+  comparison, accepting the external version, keeping a local copy or explicitly
+  replacing the reviewed version. Deleted files retain editable drafts.
+- SQL saves check disk identity and contents immediately before publication,
+  refuse stale or newly appeared destinations, and preserve displaced external
+  versions when race recovery cannot restore them. Recovery references remain
+  available across workspace restoration and open as separate drafts.
+- Workspace v5 persists folder attachments and shared file identities, with an
+  exact private v4 migration backup. Legacy differing drafts for one file remain
+  independent Save As recovery copies. Restoration stays disconnected.
 - Table/view tabs have independent view identities and sessions. Open Data
   selects an existing view without resetting its context; Open in New Tab opens
   a clean view from the catalog or a table tab's context menu.
@@ -19,14 +36,14 @@
   transactions, results, cursors and pending edits remain closed. Cancelled or
   rejected closes are excluded. The list exists only in memory until application
   exit or a successful Clear Drafts action.
-- Workspace v4 restores mixed SQL and table/view tabs, their order and selection,
+- Workspace restores mixed SQL and table/view tabs, their order and selection,
   SQL text, connection bindings, table references, pages, server filters, sorting
   and SQL file bindings. Recovered tables show saved context with explicit Load
-  Data; restoration does not connect, execute SQL, reload files or resume edits.
+  Data; restoration does not connect, execute SQL or resume database edits.
   PostgreSQL/MySQL retain their saved page; Cassandra loads from its first page.
-- Recovered file bindings retain the last accepted content fingerprint. Save
-  refuses changed or unavailable bound files; unknown fingerprints require Save
-  As. Drafts and bindings survive cancelled or failed saves. Exact private
+- Recovered file bindings retain the last accepted content fingerprint. Unknown
+  fingerprints require Save As. Drafts and bindings survive cancelled or failed
+  saves. Exact private
   v0/v1/v2/v3 workspace backups precede migration; history favorites and retention
   settings are preserved, and malformed or future workspace files stay unchanged.
 - Native result selections copy as TSV, CSV, JSON, Markdown or SQL INSERT through

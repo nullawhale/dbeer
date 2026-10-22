@@ -66,7 +66,7 @@ enum SQLScriptParser {
     }
 
     private static func isWhitespace(_ unit: UInt16) -> Bool {
-        unit == 32 || (9...13).contains(unit) || unit == 0xA0
+        unit == 32 || (9...13).contains(unit) || unit == 0xA0 || unit == 0xFEFF
     }
 
     private final class Scanner {

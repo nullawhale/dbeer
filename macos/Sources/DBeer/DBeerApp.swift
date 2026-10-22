@@ -76,15 +76,19 @@ private struct WorkspaceCommands: Commands {
             Button("New SQL Tab") { workspace.newDocument() }.keyboardShortcut("t", modifiers: .command)
             commandItem(.reopenClosedTab)
             Button("Open SQL…") { workspace.openSQLFile() }.keyboardShortcut("o", modifiers: .command)
+            Button("Attach SQL Folder…") { workspace.attachSQLFolder() }
+            Button("Check SQL Files for Changes") { Task { await workspace.reconcileSQLFiles() } }
         }
         CommandGroup(replacing: .saveItem) {
             Button("Save SQL") { if let document = workspace.selectedDocument { workspace.saveSQLFile(document) } }
                 .keyboardShortcut("s", modifiers: .command)
-                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil)
+                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil ||
+                    workspace.selectedDocument?.fileDocument?.isSaving == true)
             Button("Save SQL As…") {
                 if let document = workspace.selectedDocument { workspace.saveSQLFile(document, chooseLocation: true) }
             }.keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil)
+                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil ||
+                    workspace.selectedDocument?.fileDocument?.isSaving == true)
         }
         CommandGroup(after: .textEditing) {
             Button("Find in Connections") { focusCatalogSearch?() }

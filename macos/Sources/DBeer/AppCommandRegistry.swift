@@ -165,7 +165,7 @@ struct AppCommandInvocation {
             // Tab switches after the click do not retarget the operation.
             guard workspace.documents.contains(where: { $0 === document }) else { return }
             if command == .stop { await workspace.stop(document); return }
-            guard document.text == invocation.documentText,
+            guard SQLFileDocument.sameBytes(document.text, invocation.documentText),
                   document.profileID == invocation.profile?.id,
                   workspace.library.savedConnections.first(where: { $0.id == document.profileID }) == invocation.profile else { return }
             if let handler { await handler(document) }

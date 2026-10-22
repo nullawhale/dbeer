@@ -137,6 +137,15 @@ struct ApplicationWorkspaceView: View {
     }
 
     private var sidebar: some View {
+        VSplitView {
+            connectionsSidebar.frame(minHeight: 180)
+            SQLFilesSidebarView(workspace: workspace).frame(minHeight: 180)
+        }
+        .frame(minWidth: 210, idealWidth: 260, maxWidth: 340)
+        .background(AppPalette.isCustom ? AppPalette.sidebar : AppPalette.background)
+    }
+
+    private var connectionsSidebar: some View {
         VStack(spacing: 0) {
             HStack {
                 Text("Connections").font(.headline)
@@ -214,7 +223,10 @@ struct ApplicationWorkspaceView: View {
                         DocumentTab(document: document, isSelected: workspace.selectedDocumentID == document.id,
                             select: { workspace.selectedDocumentID = document.id },
                             close: { Task { await workspace.closeDocument(document) } },
-                            openInNewTab: { Task { await workspace.openTableInNewTab(document) } })
+                            openInNewTab: {
+                                if document.table != nil { Task { await workspace.openTableInNewTab(document) } }
+                                else { workspace.openSQLFileInNewTab(document) }
+                            })
                     }
                 }
             }
@@ -241,6 +253,12 @@ struct DocumentTab: View {
         ZStack(alignment: .trailing) {
             Button(action: select) {
                 HStack(spacing: 6) {
+                    if document.fileDocument?.isDirty == true {
+                        Image(systemName: "circle.fill").font(.system(size: 5)).accessibilityHidden(true)
+                    }
+                    if document.fileDocument?.conflict != nil || document.fileDocument?.isMissing == true {
+                        Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange).accessibilityHidden(true)
+                    }
                     Text(document.title).lineLimit(1)
                     if document.isRunning || document.isNavigatingTable || document.grid?.isApplying == true {
                         ProgressView().controlSize(.mini)
@@ -269,7 +287,7 @@ struct DocumentTab: View {
         .background(isSelected ? AppPalette.accent.opacity(0.12) : Color.clear,
             in: RoundedRectangle(cornerRadius: ControlHoverAppearance.cornerRadius))
         .contextMenu {
-            if document.table != nil, let openInNewTab {
+            if document.table != nil || document.fileURL != nil, let openInNewTab {
                 Button("Open in New Tab", action: openInNewTab)
                     .disabled(document.isNavigatingTable)
             }
@@ -399,7 +417,10 @@ struct SQLDocumentPane: View {
                     .accessibilityIdentifier("historyConnectionNotice")
                 Divider()
             }
-            if document.table == nil, let fileURL = document.fileURL {
+            if document.table == nil, let file = document.fileDocument {
+                SQLFileStatusView(document: document, workspace: workspace, file: file)
+                Divider()
+            } else if document.table == nil, let fileURL = document.fileURL {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Image(systemName: "doc.text").accessibilityHidden(true)
@@ -419,9 +440,15 @@ struct SQLDocumentPane: View {
                 .accessibilityIdentifier("documentFileBinding")
                 Divider()
             }
+            if document.table == nil, document.fileDocument == nil, document.fileRecoveryURL != nil {
+                SQLFileRecoveryStatusView(document: document, workspace: workspace)
+                    .font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+                Divider()
+            }
             if document.table == nil {
                 VSplitView {
-                    SQLEditorView(text: $document.text, editorState: workspace.editorState, documentID: document.id,
+                    SQLEditorView(text: $document.text, isEditable: document.fileDocument?.isSaving != true,
+                        editorState: workspace.editorState, documentID: document.id,
                         engine: workspace.library.savedConnections.first { $0.id == document.profileID }?.engine ?? .postgresql,
                         selectionChanged: { document.selection = $0 },
                         onCommandEvent: { event, selection in

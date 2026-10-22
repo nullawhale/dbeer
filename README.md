@@ -36,14 +36,15 @@ grid changes are excluded. A recovered tab cannot resume an old Apply or repeat
 SQL automatically. Text and browsing changes autosave without fetching table data.
 
 SQL file bindings retain the last accepted file-content fingerprint and the draft
-text independently. Restoration does not reload the file. Ordinary Save checks
-its current contents before replacing it; a changed, missing or unreadable bound
-file leaves the recovered draft open for **Save As**. Bindings without a known
-fingerprint require the Save As chooser. Cancelling or failing a save preserves
-the current draft and binding.
+text independently. Local file observation resumes after restoration; clean
+buffers adopt external changes, while changed drafts retain both versions for
+review. Missing or unreadable files keep their editable drafts. Bindings without
+a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage advances to v4, with exact private backups before migrating
-v0/v1/v2/v3. Existing history, favorites and retention preferences are preserved.
+Workspace storage advances to v5, with exact private backups before migrating
+v0/v1/v2/v3/v4. Folder attachments and shared file identities are saved alongside
+the views; each view retains its own connection binding. Existing history,
+favorites and retention preferences are preserved.
 Unknown document kinds, malformed state and future workspace versions are left
 unchanged. These changes require rebuilding the native app and are not part of
 the existing build 8 archive.
@@ -56,11 +57,40 @@ and selects each reopened tab. Cancelled or rejected closes are excluded.
 
 Reopened tabs have fresh document identities and no session, transaction, result,
 cursor or pending edits. Their SQL, connection reference, file binding and table
-browsing settings are restored without reconnecting, executing SQL or reloading
-files. Run or Load Data opens a new session explicitly. Missing connections
+browsing settings are restored without reconnecting or executing SQL. Reopening
+a view of an already open file uses its current shared buffer. Run or Load Data
+opens a new session explicitly. Missing connections
 require choosing a replacement. Rebind or clear the shortcut in **Settings →
 Shortcuts**. The closed-tab list is cleared on application exit and by a successful
 **Clear Drafts** action; it is never written to workspace storage.
+
+## SQL folders and files in the working branch
+
+**Attach Folder…** in the SQL Folders sidebar adds an existing local folder.
+Directories load as expanded and show `.sql` files; search matches names,
+contents or both without opening database sessions. Search skips symlinks,
+`.git`, build products and dependency directories, with explicit notices when
+scan limits or unreadable files make results incomplete. Up to 32 folders can
+be attached, and detaching a folder keeps its open files.
+
+Opening the same path selects its existing view. **Open in New Tab** creates a
+view of the same editable text with its own selection, connection and SQL
+session. Edits synchronize across these views. Files preserve exact UTF-8 bytes,
+including an existing BOM and line endings. Separate hard-link paths remain
+separate file bindings because an atomic save can make their contents diverge.
+
+DBeer observes edits, renames, deletion and atomic replacements such as Git
+checkout. A clean buffer follows the disk version. A dirty buffer keeps the
+local text and external version for **Compare Versions…**. Choose **Use External
+Version**, explicitly **Replace External Version**, or **Keep Local Copy…** to
+save the current view to another path. Other views keep their original binding
+when one view uses Save As. A deleted file leaves an editable draft for Save As.
+
+Every save checks the current disk version immediately before publication.
+Replacement requires the exact version reviewed; a changed or newly appeared
+destination stops the save. A failed race recovery reports any preserved
+external file and offers to open its bytes as a separate draft. These references
+survive workspace restoration. Cancelling or failing a save keeps the draft.
 
 ## Independent table views in the working branch
 
@@ -158,7 +188,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v4. Existing v0/v1/v2/v3 files
+History uses versioned workspace storage, currently v5. Existing v0/v1/v2/v3/v4 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.

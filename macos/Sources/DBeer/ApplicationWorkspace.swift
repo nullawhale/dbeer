@@ -11,7 +11,14 @@ final class SQLDocument: ObservableObject, Identifiable {
     let id: UUID
     @Published var title: String
     @Published var text: String {
-        didSet { if text != oldValue { clearExecutionSuccess() } }
+        didSet {
+            if !SQLFileDocument.sameBytes(text, oldValue) {
+                clearExecutionSuccess()
+                if !isSynchronizingFile, let fileDocument, !SQLFileDocument.sameBytes(fileDocument.text, text) {
+                    fileDocument.text = text
+                }
+            }
+        }
     }
     @Published var profileID: UUID? {
         didSet {
@@ -43,6 +50,11 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var fileURL: URL?
     @Published var fileContentSHA256: String?
     @Published var restoredFileBinding = false
+    @Published var fileRecoveryURL: URL?
+    @Published private(set) var fileDocument: SQLFileDocument?
+    private var restoredFileDocumentID: UUID?
+    private var fileObservations: [AnyCancellable] = []
+    private var isSynchronizingFile = false
     var stopRequested = false
     @Published var table: TableReference?
     @Published var tableNeedsExplicitLoad = false
@@ -106,6 +118,8 @@ final class SQLDocument: ObservableObject, Identifiable {
         } else {
             fileURL = stored.fileURL
             fileContentSHA256 = stored.fileContentSHA256
+            restoredFileDocumentID = stored.fileDocumentID
+            fileRecoveryURL = stored.fileRecoveryURL
             restoredFileBinding = stored.fileURL != nil
         }
     }
@@ -117,7 +131,45 @@ final class SQLDocument: ObservableObject, Identifiable {
             kind: table == nil ? .sql : .table,
             table: table.map { StoredTableDocument(reference: $0, page: page, filters: tableFilters, sort: tableSort) },
             fileURL: table == nil ? fileURL : nil,
-            fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil)
+            fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil,
+            fileDocumentID: table == nil ? (fileDocument?.id ?? restoredFileDocumentID) : nil,
+            fileRecoveryURL: table == nil ? fileRecoveryURL : nil)
+    }
+
+    func attachFileDocument(_ file: SQLFileDocument) {
+        fileObservations = []
+        fileDocument = file
+        restoredFileDocumentID = file.id
+        synchronizeFileText(file.text)
+        fileURL = file.url
+        fileContentSHA256 = file.acceptedSHA256
+        restoredFileBinding = file.restoredBinding
+        fileRecoveryURL = file.recoveryURL
+        fileObservations = [
+            file.$text.dropFirst().sink { [weak self] in self?.synchronizeFileText($0) },
+            file.$url.dropFirst().sink { [weak self] url in
+                guard let self else { return }
+                let oldName = self.fileURL?.lastPathComponent
+                self.fileURL = url
+                if self.title == oldName { self.title = url.lastPathComponent }
+            },
+            file.$acceptedSHA256.dropFirst().sink { [weak self] in self?.fileContentSHA256 = $0 },
+            file.$restoredBinding.dropFirst().sink { [weak self] in self?.restoredFileBinding = $0 },
+            file.$recoveryURL.dropFirst().sink { [weak self] in self?.fileRecoveryURL = $0 },
+            file.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        ]
+    }
+
+    private func synchronizeFileText(_ value: String) {
+        guard !SQLFileDocument.sameBytes(text, value) else { return }
+        isSynchronizingFile = true
+        text = value
+        isSynchronizingFile = false
+    }
+
+    func detachFileDocument() {
+        fileObservations = []
+        fileDocument = nil
     }
 
     func resetTablePaging() {
@@ -145,7 +197,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         let range = statement.range
         guard revision == executionRevision, range.location >= 0, range.location <= source.length,
               range.length > 0, range.length <= source.length - range.location,
-              source.substring(with: range) == statement.sql else { return }
+              SQLFileDocument.sameBytes(source.substring(with: range), statement.sql) else { return }
         successfulExecutionRanges.append(range)
     }
 
@@ -195,6 +247,7 @@ final class ApplicationWorkspace: ObservableObject {
     let appearance: AppAppearance
     let commandShortcuts: AppShortcutStore
     let copySettings: ResultCopySettings
+    let sqlFolders: SQLFolderLibrary
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
@@ -224,6 +277,10 @@ final class ApplicationWorkspace: ObservableObject {
     private var started = false
     private var observations: [UUID: AnyCancellable] = [:]
     private var libraryObservation: AnyCancellable?
+    private var folderObservation: AnyCancellable?
+    private var folderSaveObservation: AnyCancellable?
+    private var fileDocuments: [UUID: SQLFileDocument] = [:]
+    private let automaticallyWatchFiles: Bool
     weak var presentationWindow: NSWindow?
     private var profileExportPanel: NSSavePanel?
 
@@ -234,6 +291,8 @@ final class ApplicationWorkspace: ObservableObject {
          copySettings: ResultCopySettings? = nil,
          editorThemes: EditorThemeStore? = nil,
          appearance: AppAppearance? = nil,
+         sqlFolders: SQLFolderLibrary? = nil,
+         automaticallyWatchFiles: Bool = true,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
          helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
@@ -243,6 +302,8 @@ final class ApplicationWorkspace: ObservableObject {
         self.documentStore = documentStore
         self.commandShortcuts = commandShortcuts ?? AppShortcutStore()
         self.copySettings = copySettings ?? .shared
+        self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
+        self.automaticallyWatchFiles = automaticallyWatchFiles
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
         self.editorThemes = themes
         self.appearance = appearance ?? AppAppearance(editorThemes: themes)
@@ -250,6 +311,8 @@ final class ApplicationWorkspace: ObservableObject {
         self.executionDecision = executionDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        folderObservation = self.sqlFolders.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
     }
 
     var selectedDocument: SQLDocument? { documents.first { $0.id == selectedDocumentID } }
@@ -416,6 +479,8 @@ final class ApplicationWorkspace: ObservableObject {
         guard shutdownTask == nil, let index = documents.firstIndex(where: { $0 === document }) else { return }
         let closed = remember ? ClosedWorkspaceTab(state: document.storedState, originalIndex: index) : nil
         documents.remove(at: index)
+        document.detachFileDocument()
+        pruneFileDocuments()
         documentObservations[document.id] = nil
         editorState.removeDocument(document.id)
         if selectedDocumentID == document.id { selectedDocumentID = documents.last?.id }
@@ -504,7 +569,7 @@ final class ApplicationWorkspace: ObservableObject {
             if export?.destination != nil, !(await client.supportsCapturedExport()) {
                 throw ExecutionPolicyError(message: "The helper does not support captured full export. SQL was not executed.")
             }
-            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested, document.text == boundText,
+            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText),
                   document.profileID == profileID,
                   library.savedConnections.first(where: { $0.id == profileID }) == profile else {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
@@ -519,7 +584,7 @@ final class ApplicationWorkspace: ObservableObject {
                 await runtime.connectSavedConnection(profileID, sshSnapshot: services[profileID]?.ssh)
             }
             guard let runtime = document.runtime else { return }
-            guard !document.stopRequested, document.text == boundText, document.profileID == profileID,
+            guard !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText), document.profileID == profileID,
                   library.savedConnections.first(where: { $0.id == profileID }) == profile else {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed while connecting. Review it and run again.")
             }
@@ -583,13 +648,13 @@ final class ApplicationWorkspace: ObservableObject {
                     document.profileID == profileID, document.runtime === runtime,
                     runtime.sessionId == sessionID, runtime.policy == profile.policy,
                     library.savedConnections.first(where: { $0.id == profileID }) == profile,
-                    document.text == boundText else {
+                    SQLFileDocument.sameBytes(document.text, boundText) else {
                     _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
                     for index in document.executions.indices { document.executions[index].status = "Not executed" }
                     return
                 }
                 for (index, statement) in statements.enumerated() {
-                    guard !document.stopRequested, document.text == boundText,
+                    guard !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText),
                           document.profileID == profileID, runtime.sessionId == sessionID,
                           library.savedConnections.first(where: { $0.id == profileID }) == profile else { break }
                     document.selectedExecution = index
@@ -813,7 +878,8 @@ final class ApplicationWorkspace: ObservableObject {
             ? selected?.provisionalPreviousSelection : selectedDocumentID
         return SQLWorkspaceSnapshot(documents: states,
             selectedDocumentID: requestedSelection.flatMap { knownIDs.contains($0) ? $0 : nil },
-            history: history, historyEnabled: historyEnabled, historySettings: historySettings)
+            history: history, historyEnabled: historyEnabled, historySettings: historySettings,
+            sqlFolders: sqlFolders.attachments)
     }
 
     /// Loads local workspace state without launching a helper, requesting
@@ -837,6 +903,12 @@ final class ApplicationWorkspace: ObservableObject {
             history = saved.history
             historySettings = saved.historySettings
             historyEnabled = saved.historyEnabled
+            // Folder restoration creates local tree roots only. Enumeration
+            // and file reconciliation run separately from database startup.
+            let attached = sqlFolders.attachments
+            guard sqlFolders.restore(saved.sqlFolders + attached.filter { local in
+                !saved.sqlFolders.contains { $0.id == local.id || $0.url == local.url }
+            }) else { throw SQLDocumentStoreError.read }
             let localIDs = Set(localDocuments.map(\.id))
             let restored = saved.documents.filter { !localIDs.contains($0.id) }.map { stored in
                 restoredDocument(stored, knownProfiles: knownProfiles)
@@ -847,12 +919,15 @@ final class ApplicationWorkspace: ObservableObject {
                 ?? saved.selectedDocumentID.flatMap { id in documents.contains { $0.id == id } ? id : nil }
                 ?? documents.first?.id
             draftsLoaded = true
-            if !localDocuments.isEmpty { scheduleSave() }
+            if !localDocuments.isEmpty || !attached.isEmpty || documents.map(\.storedState) != saved.documents {
+                scheduleSave()
+            }
         } catch { self.error = error.localizedDescription }
     }
 
     private func restoredDocument(_ stored: StoredSQLDocument, knownProfiles: [UUID]?) -> SQLDocument {
         let document = SQLDocument(restoring: stored)
+        restoreFileDocument(document)
         if document.profileID == nil {
             document.historyConnectionNotice = "This restored tab has no saved connection. Choose a connection before loading data or running SQL."
         } else if let knownProfiles, !knownProfiles.contains(document.profileID!) {
@@ -872,6 +947,7 @@ final class ApplicationWorkspace: ObservableObject {
             document.$tableSort.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileContentSHA256.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$fileRecoveryURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         ]
     }
@@ -882,42 +958,220 @@ final class ApplicationWorkspace: ObservableObject {
         panel.allowsMultipleSelection = true
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
-            do {
-                let loaded = try SQLFileBinding.read(url)
-                let document = newDocument(text: loaded.text)
-                document.title = url.lastPathComponent
-                document.fileURL = url
-                document.fileContentSHA256 = loaded.sha256
-                document.restoredFileBinding = false
-            } catch { self.error = "The SQL file could not be opened as UTF-8." }
+            Task { await openSQLFile(at: url) }
         }
     }
 
+    @discardableResult
+    func openSQLFile(at url: URL, inNewTab: Bool = false) async -> SQLDocument? {
+        guard shutdownTask == nil, !isClosing else { return nil }
+        let location = url.standardizedFileURL
+        do {
+            let file: SQLFileDocument
+            if let existing = fileDocument(at: location) { file = existing }
+            else {
+                let loaded = try await Task.detached { try SQLFileBinding.read(location) }.value
+                guard shutdownTask == nil, !isClosing else { return nil }
+                // Separate hard-link paths can diverge during an atomic save or
+                // checkout. Share views by their bound path, not a stale inode.
+                if let existing = fileDocument(at: location) { file = existing }
+                else {
+                    file = SQLFileDocument(url: location, text: loaded.text, acceptedSHA256: loaded.sha256, loaded: loaded)
+                    fileDocuments[file.id] = file
+                }
+            }
+            if !inNewTab, let existing = documents.first(where: { $0.fileDocument === file }) {
+                selectedDocumentID = existing.id
+                return existing
+            }
+            let document = newDocument(text: file.text)
+            document.title = file.url.lastPathComponent
+            document.attachFileDocument(file)
+            if automaticallyWatchFiles { file.startWatching() }
+            scheduleSave()
+            return document
+        } catch { self.error = error.localizedDescription; return nil }
+    }
+
+    @discardableResult
+    func openSQLFileInNewTab(_ source: SQLDocument) -> SQLDocument? {
+        guard canStartOperation(source), source.table == nil, let file = boundFileDocument(source) else { return nil }
+        let document = newDocument(profileID: source.profileID, text: file.text)
+        document.title = source.title
+        document.attachFileDocument(file)
+        scheduleSave()
+        return document
+    }
+
+    func attachSQLFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = false
+        panel.prompt = "Attach Folder"
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task {
+            for url in urls {
+                do { _ = try await sqlFolders.attach(url) }
+                catch { self.error = error.localizedDescription }
+            }
+        }
+    }
+
+    func reconcileSQLFiles() async {
+        for file in Array(fileDocuments.values) {
+            guard shutdownTask == nil else { return }
+            await file.reconcile()
+        }
+    }
+
+    func openPreservedSQLFileVersion(_ source: SQLDocument) async {
+        guard canStartOperation(source), let url = source.fileRecoveryURL else { return }
+        do {
+            let preserved = try await Task.detached { try SQLFileBinding.read(url) }.value
+            guard canStartOperation(source), source.fileRecoveryURL == url else { return }
+            let document = newDocument(profileID: source.profileID, text: preserved.text)
+            document.title = "Preserved " + (source.fileURL?.lastPathComponent ?? "SQL")
+            error = nil
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func resolveSQLFileConflict(_ document: SQLDocument, conflictID: UUID, decision: SQLFileConflictDecision,
+                                expectedText: String? = nil) async {
+        guard canStartOperation(document), let file = document.fileDocument else { return }
+        do {
+            try await file.resolve(conflictID: conflictID, decision: decision, expectedText: expectedText)
+            error = nil
+        }
+        catch { self.error = error.localizedDescription }
+    }
+
     func saveSQLFile(_ document: SQLDocument, chooseLocation: Bool = false) {
-        guard document.table == nil else { return }
-        var destination = document.fileURL
-        let needsUnverifiedBindingReview = destination != nil && document.fileContentSHA256 == nil
-        var reviewedDestination = false
-        if chooseLocation || destination == nil || needsUnverifiedBindingReview {
+        guard canStartOperation(document), document.table == nil else { return }
+        let file = boundFileDocument(document)
+        guard file?.isSaving != true else { return }
+        if !chooseLocation, let file, file.requiresSaveAs {
+            error = file.statusMessage
+            return
+        }
+        let capturedText = document.text
+        let capturedFileID = file?.id
+        do {
+            if !chooseLocation, let file, file.acceptedSHA256 != nil, !file.requiresSaveAs {
+                _ = try file.save()
+                document.title = file.url.lastPathComponent
+                error = nil
+                scheduleSave()
+                return
+            }
             let panel = NSSavePanel()
             panel.allowedContentTypes = [UTType(filenameExtension: "sql") ?? .plainText]
             panel.nameFieldStringValue = document.fileURL?.lastPathComponent ?? document.title + ".sql"
-            if needsUnverifiedBindingReview {
-                panel.message = "This restored file binding has no saved content fingerprint. Choose a destination and review any replacement before saving."
+            guard panel.runModal() == .OK, let destination = panel.url else { return }
+            var reviewed: SQLFileVersion?
+            if FileManager.default.fileExists(atPath: destination.path) {
+                let external = try SQLFileBinding.read(destination)
+                guard SQLFileReplacementConfirmation.present(localText: capturedText, external: external, url: destination) else { return }
+                reviewed = external.version
             }
-            guard panel.runModal() == .OK else { return }
-            destination = panel.url
-            reviewedDestination = true
-        }
-        guard let destination else { return }
-        do {
-            let sha256 = try SQLFileBinding.write(document.text, to: destination,
-                expectedSHA256: reviewedDestination ? nil : document.fileContentSHA256)
-            document.fileURL = destination
-            document.fileContentSHA256 = sha256
-            document.restoredFileBinding = false
-            document.title = destination.lastPathComponent
+            guard canStartOperation(document), document.fileDocument?.id == capturedFileID,
+                  SQLFileDocument.sameBytes(document.text, capturedText) else {
+                throw SQLFileDocumentFailure(message: "The local draft changed while choosing a destination. Review it and save again.")
+            }
+            try saveSQLFile(document, to: destination, reviewedVersion: reviewed)
         } catch { self.error = error.localizedDescription }
+    }
+
+    /// Headless entry point shared by Save As and the conflict copy action.
+    /// Existing targets require the exact version shown in the comparison.
+    func saveSQLFile(_ document: SQLDocument, to destination: URL, reviewedVersion: SQLFileVersion?) throws {
+        guard canStartOperation(document), document.table == nil else {
+            throw SQLFileDocumentFailure(message: "This SQL document is no longer available for saving.")
+        }
+        let location = destination.standardizedFileURL
+        let text = document.text
+        let original = document.fileDocument
+        let target = fileDocument(at: location)
+        guard original?.isSaving != true, target?.isSaving != true else {
+            throw SQLFileDocumentFailure(message: "A file involved in this save is already being saved.")
+        }
+        if let target, target !== original, !SQLFileDocument.sameBytes(target.text, text) {
+            throw SQLFileDocumentFailure(message: "The destination has a different open draft. Keep that draft and choose another file for this copy.")
+        }
+        if let target, let sourceRecovery = document.fileRecoveryURL, let targetRecovery = target.recoveryURL,
+           sourceRecovery != targetRecovery {
+            throw SQLFileDocumentFailure(message: "These views have different preserved external versions. Choose another destination to keep both recovery references.")
+        }
+        let saved: LoadedSQLFile
+        do { saved = try SQLFileBinding.write(text, to: location, expectedVersion: reviewedVersion) }
+        catch {
+            if let url = (error as? SQLFileBindingError)?.recoveryURL {
+                document.fileRecoveryURL = url
+                original?.recordFailure(error)
+                scheduleSave()
+            }
+            throw error
+        }
+        let file: SQLFileDocument
+        if let target {
+            file = target
+            file.retainRecovery(document.fileRecoveryURL)
+            file.acceptSaved(saved)
+        }
+        else {
+            file = SQLFileDocument(id: original == nil ? document.id : UUID(), url: location,
+                text: text, acceptedSHA256: saved.sha256, loaded: saved, recoveryURL: document.fileRecoveryURL)
+            fileDocuments[file.id] = file
+        }
+        document.attachFileDocument(file)
+        document.title = location.lastPathComponent
+        if automaticallyWatchFiles { file.startWatching() }
+        pruneFileDocuments()
+        scheduleSave()
+        error = nil
+    }
+
+    private func fileDocument(at url: URL) -> SQLFileDocument? {
+        fileDocuments.values.first { !$0.requiresSaveAs && $0.url == url.standardizedFileURL }
+    }
+
+    private func boundFileDocument(_ document: SQLDocument) -> SQLFileDocument? {
+        if let file = document.fileDocument { return file }
+        restoreFileDocument(document)
+        return document.fileDocument
+    }
+
+    private func restoreFileDocument(_ document: SQLDocument) {
+        guard document.table == nil, let url = document.fileURL else { return }
+        let state = document.storedState
+        if let id = state.fileDocumentID, let existing = fileDocuments[id] {
+            document.attachFileDocument(existing)
+            return
+        }
+        let existing = fileDocument(at: url)
+        if let existing, SQLFileDocument.sameBytes(existing.text, document.text),
+           existing.acceptedSHA256 == document.fileContentSHA256 {
+            document.attachFileDocument(existing)
+            return
+        }
+        // Earlier workspace versions could contain independent drafts bound to
+        // the same path. Keep every differing draft as a Save As recovery copy.
+        let file = SQLFileDocument(id: state.fileDocumentID ?? document.id, url: url, text: document.text,
+            acceptedSHA256: document.fileContentSHA256, restored: document.restoredFileBinding,
+            requiresSaveAs: existing != nil, recoveryURL: document.fileRecoveryURL)
+        fileDocuments[file.id] = file
+        document.attachFileDocument(file)
+        if automaticallyWatchFiles { file.startWatching() }
+    }
+
+    private func pruneFileDocuments() {
+        let used = Set(documents.compactMap { $0.fileDocument?.id })
+        for (id, file) in fileDocuments where !used.contains(id) {
+            file.stopWatching()
+            fileDocuments[id] = nil
+        }
     }
 
     func exportLoaded(_ result: ExportResultSet, title: String, format: String) {
@@ -959,14 +1213,14 @@ final class ApplicationWorkspace: ObservableObject {
         panel.nameFieldStringValue = document.title + "." + format
         panel.message = "Run this SQL once and save all rows. The final file appears only after successful completion."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        guard document.text == boundText, document.profileID == boundProfileID,
+        guard SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
               library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
             document.localError = "The SQL or connection changed while choosing the export file. Review it and run again."
             return
         }
         do {
             let captured = try await Task.detached { try Self.captureExportDestination(destination) }.value
-            guard document.text == boundText, document.profileID == boundProfileID,
+            guard SQLFileDocument.sameBytes(document.text, boundText), document.profileID == boundProfileID,
                   library.savedConnections.first(where: { $0.id == boundProfileID }) == boundProfile else {
                 document.localError = "The SQL or connection changed while capturing the export file. Review it and run again."
                 return
@@ -1677,6 +1931,8 @@ final class ApplicationWorkspace: ObservableObject {
 
     func shutdown() async {
         if let shutdownTask { await shutdownTask.value; return }
+        for file in fileDocuments.values { file.stopWatching() }
+        sqlFolders.shutdown()
         closedTabs.removeAll()
         let task = Task { @MainActor in
             await self.flushDocuments()
