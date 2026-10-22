@@ -33,8 +33,14 @@ private struct WorkspaceNotificationsButton: View {
     var body: some View {
         Button { isPresented.wrappedValue.toggle() } label: {
             HStack(spacing: 5) {
-                Image(systemName: notifications.unreadCount > 0 ? "bell.badge" : "bell")
-                Text("\(notifications.entries.count)").monospacedDigit()
+                Image(systemName: "bell.badge").hidden()
+                    .overlay {
+                        Image(systemName: notifications.unreadCount > 0 ? "bell.badge" : "bell")
+                    }
+                    .accessibilityHidden(true)
+                Text("\(WorkspaceNotifications.maximumCount)").hidden()
+                    .overlay(alignment: .trailing) { Text("\(notifications.entries.count)") }
+                    .monospacedDigit()
                 Image(systemName: "chevron.up").font(.system(size: 8, weight: .semibold))
             }
             .foregroundStyle(notifications.unreadCount > 0 ? Color.orange : AppPalette.secondaryText)
@@ -57,15 +63,23 @@ private struct WorkspaceNotificationsButton: View {
 
 private struct WorkspaceNotificationsList: View {
     @ObservedObject var notifications: WorkspaceNotifications
+    @Environment(\.dismiss) private var dismiss
     let connections: [SavedConnection]
     let editConnection: (UUID) -> Void
+    private var clearRequestID = SwiftUI.State<UUID?>(initialValue: nil)
+    private var renderedHeight = SwiftUI.State<CGFloat>(initialValue: 0)
+    private var clearHeight = SwiftUI.State<CGFloat?>(initialValue: nil)
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Text("Notifications").font(.headline)
                 Spacer()
-                Button("Clear All") { notifications.clear() }.controlHover()
+                Button("Clear All") {
+                    clearHeight.wrappedValue = renderedHeight.wrappedValue > 0 ? renderedHeight.wrappedValue : nil
+                    notifications.clear()
+                    clearRequestID.wrappedValue = UUID()
+                }.controlHover()
                     .disabled(notifications.entries.isEmpty)
                     .accessibilityIdentifier("clearWorkspaceNotifications")
             }.padding(12)
@@ -87,11 +101,31 @@ private struct WorkspaceNotificationsList: View {
                 }.frame(maxHeight: 360)
             }
         }
-        .frame(width: 380)
+        .frame(width: 380, height: clearHeight.wrappedValue, alignment: .top)
+        .background {
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear { renderedHeight.wrappedValue = geometry.size.height }
+                    .onChange(of: geometry.size.height) { _, height in renderedHeight.wrappedValue = height }
+            }
+            .allowsHitTesting(false)
+        }
         .background(AppPalette.background)
         .accessibilityIdentifier("workspaceNotificationsList")
         .onAppear { notifications.markAllRead() }
         .onChange(of: notifications.entries.first?.id) { _, _ in notifications.markAllRead() }
+        .task(id: clearRequestID.wrappedValue) {
+            guard let requestID = clearRequestID.wrappedValue else { return }
+            do { try await Task.sleep(for: .milliseconds(500)) }
+            catch { return }
+            guard !Task.isCancelled, clearRequestID.wrappedValue == requestID else { return }
+            dismiss()
+        }
+        .onDisappear {
+            clearRequestID.wrappedValue = nil
+            clearHeight.wrappedValue = nil
+            renderedHeight.wrappedValue = 0
+        }
     }
 
     private func notificationRow(_ entry: WorkspaceNotification) -> some View {

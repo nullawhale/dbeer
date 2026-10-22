@@ -27,16 +27,21 @@ struct ApplicationWorkspaceView: View {
             VStack(spacing: 0) {
                 documentBar
                 Divider()
-                if let document = workspace.selectedDocument {
-                    SQLDocumentPane(document: document, workspace: workspace)
-                        .id(document.id)
-                } else {
-                    VStack(spacing: 12) {
-                        Image(systemName: "doc.text").font(.largeTitle).appSecondaryText()
-                            .accessibilityHidden(true)
-                        Button("New SQL Tab") { workspace.newDocument() }.controlHover()
+                Group {
+                    if let document = workspace.selectedDocument {
+                        SQLDocumentPane(document: document, workspace: workspace)
+                            .id(document.id)
+                    } else {
+                        VStack(spacing: 12) {
+                            Image(systemName: "doc.text").font(.largeTitle).appSecondaryText()
+                                .accessibilityHidden(true)
+                            Button("New SQL Tab") { workspace.newDocument() }.controlHover()
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    WorkspaceNotificationToast(notifications: workspace.notifications).padding(12)
                 }
                 Divider()
                 WorkspaceStatusBar(workspace: workspace, editConnection: editConnection)

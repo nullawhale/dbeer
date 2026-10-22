@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Workspace errors show bottom-right notification banners alongside the footer
+  counter update. Up to five messages stack with the newest at the bottom, each
+  visible for five seconds. A sixth message hides the oldest banner; automatic
+  hiding or closing banners keeps all messages in notification history.
+  Hovering over a banner pauses its timer; moving away resumes the remaining time.
+  A thin strip along the bottom shows the remaining time and pauses on hover.
+  Clear All empties the history immediately and closes the notification list
+  after half a second without changing its size or position during that delay.
+
 - Connection profiles can obtain database passwords from a local CLI executable
   with literal arguments instead of Keychain. Each new physical connection,
   including service, Preview/Apply and MySQL Stop connections, resolves a fresh
