@@ -115,6 +115,8 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var catalogSearch = ""
     @Published private(set) var catalogSearchResults: [UUID: [CatalogNode]] = [:]
     @Published private(set) var history: [SQLHistoryEntry] = []
+    @Published private(set) var historySettings = SQLHistoryRetentionSettings.default
+    @Published private(set) var historyError: String?
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
     @Published private(set) var isClosing = false
@@ -509,14 +511,72 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func flushDocuments() async {
-        autosave?.cancel()
-        autosave = nil
-        guard draftsLoaded else { return }
-        do { try await documentStore.save(snapshot()) }
-        catch { self.error = error.localizedDescription }
+        _ = await persistDocuments()
     }
 
-    func clearHistory() async { history = []; await flushDocuments() }
+    private func persistDocuments() async -> Bool {
+        autosave?.cancel()
+        autosave = nil
+        guard draftsLoaded else { return false }
+        do {
+            try await documentStore.save(snapshot())
+            historyError = nil
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            historyError = "SQL drafts and history changes remain in memory but could not be saved. Try saving again before closing the application."
+            return false
+        }
+    }
+
+    @discardableResult
+    func updateHistorySettings(_ settings: SQLHistoryRetentionSettings) async -> Bool {
+        guard canManageHistory() else { return false }
+        guard settings.isValid else {
+            historyError = "Enter a history limit from 1 to 100,000 and a retention period from 1 to 3,650 days."
+            return false
+        }
+        historySettings = settings
+        trimHistory()
+        return await persistDocuments()
+    }
+
+    func setHistoryFavorite(_ id: UUID, isFavorite: Bool) async {
+        guard canManageHistory(), let index = history.firstIndex(where: { $0.id == id }) else { return }
+        history[index].isFavorite = isFavorite
+        trimHistory()
+        await flushDocuments()
+    }
+
+    func deleteHistoryEntry(_ id: UUID, includeFavorite: Bool = false) async {
+        guard canManageHistory() else { return }
+        history.removeAll { $0.id == id && (includeFavorite || !$0.isFavorite) }
+        await flushDocuments()
+    }
+
+    func clearHistory(entryIDs: Set<UUID>, includeFavorites: Bool) async {
+        guard canManageHistory() else { return }
+        history.removeAll { entryIDs.contains($0.id) && (includeFavorites || !$0.isFavorite) }
+        await flushDocuments()
+    }
+
+    func clearHistory() async {
+        await clearHistory(entryIDs: Set(history.map(\.id)), includeFavorites: false)
+    }
+
+    private func trimHistory() {
+        var saved = snapshot()
+        saved.trimHistory()
+        history = saved.history
+    }
+
+    private func canManageHistory() -> Bool {
+        guard draftsLoaded else {
+            historyError = "SQL drafts and history must be loaded successfully before changing history."
+            return false
+        }
+        return true
+    }
 
     func clearRestoredDocuments() async {
         guard !isClosing, closingDocuments.isEmpty, disconnectingProfiles.isEmpty else { return }
@@ -595,13 +655,15 @@ final class ApplicationWorkspace: ObservableObject {
     private func snapshot() -> SQLWorkspaceSnapshot {
         SQLWorkspaceSnapshot(documents: documents.filter { $0.table == nil }.map {
             StoredSQLDocument(id: $0.id, title: $0.title, text: $0.text, profileID: $0.profileID)
-        }, selectedDocumentID: selectedDocumentID, history: history, historyEnabled: historyEnabled)
+        }, selectedDocumentID: selectedDocumentID, history: history, historyEnabled: historyEnabled,
+            historySettings: historySettings)
     }
 
     private func restoreDocuments() async {
         do {
             let saved = try await documentStore.load()
             history = saved.history
+            historySettings = saved.historySettings
             historyEnabled = saved.historyEnabled
             documents = saved.documents.map { SQLDocument(id: $0.id, title: $0.title, text: $0.text, profileID: $0.profileID) }
             for document in documents { observeDocument(document) }

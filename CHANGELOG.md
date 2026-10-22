@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- SQL history supports favorites that are exempt from automatic age and count
+  limits, configurable retention settings, individual deletion and clearing the
+  current matches. Clear confirmations preserve favorites unless explicitly
+  included and capture their target entries before confirmation. Workspace v3
+  persists favorites and settings, with exact backups when migrating v0/v1/v2.
 - SQL history searches the complete SQL text and combines connection, date and
   outcome filters. Searches run in the background and cancel obsolete requests.
   Opening an entry creates a disconnected SQL tab; entries whose original
@@ -12,7 +17,7 @@
   gets one terminal entry; skipped and locally rejected commands are excluded.
 - History preserves the profile context captured when execution starts, excluding
   credentials, SSH settings, certificate paths and result values. History storage
-  advances to v2 with exact v0/v1 backups before migration; missing legacy
+  advances to v3 with exact v0/v1/v2 backups before migration; missing legacy
   execution details remain unavailable rather than being inferred.
 - Native macOS connection profiles can use an SSH bastion through supervised
   system OpenSSH, with agent, private-key or password authentication. SSH

@@ -76,6 +76,23 @@ struct SQLHistorySearchTests {
             filter: SQLHistoryFilter(profile: .unavailable)) == [unavailable])
     }
 
+    @Test func favoritesCombineWithSQLProfilePeriodAndOutcomeWithoutHidingThemByDefault() throws {
+        let profileID = UUID()
+        var favorite = entry("SELECT target", date: 200, profileID: profileID, outcome: .failed)
+        favorite.isFavorite = true
+        let ordinary = entry("SELECT target", date: 200, profileID: profileID, outcome: .failed)
+        var otherFavorite = entry("SELECT other", date: 200, profileID: profileID, outcome: .failed)
+        otherFavorite.isFavorite = true
+        let history = [ordinary, favorite, otherFavorite]
+        #expect(try SQLHistorySearch.results(entries: history, filter: SQLHistoryFilter()).count == 3)
+        #expect(try SQLHistorySearch.results(entries: history,
+            filter: SQLHistoryFilter(favoritesOnly: true)) == [otherFavorite, favorite])
+        let combined = SQLHistoryFilter(query: "target", profile: .profile(profileID),
+            from: Date(timeIntervalSince1970: 100), before: Date(timeIntervalSince1970: 300),
+            outcome: .failed, favoritesOnly: true)
+        #expect(try SQLHistorySearch.results(entries: history, filter: combined) == [favorite])
+    }
+
     @Test func dateBoundsIncludeTheStartAndExcludeTheEndUsingTheStoredTerminalDate() throws {
         var start = entry(date: 100)
         start.startedAt = Date(timeIntervalSince1970: 1)

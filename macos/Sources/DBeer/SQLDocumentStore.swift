@@ -18,7 +18,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
 /// Contains documents and history only. Sessions, results and passwords never
 /// enter the format; restoring the snapshot cannot reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 2
+    static let currentVersion = 3
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -27,17 +27,20 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     var selectedDocumentID: UUID?
     var history: [SQLHistoryEntry]
     var historyEnabled: Bool
+    var historySettings: SQLHistoryRetentionSettings
 
     init(documents: [StoredSQLDocument] = [], selectedDocumentID: UUID? = nil,
-         history: [SQLHistoryEntry] = [], historyEnabled: Bool = true) {
+         history: [SQLHistoryEntry] = [], historyEnabled: Bool = true,
+         historySettings: SQLHistoryRetentionSettings = .default) {
         version = Self.currentVersion
         self.documents = documents
         self.selectedDocumentID = selectedDocumentID
         self.history = history
         self.historyEnabled = historyEnabled
+        self.historySettings = historySettings
     }
 
-    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, history, historyEnabled }
+    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, history, historyEnabled, historySettings }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -53,6 +56,15 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
                 profileID: $0.profileID, sql: $0.sql, outcome: $0.legacyOutcome ?? $0.outcome.rawValue) }
         }
         historyEnabled = try values.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? true
+        if version < 3 { historySettings = .default }
+        else { historySettings = try values.decode(SQLHistoryRetentionSettings.self, forKey: .historySettings) }
+        if version < 3 {
+            history = history.map { entry in
+                var migrated = entry
+                migrated.isFavorite = false
+                return migrated
+            }
+        }
     }
 
     mutating func record(_ entry: SQLHistoryEntry, now: Date = .now) {
@@ -62,19 +74,29 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     }
 
     mutating func trimHistory(now: Date = .now) {
-        let oldest = now.addingTimeInterval(-Self.historyRetention)
+        guard historySettings.isValid else { return }
+        let oldest = now.addingTimeInterval(-historySettings.retentionInterval)
         // Stable tie breaking preserves the order of commands in a script.
-        history = Array(history.enumerated().filter { $0.element.date >= oldest }
+        // Favorites consume neither the age allowance nor the ordinary entry limit.
+        var ordinaryCount = 0
+        history = Array(history.enumerated().filter { $0.element.isFavorite || $0.element.date >= oldest }
             .sorted { lhs, rhs in lhs.element.date == rhs.element.date ? lhs.offset > rhs.offset : lhs.element.date > rhs.element.date }
-            .prefix(Self.historyLimit).map(\.element).reversed())
+            .filter { indexed in
+                if indexed.element.isFavorite { return true }
+                guard ordinaryCount < historySettings.maxEntries else { return false }
+                ordinaryCount += 1
+                return true
+            }.map(\.element).reversed())
     }
 
-    mutating func clearHistory() { history.removeAll() }
+    mutating func clearHistory(includeFavorites: Bool = false) {
+        history.removeAll { includeFavorites || !$0.isFavorite }
+    }
     mutating func clearDocuments() { documents.removeAll(); selectedDocumentID = nil }
 
     fileprivate func current(now: Date = .now) -> SQLWorkspaceSnapshot {
         var result = SQLWorkspaceSnapshot(documents: documents, selectedDocumentID: selectedDocumentID,
-            history: history, historyEnabled: historyEnabled)
+            history: history, historyEnabled: historyEnabled, historySettings: historySettings)
         result.trimHistory(now: now)
         return result
     }
@@ -149,6 +171,7 @@ actor FileSQLDocumentStore: SQLDocumentStore {
     private func validate(_ snapshot: SQLWorkspaceSnapshot) throws {
         guard Set(snapshot.documents.map(\.id)).count == snapshot.documents.count,
               Set(snapshot.history.map(\.id)).count == snapshot.history.count,
+              snapshot.historySettings.isValid,
               snapshot.documents.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
               snapshot.history.allSatisfy(\.isValid) else { throw SQLDocumentStoreError.read }
     }

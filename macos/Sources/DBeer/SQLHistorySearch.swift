@@ -13,6 +13,7 @@ struct SQLHistoryFilter: Equatable, Sendable {
     var from: Date? = nil
     var before: Date? = nil
     var outcome: SQLHistoryOutcome? = nil
+    var favoritesOnly = false
 }
 
 enum SQLHistorySearch {
@@ -23,6 +24,7 @@ enum SQLHistorySearch {
         var matches: [(offset: Int, entry: SQLHistoryEntry)] = []
         for (offset, entry) in entries.enumerated() {
             try Task.checkCancellation()
+            if filter.favoritesOnly && !entry.isFavorite { continue }
             switch filter.profile {
             case .all: break
             case .profile(let id):

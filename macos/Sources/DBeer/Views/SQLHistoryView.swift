@@ -11,6 +11,9 @@ struct SQLHistoryView: View {
     private var fromDate = SwiftUI.State(initialValue: Date.now)
     private var throughDate = SwiftUI.State(initialValue: Date.now)
     private var outcome = SwiftUI.State<SQLHistoryOutcome?>(initialValue: nil)
+    private var favoritesOnly = SwiftUI.State(initialValue: false)
+    private var settingsPresented = SwiftUI.State(initialValue: false)
+    private var clearSelection = SwiftUI.State<SQLHistoryClearSelection?>(initialValue: nil)
 
     init(workspace: ApplicationWorkspace) {
         self.workspace = workspace
@@ -24,13 +27,29 @@ struct SQLHistoryView: View {
                 Spacer()
                 Button("Done") { workspace.isHistoryPresented = false }.controlHover().keyboardShortcut(.cancelAction)
             }
-            Toggle("Record executed SQL", isOn: $workspace.historyEnabled).controlHover()
-            Text("Up to 1000 executions from the last 30 days, stored on this Mac.")
+            HStack {
+                Toggle("Record executed SQL", isOn: $workspace.historyEnabled).controlHover()
+                Spacer()
+                Button("Storage Settings…") { settingsPresented.wrappedValue = true }.controlHover()
+                    .accessibilityIdentifier("historyStorageSettings")
+            }
+            Text("Up to \(workspace.historySettings.maxEntries.formatted()) ordinary executions from the last \(workspace.historySettings.retentionDays.formatted()) days, stored on this Mac. Favorites are kept until you delete them.")
                 .font(.caption).appSecondaryText()
+            if let error = workspace.historyError {
+                Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                    .accessibilityIdentifier("historyStorageError")
+            }
             searchControls
             historyList
             HStack {
-                Button("Clear History", role: .destructive) { Task { await workspace.clearHistory() } }.controlHover()
+                Button("Clear Matching…", role: .destructive) {
+                    clearSelection.wrappedValue = SQLHistoryClearSelection(entries: search.results, scope: .matchingFilters)
+                }.controlHover().disabled(search.isSearching || search.results.isEmpty || invalidPeriod)
+                    .accessibilityIdentifier("clearMatchingHistory")
+                Button("Clear History…", role: .destructive) {
+                    clearSelection.wrappedValue = SQLHistoryClearSelection(entries: workspace.history, scope: .allHistory)
+                }.controlHover().disabled(workspace.history.isEmpty)
+                    .accessibilityIdentifier("clearAllHistory")
                 Spacer()
                 Button("Clear SQL Drafts…", role: .destructive) { clearDrafts.wrappedValue = true }.controlHover()
             }
@@ -42,6 +61,25 @@ struct SQLHistoryView: View {
         .onChange(of: workspace.history) { updateSearch() }
         .onChange(of: filter) { updateSearch() }
         .onDisappear { search.cancel() }
+        .sheet(isPresented: settingsPresented.projectedValue) {
+            SQLHistorySettingsView(workspace: workspace)
+        }
+        .alert(clearSelection.wrappedValue?.title ?? "Clear SQL History?", isPresented: Binding(
+            get: { clearSelection.wrappedValue != nil },
+            set: { if !$0 { clearSelection.wrappedValue = nil } }), presenting: clearSelection.wrappedValue) { selection in
+            Button("Cancel", role: .cancel) {}
+            if selection.ordinaryCount > 0 {
+                Button("Clear Ordinary", role: .destructive) { clear(selection, includeFavorites: false) }
+                    .keyboardShortcut(.defaultAction)
+            }
+            if selection.favoriteCount > 0 {
+                Button(selection.scope == .favoriteEntry ? "Delete Favorite" : "Clear Including Favorites", role: .destructive) {
+                    clear(selection, includeFavorites: true)
+                }
+            }
+        } message: { selection in
+            Text(selection.message)
+        }
         .alert("Clear SQL Drafts?", isPresented: clearDrafts.projectedValue) {
             Button("Cancel", role: .cancel) {}
             Button("Clear Drafts", role: .destructive) { Task { await workspace.clearRestoredDocuments() } }
@@ -102,13 +140,15 @@ struct SQLHistoryView: View {
                 }
             }
             HStack {
+                Toggle("Favorites only", isOn: favoritesOnly.projectedValue).controlHover()
+                    .toggleStyle(.checkbox).accessibilityIdentifier("historyFavoritesFilter")
+                Spacer()
                 if search.isSearching {
                     ProgressView().controlSize(.small)
                     Text("Searching…")
                 } else {
                     Text("\(search.results.count.formatted()) of \(workspace.history.count.formatted()) executions")
                 }
-                Spacer()
                 Button("Reset Filters", action: resetFilters).controlHover().disabled(!hasFilters)
             }.font(.caption).appSecondaryText()
         }
@@ -138,6 +178,16 @@ struct SQLHistoryView: View {
                 Text(entry.date, style: .time)
                 Spacer()
                 Text(entry.outcomeLabel)
+                ControlIconButton(systemName: entry.isFavorite ? "star.fill" : "star") {
+                    Task { await workspace.setHistoryFavorite(entry.id, isFavorite: !entry.isFavorite) }
+                }
+                .foregroundStyle(entry.isFavorite ? AppPalette.accent : AppPalette.secondaryText)
+                .help(entry.isFavorite ? "Remove from favorites. Ordinary storage limits apply immediately." : "Add to favorites")
+                .accessibilityLabel(entry.isFavorite ? "Remove from favorites" : "Add to favorites")
+                .accessibilityIdentifier("historyFavorite-\(entry.id.uuidString)")
+                ControlIconButton(systemName: "trash") { delete(entry) }
+                    .help("Delete execution from history").accessibilityLabel("Delete execution from history")
+                    .accessibilityIdentifier("deleteHistory-\(entry.id.uuidString)")
             }.font(.caption).appSecondaryText()
             if let profile = entry.profile {
                 Text(profile.summary).font(.caption).appSecondaryText().textSelection(.enabled)
@@ -189,11 +239,11 @@ struct SQLHistoryView: View {
     private var filter: SQLHistoryFilter {
         let bounds = dateBounds
         return SQLHistoryFilter(query: query.wrappedValue, profile: profile.wrappedValue,
-            from: bounds.from, before: bounds.before, outcome: outcome.wrappedValue)
+            from: bounds.from, before: bounds.before, outcome: outcome.wrappedValue, favoritesOnly: favoritesOnly.wrappedValue)
     }
 
     private var hasFilters: Bool {
-        !query.wrappedValue.isEmpty || profile.wrappedValue != .all || period.wrappedValue != .all || outcome.wrappedValue != nil
+        !query.wrappedValue.isEmpty || profile.wrappedValue != .all || period.wrappedValue != .all || outcome.wrappedValue != nil || favoritesOnly.wrappedValue
     }
 
     private func updateSearch() { search.update(entries: workspace.history, filter: filter) }
@@ -203,10 +253,63 @@ struct SQLHistoryView: View {
         profile.wrappedValue = .all
         period.wrappedValue = .all
         outcome.wrappedValue = nil
+        favoritesOnly.wrappedValue = false
+    }
+
+    private func delete(_ entry: SQLHistoryEntry) {
+        if entry.isFavorite {
+            clearSelection.wrappedValue = SQLHistoryClearSelection(entries: [entry], scope: .favoriteEntry)
+        } else {
+            Task { await workspace.deleteHistoryEntry(entry.id) }
+        }
+    }
+
+    private func clear(_ selection: SQLHistoryClearSelection, includeFavorites: Bool) {
+        Task {
+            if selection.scope == .favoriteEntry, let id = selection.entryIDs.first {
+                await workspace.deleteHistoryEntry(id, includeFavorite: true)
+            } else {
+                await workspace.clearHistory(entryIDs: selection.entryIDs, includeFavorites: includeFavorites)
+            }
+        }
     }
 
     private var profileOptions: [SQLHistoryProfileOption] {
         SQLHistoryProfileOption.options(connections: library.savedConnections, history: workspace.history, selected: profile.wrappedValue)
+    }
+}
+
+/// Freezes a manual deletion scope when confirmation opens, without retaining SQL text.
+struct SQLHistoryClearSelection: Equatable, Sendable {
+    enum Scope: Equatable, Sendable { case allHistory, matchingFilters, favoriteEntry }
+
+    let entryIDs: Set<UUID>
+    let ordinaryCount: Int
+    let favoriteCount: Int
+    let scope: Scope
+
+    init(entries: [SQLHistoryEntry], scope: Scope) {
+        let uniqueEntries = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        entryIDs = Set(uniqueEntries.keys)
+        favoriteCount = uniqueEntries.values.filter(\.isFavorite).count
+        ordinaryCount = uniqueEntries.count - favoriteCount
+        self.scope = scope
+    }
+
+    var title: String { scope == .favoriteEntry ? "Delete Favorite?" : "Clear SQL History?" }
+
+    var message: String {
+        if scope == .favoriteEntry {
+            return "Permanently delete this favorite from SQL history? Its SQL tabs and saved files stay on disk."
+        }
+        let scopeDescription = scope == .allHistory ? "All history entries currently stored" : "Entries matching the current SQL search and connection, period, outcome and favorites filters"
+        let counts = "\(ordinaryCount.formatted()) ordinary executions and \(favoriteCount.formatted()) favorites selected."
+        let favoriteChoice = favoriteCount > 0
+            ? ordinaryCount > 0
+                ? "Clear Ordinary preserves every favorite. Clear Including Favorites also permanently deletes the selected favorites."
+                : "Only favorites are selected. Clear Including Favorites permanently deletes them."
+            : "No favorites are selected; favorites are preserved."
+        return "\(scopeDescription): \(counts) New executions are excluded. \(favoriteChoice) SQL tabs and saved files stay on disk."
     }
 }
 

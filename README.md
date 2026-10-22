@@ -45,7 +45,20 @@ unavailable outcome details are included under **Unknown / unavailable**.
 never executes it. If its connection has been deleted or is unavailable, choose
 a connection in the new tab before running the SQL.
 
-History storage advances to v2. Existing v0/v1 files receive exact backups before
+Mark an execution as a favorite to keep it outside automatic history limits.
+**Favorites only** combines with the SQL search and the other filters.
+**Storage Settings** controls the maximum ordinary entries (1–100,000) and their
+retention period (1–3,650 days); defaults remain 1,000 entries and 30 days.
+Applying settings trims ordinary entries immediately. Removing a favorite star
+also makes that entry subject to the current limits.
+
+Delete individual entries, or clear the current matches or the complete history.
+Clear confirmations show how many ordinary and favorite entries are selected;
+favorites are preserved unless explicitly included. The selection is captured
+when the confirmation opens, so new executions are kept. Disabling recording
+stops new history entries and keeps existing history and favorites.
+
+History storage advances to v3. Existing v0/v1/v2 files receive exact backups before
 migration; older entries retain their original outcome text and show unavailable
 execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.

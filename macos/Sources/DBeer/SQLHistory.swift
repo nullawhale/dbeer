@@ -76,6 +76,7 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
     var sqlState: String?
     var errorMessage: String?
     var sqlCompleted: Bool?
+    var isFavorite: Bool = false
 
     // Kept for legacy fixtures and migration: a display string proves no typed outcome.
     init(id: UUID = UUID(), date: Date = .now, documentID: UUID? = nil, profileID: UUID? = nil,
@@ -194,6 +195,7 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, date, documentID, profileID, sql, outcome, legacyOutcome, profile, startedAt, finishedAt, durationMs
         case loadedRowCount, affectedRowCount, exportedRowCount, truncated, countsArePartial, sqlState, errorMessage, sqlCompleted
+        case isFavorite
     }
 
     init(from decoder: Decoder) throws {
@@ -215,6 +217,7 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
         sqlState = try values.decodeIfPresent(String.self, forKey: .sqlState)
         errorMessage = try values.decodeIfPresent(String.self, forKey: .errorMessage)
         sqlCompleted = try values.decodeIfPresent(Bool.self, forKey: .sqlCompleted)
+        isFavorite = try values.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         let stored = try values.decode(String.self, forKey: .outcome)
         legacyOutcome = try values.decodeIfPresent(String.self, forKey: .legacyOutcome)
         if let typed = SQLHistoryOutcome(rawValue: stored) { outcome = typed }
