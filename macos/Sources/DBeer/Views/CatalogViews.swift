@@ -162,7 +162,9 @@ struct CatalogBranchView: View {
     private var contextMenu: NSMenu {
         let menu = NSMenu()
         if node.kind == .object {
-            menu.addCatalogAction("Structure and Definition…") { Task { await workspace.inspect(node) } }
+            menu.addCatalogAction(node.isPostgresType ? "Inspect Type…" : "Structure and Definition…") {
+                Task { await workspace.inspect(node) }
+            }
             if ["table", "view"].contains(node.objectKind) {
                 menu.addCatalogAction("Open Data") { Task { await workspace.openData(node) } }
                 menu.addCatalogAction("Open in New Tab") { Task { await workspace.openData(node, inNewTab: true) } }
@@ -171,6 +173,9 @@ struct CatalogBranchView: View {
                 }
             }
             menu.addCatalogAction("Copy Name") { Task { await workspace.copyName(node) } }
+            if node.isPostgresType {
+                menu.addCatalogAction("Refresh") { Task { await workspace.inspect(node) } }
+            }
         }
         if node.isExpandable {
             menu.addCatalogAction("Refresh") { Task { await workspace.expand(node, refresh: true) } }
@@ -179,6 +184,27 @@ struct CatalogBranchView: View {
     }
 
     private var row: some View {
+        Group {
+            if node.isPostgresType {
+                Button { Task { await workspace.inspect(node) } } label: { rowLabel }
+                    .buttonStyle(.plain)
+                    .focusable()
+                    .accessibilityLabel("Inspect \(node.objectKind == "enum" ? "enum" : "type") \(node.schema).\(node.name)")
+                    .accessibilityIdentifier("catalogObject-\(node.id.uuidString)")
+            } else {
+                rowLabel
+                    .onTapGesture(count: 2) {
+                        if node.isExpandable { node.isExpanded.toggle() }
+                        else if node.kind == .object { Task { await workspace.inspect(node) } }
+                    }
+            }
+        }
+        .catalogRowHover()
+        .catalogRowContextMenu { contextMenu }
+        .help(node.detail ?? node.name)
+    }
+
+    private var rowLabel: some View {
         HStack(spacing: 6) {
             Image(systemName: node.symbol).appSecondaryText()
             Text(node.name).lineLimit(1)
@@ -188,16 +214,6 @@ struct CatalogBranchView: View {
         .padding(.leading, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .catalogRowHover()
-        .catalogRowContextMenu { contextMenu }
-        .help(node.detail ?? node.name)
-        .onTapGesture(count: 2) {
-            if node.isExpandable {
-                node.isExpanded.toggle()
-            } else if node.kind == .object {
-                Task { await workspace.inspect(node) }
-            }
-        }
     }
 }
 

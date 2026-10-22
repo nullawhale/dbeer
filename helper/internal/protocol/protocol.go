@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -131,6 +132,7 @@ func (request ExportRequest) Valid() bool {
 }
 
 type CatalogRequest struct {
+	TypeChange *TypeChange     `json:"typeChange,omitempty"`
 	Kind       string          `json:"kind"`
 	Schema     string          `json:"schema,omitempty"`
 	Object     string          `json:"object,omitempty"`
@@ -141,6 +143,48 @@ type CatalogRequest struct {
 	Page       int             `json:"page,omitempty"`
 	Sort       []CatalogSort   `json:"sort,omitempty"`
 	Filters    []CatalogFilter `json:"filters,omitempty"`
+}
+
+// TypeChange is a preview request, never an executable catalog operation.
+// Pointers preserve an empty enum label independently of an omitted field.
+type TypeChange struct {
+	Operation string  `json:"operation"`
+	NewName   *string `json:"newName,omitempty"`
+	OldValue  *string `json:"oldValue,omitempty"`
+	Value     *string `json:"value,omitempty"`
+}
+
+func (change TypeChange) Valid() bool {
+	for _, value := range []*string{change.NewName, change.OldValue, change.Value} {
+		if value != nil && (len(*value) > 63 || !utf8.ValidString(*value) || strings.ContainsRune(*value, 0)) {
+			return false
+		}
+	}
+	switch change.Operation {
+	case "renameType":
+		return change.NewName != nil && *change.NewName != "" && change.OldValue == nil && change.Value == nil
+	case "addEnumValue":
+		return change.NewName == nil && change.OldValue == nil && change.Value != nil
+	case "renameEnumValue":
+		return change.NewName == nil && change.OldValue != nil && change.Value != nil
+	default:
+		return false
+	}
+}
+
+// ValidLocalTypeOID accepts only canonical nonzero PostgreSQL OID strings.
+// This is a connection-local catalog handle, never a portable type identity.
+func ValidLocalTypeOID(identity string) bool {
+	oid, err := strconv.ParseUint(identity, 10, 32)
+	return err == nil && oid != 0 && strconv.FormatUint(oid, 10) == identity
+}
+
+func (request CatalogRequest) IsPostgresTypeOperation() bool {
+	switch request.Kind {
+	case "typeDetails", "enumValues", "typeDependencies", "typeDDL":
+		return true
+	}
+	return request.ObjectKind == "enum"
 }
 
 type CatalogSort struct {
@@ -154,6 +198,13 @@ type CatalogFilter struct {
 }
 
 func (request CatalogRequest) Valid() bool {
+	if request.Kind == "typeDDL" {
+		if request.TypeChange == nil || !request.TypeChange.Valid() {
+			return false
+		}
+	} else if request.TypeChange != nil {
+		return false
+	}
 	if request.Cursor != "" && (!ValidID(request.Cursor) || strings.ContainsRune(request.Cursor, 0) || request.Kind != "browse" || request.Page != 0) {
 		return false
 	}
@@ -197,7 +248,7 @@ func (request CatalogRequest) Valid() bool {
 	if request.Kind != "search" && request.Search != "" {
 		return false
 	}
-	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type"
+	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum"
 	switch request.Kind {
 	case "completion":
 		return request.Object == "" && objectKind == "" && request.Identity == ""
@@ -212,15 +263,25 @@ func (request CatalogRequest) Valid() bool {
 	case "keys", "foreignKeys", "indexes", "constraints", "triggers":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view") && request.Identity == ""
 	case "definition":
-		return request.Schema != "" && request.Object != "" && objectKindValid
+		return request.Schema != "" && request.Object != "" && objectKindValid &&
+			(objectKind != "enum" || validTypeHandle(request)) &&
+			(objectKind != "type" || request.Identity == "" || validTypeHandle(request))
 	case "name":
 		return request.Schema != "" && request.Object != "" && objectKindValid &&
-			(request.Identity == "" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger")
+			(request.Identity == "" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum") &&
+			(objectKind != "enum" || validTypeHandle(request)) &&
+			(objectKind != "type" || request.Identity == "" || validTypeHandle(request))
+	case "typeDetails", "enumValues", "typeDependencies", "typeDDL":
+		return (objectKind == "enum" || objectKind == "type") && validTypeHandle(request)
 	case "select", "browse":
 		return request.Schema != "" && request.Object != "" && (objectKind == "table" || objectKind == "view") && request.Identity == ""
 	default:
 		return false
 	}
+}
+
+func validTypeHandle(request CatalogRequest) bool {
+	return request.Schema != "" && len(request.Schema) <= 63 && request.Object != "" && len(request.Object) <= 63 && ValidLocalTypeOID(request.Identity)
 }
 
 // ProtocolError contains only validated identifiers and a fixed diagnostic.
@@ -393,8 +454,22 @@ func ParseCommand(frame []byte) (Command, error) {
 func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 	var request CatalogRequest
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || fields == nil || !stringField(fields, "kind", &request.Kind) {
+	if !utf8.Valid(raw) || json.Unmarshal(raw, &fields) != nil || fields == nil || !stringField(fields, "kind", &request.Kind) {
 		return request, false
+	}
+	// Type operations have a closed request shape. Even otherwise innocuous
+	// empty/zero paging fields are rejected instead of silently ignored.
+	_, typeKind := fields["objectKind"]
+	var objectKind string
+	if typeKind {
+		_ = stringField(fields, "objectKind", &objectKind)
+	}
+	if request.IsPostgresTypeOperation() || (request.Kind == "definition" || request.Kind == "name") && (objectKind == "enum" || objectKind == "type") {
+		for name := range fields {
+			if name != "kind" && name != "schema" && name != "object" && name != "objectKind" && name != "identity" && !(name == "typeChange" && request.Kind == "typeDDL") {
+				return request, false
+			}
+		}
 	}
 	if request.Kind == "name" || request.Kind == "foreignKeys" {
 		for name := range fields {
@@ -409,6 +484,14 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 	allowed := map[string]*string{"schema": &request.Schema, "object": &request.Object, "objectKind": &request.ObjectKind, "identity": &request.Identity, "search": &request.Search, "cursor": &request.Cursor}
 	for name := range fields {
 		if name == "kind" {
+			continue
+		}
+		if name == "typeChange" {
+			change, ok := parseTypeChange(fields[name])
+			if request.Kind != "typeDDL" || !ok {
+				return request, false
+			}
+			request.TypeChange = &change
 			continue
 		}
 		if name == "page" {
@@ -445,6 +528,34 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 		}
 	}
 	return request, request.Valid()
+}
+
+func parseTypeChange(raw json.RawMessage) (TypeChange, bool) {
+	var change TypeChange
+	var fields map[string]json.RawMessage
+	if !utf8.Valid(raw) || json.Unmarshal(raw, &fields) != nil || fields == nil || !stringField(fields, "operation", &change.Operation) {
+		return change, false
+	}
+	for name := range fields {
+		if name == "operation" {
+			continue
+		}
+		var value string
+		if !stringField(fields, name, &value) {
+			return change, false
+		}
+		switch name {
+		case "newName":
+			change.NewName = &value
+		case "oldValue":
+			change.OldValue = &value
+		case "value":
+			change.Value = &value
+		default:
+			return change, false
+		}
+	}
+	return change, change.Valid()
 }
 
 func parseConnection(raw json.RawMessage) (Connection, bool) {

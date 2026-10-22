@@ -117,6 +117,38 @@ Storage accepts up to 4,096 documents and 4,096 blocks per document, with at mos
 SQL execution retains the normal query-size checks. Failed writes preserve the
 previous library and leave current edits available for retry.
 
+## PostgreSQL types in the working branch
+
+Expand a connected PostgreSQL profile's schema to find separate **Enums** and
+**User-defined Types** groups. Open a type there or from search, or choose
+**Inspect Type…** from its context menu, without finding a table or row that uses it.
+The inspector shows **Definition**, server-ordered **Enum Values** and incoming
+and outgoing **Dependencies**, together with the limitations of available
+operations. Empty enum labels remain distinct from missing values. Partial or
+unavailable metadata is shown explicitly; dependency lists describe direct
+catalog references and cannot account for dynamic SQL. Shared cluster references,
+such as role ownership, are outside the dependency list. Enum CREATE definitions
+are reconstructed from ordered labels. Domain and composite definitions identify
+their reconstruction limits; range, multirange and base types show their
+properties when a complete CREATE definition is unavailable.
+
+Under **Generate DDL**, choose a supported type rename, an enum value appended
+at the end, or an enum value rename, then choose **Preview DDL** (**⌘Return**).
+The preview shows the exact operation, source connection and destination pane
+without changing the database.
+**Open SQL Tab** creates a draft bound to the captured connection; ordinary Run
+then applies the existing readonly, environment and confirmation policy.
+**Back to Type** or **Cancel Preview** discards the preview; **Stop** cancels
+its request. Viewing
+and previewing remain available for readonly connections. PostgreSQL permissions
+and type restrictions still determine whether execution can succeed.
+
+The inspector uses the connected catalog session. Refresh, closing the inspector
+or changing its connection invalidates pending responses. Review the generated
+SQL before execution and refresh metadata afterward. A newly added enum value
+cannot be used until its transaction commits. Enum value deletion and reordering
+are not generated; extension-owned or derived types can have further limits.
+
 ## SQL folders and files in the working branch
 
 **Attach Folder…** in the SQL Folders sidebar adds an existing local folder.

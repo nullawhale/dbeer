@@ -22,6 +22,10 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 		return response
 	}
 	request := *command.Catalog
+	if request.Kind == "typeDetails" || request.Kind == "enumValues" || request.Kind == "typeDependencies" || request.Kind == "typeDDL" ||
+		(request.ObjectKind == "enum" || request.ObjectKind == "type") && request.Kind != "objects" {
+		return typeCatalog(ctx, conn, command, sink)
+	}
 	if failure := catalogAccess(ctx, conn, command, request); failure != nil {
 		return *failure
 	}
@@ -152,17 +156,23 @@ WHERE nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp_%' AND has_sche
 	case "search":
 		// Catalog names retain C collation after ::text; fold both operands
 		// with the database collation so non-ASCII case handling agrees.
-		return `SELECT name,kind,schema,identity FROM (` + searchableObjects + `) objects
+		return `SELECT name,kind,schema,identity,"typeKind" FROM (` + searchableObjects + `) objects
 WHERE strpos(lower(name COLLATE pg_catalog."default"),lower($1::text COLLATE pg_catalog."default"))>0 AND ($2::text='' OR schema=$2::text)
 ORDER BY schema,name,kind,identity`, params(request.Search, request.Schema), ""
 	case "objects":
 		switch request.ObjectKind {
+		case "enum", "type":
+			return `SELECT t.typname::text AS name, CASE WHEN t.typtype='e' THEN 'enum' ELSE 'type' END::text AS kind,
+n.nspname::text AS schema,t.oid::text AS identity,` + typeKindSQL + ` AS "typeKind"
+FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
+WHERE n.nspname::text=$1::text AND ` + visibleTypeSQL + `
+AND CASE WHEN $2::text='enum' THEN t.typtype='e' ELSE t.typtype<>'e' END ORDER BY name,identity`, params(request.Schema, request.ObjectKind), ""
 		case "table", "view":
 			kinds := "('r','p','f')"
 			if request.ObjectKind == "view" {
 				kinds = "('v','m')"
 			}
-			return `SELECT c.relname::text AS name, $2::text AS kind, n.nspname::text AS schema, c.oid::text AS identity
+			return `SELECT c.relname::text AS name, $2::text AS kind, n.nspname::text AS schema, c.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname::text=$1::text AND c.relkind IN ` + kinds + ` AND ` + relationAccess + ` ORDER BY name,identity`, params(request.Schema, request.ObjectKind), ""
 		case "function", "procedure":
@@ -170,11 +180,11 @@ WHERE n.nspname::text=$1::text AND c.relkind IN ` + kinds + ` AND ` + relationAc
 			if request.ObjectKind == "procedure" {
 				kind = "('p')"
 			}
-			return `SELECT p.proname::text AS name, $2::text AS kind, n.nspname::text AS schema, p.oid::text AS identity
+			return `SELECT p.proname::text AS name, $2::text AS kind, n.nspname::text AS schema, p.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
 WHERE n.nspname::text=$1::text AND p.prokind IN ` + kind + ` AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE') ORDER BY name,identity`, params(request.Schema, request.ObjectKind), ""
 		case "trigger":
-			return `SELECT t.tgname::text AS name, 'trigger'::text AS kind, n.nspname::text AS schema, t.oid::text AS identity
+			return `SELECT t.tgname::text AS name, 'trigger'::text AS kind, n.nspname::text AS schema, t.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname::text=$1::text AND NOT t.tgisinternal AND ` + relationAccess + ` ORDER BY name,identity`, params(request.Schema), ""
 		}
@@ -284,14 +294,17 @@ WHERE n.nspname::text=$1::text AND t.tgname::text=$2::text AND ($3::text='' OR t
 }
 
 const searchableObjects = `SELECT c.relname::text AS name,CASE WHEN c.relkind IN ('v','m') THEN 'view' ELSE 'table' END::text AS kind,
-n.nspname::text AS schema,c.oid::text AS identity
+n.nspname::text AS schema,c.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + `
 UNION ALL
-SELECT p.proname::text,CASE WHEN p.prokind='p' THEN 'procedure' ELSE 'function' END::text,n.nspname::text,p.oid::text
+SELECT p.proname::text,CASE WHEN p.prokind='p' THEN 'procedure' ELSE 'function' END::text,n.nspname::text,p.oid::text,NULL::text
 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
 WHERE p.prokind IN ('f','w','p') AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
 UNION ALL
-SELECT t.tgname::text,'trigger'::text,n.nspname::text,t.oid::text
+SELECT t.tgname::text,'trigger'::text,n.nspname::text,t.oid::text,NULL::text
 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-WHERE NOT t.tgisinternal AND ` + relationAccess
+WHERE NOT t.tgisinternal AND ` + relationAccess + `
+UNION ALL
+SELECT t.typname::text,CASE WHEN t.typtype='e' THEN 'enum' ELSE 'type' END::text,n.nspname::text,t.oid::text,` + typeKindSQL + `
+FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE ` + visibleTypeSQL

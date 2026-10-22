@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Inspect PostgreSQL enums and user-defined types directly from the catalog or
+  search, including definitions, ordered enum values, dependencies and operation
+  limitations. Generate DDL previews for supported type renames and enum value
+  additions/renames, then explicitly open the SQL on the captured connection for
+  normal execution-policy review.
+
 - Keep local investigation documents with ordered Markdown, SQL and snapshot
   blocks, a table of contents and durable library storage. Each SQL block has an
   explicit profile and an independent working session; Run Block addresses only

@@ -35,10 +35,16 @@ func insertLiteral(cell protocol.CellValue) (string, error) {
 		if strings.ContainsRune(*cell.Value, 0) {
 			return "", insertformat.ErrTextNUL
 		}
-		value := strings.ReplaceAll(*cell.Value, `\`, `\\`)
-		value = strings.ReplaceAll(value, "'", "''")
-		return "E'" + value + "'", nil
+		return postgresTextLiteral(*cell.Value), nil
 	default:
 		return "", insertformat.ErrInvalid
 	}
+}
+
+// Callers validate UTF-8 and reject NUL before reaching this SQL encoder.
+// Escape strings are independent of standard_conforming_strings.
+func postgresTextLiteral(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, "'", "''")
+	return "E'" + value + "'"
 }

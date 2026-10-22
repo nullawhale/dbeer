@@ -70,6 +70,10 @@ struct ApplicationWorkspaceView: View {
             CatalogInspectionView(inspection: inspection) { workspace.inspection = nil }
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: Binding(get: { workspace.typeInspection },
+            set: { if $0 == nil { workspace.dismissPostgresTypeInspection() } })) { inspection in
+            postgresTypeInspector(inspection)
+        }
         .sheet(item: $workspace.clusterInspection) { inspection in
             CassandraClusterView(inspection: inspection,
                 refresh: { Task { await workspace.refreshClusterNodes() } },
@@ -117,6 +121,39 @@ struct ApplicationWorkspaceView: View {
         } message: {
             Text("Delete the saved profile and its password from Keychain?")
         }
+    }
+
+    private func postgresTypeInspector(_ inspection: PostgresTypeInspectionModel) -> some View {
+        PostgresTypeInspectionView(model: inspection,
+            refresh: {
+                Task {
+                    guard workspace.typeInspection?.id == inspection.id else { return }
+                    await workspace.refreshPostgresTypeInspection()
+                }
+            },
+            preview: { change in
+                Task {
+                    guard workspace.typeInspection?.id == inspection.id else { return }
+                    await workspace.previewPostgresTypeChange(change)
+                }
+            },
+            discardPreview: {
+                if workspace.typeInspection?.id == inspection.id { workspace.discardPostgresTypePreview() }
+            },
+            stop: {
+                if workspace.typeInspection?.id == inspection.id { workspace.stopPostgresTypeInspection() }
+            },
+            openSQL: {
+                guard workspace.typeInspection?.id == inspection.id else { return }
+                if workspace.openPostgresTypeSQLDraft() != nil { workspace.dismissPostgresTypeInspection() }
+            },
+            close: {
+                if workspace.typeInspection?.id == inspection.id { workspace.dismissPostgresTypeInspection() }
+            })
+            .applicationTheme(appearance: appearance)
+            .onDisappear {
+                if workspace.typeInspection?.id == inspection.id { workspace.dismissPostgresTypeInspection() }
+            }
     }
 
     private var sidebar: some View {

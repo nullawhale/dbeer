@@ -100,6 +100,15 @@ struct CatalogRequest: Codable, Sendable, Equatable {
     var cursor: String?
     var sort: [CatalogSort]?
     var filters: [CatalogFilter]?
+    /// PostgreSQL-only, read-only DDL generation. Empty enum labels are values.
+    var typeChange: TypeChange?
+}
+
+struct TypeChange: Codable, Sendable, Equatable {
+    var operation: String
+    var newName: String?
+    var oldValue: String?
+    var value: String?
 }
 
 struct CatalogSort: Codable, Sendable, Equatable {

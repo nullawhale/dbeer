@@ -69,6 +69,9 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 	if !request.Valid() {
 		return s.failure(command, "protocol", "Invalid Cassandra catalog request.")
 	}
+	if request.IsPostgresTypeOperation() {
+		return s.failure(command, "unsupported", "PostgreSQL type operations are not supported by Cassandra. Cassandra UDT inspection is available separately.")
+	}
 	if request.Kind == "browse" {
 		return s.browse(ctx, command, sink)
 	}

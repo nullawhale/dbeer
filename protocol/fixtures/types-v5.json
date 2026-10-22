@@ -1,0 +1,60 @@
+{
+  "version": 5,
+  "commands": [
+    {"type":"catalog","requestId":"types-enums","sessionId":"types-session","queryId":"types-enums-query","catalog":{"kind":"objects","schema":"odd\"schema","objectKind":"enum"}},
+    {"type":"catalog","requestId":"types-other","sessionId":"types-session","queryId":"types-other-query","catalog":{"kind":"objects","schema":"odd\"schema","objectKind":"type"}},
+    {"type":"catalog","requestId":"types-details","sessionId":"types-session","queryId":"types-details-query","catalog":{"kind":"typeDetails","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384"}},
+    {"type":"catalog","requestId":"types-values","sessionId":"types-session","queryId":"types-values-query","catalog":{"kind":"enumValues","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384"}},
+    {"type":"catalog","requestId":"types-dependencies","sessionId":"types-session","queryId":"types-dependencies-query","catalog":{"kind":"typeDependencies","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384"}},
+    {"type":"catalog","requestId":"types-name","sessionId":"types-session","queryId":"types-name-query","catalog":{"kind":"name","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384"}},
+    {"type":"catalog","requestId":"types-definition","sessionId":"types-session","queryId":"types-definition-query","catalog":{"kind":"definition","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384"}},
+    {"type":"catalog","requestId":"types-rename","sessionId":"types-session","queryId":"types-rename-query","catalog":{"kind":"typeDDL","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384","typeChange":{"operation":"renameType","newName":"renamed \"猫"}}},
+    {"type":"catalog","requestId":"types-add-empty","sessionId":"types-session","queryId":"types-add-empty-query","catalog":{"kind":"typeDDL","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384","typeChange":{"operation":"addEnumValue","value":""}}},
+    {"type":"catalog","requestId":"types-rename-value","sessionId":"types-session","queryId":"types-rename-value-query","catalog":{"kind":"typeDDL","schema":"odd\"schema","object":"status 猫","objectKind":"enum","identity":"16384","typeChange":{"operation":"renameEnumValue","oldValue":"","value":"quote'\\Ω"}}}
+  ],
+  "responses": [
+    {
+      "type":"query.result","requestId":"types-enums","sessionId":"types-session","queryId":"types-enums-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"name"},{"index":1,"name":"kind"},{"index":2,"name":"schema"},{"index":3,"name":"identity"},{"index":4,"name":"typeKind"}],
+      "rows":[["status 猫","enum","odd\"schema","16384","enum"]],"commandTag":"SELECT 1","rowCount":1,"displayedRowCount":1,"truncated":false
+    },
+    {
+      "type":"query.result","requestId":"types-details","sessionId":"types-session","queryId":"types-details-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"name"},{"index":1,"name":"kind"},{"index":2,"name":"schema"},{"index":3,"name":"identity"},{"index":4,"name":"typeKind"},{"index":5,"name":"owner"},{"index":6,"name":"definition"},{"index":7,"name":"definitionStatus"},{"index":8,"name":"details"},{"index":9,"name":"renameSupported"},{"index":10,"name":"addEnumValueSupported"},{"index":11,"name":"renameEnumValueSupported"},{"index":12,"name":"operationLimitations"},{"index":13,"name":"permissionHint"}],
+      "rows":[["status 猫","enum","odd\"schema","16384","enum","owner","CREATE TYPE \"odd\"\"schema\".\"status 猫\" AS ENUM (E'z', E'', E'a');","complete","Category: enum\nStructural definition only; owner, grants and comments are not included.","true","true","true","Removing or reordering values requires a separately designed migration.","Execution requires server ownership and the ordinary R23 Run assessment."]],
+      "commandTag":"SELECT 1","rowCount":1,"displayedRowCount":1,"truncated":false
+    },
+    {
+      "type":"query.result","requestId":"types-values","sessionId":"types-session","queryId":"types-values-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"label"},{"index":1,"name":"position"},{"index":2,"name":"sortOrder"}],
+      "rows":[["z","1","1"],["","2","1.5"],["a","3","2"]],"commandTag":"SELECT 3","rowCount":3,"displayedRowCount":3,"truncated":false
+    },
+    {
+      "type":"query.result","requestId":"types-values-empty","sessionId":"types-session","queryId":"types-values-empty-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"label"},{"index":1,"name":"position"},{"index":2,"name":"sortOrder"}],
+      "rows":[],"commandTag":"SELECT 0","rowCount":0,"displayedRowCount":0,"truncated":false
+    },
+    {
+      "type":"query.result","requestId":"types-values-partial","sessionId":"types-session","queryId":"types-values-partial-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"label"},{"index":1,"name":"position"},{"index":2,"name":"sortOrder"}],
+      "rows":[],"commandTag":"SELECT 1001","rowCount":1001,"displayedRowCount":0,"truncated":true,"displayNotice":"Type values exceeded the display bound; the displayed set is incomplete."
+    },
+    {
+      "type":"query.result","requestId":"types-dependencies","sessionId":"types-session","queryId":"types-dependencies-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"direction"},{"index":1,"name":"objectKind"},{"index":2,"name":"objectSchema"},{"index":3,"name":"objectName"},{"index":4,"name":"objectIdentity"},{"index":5,"name":"dependencyClass"},{"index":6,"name":"classID"},{"index":7,"name":"objectID"},{"index":8,"name":"objectSubID"},{"index":9,"name":"referencedClassID"},{"index":10,"name":"referencedObjectID"},{"index":11,"name":"referencedObjectSubID"}],
+      "rows":[["incoming","table column","odd\"schema",null,"\"odd\"\"schema\".orders.status","n","1259","16400","2","1247","16384","0"],["outgoing","schema",null,"\"odd\"\"schema\"","\"odd\"\"schema\"","n","1247","16384","0","2615","16383","0"]],
+      "commandTag":"SELECT 2","rowCount":2,"displayedRowCount":2,"truncated":false,"displayNotice":"Direct pg_depend references; dynamic SQL references are not included."
+    },
+    {
+      "type":"query.result","requestId":"types-dependencies-empty","sessionId":"types-session","queryId":"types-dependencies-empty-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"direction"},{"index":1,"name":"objectKind"},{"index":2,"name":"objectSchema"},{"index":3,"name":"objectName"},{"index":4,"name":"objectIdentity"},{"index":5,"name":"dependencyClass"},{"index":6,"name":"classID"},{"index":7,"name":"objectID"},{"index":8,"name":"objectSubID"},{"index":9,"name":"referencedClassID"},{"index":10,"name":"referencedObjectID"},{"index":11,"name":"referencedObjectSubID"}],
+      "rows":[],"commandTag":"SELECT 0","rowCount":0,"displayedRowCount":0,"truncated":false,"displayNotice":"Direct pg_depend references; dynamic SQL references are not included."
+    },
+    {
+      "type":"query.result","requestId":"types-add-empty","sessionId":"types-session","queryId":"types-add-empty-query","durationMs":0,"transactionStatus":"idle",
+      "columns":[{"index":0,"name":"sql"},{"index":1,"name":"warnings"}],
+      "rows":[["ALTER TYPE \"odd\"\"schema\".\"status 猫\" ADD VALUE E'';","Preview only. Append at the end; the value cannot be used until its transaction commits. Open an SQL tab and use ordinary Run; execution is not OID-bound."]],
+      "commandTag":"SELECT 1","rowCount":1,"displayedRowCount":1,"truncated":false
+    }
+  ]
+}

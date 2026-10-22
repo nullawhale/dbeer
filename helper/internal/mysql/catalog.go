@@ -27,6 +27,11 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		response.Connected, response.TransactionStatus = !session.closed.Load(), session.TransactionStatus()
 		return response
 	}
+	if request.IsPostgresTypeOperation() || request.ObjectKind == "type" {
+		response := protocol.ErrorResponse(command, "unsupported", "PostgreSQL user-defined type operations are not supported by MySQL.")
+		response.Connected, response.TransactionStatus = !session.closed.Load(), session.TransactionStatus()
+		return response
+	}
 	var unavailable bool
 	var metadataWarning bool
 	var browseNotice, sourceSQL string

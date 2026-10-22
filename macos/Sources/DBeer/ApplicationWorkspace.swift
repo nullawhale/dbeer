@@ -309,6 +309,13 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private var completionCatalog = SQLCompletionCatalog()
     @Published var inspection: CatalogInspection?
     @Published var clusterInspection: CassandraClusterInspection?
+    @Published var typeInspection: PostgresTypeInspectionModel? {
+        didSet {
+            if oldValue?.id != typeInspection?.id, let oldValue {
+                invalidatePostgresTypeModel(oldValue, reason: "This type inspector was closed.")
+            }
+        }
+    }
     @Published var catalogSearch = ""
     @Published private(set) var catalogSearchResults: [UUID: [CatalogNode]] = [:]
     @Published private(set) var history: [SQLHistoryEntry] = []
@@ -363,6 +370,11 @@ final class ApplicationWorkspace: ObservableObject {
     private var shutdownTask: Task<Void, Never>?
     private var started = false
     private var observations: [UUID: AnyCancellable] = [:]
+    var typeProfileRevisions: [UUID: UUID] = [:]
+    var typeProfileFingerprints: [UUID: Data] = [:]
+    var typeServiceGenerations: [UUID: UUID] = [:]
+    var typeSessionObservations: [UUID: [AnyCancellable]] = [:]
+    private var typeProfilesObservation: AnyCancellable?
     private var libraryObservation: AnyCancellable?
     private var libraryErrorObservation: AnyCancellable?
     private var folderObservation: AnyCancellable?
@@ -411,6 +423,9 @@ final class ApplicationWorkspace: ObservableObject {
         self.executionDecision = executionDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        typeProfilesObservation = library.$savedConnections.sink { [weak self] profiles in
+            self?.updatePostgresTypeProfileRevisions(profiles)
+        }
         libraryErrorObservation = library.$connectionsError.sink { [weak self] error in
             guard let self, let error else { return }
             let profile = self.library.savedConnections.first { $0.id == self.library.connectionsErrorProfileID }
@@ -585,14 +600,14 @@ final class ApplicationWorkspace: ObservableObject {
         paneLayout.splitFraction = clamped
     }
 
-    private struct PaneSelectionContext {
+    struct PaneSelectionContext {
         let pane: WorkspacePaneID
         let selectionRevisions: [WorkspacePaneID: UInt64]
         let activationRevision: UInt64
         let selectedDocumentID: UUID?
     }
 
-    private func capturePaneSelection(in pane: WorkspacePaneID? = nil) -> PaneSelectionContext {
+    func capturePaneSelection(in pane: WorkspacePaneID? = nil) -> PaneSelectionContext {
         let pane = pane ?? activePaneID
         return PaneSelectionContext(pane: pane, selectionRevisions: paneSelectionRevisions,
             activationRevision: paneActivationRevision, selectedDocumentID: paneLayout[pane].selectedDocumentID)
@@ -858,7 +873,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     @discardableResult
-    private func addDocument(_ document: SQLDocument, in requestedPane: WorkspacePaneID? = nil,
+    func addDocument(_ document: SQLDocument, in requestedPane: WorkspacePaneID? = nil,
                              context: PaneSelectionContext? = nil) -> SQLDocument {
         let pane = context?.pane ?? requestedPane ?? activePaneID
         documents.append(document)
@@ -894,6 +909,7 @@ final class ApplicationWorkspace: ObservableObject {
             if let service = services[id], service.connectionState == .connected { return }
             let service = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
             services[id] = service
+            observePostgresTypeSession(service, profileID: id)
             observations[id] = service.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
             await service.start(sharedHelper: client)
             await service.connectSavedConnection(id, sshSnapshot: sshSnapshot)
@@ -915,6 +931,7 @@ final class ApplicationWorkspace: ObservableObject {
         }),
               disconnectingProfiles.insert(id).inserted else { return false }
         let affected = allOwnedRuntimeDocuments.filter { $0.profileID == id }
+        invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
         guard commitNativeEditors(in: affected) else { disconnectingProfiles.remove(id); return false }
         let grids = affected.compactMap(\.grid)
         for grid in grids { grid.isClosing = true }
@@ -941,6 +958,8 @@ final class ApplicationWorkspace: ObservableObject {
         if clusterInspection?.profileID == id { clusterInspection = nil }
         completionLoads.removeValue(forKey: id)?.task.cancel()
         observations[id] = nil
+        typeSessionObservations[id] = nil
+        typeServiceGenerations[id] = nil
         catalogRoots[id] = nil
         completionCatalog.remove(profileID: id)
         catalogErrors[id] = nil
@@ -2262,11 +2281,13 @@ final class ApplicationWorkspace: ObservableObject {
 
     func loadSchemas(_ profileID: UUID, refresh: Bool = false) async {
         guard refresh || catalogRoots[profileID] == nil else { return }
+        if refresh { invalidatePostgresTypeInspection(profileID: profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.") }
         do {
             let result = try await catalog(CatalogRequest(kind: "schemas"), profileID: profileID)
             catalogRoots[profileID] = result.catalogRecords.compactMap { record in
                 guard let name = record["name"] else { return nil }
-                return CatalogNode(profileID: profileID, name: name, kind: .schema, schema: name)
+                return CatalogNode(profileID: profileID, name: name, kind: .schema, schema: name,
+                    engine: library.savedConnections.first { $0.id == profileID }?.engine)
             }
             catalogErrors[profileID] = nil
             if refresh { await loadCompletionCatalog(profileID, refresh: true) }
@@ -2307,37 +2328,59 @@ final class ApplicationWorkspace: ObservableObject {
 
     func expand(_ node: CatalogNode, refresh: Bool = false) async {
         guard !node.isLoading, refresh || node.children == nil else { return }
+        if refresh { invalidatePostgresTypeInspection(profileID: node.profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.") }
         node.isLoading = true
         node.error = nil
         defer { node.isLoading = false }
         if node.kind == .schema {
             let engine = library.savedConnections.first { $0.id == node.profileID }?.engine
-            let groups = engine == .cassandra ? [("Tables", "table"), ("Materialized Views", "view"), ("User-defined Types", "type")] :
+            var groups = engine == .cassandra ? [("Tables", "table"), ("Materialized Views", "view"), ("User-defined Types", "type")] :
                 [("Tables", "table"), ("Views", "view"), ("Functions", "function"), ("Procedures", "procedure"), ("Triggers", "trigger")]
+            if engine == .postgresql { groups += [("Enums", "enum"), ("User-defined Types", "type")] }
             node.children = groups.map { title, kind in
-                CatalogNode(profileID: node.profileID, name: title, kind: .group, schema: node.schema, objectKind: kind)
+                CatalogNode(profileID: node.profileID, name: title, kind: .group, schema: node.schema, objectKind: kind, engine: engine)
             }
             return
         }
         if node.kind == .object {
             let engine = library.savedConnections.first { $0.id == node.profileID }?.engine
+            if engine == .postgresql && ["enum", "type"].contains(node.objectKind) {
+                await inspectPostgresType(node)
+                return
+            }
             let groups = node.objectKind == "type" ? [("Columns", "columns")] : engine == .cassandra ? [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes")] :
                 [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes"), ("Constraints", "constraints"), ("Triggers", "triggers")]
             node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .detailGroup, schema: node.schema,
-                    object: node.name, objectKind: kind, identity: node.objectKind)
+                    object: node.name, objectKind: kind, engine: engine, parentObjectKind: node.objectKind)
             }
             return
         }
+        let isPostgresGroup = node.kind == .group && library.savedConnections.first(where: { $0.id == node.profileID })?.engine == .postgresql
+        let typeOrigin = isPostgresGroup ? currentPostgresTypeCatalogOrigin(profileID: node.profileID) : nil
         do {
             let request: CatalogRequest
             if node.kind == .group {
                 request = CatalogRequest(kind: "objects", schema: node.schema, objectKind: node.objectKind)
             } else {
                 request = CatalogRequest(kind: node.objectKind, schema: node.schema, object: node.object,
-                    objectKind: node.identity ?? "table")
+                    objectKind: node.parentObjectKind ?? "table")
             }
-            let result = try await catalog(request, profileID: node.profileID)
+            if isPostgresGroup && typeOrigin == nil {
+                throw CatalogFailure(message: "Connect to this profile before browsing objects.")
+            }
+            let result = try await catalog(request, profileID: node.profileID, connectedSessionID: typeOrigin?.serviceSessionID)
+            if isPostgresGroup {
+                guard typeOrigin == currentPostgresTypeCatalogOrigin(profileID: node.profileID) else { return }
+                node.children = try PostgresTypeCatalog.decodeObjects(result).map { item in
+                    CatalogNode(profileID: node.profileID, name: item.name, kind: .object, schema: item.schema,
+                        object: item.name, objectKind: item.kind, identity: item.identity, engine: .postgresql,
+                        localOID: ["enum", "type"].contains(item.kind) ? item.identity : nil, typeKind: item.typeKind,
+                        typeOrigin: typeOrigin)
+                }
+                if result.truncated == true { node.error = "Only part of this catalog group was returned. Refresh to check for more objects." }
+                return
+            }
             node.children = result.catalogRecords.enumerated().compactMap { index, record in
                 guard let name = record["name"] else { return nil }
                 let isObject = node.kind == .group
@@ -2351,12 +2394,26 @@ final class ApplicationWorkspace: ObservableObject {
                 return CatalogNode(profileID: node.profileID, name: name,
                     kind: isObject ? .object : .detail, schema: node.schema,
                     object: isObject ? name : node.object, objectKind: record["kind"] ?? node.objectKind,
-                    identity: record["identity"] ?? String(index), detail: type ?? record["definition"])
+                    identity: record["identity"] ?? String(index), detail: type ?? record["definition"],
+                    engine: library.savedConnections.first { $0.id == node.profileID }?.engine,
+                    localOID: ["enum", "type"].contains(record["kind"] ?? node.objectKind) ? record["identity"] : nil,
+                    typeKind: record["typeKind"])
             }
-        } catch { node.error = error.localizedDescription }
+        } catch {
+            if isPostgresGroup {
+                guard typeOrigin == currentPostgresTypeCatalogOrigin(profileID: node.profileID) else { return }
+                node.error = "PostgreSQL catalog metadata could not be loaded. Refresh the catalog and check access permissions."
+            } else { node.error = error.localizedDescription }
+        }
     }
 
     func inspect(_ node: CatalogNode) async {
+        if library.savedConnections.first(where: { $0.id == node.profileID })?.engine == .postgresql,
+           ["enum", "type"].contains(node.objectKind) {
+            await inspectPostgresType(node)
+            return
+        }
+        dismissPostgresTypeInspection()
         let title = "\(node.schema).\(node.name)"
         inspection = CatalogInspection(title: title)
         let inspectionID = inspection?.id
@@ -2399,6 +2456,9 @@ final class ApplicationWorkspace: ObservableObject {
     func generatedName(_ node: CatalogNode) async -> String? {
         let profile = library.savedConnections.first { $0.id == node.profileID }
         do {
+            if profile?.engine == .postgresql, ["enum", "type"].contains(node.objectKind) {
+                return await generatedPostgresTypeName(node)
+            }
             let identity = ["function", "procedure", "trigger"].contains(node.objectKind) ? node.identity : nil
             let result = try await catalog(CatalogRequest(kind: "name", schema: node.schema,
                 object: node.name, objectKind: node.objectKind, identity: identity), profileID: node.profileID)
@@ -2711,19 +2771,45 @@ final class ApplicationWorkspace: ObservableObject {
         guard !term.isEmpty else { return }
         for profileID in services.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
             guard !Task.isCancelled, catalogSearch.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+            let isPostgres = library.savedConnections.first(where: { $0.id == profileID })?.engine == .postgresql
+            let typeOrigin = isPostgres ? currentPostgresTypeCatalogOrigin(profileID: profileID) : nil
             do {
-                let result = try await catalog(CatalogRequest(kind: "search", search: term), profileID: profileID)
+                if isPostgres && typeOrigin == nil { continue }
+                let result = try await catalog(CatalogRequest(kind: "search", search: term), profileID: profileID,
+                    connectedSessionID: typeOrigin?.serviceSessionID)
                 guard !Task.isCancelled, catalogSearch.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+                if isPostgres {
+                    guard typeOrigin == currentPostgresTypeCatalogOrigin(profileID: profileID) else { continue }
+                    catalogSearchResults[profileID] = try PostgresTypeCatalog.decodeObjects(result).map { item in
+                        CatalogNode(profileID: profileID, name: item.name, kind: .object, schema: item.schema,
+                            object: item.name, objectKind: item.kind, identity: item.identity, engine: .postgresql,
+                            localOID: ["enum", "type"].contains(item.kind) ? item.identity : nil, typeKind: item.typeKind,
+                            typeOrigin: typeOrigin)
+                    }
+                    catalogErrors[profileID] = result.truncated == true
+                        ? "Search results are incomplete. Refine the search to find more objects." : nil
+                    continue
+                }
                 catalogSearchResults[profileID] = result.catalogRecords.compactMap { record in
                     guard let name = record["name"], let schema = record["schema"] else { return nil }
                     return CatalogNode(profileID: profileID, name: name, kind: .object, schema: schema,
-                        object: name, objectKind: record["kind"] ?? "table", identity: record["identity"])
+                        object: name, objectKind: record["kind"] ?? "table", identity: record["identity"],
+                        engine: library.savedConnections.first { $0.id == profileID }?.engine,
+                        localOID: ["enum", "type"].contains(record["kind"] ?? "") ? record["identity"] : nil,
+                        typeKind: record["typeKind"])
                 }
-            } catch { catalogErrors[profileID] = error.localizedDescription }
+            } catch {
+                guard !Task.isCancelled, catalogSearch.trimmingCharacters(in: .whitespacesAndNewlines) == term else { return }
+                if isPostgres {
+                    guard typeOrigin == currentPostgresTypeCatalogOrigin(profileID: profileID) else { continue }
+                    catalogErrors[profileID] = "PostgreSQL catalog search is unavailable. Refresh the catalog and check access permissions."
+                } else { catalogErrors[profileID] = error.localizedDescription }
+            }
         }
     }
 
-    private func catalog(_ request: CatalogRequest, profileID: UUID, connectedSessionID: String? = nil) async throws -> BackendMessage {
+    func catalog(_ request: CatalogRequest, profileID: UUID, connectedSessionID: String? = nil,
+                 typeRequest: PostgresTypeCatalogRequest? = nil) async throws -> BackendMessage {
         let client: BackendClient
         if let connectedSessionID {
             guard shutdownTask == nil, !helperFailed, !disconnectingProfiles.contains(profileID),
@@ -2744,10 +2830,22 @@ final class ApplicationWorkspace: ObservableObject {
         let task = Task { @MainActor in
             if let previous { _ = try? await previous.value }
             try Task.checkCancellation()
-            return try await client.request(.catalog(sessionId: sessionID, request: request))
+            guard self.services[profileID]?.sessionId == sessionID,
+                  self.services[profileID]?.connectionState == .connected,
+                  typeRequest?.cancelled != true else {
+                throw CatalogFailure(message: "The profile was disconnected while loading metadata.")
+            }
+            typeRequest?.submitted = true
+            return try await client.request(.catalog(sessionId: sessionID,
+                queryId: typeRequest?.queryID ?? UUID().uuidString, request: request))
         }
+        typeRequest?.task = task
         catalogRequests[profileID] = (requestID, task)
-        defer { if catalogRequests[profileID]?.id == requestID { catalogRequests[profileID] = nil } }
+        defer {
+            typeRequest?.finished = true
+            typeRequest?.task = nil
+            if catalogRequests[profileID]?.id == requestID { catalogRequests[profileID] = nil }
+        }
         let reply = try await withTaskCancellationHandler {
             try await task.value
         } onCancel: { task.cancel() }
@@ -2760,6 +2858,13 @@ final class ApplicationWorkspace: ObservableObject {
         return reply
     }
 
+    var canInspectPostgresTypes: Bool { shutdownTask == nil && !isClosing && !helperFailed }
+
+    func cancelPostgresTypeCatalogQuery(sessionID: String, queryID: String) async throws -> BackendMessage {
+        guard let helper, !helperFailed, shutdownTask == nil else { throw BackendTransportError(.notReady) }
+        return try await helper.request(.cancel(sessionId: sessionID, queryId: queryID))
+    }
+
     private struct CatalogFailure: LocalizedError {
         let message: String
         var errorDescription: String? { message }
@@ -2767,6 +2872,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func shutdown() async {
         if let shutdownTask { await shutdownTask.value; return }
+        dismissPostgresTypeInspection()
         for file in fileDocuments.values { file.stopWatching() }
         sqlFolders.shutdown()
         closedTabs.removeAll()
@@ -2803,6 +2909,7 @@ final class ApplicationWorkspace: ObservableObject {
                 guard let self, self.shutdownTask == nil, self.helperGeneration == generation else { return }
                 self.helperFailed = true
                 self.clusterInspection = nil
+                self.invalidatePostgresTypeInspection(reason: "The helper connection ended. Reopen this type after connecting again.")
                 self.reportError(failure.localizedDescription)
             }
             return client
