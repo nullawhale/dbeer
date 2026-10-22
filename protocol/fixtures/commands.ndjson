@@ -1,4 +1,4 @@
-{"type":"hello","requestId":"hello-1","protocolVersion":4}
+{"type":"hello","requestId":"hello-1","protocolVersion":5}
 {"type":"connect","requestId":"connect-1","connection":{"host":"localhost","port":5432,"database":"fixture","user":"fixture","password":"fixture-only","sslMode":"verify-full","policy":{"environment":"unspecified","readOnly":false},"sslRootCert":"/fixture/ca.pem","engine":"postgresql"}}
 {"type":"execute","requestId":"execute-1","sessionId":"session-1","queryId":"query-1","sql":"SELECT 'κόσμος 🌍' AS x, E'line\\nvalue' AS x\n-- a semicolon ; is SQL text"}
 {"type":"cancel","requestId":"cancel-1","sessionId":"session-1","queryId":"query-1"}

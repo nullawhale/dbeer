@@ -1,7 +1,7 @@
 import Foundation
 
 enum BackendProtocol {
-    static let version = 4
+    static let version = 5
     static let maxFrameBytes = 16 * 1_024 * 1_024
 }
 
@@ -36,11 +36,13 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     var contactPoints: [String]?
     var localDatacenter: String?
     var consistency: String?
+    var ssh: SSHSettings?
 
     init(host: String, port: Int, database: String, user: String, password: String,
          sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql,
          policy: ExecutionPolicy = ExecutionPolicy(), contactPoints: [String]? = nil,
-         localDatacenter: String? = nil, consistency: String? = nil) {
+         localDatacenter: String? = nil, consistency: String? = nil, ssh: SSHSettings? = nil) {
+        self.ssh = ssh
         self.engine = engine
         self.host = host
         self.port = port
@@ -56,11 +58,12 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, host, port, database, user, password, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency
+        case engine, host, port, database, user, password, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        ssh = try values.decodeIfPresent(SSHSettings.self, forKey: .ssh)
         engine = try values.decodeIfPresent(DatabaseEngine.self, forKey: .engine) ?? .postgresql
         host = try values.decode(String.self, forKey: .host)
         port = try values.decode(Int.self, forKey: .port)
@@ -157,9 +160,18 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var changes: ChangesRequest?
     var operations: [OperationRequest]?
     var authorization: String?
+    var sshTrust: SSHTrust?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
+    }
+
+    static func sshProbe(_ connection: ConnectionSettings) -> Self {
+        Self(type: "ssh.probe", requestId: UUID().uuidString, connection: connection)
+    }
+
+    static func sshTrust(_ connection: ConnectionSettings, token: String, replace: Bool = false) -> Self {
+        Self(type: "ssh.trust", requestId: UUID().uuidString, connection: connection, sshTrust: SSHTrust(token: token, replace: replace ? true : nil))
     }
 
     static func connect(_ connection: ConnectionSettings) -> Self {
@@ -206,6 +218,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var terminalType: String? {
         switch type {
         case "hello": "hello.ack"
+        case "ssh.probe": "ssh.probe.result"
+        case "ssh.trust": "ssh.trust.result"
         case "connect": "connect.result"
         case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
         case "cancel": "cancel.ack"
@@ -304,6 +318,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var sqlNotExecuted: Bool?
     var exportPublication: String?
     var assessment: OperationAssessment?
+    var ssh: SSHHostKey?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -317,6 +332,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         switch type {
         case "hello.ack": valid = protocolVersion != nil
         case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
+        case "ssh.probe.result", "ssh.trust.result": valid = ssh?.isValid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
         case "query.progress": valid = (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
         case "query.started": valid = sessionId != nil && queryId != nil

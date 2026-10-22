@@ -18,6 +18,7 @@ import (
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/session"
 	"dbeer/helper/internal/sqllsp"
+	"dbeer/helper/internal/sshtunnel"
 )
 
 // Native GPUI product builds set these explicit -X main.* link values from the
@@ -57,13 +58,49 @@ func run(input io.Reader, output io.Writer) error {
 
 func runProduct(input io.Reader, output io.Writer, identity *productidentity.Identity) error {
 	postgres.PrepareEnvironment()
-	return runWithFactoryAndIdentity(input, output, openDatabase, identity)
+	tunnels, err := sshtunnel.NewManager()
+	if err != nil {
+		return err
+	}
+	defer tunnels.Close()
+	opener := func(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
+		if connection.SSH == nil {
+			return openDatabase(ctx, connection)
+		}
+		lease, err := tunnels.Acquire(ctx, connection.SSH)
+		if err != nil {
+			return nil, safeSSHError(err)
+		}
+		ssh := *connection.SSH
+		ssh.Password, ssh.Passphrase = "", ""
+		connection.SSH = &ssh
+		physical, err := openDatabase(adapter.WithTransport(ctx, lease), connection)
+		if err != nil {
+			_ = lease.Close()
+		}
+		return physical, err
+	}
+	return runWithSSH(input, output, opener, identity, tunnels)
+}
+
+func safeSSHError(err error) *adapter.ConnectionError {
+	var safe *sshtunnel.Error
+	if errors.As(err, &safe) {
+		return &adapter.ConnectionError{Category: safe.Code, Message: safe.Message}
+	}
+	if errors.Is(err, context.Canceled) {
+		return &adapter.ConnectionError{Category: "cancelled", Message: "SSH connection was cancelled."}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &adapter.ConnectionError{Category: "timeout", Message: "SSH connection timed out."}
+	}
+	return &adapter.ConnectionError{Category: "ssh", Message: "Cannot establish the SSH connection."}
 }
 
 // The input reader owns protocol guards and never waits for result output.
 // Ordinary admission is bounded; overflow is a transport failure, rather than
 // indefinitely hiding Stop/EOF behind an unresponsive output consumer.
-func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity) {
+func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}) {
 	reader := protocol.NewReader(input)
 	requests, queries := make(map[string]bool), make(map[string]string)
 	handshaken := false
@@ -126,12 +163,15 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 		if command.Type == "hello" {
 			var response protocol.Response
 			if command.ProtocolVersion != protocol.Version {
-				response = protocol.ErrorResponse(command, "protocol", "Incompatible protocol version; version 3 is required.")
+				response = protocol.ErrorResponse(command, "protocol", fmt.Sprintf("Incompatible protocol version; version %d is required.", protocol.Version))
 			} else if handshaken {
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
 				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1"}, BuildIdentity: identity}
+				if tunnels != nil {
+					response.Capabilities = append(response.Capabilities, "sshTunnelsV1")
+				}
 			}
 			if !emit(response) {
 				return
@@ -142,6 +182,51 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			if !emit(protocol.ErrorResponse(command, "protocol", "A successful hello handshake is required.")) {
 				return
 			}
+			continue
+		}
+		if command.Type == "ssh.probe" || command.Type == "ssh.trust" {
+			if tunnels == nil {
+				if !emit(protocol.ErrorResponse(command, "ssh", "SSH transport is unavailable.")) {
+					return
+				}
+				continue
+			}
+			// Key discovery and trust checks must never block the input reader,
+			// otherwise EOF, Stop and unrelated sessions cannot be serviced.
+			select {
+			case controls <- struct{}{}:
+			default:
+				if !emit(protocol.ErrorResponse(command, "busy", "Too many SSH checks are in progress.")) {
+					return
+				}
+				continue
+			}
+			go func(command protocol.Command) {
+				defer func() { <-controls }()
+				ctx, cancel := context.WithTimeout(controlContext, 15*time.Second)
+				defer cancel()
+				response := protocol.Response{Type: command.Type + ".result", RequestID: command.RequestID}
+				var err error
+				if command.Type == "ssh.probe" {
+					response.SSH, err = tunnels.Probe(ctx, command.Connection.SSH)
+				} else {
+					err = tunnels.Trust(ctx, command.Connection.SSH, command.SSHTrust.Token, command.SSHTrust.Replace)
+					if err == nil {
+						response.SSH, err = tunnels.Probe(ctx, command.Connection.SSH)
+						if err == nil && response.SSH.Status != "trusted" {
+							err = &sshtunnel.Error{Code: "host_key_changed", Message: "The SSH server key changed after review."}
+						}
+					}
+				}
+				if err != nil {
+					safe := safeSSHError(err)
+					response = protocol.ErrorResponse(command, safe.Category, safe.Message)
+				}
+				select {
+				case local <- response:
+				case <-controlContext.Done():
+				}
+			}(command)
 			continue
 		}
 		if command.Type == "execute" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" {
@@ -179,6 +264,10 @@ func runWithFactory(input io.Reader, output io.Writer, opener adapter.OpenFunc) 
 }
 
 func runWithFactoryAndIdentity(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity) error {
+	return runWithSSH(input, output, opener, identity, nil)
+}
+
+func runWithSSH(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity, tunnels *sshtunnel.Manager) error {
 	manager := session.New(opener)
 	defer manager.Close()
 	local := make(chan protocol.Response, 256)
@@ -186,13 +275,16 @@ func runWithFactoryAndIdentity(input io.Reader, output io.Writer, opener adapter
 	writeRequests := make(chan protocol.Response)
 	writeResults := make(chan writeResult, 1)
 	stopIO := make(chan struct{})
+	controlContext, cancelControls := context.WithCancel(context.Background())
+	controls := make(chan struct{}, 8)
+	defer cancelControls()
 	defer close(stopIO)
 	defer func() {
 		if closer, ok := output.(io.Closer); ok {
 			_ = closer.Close()
 		}
 	}()
-	go readCommands(input, manager, local, ended, stopIO, identity)
+	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls)
 	writer := protocol.NewWriter(output)
 	go func() {
 		for {
@@ -217,6 +309,24 @@ func runWithFactoryAndIdentity(input io.Reader, output io.Writer, opener adapter
 	inputClosed, writerBusy := false, false
 	var drain <-chan time.Time
 	var timer *time.Timer
+	var drainDeadline time.Time
+	armDrain := func() {
+		if drainDeadline.IsZero() {
+			return
+		}
+		timeout := time.Until(drainDeadline)
+		// Slow resource teardown may use the graceful deadline, but an output
+		// consumer that stops reading must never hold shutdown open that long.
+		if writerBusy && timeout > time.Second {
+			timeout = time.Second
+		}
+		if timer == nil {
+			timer = time.NewTimer(timeout)
+		} else {
+			timer.Reset(timeout)
+		}
+		drain = timer.C
+	}
 	defer func() {
 		if timer != nil {
 			timer.Stop()
@@ -252,16 +362,22 @@ func runWithFactoryAndIdentity(input io.Reader, output io.Writer, opener adapter
 			}
 			inputClosed = !ending.shutdown
 			ended = nil
-			timer = time.NewTimer(time.Second)
-			drain = timer.C
+			drainTimeout := time.Second
+			if ending.shutdown && tunnels != nil {
+				drainTimeout = 5 * time.Second
+			}
+			drainDeadline = time.Now().Add(drainTimeout)
+			armDrain()
 		case <-drain:
 			return nil
 		case send <- next:
 			writerBusy = true
+			armDrain()
 			outgoing[0] = protocol.Response{}
 			outgoing = outgoing[1:]
 		case written := <-writeResults:
 			writerBusy = false
+			armDrain()
 			if written.err != nil {
 				return written.err
 			}
@@ -284,6 +400,9 @@ func runWithFactoryAndIdentity(input io.Reader, output io.Writer, opener adapter
 // transport, sessions or the language server. Mixed/unknown metadata options
 // refuse here and can never fall through into an ordinary helper process.
 func runCommand(args []string, input io.Reader, output io.Writer, rawIdentity, version, build string) error {
+	if handled, err := sshtunnel.RunUtility(args); handled {
+		return err
+	}
 	for _, argument := range args {
 		if strings.HasPrefix(argument, "--build-info") {
 			if len(args) != 1 || argument != "--build-info" {

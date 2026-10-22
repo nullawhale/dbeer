@@ -78,6 +78,7 @@ actor BackendClient {
     private var exitWaiters: [CheckedContinuation<Exit, Never>] = []
     private var ready = false
     private var capturedExportSupported = false
+    private var sshTunnelsSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -210,8 +211,9 @@ actor BackendClient {
         // helper does not retain its process client and suspended observer.
         for waiter in failureWaiters { waiter.resume(returning: BackendTransportError(.notReady)) }
         failureWaiters.removeAll()
+        let shutdownGrace: Duration = sshTunnelsSupported ? .seconds(6) : .seconds(2)
         let deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            do { try await Task.sleep(for: shutdownGrace) } catch { return }
             await self?.forceExitIfNeeded()
         }
         var acknowledged = false
@@ -300,7 +302,10 @@ actor BackendClient {
         }
         // The original frame has already validated optional product metadata.
         // Native SwiftUI helpers remain compatible without GPUI product pairing.
-        if reply.type == "hello.ack" { capturedExportSupported = reply.capabilities?.contains("capturedExportV1") == true }
+        if reply.type == "hello.ack" {
+            capturedExportSupported = reply.capabilities?.contains("capturedExportV1") == true
+            sshTunnelsSupported = reply.capabilities?.contains("sshTunnelsV1") == true
+        }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
             return

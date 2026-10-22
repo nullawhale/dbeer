@@ -9,7 +9,7 @@ struct StreamingTransportTests {
         def read(): return json.loads(sys.stdin.readline())
         def send(value): print(json.dumps(value,ensure_ascii=False),flush=True)
         hello=read()
-        send({'type':'hello.ack','requestId':hello['requestId'],'protocolVersion':4})
+        send({'type':'hello.ack','requestId':hello['requestId'],'protocolVersion':5})
         command=read()
         ids={'requestId':command['requestId'],'sessionId':command['sessionId'],'queryId':command['queryId']}
         column={'index':0,'name':'x','engine':'postgresql','nativeType':'numeric','typeOid':1700}

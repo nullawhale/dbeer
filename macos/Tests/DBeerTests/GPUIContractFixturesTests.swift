@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import DBeer
 
-/// New consumers of the existing v3 wire format, shared with Go and Rust.
+/// Native v5 contract cases shared with Go; GPUI compatibility is deferred.
 /// These cases only decode synthetic data; they do not execute SQL or exports.
 struct GPUIContractFixturesTests {
     private struct Fixtures: Decodable {
@@ -14,7 +14,7 @@ struct GPUIContractFixturesTests {
         let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         return try JSONDecoder().decode(Fixtures.self, from: Data(contentsOf:
-            repository.appendingPathComponent("protocol/fixtures/contract-v4.json")))
+            repository.appendingPathComponent("protocol/fixtures/contract-v5.json")))
     }
     @Test func existingWireOperationsRetainTypedValuesAndAuthorization() throws {
         let data = try fixture()
@@ -61,5 +61,24 @@ struct GPUIContractFixturesTests {
         let unknown = try #require(data.responses.first { $0.requestId == "apply-unknown" })
         #expect(unknown.outcomeUnknown == true)
         #expect(unknown.transactionStatus == nil)
+    }
+
+    @Test func sshContractKeepsDatabaseIdentitySeparateFromBastion() throws {
+        let data = try fixture()
+        let connect = try #require(data.commands.first { $0.requestId == "ssh-connect" })
+        let settings = try #require(connect.connection)
+        let tunnel = try #require(settings.ssh)
+        #expect(settings.host == "db.internal.example")
+        #expect(settings.sslMode == "verify-full")
+        #expect(tunnel.host == "bastion.example")
+        #expect(tunnel.port == 2222)
+        #expect(tunnel.password == nil && tunnel.passphrase == nil)
+        #expect(data.commands.first { $0.type == "ssh.trust" }?.sshTrust?.token == "synthetic-host-key-challenge")
+        let unknown = try #require(data.responses.first { $0.type == "ssh.probe.result" }?.ssh)
+        #expect(unknown.status == "unknown")
+        #expect(unknown.challengeToken == "synthetic-host-key-challenge")
+        let trusted = try #require(data.responses.first { $0.type == "ssh.trust.result" }?.ssh)
+        #expect(trusted.status == "trusted")
+        #expect(trusted.challengeToken == nil)
     }
 }

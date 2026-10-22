@@ -16,6 +16,7 @@ import (
 )
 
 type Session struct {
+	adapter.TransportBinding
 	mu             sync.Mutex
 	work           *connection
 	serverUUID     string
@@ -35,9 +36,10 @@ func Open(ctx context.Context, settings protocol.Connection) (adapter.Session, e
 	if err != nil {
 		return nil, safeConnectionError(err)
 	}
-	session := &Session{work: work, connectionID: work.client.GetConnectionID()}
+	tunnel := adapter.TransportFromContext(ctx)
+	session := &Session{work: work, connectionID: work.client.GetConnectionID(), TransportBinding: adapter.TransportBinding{Transport: tunnel}}
 	session.transaction.Store("idle")
-	session.openControl = func(ctx context.Context) (*connection, error) { return dial(ctx, settings) }
+	session.openControl = func(ctx context.Context) (*connection, error) { return dialWithTransport(ctx, settings, tunnel) }
 	uuid, err := serverIdentity(work)
 	if err != nil || uuid == "" || session.connectionID == 0 {
 		session.Close()
@@ -85,6 +87,7 @@ func (session *Session) Close() {
 	if session.closed.CompareAndSwap(false, true) {
 		session.transaction.Store("unknown")
 		_ = session.work.transport.Close()
+		session.CloseTransport()
 	}
 }
 

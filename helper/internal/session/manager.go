@@ -396,7 +396,11 @@ func (owner *owner) run(connectCommand protocol.Command) {
 	}
 	pending := connectCommand
 	result := make(chan operation, 1)
-	ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
+	connectTimeout := ConnectTimeout
+	if connection.SSH != nil {
+		connectTimeout = 30 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer func() { cancel() }()
 	go func() {
 		physical, err := owner.manager.opener(ctx, connection)
@@ -424,6 +428,8 @@ func (owner *owner) run(connectCommand protocol.Command) {
 	txStatus := ""
 	stopping, aborting, closed, routingClosed := false, false, false, false
 	stop, shutdown := owner.manager.stop, owner.shutdown
+	var transportDone <-chan struct{}
+	transportFailed := false
 	for {
 		if stopping && !routingClosed {
 			outgoing = append(outgoing, owner.closeRouting()...)
@@ -456,6 +462,12 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			next = event{sessionID: owner.id, response: outgoing[0]}
 		}
 		select {
+		case <-transportDone:
+			transportDone = nil
+			transportFailed = true
+			owner.invalidateGrant()
+			stopping = true
+			cancel()
 		case <-stop:
 			stop = nil
 			stopping, aborting = true, true
@@ -482,7 +494,24 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			owner.activeQuery, owner.activeCancel, owner.credit = "", nil, nil
 			owner.controlMu.Unlock()
 			if pending.Type == "connect" {
+				// SSH authentication is complete. Keep runtime control settings
+				// without retaining the one-use authentication material in routing.
+				if pending.Connection != nil && pending.Connection.SSH != nil {
+					pending.Connection.SSH.Password, pending.Connection.SSH.Passphrase = "", ""
+				}
 				physical, txStatus = completed.session, completed.txStatus
+				if monitored, ok := physical.(interface{ TransportDone() <-chan struct{} }); ok {
+					transportDone = monitored.TransportDone()
+					select {
+					case <-transportDone:
+						transportDone = nil
+						transportFailed = true
+						if completed.err == nil {
+							completed.err = &adapter.ConnectionError{Category: "ssh", Message: "The SSH tunnel disconnected."}
+						}
+					default:
+					}
+				}
 				if completed.err != nil {
 					outgoing = append(outgoing, connectError(pending, completed.err))
 					stopping = true
@@ -498,6 +527,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			} else {
 				response := completed.response
+				if transportFailed && response.Type == "error" {
+					response.Connected = false
+				}
 				if response.Type == "error" {
 					owner.invalidateGrant()
 				}
@@ -511,6 +543,18 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			}
 		case command := <-commands:
+			select {
+			case <-transportDone:
+				transportDone = nil
+				transportFailed = true
+				owner.invalidateGrant()
+				owner.manager.forgetPending(command)
+				outgoing = append(outgoing, rejectedCommand(command, "connection", "The SSH tunnel disconnected."))
+				stopping = true
+				cancel()
+				continue
+			default:
+			}
 			var response protocol.Response
 			switch command.Type {
 			case "operation.assess":

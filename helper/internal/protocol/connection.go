@@ -15,6 +15,9 @@ func (connection Connection) CassandraConsistency() string {
 }
 
 func (connection Connection) Valid() bool {
+	if connection.SSH != nil && !connection.SSH.Valid() {
+		return false
+	}
 	if connection.Port < 1 || connection.Port > 65535 {
 		return false
 	}

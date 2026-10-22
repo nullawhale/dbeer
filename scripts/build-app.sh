@@ -7,6 +7,12 @@ if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
     printf 'DBeer builds require an Apple Silicon Mac.\n' >&2
     exit 1
 fi
+for ssh_tool in /usr/bin/ssh /usr/bin/ssh-keyscan; do
+    if [[ ! -x "$ssh_tool" ]]; then
+        printf 'DBeer SSH support requires the macOS OpenSSH tools.\n' >&2
+        exit 1
+    fi
+done
 build_root="$repo_root/build"
 app="$build_root/DBeer.app"
 configuration="${CONFIGURATION:-release}"
@@ -90,6 +96,9 @@ PLIST
 
 codesign --force --timestamp=none --keychain "$signing_keychain" --sign "$signing_identity" \
     --identifier dev.dbeer.core "$app/Contents/Helpers/dbeer-core"
+# The askpass and crash-watchdog entry points dispatch in this same binary,
+# including outside the source checkout; there are no unsigned script helpers.
+codesign --verify --strict "$app/Contents/Helpers/dbeer-core"
 codesign --force --timestamp=none --keychain "$signing_keychain" --sign "$signing_identity" "$app"
 codesign --verify --deep --strict "$app"
 # Let Finder notice resource changes when rebuilding an existing app bundle.

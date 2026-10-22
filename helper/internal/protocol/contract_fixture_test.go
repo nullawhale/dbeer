@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-// Additional v4 fixtures exercise the existing contract needed by all frontends.
+// Native v5 fixtures exercise existing operations and the SSH runtime boundary.
 // Export destinations are lexical fixtures, remapped for native path semantics;
 // parsing never executes SQL, publishes a file or opens a database connection.
-func TestSharedV4OperationContract(t *testing.T) {
-	data, err := os.ReadFile("../../../protocol/fixtures/contract-v4.json")
+func TestSharedV5OperationContract(t *testing.T) {
+	data, err := os.ReadFile("../../../protocol/fixtures/contract-v5.json")
 	if err != nil {
 		t.Fatal("cannot read shared contract fixtures")
 	}
@@ -66,7 +66,7 @@ func TestSharedV4OperationContract(t *testing.T) {
 			t.Fatal("lost typed browse filters")
 		}
 	}
-	for _, kind := range []string{"catalog", "execute", "changes.preview", "changes.apply", "operation.assess", "stream.ack"} {
+	for _, kind := range []string{"catalog", "execute", "changes.preview", "changes.apply", "operation.assess", "stream.ack", "connect", "ssh.probe", "ssh.trust"} {
 		if !kinds[kind] {
 			t.Fatal("missing operation fixture")
 		}

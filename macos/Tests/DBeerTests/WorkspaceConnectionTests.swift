@@ -12,7 +12,7 @@ struct WorkspaceConnectionTests {
         def send(message):
             print(json.dumps(message), flush=True)
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':4})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
         \(body)
         """])
     }

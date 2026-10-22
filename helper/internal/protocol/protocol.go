@@ -13,11 +13,12 @@ import (
 	"dbeer/helper/internal/productidentity"
 )
 
-const Version = 4
+const Version = 5
 const MaxFrameBytes = 16 * 1024 * 1024
 const MaxIDBytes = 128
 
 type Connection struct {
+	SSH             *SSHSettings     `json:"ssh,omitempty"`
 	Engine          string           `json:"engine,omitempty"`
 	Host            string           `json:"host"`
 	Port            int              `json:"port"`
@@ -42,6 +43,7 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
+	SSHTrust        *SSHTrust          `json:"sshTrust,omitempty"`
 	Type            string             `json:"type"`
 	RequestID       string             `json:"requestId"`
 	ProtocolVersion int                `json:"protocolVersion,omitempty"`
@@ -269,13 +271,26 @@ func ParseCommand(frame []byte) (Command, error) {
 		if !required(fields, "protocolVersion") || json.Unmarshal(fields["protocolVersion"], &command.ProtocolVersion) != nil {
 			return command, failure
 		}
-	case "connect":
+	case "connect", "ssh.probe", "ssh.trust":
 		allowed["connection"] = true
 		connection, ok := parseConnection(fields["connection"])
 		if !ok {
 			return command, failure
 		}
 		command.Connection = &connection
+		if command.Type != "connect" && connection.SSH == nil {
+			return command, failure
+		}
+		if command.Type == "ssh.trust" {
+			allowed["sshTrust"] = true
+			var trust SSHTrust
+			decoder := json.NewDecoder(bytes.NewReader(fields["sshTrust"]))
+			decoder.DisallowUnknownFields()
+			if !required(fields, "sshTrust") || decoder.Decode(&trust) != nil || !ValidID(trust.Token) {
+				return command, failure
+			}
+			command.SSHTrust = &trust
+		}
 	case "execute", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
@@ -462,12 +477,19 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 			return connection, false
 		}
 	}
+	if raw, exists := fields["ssh"]; exists {
+		var ok bool
+		connection.SSH, ok = parseSSH(raw)
+		if !ok {
+			return connection, false
+		}
+	}
 	if !connection.Valid() {
 		return connection, false
 	}
 	for name := range fields {
 		switch name {
-		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency":
+		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh":
 		default:
 			return connection, false
 		}
@@ -565,6 +587,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	SSH                   *SSHProbe
 	AppliedChangeCount    *int
 	CurrentKeyspace       *string
 	AffectedRowCountKnown *bool
@@ -621,6 +644,8 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
+	case "ssh.probe.result", "ssh.trust.result":
+		fields["ssh"] = response.SSH
 	case "hello.ack":
 		fields["protocolVersion"] = response.ProtocolVersion
 		if response.BuildIdentity != nil {

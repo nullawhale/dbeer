@@ -163,7 +163,7 @@ func (reader *chunkedReader) Read(output []byte) (int, error) {
 }
 
 func TestFramesAcrossArbitraryReadBoundaries(t *testing.T) {
-	input := []byte("{\"type\":\"hello\",\"requestId\":\"κόσμος\",\"protocolVersion\":4}\n{\"type\":\"shutdown\",\"requestId\":\"s1\"}\n")
+	input := []byte("{\"type\":\"hello\",\"requestId\":\"κόσμος\",\"protocolVersion\":5}\n{\"type\":\"shutdown\",\"requestId\":\"s1\"}\n")
 	for _, size := range []int{1, 2, 7, len(input)} {
 		reader := NewReader(&chunkedReader{input: input, size: size})
 		for _, expected := range []string{"hello", "shutdown"} {

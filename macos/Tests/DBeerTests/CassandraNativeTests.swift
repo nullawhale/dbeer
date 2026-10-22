@@ -352,7 +352,7 @@ struct CassandraNativeTests {
             kind = command['type']
             reply = {'requestId':command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=4)
+                reply.update(type='hello.ack', protocolVersion=5)
             elif kind == 'connect':
                 serial += 1
                 session = 'cassandra-session-' + str(serial)

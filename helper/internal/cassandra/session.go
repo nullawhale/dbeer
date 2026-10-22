@@ -14,6 +14,7 @@ import (
 )
 
 type Session struct {
+	adapter.TransportBinding
 	driver   *gocql.Session
 	keyspace string
 	cursors  map[string]browseCursor
@@ -22,6 +23,9 @@ type Session struct {
 func Open(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
 	config, err := NewClusterConfig(connection)
 	if err != nil {
+		return nil, err
+	}
+	if err := configureTransport(ctx, connection, config); err != nil {
 		return nil, err
 	}
 	// ClusterConfig has bounded per-node connect deadlines but no context-aware
@@ -49,7 +53,7 @@ func Open(ctx context.Context, connection protocol.Connection) (adapter.Session,
 			failure := safeError(protocol.Command{}, ctx, result.err, false, false)
 			return nil, &adapter.ConnectionError{Category: failure.Category, Message: failure.Message}
 		}
-		return &Session{driver: result.driver, keyspace: connection.Database, cursors: make(map[string]browseCursor)}, nil
+		return &Session{driver: result.driver, keyspace: connection.Database, cursors: make(map[string]browseCursor), TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
 	case <-ctx.Done():
 		return nil, &adapter.ConnectionError{Category: "timeout", Message: "The Cassandra connection attempt timed out or was cancelled."}
 	}
@@ -59,6 +63,7 @@ func (s *Session) Close() {
 		s.driver.Close()
 	}
 	s.cursors = nil
+	s.CloseTransport()
 }
 func (s *Session) TransactionStatus() string { return "unsupported" }
 func (s *Session) CurrentKeyspace() string   { return s.keyspace }

@@ -37,7 +37,7 @@ struct GridLifecycleTests {
             kind = command['type']
             reply = {'requestId': command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=4)
+                reply.update(type='hello.ack', protocolVersion=5)
             elif kind == 'operation.assess':
                 reply.update(type='operation.assessment', sessionId=command['sessionId'], queryId=command['queryId'],
                              assessment={'decision':'confirm' if delay == 'apply-preview' else 'allow','policy':{'environment':'unspecified','readOnly':False},

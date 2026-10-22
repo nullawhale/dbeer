@@ -18,7 +18,7 @@ struct BackendMultiplexingTests {
                   'rows':[[command['sessionId']]],'durationMs':1,'rowCount':1,'displayedRowCount':1,
                   'commandTag':'SELECT 1','truncated':False,'transactionStatus':'idle'})
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':4})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
         \(body)
         """])
     }

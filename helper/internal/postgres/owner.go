@@ -66,6 +66,9 @@ func connect(ctx context.Context, connection protocol.Connection) (*pgx.Conn, er
 	if err != nil {
 		return nil, err
 	}
+	if err := configureTransport(ctx, connection, config); err != nil {
+		return nil, err
+	}
 	return pgx.ConnectConfig(ctx, config)
 }
 

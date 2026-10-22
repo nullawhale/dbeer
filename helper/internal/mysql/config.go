@@ -89,6 +89,13 @@ func tlsConfiguration(settings protocol.Connection) (*tls.Config, error) {
 }
 
 func dial(ctx context.Context, settings protocol.Connection) (*connection, error) {
+	return dialWithTransport(ctx, settings, adapter.TransportFromContext(ctx))
+}
+
+func dialWithTransport(ctx context.Context, settings protocol.Connection, tunnel adapter.Transport) (*connection, error) {
+	if settings.SSH != nil && tunnel == nil {
+		return nil, invalidSettings("The SSH transport is unavailable.")
+	}
 	tlsConfig, err := tlsConfiguration(settings)
 	if err != nil {
 		return nil, err
@@ -97,7 +104,13 @@ func dial(ctx context.Context, settings protocol.Connection) (*connection, error
 	defer cancel()
 	var transport net.Conn
 	dialer := func(ctx context.Context, network, address string) (net.Conn, error) {
-		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
+		var conn net.Conn
+		var err error
+		if tunnel != nil {
+			conn, err = tunnel.DialContext(ctx, "tcp", address)
+		} else {
+			conn, err = (&net.Dialer{}).DialContext(ctx, "tcp", address)
+		}
 		if err != nil {
 			return nil, err
 		}
