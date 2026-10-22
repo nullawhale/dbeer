@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Compare mapped PostgreSQL or MySQL table structure from Connections → Compare
+  Schema Structure in two dedicated read-only sessions. Inspect paged property
+  differences, exact value chunks, capture intervals and metadata limitations;
+  export a private, versioned JSON report with both typed captures and a digest.
+  Schema/table/member/type correspondence is explicit, local OIDs never identify
+  objects across servers, and incomplete or unsupported facts cannot establish
+  equality. Comparison never generates or applies migration SQL.
+
 - Inspect PostgreSQL enums and user-defined types directly from the catalog or
   search, including definitions, ordered enum values, dependencies and operation
   limitations. Generate DDL previews for supported type renames and enum value

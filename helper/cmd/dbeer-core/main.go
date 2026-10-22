@@ -18,6 +18,7 @@ import (
 	"dbeer/helper/internal/productidentity"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/resultartifact"
+	"dbeer/helper/internal/schemajob"
 	"dbeer/helper/internal/session"
 	"dbeer/helper/internal/sqllsp"
 	"dbeer/helper/internal/sshtunnel"
@@ -102,13 +103,14 @@ func safeSSHError(err error) *adapter.ConnectionError {
 // The input reader owns protocol guards and never waits for result output.
 // Ordinary admission is bounded; overflow is a transport failure, rather than
 // indefinitely hiding Stop/EOF behind an unresponsive output consumer.
-func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}, comparisons *comparisonjob.Manager) {
+func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}, comparisons *comparisonjob.Manager, schemas *schemajob.Manager) {
 	reader := protocol.NewReader(input)
 	requests, queries := make(map[string]bool), make(map[string]string)
 	handshaken := false
 	comparisonReads := make(chan struct{}, 2)
 	finish := func(err error, shutdown bool) {
 		comparisons.Close()
+		schemas.Close()
 		if !shutdown {
 			manager.Close()
 		}
@@ -157,6 +159,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 		requests[command.RequestID] = true
 		if command.Type == "shutdown" {
 			comparisons.Close()
+			schemas.Close()
 			manager.Control(command)
 			if !manager.TrySubmit(command) {
 				finish(errors.New("Protocol command queue exceeded its bounded capacity."), false)
@@ -173,7 +176,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -187,6 +190,31 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			if !emit(protocol.ErrorResponse(command, "protocol", "A successful hello handshake is required.")) {
 				return
 			}
+			continue
+		}
+		if strings.HasPrefix(command.Type, "schema.") {
+			if command.Type != "schema.page" && command.Type != "schema.value" && command.Type != "schema.export" {
+				if !emit(schemas.Handle(command)) {
+					return
+				}
+				continue
+			}
+			select {
+			case comparisonReads <- struct{}{}:
+			default:
+				if !emit(protocol.ErrorResponse(command, "busy", "Too many comparison reads are in progress.")) {
+					return
+				}
+				continue
+			}
+			go func(command protocol.Command) {
+				defer func() { <-comparisonReads }()
+				response := schemas.Handle(command)
+				select {
+				case local <- response:
+				case <-controlContext.Done():
+				}
+			}(command)
 			continue
 		}
 		if strings.HasPrefix(command.Type, "compare.") {
@@ -311,6 +339,11 @@ func runWithSSH(input io.Reader, output io.Writer, opener adapter.OpenFunc, iden
 
 func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity, tunnels *sshtunnel.Manager, comparisons *comparisonjob.Manager) error {
 	defer comparisons.Close()
+	schemas, err := schemajob.New(opener, schemajob.Options{})
+	if err != nil {
+		return err
+	}
+	defer schemas.Close()
 	manager := session.New(opener)
 	defer manager.Close()
 	local := make(chan protocol.Response, 256)
@@ -327,7 +360,7 @@ func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc,
 			_ = closer.Close()
 		}
 	}()
-	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls, comparisons)
+	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls, comparisons, schemas)
 	writer := protocol.NewWriter(output)
 	go func() {
 		for {

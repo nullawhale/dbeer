@@ -323,6 +323,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private(set) var historyError: String?
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
+    @Published var schemaComparison: SchemaComparisonModel?
     @Published var isSnapshotsPresented = false
     @Published var isInvestigationsPresented = false
     @Published private(set) var isClosing = false
@@ -676,6 +677,19 @@ final class ApplicationWorkspace: ObservableObject {
         guard library.savedConnections.contains(where: { $0.id == id }),
               await disconnectProfile(id) else { return nil }
         return library.savedConnections.first { $0.id == id }
+    }
+
+    func showSchemaComparison() {
+        guard schemaComparison == nil else { return }
+        let store = credentialStore
+        schemaComparison = SchemaComparisonModel(profiles: library.savedConnections, resolve: { profile in
+            try await SchemaComparisonCredentials.settings(profile, store: store)
+        })
+    }
+
+    func dismissSchemaComparison() {
+        let model = schemaComparison; schemaComparison = nil
+        Task { await model?.close() }
     }
 
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil) async {
@@ -2871,6 +2885,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func shutdown() async {
+        await schemaComparison?.close(); schemaComparison = nil
         if let shutdownTask { await shutdownTask.value; return }
         dismissPostgresTypeInspection()
         for file in fileDocuments.values { file.stopWatching() }

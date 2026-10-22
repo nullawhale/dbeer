@@ -45,23 +45,24 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
-	Comparison      *ComparisonRequest   `json:"comparison,omitempty"`
-	SSHTrust        *SSHTrust            `json:"sshTrust,omitempty"`
-	Insert          *InsertFormatRequest `json:"insert,omitempty"`
-	Type            string               `json:"type"`
-	RequestID       string               `json:"requestId"`
-	ProtocolVersion int                  `json:"protocolVersion,omitempty"`
-	Connection      *Connection          `json:"connection,omitempty"`
-	SessionID       string               `json:"sessionId,omitempty"`
-	QueryID         string               `json:"queryId,omitempty"`
-	SQL             string               `json:"sql,omitempty"`
-	Catalog         *CatalogRequest      `json:"catalog,omitempty"`
-	Stream          bool                 `json:"stream,omitempty"`
-	Export          *ExportRequest       `json:"export,omitempty"`
-	Sequence        int                  `json:"sequence,omitempty"`
-	Changes         *ChangesRequest      `json:"changes,omitempty"`
-	Operations      []OperationRequest   `json:"operations,omitempty"`
-	Authorization   string               `json:"authorization,omitempty"`
+	SchemaComparison *SchemaComparisonRequest `json:"schemaComparison,omitempty"`
+	Comparison       *ComparisonRequest       `json:"comparison,omitempty"`
+	SSHTrust         *SSHTrust                `json:"sshTrust,omitempty"`
+	Insert           *InsertFormatRequest     `json:"insert,omitempty"`
+	Type             string                   `json:"type"`
+	RequestID        string                   `json:"requestId"`
+	ProtocolVersion  int                      `json:"protocolVersion,omitempty"`
+	Connection       *Connection              `json:"connection,omitempty"`
+	SessionID        string                   `json:"sessionId,omitempty"`
+	QueryID          string                   `json:"queryId,omitempty"`
+	SQL              string                   `json:"sql,omitempty"`
+	Catalog          *CatalogRequest          `json:"catalog,omitempty"`
+	Stream           bool                     `json:"stream,omitempty"`
+	Export           *ExportRequest           `json:"export,omitempty"`
+	Sequence         int                      `json:"sequence,omitempty"`
+	Changes          *ChangesRequest          `json:"changes,omitempty"`
+	Operations       []OperationRequest       `json:"operations,omitempty"`
+	Authorization    string                   `json:"authorization,omitempty"`
 }
 
 type ExportRequest struct {
@@ -355,6 +356,13 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.SSHTrust = &trust
 		}
+	case "schema.start", "schema.status", "schema.page", "schema.value", "schema.export", "schema.cancel", "schema.close":
+		allowed["schemaComparison"] = true
+		request, ok := parseSchemaComparison(fields["schemaComparison"], command.Type)
+		if !ok {
+			return command, failure
+		}
+		command.SchemaComparison = &request
 	case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close":
 		allowed["comparison"] = true
 		request, ok := parseComparison(fields["comparison"], command.Type)
@@ -726,6 +734,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	SchemaComparison      *SchemaComparisonResponse
 	Comparison            *ComparisonResponse
 	SQL                   string
 	SSH                   *SSHProbe
@@ -785,6 +794,8 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
+	case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
+		fields["schemaComparison"] = response.SchemaComparison
 	case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
 		fields["comparison"] = response.Comparison
 	case "insertSQL":

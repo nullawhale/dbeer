@@ -85,6 +85,7 @@ actor BackendClient {
     private var passwordCommandSupported = false
     private var insertFormattingSupported = false
     private var resultComparisonSupported = false
+    private var schemaComparisonSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -185,6 +186,17 @@ actor BackendClient {
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type.hasPrefix("schema.") {
+            guard schemaComparisonSupported, command.schemaComparison?.valid(for: command.type) == true,
+                  command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
+                  command.protocolVersion == nil, command.stream == nil, command.export == nil, command.changes == nil,
+                  command.operations == nil, command.authorization == nil, command.sequence == nil, command.sshTrust == nil,
+                  command.insert == nil, command.comparison == nil else { throw BackendRequestError.invalidCommand }
+            for settings in [command.schemaComparison?.source?.connection, command.schemaComparison?.target?.connection].compactMap({ $0 }) {
+                if settings.passwordCommand != nil, !passwordCommandSupported { throw BackendRequestError.unsupportedPasswordCommand }
+                if settings.ssh?.authMethod == .openSSH, !sshConfigurationSupported { throw BackendRequestError.unsupportedSSHConfiguration }
+            }
+        } else if command.schemaComparison != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("compare.") {
             guard resultComparisonSupported else { throw BackendTransportError(.unsupportedResultComparison) }
             guard command.comparison?.valid(for: command.type) == true,
@@ -342,6 +354,7 @@ actor BackendClient {
             passwordCommandSupported = reply.capabilities?.contains("passwordCommandV1") == true
             insertFormattingSupported = reply.capabilities?.contains("formatInsertsV1") == true
             resultComparisonSupported = reply.capabilities?.contains("resultComparisonV1") == true
+            schemaComparisonSupported = reply.capabilities?.contains("schemaComparisonV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
@@ -349,6 +362,7 @@ actor BackendClient {
         }
         let terminal: BackendMessage
         do {
+            try validateSchemaComparison(reply, command: command)
             try validateComparison(reply, command: command)
             terminal = try hydrate(reply, request: request)
         }
@@ -358,6 +372,20 @@ actor BackendClient {
             request.continuation.resume(throwing: BackendRemoteError(reply: terminal))
         } else {
             request.continuation.resume(returning: terminal)
+        }
+    }
+
+    private func validateSchemaComparison(_ reply: BackendMessage, command: BackendCommand) throws {
+        guard command.type.hasPrefix("schema."), reply.type != "error" else { return }
+        guard let requested = command.schemaComparison, let response = reply.schemaComparison,
+              requested.jobId == nil || requested.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let page = response.page {
+            guard page.collection == requested.collection, page.offset == (requested.offset ?? 0),
+                  page.count <= (requested.limit ?? 100), try JSONEncoder().encode(page).count <= (requested.maxBytes ?? 262_144) else { throw BackendTransportError(.invalidMessage) }
+        }
+        for chunk in [response.value, response.export].compactMap({ $0 }) {
+            guard chunk.offset == (requested.offset ?? 0), (chunk.data?.count ?? Int.max) <= (requested.maxBytes ?? 65_536),
+                  response.value == nil || chunk.valueRef == requested.valueRef else { throw BackendTransportError(.invalidMessage) }
         }
     }
 

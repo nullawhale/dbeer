@@ -104,6 +104,9 @@ private struct WorkspaceCommands: Commands {
                 .disabled(!workspace.canManageWorkspace)
         }
         CommandMenu("Connections") {
+            Button("Compare Schema Structure…") { workspace.showSchemaComparison() }
+                .disabled(!workspace.canManageWorkspace)
+            Divider()
             commandItem(.importConnections)
             commandItem(.exportConnections)
         }

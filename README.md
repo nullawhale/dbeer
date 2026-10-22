@@ -232,6 +232,43 @@ successfully. Navigation history stays in memory; workspace restoration saves th
 current location and remains disconnected until explicit Load Data. Cassandra
 supports independent views but has no foreign keys.
 
+## Schema comparison in the working branch
+
+Use **Connections → Compare Schema Structure…**, choose explicit source and
+target profiles with the same engine, and map their schema names. Opening or
+configuring the comparison never connects. **Compare** creates two independent
+read-only sessions, including when the same profile is selected twice; SQL tabs
+and their transactions remain independent. **Stop** cancels both captures.
+
+Table, column, constraint, index and type name overrides declare correspondence.
+Explicit pairs consume their endpoints before remaining exact-name matching;
+names are case-sensitive, and renames are never inferred from similar content.
+PostgreSQL local OIDs are resolved to qualified semantic references. Defaults,
+generated/identity columns, exact type modifiers, keys, index properties and
+referenced enum/domain/composite/sequence definitions come from adapter metadata,
+without parsing displayed DDL or converting numeric values through floating point.
+
+The report shows property differences, incomplete observations, capture intervals
+and source → target. Values are available in bounded UTF-8 chunks. **Export JSON
+Report…** streams a versioned report containing both typed captures, mappings,
+dependencies, differences, issues and a semantic digest to an atomic local file
+replacement. Reports exclude connection settings and credentials. They can contain
+schema definitions, comments and defaults; choose an appropriate local destination.
+
+This scope covers mapped table structure and referenced types/sequences, excluding
+views, routines, triggers, privileges, statistics, stored data and sequence or
+AUTO_INCREMENT counters. PostgreSQL 14+ captures use a dedicated repeatable-read
+read-only transaction. MySQL 8.0.30+ captures use structured Information Schema
+metadata, conservative direct-grant visibility proof and a best-effort recheck for
+concurrent DDL; they do not promise an atomic snapshot shared by two servers.
+
+Unsupported table kinds, extension types/index options, unresolved expression
+dependencies and MySQL inline ENUM/SET definitions require manual review and
+prevent full equality. Unknown metadata on both sides is never equality. Large
+captures fail explicitly at bounded node/member/scalar/storage limits. Only a
+complete comparison can say **Selected table structure matches**. This feature
+does not generate or apply migration SQL.
+
 ## Value inspector in the working branch
 
 SQL results and table grids include a resizable **Value Inspector** beside the

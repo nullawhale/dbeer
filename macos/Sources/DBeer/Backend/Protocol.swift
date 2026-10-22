@@ -223,6 +223,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var sshTrust: SSHTrust?
     var insert: InsertFormatRequest?
     var comparison: ResultComparisonRequest?
+    var schemaComparison: SchemaComparisonRequest?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -280,6 +281,10 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "compare." + operation, requestId: UUID().uuidString, comparison: request)
     }
 
+    static func compareSchema(_ operation: String, _ request: SchemaComparisonRequest) -> Self {
+        Self(type: "schema." + operation, requestId: UUID().uuidString, schemaComparison: request)
+    }
+
     static func assess(sessionId: String, operations: [OperationRequest]) -> Self {
         Self(type: "operation.assess", requestId: UUID().uuidString, sessionId: sessionId,
             queryId: UUID().uuidString, operations: operations)
@@ -297,6 +302,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "shutdown": "shutdown.ack"
         case "operation.assess": "operation.assessment"
         case "formatInserts": "insertSQL"
+        case "schema.start", "schema.status", "schema.page", "schema.value", "schema.export", "schema.cancel", "schema.close": type + ".result"
         case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close": type + ".result"
         default: nil
         }
@@ -393,6 +399,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var ssh: SSHHostKey?
     var sql: String?
     var comparison: ResultComparisonResponse?
+    var schemaComparison: SchemaComparisonResponse?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -405,6 +412,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
+            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && schemaComparison?.valid(for: type) == true
         case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
                 comparison?.valid(for: type) == true
@@ -441,7 +450,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard comparison == nil || type.hasPrefix("compare."),
+        guard schemaComparison == nil || type.hasPrefix("schema."),
+              comparison == nil || type.hasPrefix("compare."),
               sql == nil || (type == "insertSQL" || type == "query.result") &&
                 sql?.isEmpty == false && (sql?.utf8.count ?? Int.max) <= BackendProtocol.maxFrameBytes / 2 &&
                 sql?.contains("\0") == false,
