@@ -76,3 +76,50 @@ fixture observer must verify actual backend state and cleanup; the UI runner's
 
 macOS may require ordinary UI
 Testing authorization; this runner does not grant, reset or bypass it.
+
+## SSH lifecycle acceptance
+
+The current signed native app has a separate external UI scenario:
+
+```sh
+./macos/AcceptanceTests/run.sh --build-only
+./scripts/test-ssh-ui.sh
+```
+
+The fixture copies the signed `build/DBeer.app` into a private directory and
+opens that exact copy through LaunchServices, with an isolated application data
+directory. It refuses to run alongside another DBeer app/helper. No app code is
+injected, and the original profile/document files and release archives are
+preserved. Xcode is addressed explicitly; the selected developer directory is
+unchanged.
+
+A disposable SSH bastion reaches a PostgreSQL container whose database port is
+not published. A fresh profile uses a generated encrypted private key. Only this
+profile's synthetic database password and key passphrase are provisioned in
+Keychain; the UI runner never receives either secret. This verifies encrypted-key
+authentication with a remembered passphrase, rather than typing a passphrase into
+the native prompt. The provisioning utility uses the app's exact persistent
+signing certificate so its scoped synthetic Keychain items have a compatible
+access partition; no Keychain defaults or system permissions are changed.
+
+`SSHApplicationTests/testSSHConnectionLifecycle` attaches to the owned PID and
+checks Cancel on the first host-key review, a second review of the exact generated
+SHA256 fingerprint, trust acceptance and connection. It opens two SQL tabs, checks
+different PostgreSQL backend PIDs and independent temporary tables, runs another
+tab while `pg_sleep` is active, clicks Stop, verifies recovery, disconnects the
+profile and quits normally. The external fixture independently observes backend
+state, accepted SSH key, private-key authentication and resource cleanup. It also
+requires the SSH/watchdog processes and SOCKS listener to disappear after profile
+disconnect while the application is still running. XCTest waits for that
+observer acknowledgement before sending Quit, so application termination cannot
+mask a tunnel left open by Disconnect.
+
+Artifacts are private under ignored `build/SSHAcceptance/run.*/` and
+`build/AcceptanceTests/run.*/`. The report records actual UI evidence, screenshots,
+backend observations, input-source restoration and cleanup. Only the fixture's
+new UUID/account entries and profile-scoped SSH trust record are removed.
+
+macOS can request authentication for **Enable UI Automation** before the test
+body starts. The owner must confirm that system request; a timeout is an
+infrastructure failure and does not count as a completed UI scenario. The fixture
+does not alter TCC, system trust or authorization settings.
