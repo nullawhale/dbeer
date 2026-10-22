@@ -213,6 +213,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var authorization: String?
     var sshTrust: SSHTrust?
     var insert: InsertFormatRequest?
+    var comparison: ResultComparisonRequest?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -266,6 +267,10 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "formatInserts", requestId: UUID().uuidString, insert: request)
     }
 
+    static func compare(_ operation: String, _ request: ResultComparisonRequest) -> Self {
+        Self(type: "compare." + operation, requestId: UUID().uuidString, comparison: request)
+    }
+
     static func assess(sessionId: String, operations: [OperationRequest]) -> Self {
         Self(type: "operation.assess", requestId: UUID().uuidString, sessionId: sessionId,
             queryId: UUID().uuidString, operations: operations)
@@ -283,6 +288,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "shutdown": "shutdown.ack"
         case "operation.assess": "operation.assessment"
         case "formatInserts": "insertSQL"
+        case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close": type + ".result"
         default: nil
         }
     }
@@ -377,6 +383,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var assessment: OperationAssessment?
     var ssh: SSHHostKey?
     var sql: String?
+    var comparison: ResultComparisonResponse?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -389,6 +396,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
+            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                comparison?.valid(for: type) == true
         case "insertSQL":
             valid = sessionId == nil && queryId == nil && sql?.isEmpty == false &&
                 (sql?.utf8.count ?? Int.max) <= InsertFormatRequest.maximumBytes && sql?.contains("\0") == false
@@ -422,7 +432,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard sql == nil || (type == "insertSQL" || type == "query.result") &&
+        guard comparison == nil || type.hasPrefix("compare."),
+              sql == nil || (type == "insertSQL" || type == "query.result") &&
                 sql?.isEmpty == false && (sql?.utf8.count ?? Int.max) <= BackendProtocol.maxFrameBytes / 2 &&
                 sql?.contains("\0") == false,
               sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
@@ -446,6 +457,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
         case invalidUTF8, unexpectedEOF, processExited(Int32), writeFailed
         case incompatibleVersion(Int), handshakeTimeout, duplicateRequest, unsupportedCapturedExport
         case unsupportedInsertFormatting
+        case unsupportedResultComparison
     }
 
     let code: Code
@@ -472,6 +484,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
         case .handshakeTimeout: explanation = "The helper did not complete its handshake within 5 seconds."
         case .unsupportedCapturedExport: explanation = "The helper does not support captured full export. SQL was not executed."
         case .unsupportedInsertFormatting: explanation = "The helper does not support offline SQL INSERT formatting."
+        case .unsupportedResultComparison: explanation = "The helper does not support result snapshot comparison. Rebuild the matching app and helper."
         case .duplicateRequest: explanation = "A command identifier was reused."
         }
         return explanation + (outcomeUnknown ? " The SQL outcome is unknown; the command was not repeated." : "")

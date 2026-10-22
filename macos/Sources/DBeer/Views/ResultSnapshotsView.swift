@@ -6,6 +6,7 @@ struct ResultSnapshotsView: View {
     @Environment(\.dismiss) private var dismiss
     private var quotaMiB = SwiftUI.State(initialValue: "1024")
     private var deletion = SwiftUI.State<ResultSnapshotsModel.DeletionRequest?>(initialValue: nil)
+    private var comparison = SwiftUI.State<ResultComparisonModel?>(initialValue: nil)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -13,6 +14,10 @@ struct ResultSnapshotsView: View {
                 Text("Result Snapshots").font(.title2.weight(.semibold))
                 Spacer()
                 if model.isBusy { ProgressView().controlSize(.small) }
+                Button("Compare Snapshots…") {
+                    comparison.wrappedValue = ResultComparisonModel(store: model.store, snapshots: model.snapshots)
+                }.controlHover().disabled(model.isBusy || model.snapshots.filter(\.isAvailable).isEmpty)
+                    .accessibilityIdentifier("compareResultSnapshots")
                 Button("Refresh") { Task { await refresh() } }.controlHover()
                     .disabled(model.isBusy).accessibilityIdentifier("refreshResultSnapshots")
             }
@@ -101,6 +106,9 @@ struct ResultSnapshotsView: View {
         .padding(20).frame(width: 820, height: 520)
         .tint(AppPalette.accent).focusEffectDisabled().interactiveDismissDisabled(model.isBusy)
         .task { await refresh() }
+        .sheet(isPresented: Binding(get: { comparison.wrappedValue != nil }, set: { if !$0 { comparison.wrappedValue = nil } })) {
+            if let comparison = comparison.wrappedValue { ResultComparisonView(model: comparison) }
+        }
         .alert("Delete Snapshot?", isPresented: Binding(get: { deletion.wrappedValue != nil },
             set: { if !$0 { deletion.wrappedValue = nil } })) {
             Button("Cancel", role: .cancel) { deletion.wrappedValue = nil }

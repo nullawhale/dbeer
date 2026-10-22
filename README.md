@@ -238,7 +238,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v6. Existing v0/v1/v2/v3/v4/v5 files
+History uses versioned workspace storage, currently v7. Existing v0/v1/v2/v3/v4/v5/v6 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
 not included in the existing build 8 archive.
@@ -273,6 +273,31 @@ the quota. Failed or interrupted writes leave earlier snapshots intact; Refresh
 cleans incomplete temporary writes. Deletion requires confirmation, including
 notice of any investigation documents using the artifact. Credentials and
 connection secrets are excluded from snapshot metadata.
+
+## Result comparison in the working branch
+
+In **Query → Result Snapshots…**, choose **Compare Snapshots** and select two
+saved artifacts. Explicitly choose a key or saved row order, then map the columns
+to compare. Column positions distinguish duplicate names; omitted columns are
+excluded and recorded in the report. Saved row order compares the captured
+positions and does not establish a database ordering guarantee.
+
+Comparison preserves the engine, native type, encoding, SQL NULL and exact saved
+value. Decimal and integer strings are never rounded through floating point.
+Duplicate keys are reported as ambiguous without arbitrary pairing. Unresolved
+PostgreSQL type OIDs remain uncertain. Partial or truncated inputs, uncertainty
+and excluded columns prevent a conclusion of full-artifact equality.
+
+Added, deleted, changed, ambiguous and uncertain rows are paged. Wide rows also
+page their mapped columns. Cell previews are bounded; the value inspector reads
+exact saved text in byte chunks, including the original Base64 text for binary
+values. The helper reads private artifact references rather than receiving both
+result sets in a protocol message. No database session or SQL execution is used.
+
+Comparisons stream inputs and spill sorting and reports to private temporary
+files. Each job has an **8 GiB** temporary limit; at most two jobs can be retained
+by a helper. Stop, closing the comparison and helper shutdown release temporary
+files. Disk or quota failures leave saved snapshots intact.
 
 ## Dynamic database passwords in the working branch
 

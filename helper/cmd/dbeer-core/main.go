@@ -12,10 +12,12 @@ import (
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/cassandra"
+	"dbeer/helper/internal/comparisonjob"
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
 	"dbeer/helper/internal/productidentity"
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/resultartifact"
 	"dbeer/helper/internal/session"
 	"dbeer/helper/internal/sqllsp"
 	"dbeer/helper/internal/sshtunnel"
@@ -100,11 +102,13 @@ func safeSSHError(err error) *adapter.ConnectionError {
 // The input reader owns protocol guards and never waits for result output.
 // Ordinary admission is bounded; overflow is a transport failure, rather than
 // indefinitely hiding Stop/EOF behind an unresponsive output consumer.
-func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}) {
+func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}, comparisons *comparisonjob.Manager) {
 	reader := protocol.NewReader(input)
 	requests, queries := make(map[string]bool), make(map[string]string)
 	handshaken := false
+	comparisonReads := make(chan struct{}, 2)
 	finish := func(err error, shutdown bool) {
+		comparisons.Close()
 		if !shutdown {
 			manager.Close()
 		}
@@ -152,6 +156,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 		}
 		requests[command.RequestID] = true
 		if command.Type == "shutdown" {
+			comparisons.Close()
 			manager.Control(command)
 			if !manager.TrySubmit(command) {
 				finish(errors.New("Protocol command queue exceeded its bounded capacity."), false)
@@ -168,7 +173,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1"}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -182,6 +187,31 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			if !emit(protocol.ErrorResponse(command, "protocol", "A successful hello handshake is required.")) {
 				return
 			}
+			continue
+		}
+		if strings.HasPrefix(command.Type, "compare.") {
+			if command.Type != "compare.page" && command.Type != "compare.value" {
+				if !emit(comparisons.Handle(command)) {
+					return
+				}
+				continue
+			}
+			select {
+			case comparisonReads <- struct{}{}:
+			default:
+				if !emit(protocol.ErrorResponse(command, "busy", "Too many comparison reads are in progress.")) {
+					return
+				}
+				continue
+			}
+			go func(command protocol.Command) {
+				defer func() { <-comparisonReads }()
+				response := comparisons.Handle(command)
+				select {
+				case local <- response:
+				case <-controlContext.Done():
+				}
+			}(command)
 			continue
 		}
 		if command.Type == "ssh.probe" || command.Type == "ssh.trust" {
@@ -268,6 +298,19 @@ func runWithFactoryAndIdentity(input io.Reader, output io.Writer, opener adapter
 }
 
 func runWithSSH(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity, tunnels *sshtunnel.Manager) error {
+	store, err := resultartifact.NewDefaultStore()
+	if err != nil {
+		return err
+	}
+	comparisons, err := comparisonjob.New(comparisonjob.OpenArtifacts(store), comparisonjob.Options{})
+	if err != nil {
+		return err
+	}
+	return runWithManagers(input, output, opener, identity, tunnels, comparisons)
+}
+
+func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity, tunnels *sshtunnel.Manager, comparisons *comparisonjob.Manager) error {
+	defer comparisons.Close()
 	manager := session.New(opener)
 	defer manager.Close()
 	local := make(chan protocol.Response, 256)
@@ -284,7 +327,7 @@ func runWithSSH(input io.Reader, output io.Writer, opener adapter.OpenFunc, iden
 			_ = closer.Close()
 		}
 	}()
-	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls)
+	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls, comparisons)
 	writer := protocol.NewWriter(output)
 	go func() {
 		for {

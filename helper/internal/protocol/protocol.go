@@ -44,6 +44,7 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
+	Comparison      *ComparisonRequest   `json:"comparison,omitempty"`
 	SSHTrust        *SSHTrust            `json:"sshTrust,omitempty"`
 	Insert          *InsertFormatRequest `json:"insert,omitempty"`
 	Type            string               `json:"type"`
@@ -293,6 +294,13 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.SSHTrust = &trust
 		}
+	case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close":
+		allowed["comparison"] = true
+		request, ok := parseComparison(fields["comparison"], command.Type)
+		if !ok {
+			return command, failure
+		}
+		command.Comparison = &request
 	case "formatInserts":
 		allowed["insert"] = true
 		request, ok := parseInsertFormat(fields["insert"])
@@ -607,6 +615,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	Comparison            *ComparisonResponse
 	SQL                   string
 	SSH                   *SSHProbe
 	AppliedChangeCount    *int
@@ -665,6 +674,8 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
+	case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
+		fields["comparison"] = response.Comparison
 	case "insertSQL":
 		fields["sql"] = response.SQL
 	case "ssh.probe.result", "ssh.trust.result":

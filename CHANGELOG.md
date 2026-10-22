@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Compare saved result snapshots by an explicit key or saved row order, with
+  column mapping and exclusions. The shared Go comparison engine preserves
+  exact types and values, reports duplicate keys as ambiguous and distinguishes
+  incomplete inputs and unresolved types from full equality. Differences and
+  wide rows are paged; bounded previews link to exact value chunks. Comparison
+  reads managed local artifacts without connecting to a database and supports
+  cancellation with temporary-file cleanup.
+
 - Pin Result saves a completed result set with its original SQL, capture time,
   connection and environment context, outcome and partial-data markers. Pinned
   results open as paged offline tabs and survive tab closure and restart through

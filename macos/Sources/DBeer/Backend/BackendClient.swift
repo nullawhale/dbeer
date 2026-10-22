@@ -84,6 +84,7 @@ actor BackendClient {
     private var sshConfigurationSupported = false
     private var passwordCommandSupported = false
     private var insertFormattingSupported = false
+    private var resultComparisonSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -180,9 +181,19 @@ actor BackendClient {
     /// cancelling a SQL query uses an explicit cancel command, not Task.cancel.
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
+    func supportsResultComparison() -> Bool { resultComparisonSupported }
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type.hasPrefix("compare.") {
+            guard resultComparisonSupported else { throw BackendTransportError(.unsupportedResultComparison) }
+            guard command.comparison?.valid(for: command.type) == true,
+                  command.sessionId == nil, command.queryId == nil, command.connection == nil,
+                  command.sql == nil, command.catalog == nil, command.protocolVersion == nil,
+                  command.stream == nil, command.export == nil, command.changes == nil,
+                  command.operations == nil, command.authorization == nil, command.sequence == nil,
+                  command.sshTrust == nil, command.insert == nil else { throw BackendRequestError.invalidCommand }
+        } else if command.comparison != nil { throw BackendRequestError.invalidCommand }
         if command.connection?.passwordCommand != nil, !passwordCommandSupported {
             throw BackendRequestError.unsupportedPasswordCommand
         }
@@ -330,19 +341,38 @@ actor BackendClient {
             sshConfigurationSupported = reply.capabilities?.contains("sshConfigV1") == true
             passwordCommandSupported = reply.capabilities?.contains("passwordCommandV1") == true
             insertFormattingSupported = reply.capabilities?.contains("formatInsertsV1") == true
+            resultComparisonSupported = reply.capabilities?.contains("resultComparisonV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
             return
         }
         let terminal: BackendMessage
-        do { terminal = try hydrate(reply, request: request) }
+        do {
+            try validateComparison(reply, command: command)
+            terminal = try hydrate(reply, request: request)
+        }
         catch { fail(BackendTransportError(.invalidMessage)); return }
         pending.removeValue(forKey: reply.requestId)
         if terminal.type == "error" {
             request.continuation.resume(throwing: BackendRemoteError(reply: terminal))
         } else {
             request.continuation.resume(returning: terminal)
+        }
+    }
+
+    private func validateComparison(_ reply: BackendMessage, command: BackendCommand) throws {
+        guard command.type.hasPrefix("compare."), reply.type != "error" else { return }
+        guard let requested = command.comparison, let response = reply.comparison,
+              requested.jobId == nil || response.jobId == requested.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let page = response.page {
+            guard page.offset == (requested.offset ?? 0), page.rows.count <= (requested.limit ?? 100),
+                  page.rows.allSatisfy({ $0.cellOffset == (requested.cellOffset ?? 0) }),
+                  try JSONEncoder().encode(page).count <= (requested.maxBytes ?? 262_144) else { throw BackendTransportError(.invalidMessage) }
+        }
+        if let value = response.value {
+            guard value.valueRef == requested.valueRef, value.offset == (requested.offset ?? 0),
+                  (value.data?.count ?? Int.max) <= (requested.maxBytes ?? 65_536) else { throw BackendTransportError(.invalidMessage) }
         }
     }
 
