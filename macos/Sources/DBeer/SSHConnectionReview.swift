@@ -36,26 +36,31 @@ enum SSHConnectionReview {
         if pending[ssh.profileId] != nil { cancel(profileId: ssh.profileId) }
         let reviewId = UUID()
         let task = Task { @MainActor in
-            let reply = try await client.request(.sshProbe(settings))
-            guard let key = reply.ssh, key.host == ssh.host, key.port == ssh.port else {
-                throw BackendTransportError(.invalidMessage)
-            }
-            try Task.checkCancellation()
-            if key.status == "unknown" || key.status == "changed" {
-                guard let token = key.challengeToken else { throw BackendTransportError(.invalidMessage) }
-                let alert = NSAlert()
-                alert.messageText = key.status == "changed" ? "Replace the trusted SSH server key?" : "Trust this SSH server?"
-                alert.informativeText = (key.status == "changed" ? "WARNING: The server key changed. This can indicate interception. Replace it only after independently verifying the change.\n\n" : "") + "\(key.host):\(key.port)\n\(key.algorithm)\n\(key.fingerprint)\n\nVerify this fingerprint with your server administrator before trusting it."
-                alert.alertStyle = .warning
-                alert.addButton(withTitle: "Cancel")
-                alert.addButton(withTitle: key.status == "changed" ? "Replace Key and Connect" : "Trust and Connect")
-                alerts[ssh.profileId] = alert
-                defer { if alerts[ssh.profileId] === alert { alerts[ssh.profileId] = nil } }
-                guard await present(alert) == .alertSecondButtonReturn else { throw CancellationError() }
+            var reply = try await client.request(.sshProbe(settings))
+            for _ in 0..<17 {
+                guard let key = reply.ssh, key.isValid,
+                      ssh.authMethod == .openSSH || (key.host == ssh.host && key.port == ssh.port) else {
+                    throw BackendTransportError(.invalidMessage)
+                }
                 try Task.checkCancellation()
-                let trusted = try await client.request(.sshTrust(settings, token: token, replace: key.status == "changed"))
-                guard trusted.ssh?.status == "trusted" else { throw BackendTransportError(.invalidMessage) }
+                if key.status == "trusted" { return }
+                if key.status == "unknown" || key.status == "changed" {
+                    guard let token = key.challengeToken else { throw BackendTransportError(.invalidMessage) }
+                    let alert = NSAlert()
+                    alert.messageText = key.status == "changed" ? "Replace the trusted SSH server key?" : "Trust this SSH server?"
+                    alert.informativeText = (key.status == "changed" ? "WARNING: The server key changed. This can indicate interception. Replace it only after independently verifying the change.\n\n" : "") + "\(key.host):\(key.port)\n\(key.algorithm)\n\(key.fingerprint)\n\nVerify this fingerprint with your server administrator before trusting it."
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "Cancel")
+                    alert.addButton(withTitle: key.status == "changed" ? "Replace Key and Connect" : "Trust and Connect")
+                    alerts[ssh.profileId] = alert
+                    defer { if alerts[ssh.profileId] === alert { alerts[ssh.profileId] = nil } }
+                    guard await present(alert) == .alertSecondButtonReturn else { throw CancellationError() }
+                    try Task.checkCancellation()
+                    reply = try await client.request(.sshTrust(settings, token: token, replace: key.status == "changed"))
+                    if ssh.authMethod != .openSSH, reply.ssh?.status != "trusted" { throw BackendTransportError(.invalidMessage) }
+                }
             }
+            throw BackendTransportError(.invalidMessage)
         }
         pending[ssh.profileId] = Review(id: reviewId, configuration: ssh.configuration, task: task)
         defer { if pending[ssh.profileId]?.id == reviewId { pending[ssh.profileId] = nil } }

@@ -99,3 +99,20 @@ preview cannot receive a late CA selection or begin an import.
 Implementation/compilation and executed/native evidence remain separate; see
 `prototypes/gpui/IMPLEMENTATION.md`. These fixtures and instructions are tracked;
 no build or test depends on ignored planning documents.
+
+## Native macOS version 3 SSH extension
+
+The native macOS client exports version 3 profiles with Cassandra fields and an
+optional `ssh` object. GPUI v1/v2 compatibility remains outside the macOS release
+scope. The SSH object has exactly `host`, `port`, `user` and `authMethod`. It never
+contains profile IDs, credentials, private-key paths, configuration paths,
+configuration contents or host-key trust. Private-key imports require choosing a
+local key before connecting.
+
+`authMethod: "openSSH"` identifies a local OpenSSH alias: `host` is the alias,
+`port` is 0 and `user` is empty, because the receiving Mac's configuration supplies
+the endpoint and authentication. The local/private profile may retain a selected
+`configFile`, but transfer never includes that field. Preview, import, save and
+restoration do not resolve aliases, read SSH configuration or execute commands.
+An explicit connection or test uses local configuration and requires review of
+untrusted managed hop/server keys. Database hostname/TLS fields remain separate.

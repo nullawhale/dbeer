@@ -19,13 +19,16 @@ type Options struct {
 	SystemKnownHosts []string
 }
 type Manager struct {
-	mu               sync.Mutex
-	entries          map[string]*entry
-	challenges       map[string]challenge
-	knownHosts       string
-	systemKnownHosts []string
-	temp             string
-	closed           bool
+	mu                      sync.Mutex
+	entries                 map[string]*entry
+	challenges              map[string]challenge
+	challengeTargets        map[string]*protocol.SSHSettings
+	knownHosts              string
+	systemKnownHosts        []string
+	temp                    string
+	closed                  bool
+	done                    chan struct{}
+	configurationOperations sync.WaitGroup
 }
 type entry struct {
 	key         string
@@ -63,7 +66,7 @@ func NewManagerWithOptions(o Options) (*Manager, error) {
 	if e != nil {
 		return nil, failure("initialization", "Cannot initialize SSH transport.")
 	}
-	return &Manager{entries: map[string]*entry{}, challenges: map[string]challenge{}, knownHosts: o.KnownHostsPath, systemKnownHosts: o.SystemKnownHosts, temp: temp}, nil
+	return &Manager{entries: map[string]*entry{}, challenges: map[string]challenge{}, challengeTargets: map[string]*protocol.SSHSettings{}, knownHosts: o.KnownHostsPath, systemKnownHosts: o.SystemKnownHosts, temp: temp, done: make(chan struct{})}, nil
 }
 func (m *Manager) Acquire(ctx context.Context, s *protocol.SSHSettings) (*Lease, error) {
 	if s == nil || !s.Valid() {
@@ -167,6 +170,7 @@ func (m *Manager) Close() error {
 		return nil
 	}
 	m.closed = true
+	close(m.done)
 	entries := make([]*entry, 0, len(m.entries))
 	for _, e := range m.entries {
 		entries = append(entries, e)
@@ -178,10 +182,23 @@ func (m *Manager) Close() error {
 	}
 	m.entries = map[string]*entry{}
 	m.challenges = map[string]challenge{}
+	m.challengeTargets = map[string]*protocol.SSHSettings{}
 	m.mu.Unlock()
 	deadline := time.Now().Add(3 * time.Second)
 	for _, e := range entries {
 		m.waitForEntry(e, deadline)
+	}
+	// Probes can authenticate intermediate hosts without acquiring a lease.
+	// They must finish their watchdog cleanup before normal manager shutdown.
+	finished := make(chan struct{})
+	go func() { m.configurationOperations.Wait(); close(finished) }()
+	if remaining := time.Until(deadline); remaining > 0 {
+		timer := time.NewTimer(remaining)
+		select {
+		case <-finished:
+		case <-timer.C:
+		}
+		timer.Stop()
 	}
 	_ = os.Remove(m.temp)
 	return nil
@@ -222,6 +239,9 @@ func (m *Manager) start(ctx context.Context, e *entry, s *protocol.SSHSettings) 
 	m.mu.Unlock()
 }
 func (m *Manager) launch(ctx context.Context, s *protocol.SSHSettings) (string, func(), <-chan struct{}, error) {
+	if s.AuthMethod == "openSSH" {
+		return m.launchConfiguration(ctx, s)
+	}
 	for attempt := 0; attempt < 3; attempt++ {
 		address, stop, exited, err := m.launchAttempt(ctx, s)
 		if e, ok := err.(*Error); ok && e.Code == "port_collision" && ctx.Err() == nil {

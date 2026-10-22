@@ -284,11 +284,38 @@ Portable profiles retain SSH settings while excluding passwords, passphrases,
 private keys and trust decisions. Imported key profiles require selecting a local
 private key. Saving, importing or restoring profiles does not start SSH.
 
-The first delivery supports one explicitly configured bastion. SSH configuration
-aliases, `Include`, `ProxyJump`, `ProxyCommand`, multiple hops and interactive MFA
-are outside this delivery. This working-branch feature is not part of the
-existing build 8 archive. Rebuild the native app with its matching protocol v5
-helper to use it; Windows/Linux GPUI SSH support is deferred.
+Choose **OpenSSH Configuration** for aliases and multi-hop routes. Enter the
+`Host` alias in **SSH server**; OpenSSH reads the hostname, port, user, identities,
+`Include`, `ProxyJump` and `ProxyCommand` from this Mac's configuration. Leave
+**Configuration file** empty for the default user/system configuration, or select
+a local file. Multiple comma-separated jump hosts and nested includes use native
+[OpenSSH configuration semantics](https://man.openbsd.org/ssh_config).
+Authentication must work without interactive password or MFA prompts, using an
+available agent, unencrypted key or the local OpenSSH key configuration.
+
+DBeer reviews each native ProxyJump host and the final server before
+authenticating it. A probe can authenticate already trusted jump hosts to reach
+the next server, but stops before final-server authentication. Keys remain
+profile scoped, including resolved hostnames and ports. The default user/system
+known-hosts files are consulted read-only. DBeer's own verification replaces
+configured known-hosts commands/files and DNS trust; configured forwarding,
+remote/local commands, persistent masters, agent and X11 forwarding are disabled.
+Only DBeer's loopback forwarding listener is installed. Routes support up to 16
+distinct SSH endpoints and retain bounded startup/cancellation.
+
+`ProxyCommand` and `Match exec` can execute local programs during an explicit
+connection or Test Connection. A custom proxy program controls any SSH clients
+it starts internally; DBeer verifies the final server and directly managed
+ProxyJump hosts. The helper supervises the SSH process group, including proxy
+children, and reaps it on cancellation, disconnect or helper loss. Changing a
+configuration file takes effect after disconnecting the profile and reconnecting.
+Profile export omits the local configuration path and all configuration contents;
+an imported alias uses the receiving Mac's local configuration only after an
+explicit connection. Saving, importing and restoring do not evaluate that config.
+
+These working-branch features are not part of the existing build 8 archive.
+Rebuild the native app with its matching protocol v5 helper (`sshConfigV1` is
+required for configuration mode); Windows/Linux GPUI SSH support is deferred.
 
 ## Next release changes
 
@@ -485,6 +512,15 @@ DBEER_QA_OUTPUT_DIR="$PWD/build/qa" ./scripts/test-postgres.sh ./scripts/test-my
 Select versions with DBEER_TEST_POSTGRES_IMAGE=postgres:18 and DBEER_TEST_MYSQL_IMAGE=mysql:8.0. `test-tls.sh` creates a temporary CA and checks trust, hostname mismatch, and an untrusted certificate against a real PostgreSQL server. MySQL TLS is covered by test-mysql.sh. Containers and keys are removed after verification; diagnostic logs never contain SQL, results, or passwords. Cassandra checks run both target versions in plain and authenticated TLS modes; `--udf` enables a harmless overloaded-function safety regression in the isolated fixture. Structured per-test evidence is retained under `build/cassandra/`; missing or skipped required live scenarios fail the runner. The optional three-node profile runs schema checks while all replicas are healthy, then stops one node and verifies quorum availability and `ALL` failure against an existing schema.
 
 Use DBEER_TEST_DSN for an existing isolated PostgreSQL test database; add `--require-postgres` to the selected mode to require it. For helper-only tests, including Linux, run `./scripts/test-go.sh`. Caches and reports live in the ignored build/ directory.
+
+`./scripts/test-ssh-config.sh` runs transport-only OpenSSH configuration checks
+against temporary loopback sshd servers, including aliases, Include, two jumps,
+ProxyCommand, key review and process cleanup on cancellation or helper loss.
+It creates only fixture keys and does not change the system SSH service.
+For database/TLS/cancellation coverage, run
+`./scripts/test-ssh.sh --engine postgresql` or
+`./scripts/test-ssh.sh --engine mysql`; these use isolated Docker fixtures. None
+of these SSH runners launches the application or performs UI checks.
 
 A separate synchronous Swift Testing host runs native tests: it keeps the main run loop alive after AppKit callbacks and works around the [Swift async-main issue](https://github.com/swiftlang/swift/issues/91716). The runner requires a completed Swift Testing summary; an early exit with code 0 is a failure.
 

@@ -170,7 +170,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				handshaken = true
 				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1"}, BuildIdentity: identity}
 				if tunnels != nil {
-					response.Capabilities = append(response.Capabilities, "sshTunnelsV1")
+					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
 			}
 			if !emit(response) {
@@ -213,7 +213,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 					err = tunnels.Trust(ctx, command.Connection.SSH, command.SSHTrust.Token, command.SSHTrust.Replace)
 					if err == nil {
 						response.SSH, err = tunnels.Probe(ctx, command.Connection.SSH)
-						if err == nil && response.SSH.Status != "trusted" {
+						if err == nil && response.SSH.Status != "trusted" && command.Connection.SSH.AuthMethod != "openSSH" {
 							err = &sshtunnel.Error{Code: "host_key_changed", Message: "The SSH server key changed after review."}
 						}
 					}

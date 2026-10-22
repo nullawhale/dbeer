@@ -21,6 +21,7 @@ type SSHSettings struct {
 	IdentityFile string `json:"identityFile,omitempty"`
 	Password     string `json:"password,omitempty"`
 	Passphrase   string `json:"passphrase,omitempty"`
+	ConfigFile   string `json:"configFile,omitempty"`
 }
 type SSHTrust struct {
 	Token   string `json:"token"`
@@ -36,11 +37,20 @@ type SSHProbe struct {
 }
 
 func (s SSHSettings) Valid() bool {
-	if !ValidID(s.ProfileID) || len(s.Host) == 0 || len(s.Host) > 253 || strings.HasPrefix(s.Host, "-") || s.Port < 1 || s.Port > 65535 || len(s.User) == 0 || len(s.User) > 255 || strings.HasPrefix(s.User, "-") {
+	configured := s.AuthMethod == "openSSH"
+	if !ValidID(s.ProfileID) || len(s.Host) == 0 || len(s.Host) > 253 || strings.HasPrefix(s.Host, "-") || (!configured && (s.Port < 1 || s.Port > 65535 || len(s.User) == 0)) || (configured && (s.Port != 0 || s.User != "")) || len(s.User) > 255 || strings.HasPrefix(s.User, "-") {
 		return false
 	}
-	for _, v := range []string{s.ProfileID, s.Host, s.User, s.IdentityFile, s.Password, s.Passphrase} {
+	for _, v := range []string{s.ProfileID, s.Host, s.User, s.IdentityFile, s.Password, s.Passphrase, s.ConfigFile} {
 		if !utf8.ValidString(v) || strings.ContainsRune(v, 0) {
+			return false
+		}
+	}
+	if s.ConfigFile != "" && (!configured || !filepath.IsAbs(s.ConfigFile) || len(s.ConfigFile) > 4096 || strings.ContainsAny(s.ConfigFile, "\r\n") || strings.Contains(s.ConfigFile, "${")) {
+		return false
+	}
+	for _, c := range s.ConfigFile {
+		if unicode.IsControl(c) {
 			return false
 		}
 	}
@@ -62,6 +72,8 @@ func (s SSHSettings) Valid() bool {
 		}
 	}
 	switch s.AuthMethod {
+	case "openSSH":
+		return s.IdentityFile == "" && s.Password == "" && s.Passphrase == ""
 	case "agent":
 		return s.IdentityFile == "" && s.Password == "" && s.Passphrase == ""
 	case "privateKey":

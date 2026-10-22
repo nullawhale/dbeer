@@ -82,6 +82,9 @@ func sshEnvironment(executable, socket, token string) []string {
 // RunUtility must be dispatched before starting the framed protocol. Askpass
 // uses the same signed executable; secrets travel only over private local IPC.
 func RunUtility(args []string) (bool, error) {
+	if len(args) > 0 && args[0] == "--ssh-known-host" {
+		return true, runKnownHostUtility(args[1:])
+	}
 	// ssh passes its prompt as argv, so select askpass using the authenticated IPC
 	// environment rather than treating or displaying untrusted prompt text.
 	if socket := os.Getenv("DBEER_SSH_ASKPASS_SOCKET"); socket != "" && (len(args) == 0 || args[0] != "--ssh-watchdog") {
@@ -130,6 +133,9 @@ func RunUtility(args []string) (bool, error) {
 	if e := cmd.Start(); e != nil {
 		return true, errors.New("Cannot start SSH")
 	}
+	// ProxyJump and ProxyCommand descendants belong to this process group, even
+	// when their immediate ssh parent exits before they do.
+	defer syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	exited := make(chan error, 1)
 	go func() { exited <- cmd.Wait() }()
 	lost := make(chan struct{})

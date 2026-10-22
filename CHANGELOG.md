@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Native SSH profiles can use local OpenSSH configuration for Host aliases,
+  Include, ProxyJump, ProxyCommand and multiple jumps. The configuration supplies
+  host, user, port and keys; authentication uses noninteractive local keys or an
+  agent. DBeer reviews each managed hop and final server key, preserves database
+  TLS identity and supervises proxy children through cancellation and helper loss.
+  Configuration files are evaluated only on explicit connect/test; profile
+  transfer excludes their paths and contents. Requires helper `sshConfigV1`.
 - SQL results and table grids have a permanent, resizable Value Inspector that
   follows cell selection and arrow-key navigation. It offers read-only source
   text, line wrapping, search, JSON/XML highlighting and lossless formatted JSON.

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -26,6 +27,12 @@ func TestMain(tests *testing.M) {
 }
 
 func TestSSHProtocolProbeTrustConnectAndShutdown(t *testing.T) {
+	for _, configured := range []bool{false, true} {
+		t.Run(fmt.Sprintf("configuration-%t", configured), func(t *testing.T) { testSSHProtocolProbeTrustConnectAndShutdown(t, configured) })
+	}
+}
+
+func testSSHProtocolProbeTrustConnectAndShutdown(t *testing.T, configured bool) {
 	root := os.Getenv("DBEER_TEST_SSH_ROOT")
 	if root == "" {
 		if os.Getenv("DBEER_REQUIRE_SSH") == "1" {
@@ -38,6 +45,14 @@ func TestSSHProtocolProbeTrustConnectAndShutdown(t *testing.T) {
 		t.Fatal("invalid SSH fixture")
 	}
 	ssh := protocol.SSHSettings{ProfileID: "protocol-profile", Host: "127.0.0.1", Port: port, User: "dbeer", AuthMethod: "privateKey", IdentityFile: filepath.Join(root, "id_plain")}
+	if configured {
+		config := filepath.Join(t.TempDir(), "config")
+		text := fmt.Sprintf("Host outside\n HostName 127.0.0.1\n Port %d\nHost database-route\n HostName 127.0.0.1\n Port 22\n ProxyJump outside\nHost *\n User dbeer\n IdentityFile %s\n IdentitiesOnly yes\n", port, strconv.Quote(filepath.Join(root, "id_plain")))
+		if os.WriteFile(config, []byte(text), 0600) != nil {
+			t.Fatal("cannot prepare protocol route config")
+		}
+		ssh = protocol.SSHSettings{ProfileID: "protocol-profile", Host: "database-route", AuthMethod: "openSSH", ConfigFile: config}
+	}
 	connection := protocol.Connection{Engine: "postgresql", Host: "postgres.ssh-fixture.invalid", Port: 5432, Database: "dbeer", User: "dbeer", SSLMode: "disable", SSH: &ssh}
 	secret, err := os.ReadFile(filepath.Join(root, "password"))
 	if err != nil {
@@ -96,18 +111,42 @@ func TestSSHProtocolProbeTrustConnectAndShutdown(t *testing.T) {
 		}
 	}
 	send(map[string]any{"type": "hello", "requestId": "hello", "protocolVersion": protocol.Version})
-	if receive().Type != "hello.ack" {
+	hello := receive()
+	if hello.Type != "hello.ack" {
 		t.Fatal("handshake failed")
+	}
+	if configured {
+		found := false
+		for _, capability := range hello.Capabilities {
+			found = found || capability == "sshConfigV1"
+		}
+		if !found {
+			t.Fatal("configuration capability missing")
+		}
 	}
 	send(map[string]any{"type": "ssh.probe", "requestId": "probe", "connection": connection})
 	probe := receive()
 	if probe.SSH == nil || probe.SSH.Status != "unknown" {
 		t.Fatal("probe did not request review")
 	}
-	send(map[string]any{"type": "ssh.trust", "requestId": "trust", "connection": connection, "sshTrust": map[string]any{"token": probe.SSH.ChallengeToken}})
-	trusted := receive()
-	if trusted.Type != "ssh.trust.result" || trusted.SSH == nil || trusted.SSH.Status != "trusted" {
-		t.Fatal("trust did not return trusted SSH metadata")
+	reviews := 0
+	for reviews < 3 {
+		send(map[string]any{"type": "ssh.trust", "requestId": fmt.Sprintf("trust-%d", reviews), "connection": connection, "sshTrust": map[string]any{"token": probe.SSH.ChallengeToken}})
+		trusted := receive()
+		reviews++
+		if trusted.Type != "ssh.trust.result" || trusted.SSH == nil {
+			t.Fatalf("trust did not return SSH metadata: category=%s", trusted.Category)
+		}
+		if trusted.SSH.Status == "trusted" {
+			break
+		}
+		if !configured || trusted.SSH.Status != "unknown" {
+			t.Fatal("unexpected next-hop review")
+		}
+		probe = trusted
+	}
+	if configured && reviews != 2 {
+		t.Fatal("protocol did not separately review the jump and final host")
 	}
 	send(map[string]any{"type": "connect", "requestId": "connect", "connection": connection})
 	if receive().Type != "connect.result" {

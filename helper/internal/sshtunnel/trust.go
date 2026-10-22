@@ -75,6 +75,9 @@ func (m *Manager) Probe(ctx context.Context, s *protocol.SSHSettings) (*protocol
 	if s == nil || !s.Valid() {
 		return nil, failure("invalid_settings", "Invalid SSH settings.")
 	}
+	if s.AuthMethod == "openSSH" {
+		return m.probeConfiguration(ctx, s)
+	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/usr/bin/ssh-keyscan", "-T", "5", "-p", strconv.Itoa(s.Port), s.Host)
@@ -107,6 +110,7 @@ func (m *Manager) Probe(ctx context.Context, s *protocol.SSHSettings) (*protocol
 		for token, c := range m.challenges {
 			if now.After(c.expires) {
 				delete(m.challenges, token)
+				delete(m.challengeTargets, token)
 			}
 		}
 		if len(m.challenges) >= 128 {
@@ -324,8 +328,13 @@ func (m *Manager) Trust(ctx context.Context, s *protocol.SSHSettings, token stri
 	defer m.mu.Unlock()
 	c, ok := m.challenges[token]
 	delete(m.challenges, token)
+	target := m.challengeTargets[token]
+	delete(m.challengeTargets, token)
 	if !ok || m.closed || time.Now().After(c.expires) || c.generation != generation(s) {
 		return failure("stale_challenge", "The SSH trust request expired or does not match this connection.")
+	}
+	if target != nil {
+		s = target
 	}
 	if c.changed && (len(replace) == 0 || !replace[0]) {
 		return failure("replacement_required", "Replacing an SSH server key requires explicit confirmation.")

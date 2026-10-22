@@ -260,16 +260,30 @@ struct ConnectionEditorView: View {
                     LabeledContent("SSH server") {
                         HStack(spacing: 12) {
                             TextField("SSH server", text: binding(\.sshHost)).labelsHidden().accessibilityIdentifier("sshHost")
-                            Text("Port")
-                            TextField("SSH port", text: binding(\.sshPort)).labelsHidden()
-                                .frame(width: 80).accessibilityIdentifier("sshPort")
+                            if draft.sshAuthMethod != .openSSH {
+                                Text("Port")
+                                TextField("SSH port", text: binding(\.sshPort)).labelsHidden()
+                                    .frame(width: 80).accessibilityIdentifier("sshPort")
+                            }
                         }
                     }
-                    TextField("SSH user", text: binding(\.sshUser)).accessibilityIdentifier("sshUser")
+                    if draft.sshAuthMethod != .openSSH {
+                        TextField("SSH user", text: binding(\.sshUser)).accessibilityIdentifier("sshUser")
+                    }
                     Picker("Authentication", selection: valueBinding(\.sshAuthMethod)) {
                         ForEach(SSHConfiguration.Authentication.allCases) { Text($0.label).tag($0) }
                     }.frame(minHeight: 24).controlHover().connectionButtonFocus().accessibilityIdentifier("sshAuthentication")
-                    if draft.sshAuthMethod == .privateKey {
+                    if draft.sshAuthMethod == .openSSH {
+                        LabeledContent("Configuration file") {
+                            HStack {
+                                TextField("Default OpenSSH configuration", text: binding(\.sshConfigFile))
+                                    .labelsHidden().accessibilityIdentifier("sshConfigFile")
+                                Button("Choose…") { chooseSSHConfiguration() }.controlHover().connectionButtonFocus()
+                            }
+                        }
+                        Text("Enter a Host alias above. OpenSSH supplies the server, port, user, keys and jump route. Leave the file empty to use this Mac's default configuration. Keys must be usable without a password prompt, for example through ssh-agent. ProxyCommand and Match exec can run local programs when you connect or test the connection.")
+                            .font(.caption).appSecondaryText()
+                    } else if draft.sshAuthMethod == .privateKey {
                         LabeledContent("Private key") {
                             HStack {
                                 TextField("Private key", text: binding(\.sshIdentityFile)).labelsHidden().accessibilityIdentifier("sshIdentityFile")
@@ -284,7 +298,7 @@ struct ConnectionEditorView: View {
                     } else if draft.sshAuthMethod == .password {
                         SecureField("SSH password", text: binding(\.sshPassword)).accessibilityIdentifier("sshPassword")
                     }
-                    if draft.sshAuthMethod != .agent {
+                    if draft.sshAuthMethod == .privateKey || draft.sshAuthMethod == .password {
                         Toggle("Remember SSH credential in Keychain", isOn: valueBinding(\.rememberSSHSecret))
                             .padding(.horizontal, 6).frame(minHeight: 24).controlHover().connectionButtonFocus()
                             .accessibilityIdentifier("rememberSSHSecret")
@@ -292,7 +306,7 @@ struct ConnectionEditorView: View {
                 }
             }
             Section {
-                Text("Database addresses are reached from the SSH server. Database TLS settings still verify the database identity. SSH configuration aliases and jump hosts are not supported.")
+                Text("Database addresses are reached from the final SSH server. Database TLS settings still verify the database identity. OpenSSH Configuration supports aliases, Include, ProxyJump and ProxyCommand.")
                     .font(.caption).appSecondaryText()
                 if draft.engine == .cassandra {
                     Text("Cassandra over SSH requires numeric IP contact points; all discovered nodes also use the tunnel.")
@@ -464,6 +478,14 @@ struct ConnectionEditorView: View {
         }
     }
 
+    private func chooseSSHConfiguration() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose a local OpenSSH configuration file."
+        if panel.runModal() == .OK, let url = panel.url { draft.sshConfigFile = url.path }
+    }
+
     private func chooseSSHKey() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false
@@ -533,6 +555,7 @@ struct ConnectionDraft {
     var sshUser = ""
     var sshAuthMethod: SSHConfiguration.Authentication = .agent
     var sshIdentityFile = ""
+    var sshConfigFile = ""
     var sshPassword = ""
     var sshPassphrase = ""
     var rememberSSHSecret = true
@@ -547,6 +570,7 @@ struct ConnectionDraft {
         sshUser = connection?.ssh?.user ?? ""
         sshAuthMethod = connection?.ssh?.authMethod ?? .agent
         sshIdentityFile = connection?.ssh?.identityFile ?? ""
+        sshConfigFile = connection?.ssh?.configFile ?? ""
         name = connection?.name ?? ""
         engine = connection?.engine ?? .postgresql
         host = connection?.contactPoints?.joined(separator: ", ") ?? connection?.host ?? "localhost"
@@ -617,10 +641,13 @@ struct ConnectionDraft {
               (engine == .cassandra || !cleanedUser.isEmpty), engine.sslModes.contains(sslMode) else { return nil }
         var ssh: SSHSettings?
         if sshEnabled {
-            guard let port = Int(sshPort.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            let configured = sshAuthMethod == .openSSH
+            guard let port = configured ? 0 : Int(sshPort.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            let configFile = sshConfigFile.trimmingCharacters(in: .whitespacesAndNewlines)
             let configuration = SSHConfiguration(host: sshHost.trimmingCharacters(in: .whitespacesAndNewlines), port: port,
-                user: sshUser.trimmingCharacters(in: .whitespacesAndNewlines), authMethod: sshAuthMethod,
-                identityFile: sshAuthMethod == .privateKey ? sshIdentityFile : nil)
+                user: configured ? "" : sshUser.trimmingCharacters(in: .whitespacesAndNewlines), authMethod: sshAuthMethod,
+                identityFile: sshAuthMethod == .privateKey ? sshIdentityFile : nil,
+                configFile: configured && !configFile.isEmpty ? configFile : nil)
             guard configuration.isValid else { return nil }
             if sshAuthMethod == .privateKey, !ProfileTransfer.isLocalReadableCA(sshIdentityFile) { return nil }
             ssh = configuration.runtime(profileId: sshProfileId,

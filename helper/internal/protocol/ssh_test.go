@@ -57,3 +57,33 @@ func TestSSHProtocolCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenSSHConfigurationSettingsAreExplicitAndContainNoCredentials(t *testing.T) {
+	good := SSHSettings{ProfileID: "profile", Host: "analytics-route", AuthMethod: "openSSH", ConfigFile: "/synthetic/ssh config"}
+	if !good.Valid() {
+		t.Fatal("configuration mode rejected")
+	}
+	for _, mutate := range []func(*SSHSettings){
+		func(s *SSHSettings) { s.Port = 22 }, func(s *SSHSettings) { s.User = "user" },
+		func(s *SSHSettings) { s.IdentityFile = "/synthetic/key" }, func(s *SSHSettings) { s.Password = "secret" },
+		func(s *SSHSettings) { s.Passphrase = "secret" }, func(s *SSHSettings) { s.ConfigFile = "relative/config" },
+		func(s *SSHSettings) { s.ConfigFile = "/synthetic/config\nHost *" }, func(s *SSHSettings) { s.ConfigFile = "/${UNTRUSTED}/config" },
+	} {
+		bad := good
+		mutate(&bad)
+		if bad.Valid() {
+			t.Fatal("ambiguous configuration accepted")
+		}
+	}
+	good.ConfigFile = ""
+	if !good.Valid() {
+		t.Fatal("default configuration rejected")
+	}
+	good.AuthMethod = "agent"
+	good.Port = 22
+	good.User = "user"
+	good.ConfigFile = "/synthetic/config"
+	if good.Valid() {
+		t.Fatal("configuration file accepted in explicit mode")
+	}
+}

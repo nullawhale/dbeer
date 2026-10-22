@@ -832,6 +832,73 @@
           "authMethod": "agent"
         }
       }
+    },
+    {
+      "type": "ssh.probe",
+      "requestId": "ssh-config-probe",
+      "connection": {
+        "engine": "postgresql",
+        "host": "db.internal.example",
+        "port": 5432,
+        "database": "app",
+        "user": "reader",
+        "password": "",
+        "sslMode": "verify-full",
+        "ssh": {
+          "profileId": "11111111-2222-4333-8444-555555555555",
+          "host": "analytics-route",
+          "port": 0,
+          "user": "",
+          "authMethod": "openSSH",
+          "configFile": "/synthetic/ssh config"
+        }
+      }
+    },
+    {
+      "type": "ssh.trust",
+      "requestId": "ssh-config-trust",
+      "connection": {
+        "engine": "postgresql",
+        "host": "db.internal.example",
+        "port": 5432,
+        "database": "app",
+        "user": "reader",
+        "password": "",
+        "sslMode": "verify-full",
+        "ssh": {
+          "profileId": "11111111-2222-4333-8444-555555555555",
+          "host": "analytics-route",
+          "port": 0,
+          "user": "",
+          "authMethod": "openSSH",
+          "configFile": "/synthetic/ssh config"
+        }
+      },
+      "sshTrust": {
+        "token": "synthetic-jump-key-challenge",
+        "replace": false
+      }
+    },
+    {
+      "type": "connect",
+      "requestId": "ssh-config-connect",
+      "connection": {
+        "engine": "postgresql",
+        "host": "db.internal.example",
+        "port": 5432,
+        "database": "app",
+        "user": "reader",
+        "password": "",
+        "sslMode": "verify-full",
+        "ssh": {
+          "profileId": "11111111-2222-4333-8444-555555555555",
+          "host": "analytics-route",
+          "port": 0,
+          "user": "",
+          "authMethod": "openSSH",
+          "configFile": "/synthetic/ssh config"
+        }
+      }
     }
   ],
   "responses": [
@@ -1425,6 +1492,41 @@
         "status": "trusted",
         "host": "bastion.example",
         "port": 2222,
+        "algorithm": "ssh-ed25519",
+        "fingerprint": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      }
+    },
+    {
+      "type": "ssh.probe.result",
+      "requestId": "ssh-config-probe",
+      "ssh": {
+        "status": "unknown",
+        "host": "jump-one.example",
+        "port": 2222,
+        "algorithm": "ssh-ed25519",
+        "fingerprint": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "challengeToken": "synthetic-jump-key-challenge"
+      }
+    },
+    {
+      "type": "ssh.trust.result",
+      "requestId": "ssh-config-trust",
+      "ssh": {
+        "status": "unknown",
+        "host": "jump-two.example",
+        "port": 2200,
+        "algorithm": "ssh-ed25519",
+        "fingerprint": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "challengeToken": "synthetic-jump-key-challenge"
+      }
+    },
+    {
+      "type": "ssh.trust.result",
+      "requestId": "ssh-config-trust",
+      "ssh": {
+        "status": "trusted",
+        "host": "final.example",
+        "port": 22,
         "algorithm": "ssh-ed25519",
         "fingerprint": "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
       }
