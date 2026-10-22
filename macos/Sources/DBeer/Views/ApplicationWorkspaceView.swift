@@ -96,6 +96,10 @@ struct ApplicationWorkspaceView: View {
             SQLHistoryView(workspace: workspace)
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: $workspace.insertCopySelection) { selection in
+            InsertCopyView(workspace: workspace, selection: selection)
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(isPresented: Binding(get: { workspace.importPreview != nil },
             set: { if !$0 { workspace.importPreview = nil } })) {
             ProfileImportView(workspace: workspace)
@@ -511,7 +515,15 @@ struct SQLDocumentPane: View {
                     if document.table != nil, let grid = document.grid {
                         DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
-                        ResultTableView(columns: columns, rows: result.rows ?? [], documentID: document.id)
+                        ResultTableView(columns: columns, rows: result.rows ?? [],
+                            copySettings: workspace.copySettings,
+                            onSQLInsertCopy: { payload, pasteboard in
+                                workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)
+                            },
+                            onCopyError: { workspace.reportCopyError($0) },
+                            copyAllowed: !document.isRunning && !workspace.isClosing,
+                            commandHandler: { commands.handleKeyEvent($0, documentID: document.id) },
+                            documentID: document.id)
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }
             }

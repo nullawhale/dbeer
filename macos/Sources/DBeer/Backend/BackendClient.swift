@@ -79,6 +79,7 @@ actor BackendClient {
     private var ready = false
     private var capturedExportSupported = false
     private var sshTunnelsSupported = false
+    private var insertFormattingSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -174,10 +175,21 @@ actor BackendClient {
     /// Returns the terminal reply. `query.started` is delivered separately;
     /// cancelling a SQL query uses an explicit cancel command, not Task.cancel.
     func supportsCapturedExport() -> Bool { capturedExportSupported }
+    func supportsInsertFormatting() -> Bool { insertFormattingSupported }
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
         if command.export?.destination != nil, !capturedExportSupported { throw BackendTransportError(.unsupportedCapturedExport) }
+        if command.type == "formatInserts" {
+            guard insertFormattingSupported else { throw BackendTransportError(.unsupportedInsertFormatting) }
+            guard command.insert?.valid == true, command.sessionId == nil, command.queryId == nil,
+                  command.connection == nil, command.sql == nil, command.catalog == nil,
+                  command.protocolVersion == nil, command.stream == nil, command.export == nil,
+                  command.changes == nil, command.operations == nil, command.authorization == nil,
+                  command.sequence == nil, command.sshTrust == nil else {
+                throw BackendRequestError.invalidCommand
+            }
+        }
         return try await send(command, onEvent: onEvent)
     }
 
@@ -305,6 +317,7 @@ actor BackendClient {
         if reply.type == "hello.ack" {
             capturedExportSupported = reply.capabilities?.contains("capturedExportV1") == true
             sshTunnelsSupported = reply.capabilities?.contains("sshTunnelsV1") == true
+            insertFormattingSupported = reply.capabilities?.contains("formatInsertsV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))

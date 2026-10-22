@@ -108,6 +108,13 @@ struct DataGridView: View {
             }
         }
         view.documentID = document.id
+        view.copySettings = workspace.copySettings
+        view.copyAllowed = !document.isRunning && !workspace.isClosing && !grid.isApplying && !grid.isReloading && !grid.isClosing
+        view.onCopyError = { workspace.reportCopyError($0) }
+        view.onSQLInsertCopy = { payload, pasteboard in
+            workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)
+        }
+        view.commandHandler = { workspace.commands.handleKeyEvent($0, documentID: document.id) }
         return view
     }
 

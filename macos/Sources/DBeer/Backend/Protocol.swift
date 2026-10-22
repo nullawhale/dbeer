@@ -123,6 +123,51 @@ struct ExportRequest: Codable, Sendable, Equatable {
     var destination: ExportDestination?
 }
 
+/// Offline SQL formatting. Every column name is an explicitly chosen target
+/// mapping; values retain the grid's NULL, DEFAULT, text and binary kinds.
+struct InsertFormatRequest: Codable, Sendable, Equatable {
+    static let maximumRows = 1_000
+    static let maximumColumns = 4_096
+    static let maximumCells = 100_000
+    static let maximumBytes = 8 * 1_024 * 1_024
+
+    var engine: DatabaseEngine
+    var schema: String
+    var table: String
+    var columns: [InsertFormatColumn]
+    var rows: [[ChangeValue]]
+
+    var valid: Bool {
+        func validName(_ value: String) -> Bool { !value.isEmpty && value.utf8.count <= 1_024 && !value.contains("\0") }
+        guard [.postgresql, .mysql].contains(engine), (schema.isEmpty || validName(schema)), validName(table),
+              !columns.isEmpty, columns.count <= Self.maximumColumns,
+              !rows.isEmpty, rows.count <= Self.maximumRows,
+              columns.count * rows.count <= Self.maximumCells,
+              columns.allSatisfy({ validName($0.name) }), Set(columns.map { Data($0.name.utf8) }).count == columns.count else { return false }
+        var bytes = schema.utf8.count + table.utf8.count + columns.reduce(0) { $0 + $1.name.utf8.count }
+        for row in rows {
+            guard row.count == columns.count else { return false }
+            for cell in row {
+                bytes += cell.value?.utf8.count ?? 0
+                guard bytes <= Self.maximumBytes else { return false }
+                switch cell.kind {
+                case "null", "default": guard cell.value == nil else { return false }
+                case "text": guard cell.value != nil else { return false }
+                case "binary":
+                    guard let value = cell.value,
+                          Data(base64Encoded: value.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")) != nil else { return false }
+                default: return false
+                }
+            }
+        }
+        return true
+    }
+}
+
+struct InsertFormatColumn: Codable, Sendable, Equatable {
+    var name: String
+}
+
 struct QueryResultSet: Codable, Sendable, Equatable {
     var columns: [ResultColumn] = []
     var rows: [[String?]] = []
@@ -161,6 +206,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var operations: [OperationRequest]?
     var authorization: String?
     var sshTrust: SSHTrust?
+    var insert: InsertFormatRequest?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -210,6 +256,10 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "shutdown", requestId: UUID().uuidString)
     }
 
+    static func formatInserts(_ request: InsertFormatRequest) -> Self {
+        Self(type: "formatInserts", requestId: UUID().uuidString, insert: request)
+    }
+
     static func assess(sessionId: String, operations: [OperationRequest]) -> Self {
         Self(type: "operation.assess", requestId: UUID().uuidString, sessionId: sessionId,
             queryId: UUID().uuidString, operations: operations)
@@ -226,6 +276,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "disconnect": "disconnect.ack"
         case "shutdown": "shutdown.ack"
         case "operation.assess": "operation.assessment"
+        case "formatInserts": "insertSQL"
         default: nil
         }
     }
@@ -319,6 +370,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var exportPublication: String?
     var assessment: OperationAssessment?
     var ssh: SSHHostKey?
+    var sql: String?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -331,6 +383,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "insertSQL":
+            valid = sessionId == nil && queryId == nil && sql?.isEmpty == false &&
+                (sql?.utf8.count ?? Int.max) <= InsertFormatRequest.maximumBytes && sql?.contains("\0") == false
         case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
         case "ssh.probe.result", "ssh.trust.result": valid = ssh?.isValid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
@@ -361,7 +416,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
+        guard sql == nil || type == "insertSQL",
+              sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
               sqlCompleted != true || (type == "error" && outcomeUnknown != true),
               exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }
     }
@@ -381,6 +437,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
         case missingExecutable, alreadyStarted, notReady, invalidMessage, frameTooLarge
         case invalidUTF8, unexpectedEOF, processExited(Int32), writeFailed
         case incompatibleVersion(Int), handshakeTimeout, duplicateRequest, unsupportedCapturedExport
+        case unsupportedInsertFormatting
     }
 
     let code: Code
@@ -406,6 +463,7 @@ struct BackendTransportError: LocalizedError, Sendable, Equatable {
         case .incompatibleVersion(let version): explanation = "The helper uses incompatible protocol version \(version)."
         case .handshakeTimeout: explanation = "The helper did not complete its handshake within 5 seconds."
         case .unsupportedCapturedExport: explanation = "The helper does not support captured full export. SQL was not executed."
+        case .unsupportedInsertFormatting: explanation = "The helper does not support offline SQL INSERT formatting."
         case .duplicateRequest: explanation = "A command identifier was reused."
         }
         return explanation + (outcomeUnknown ? " The SQL outcome is unknown; the command was not repeated." : "")

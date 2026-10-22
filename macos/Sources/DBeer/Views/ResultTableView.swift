@@ -1,12 +1,6 @@
 import AppKit
 import SwiftUI
 
-struct ResultClipboardValue: Codable, Equatable, Sendable {
-    enum Kind: String, Codable, Sendable { case null, text, binary, `default` }
-    let kind: Kind
-    let value: String?
-}
-
 struct ResultGridCell: Hashable {
     let row: Int
     let column: Int
@@ -20,10 +14,21 @@ struct ResultGridSelection: Equatable {
 }
 
 @MainActor
-final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
+final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
     var appCommandFocus: AppCommandFocus { .grid }
     var appCommandDocumentID: UUID?
     weak var copyCoordinator: ResultTableView.Coordinator?
+    var commandHandler: ((NSEvent) -> Bool)?
+
+    func canPerformGridCopy(_ command: AppCommandID) -> Bool {
+        guard let format = command.resultCopyFormat else { return false }
+        return copyCoordinator?.canCopy(format: format) == true
+    }
+
+    func captureGridCopy(_ command: AppCommandID) -> (@MainActor () async -> Void)? {
+        guard let format = command.resultCopyFormat else { return nil }
+        return copyCoordinator?.captureCopy(format: format)
+    }
     private(set) var cellSelection: ResultGridSelection?
     private(set) var contextCell: ResultGridCell?
     private(set) var selectsWholeRows = false
@@ -193,6 +198,8 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
     @objc func copy(_ sender: Any?) { copyCoordinator?.copyRange(sender) }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
+        if commandHandler?(event) == true { return true }
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.charactersIgnoringModifiers?.lowercased() == "c" {
             copy(nil)
@@ -202,11 +209,13 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
     }
 
     override func keyDown(with event: NSEvent) {
+        if commandHandler?(event) == true { return }
         if [51, 117].contains(event.keyCode), copyCoordinator?.supportsEditing == true {
             copyCoordinator?.deleteSelectedRows()
             return
         }
-        if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers?.lowercased() == "c" {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "c" {
             copy(nil)
             return
         }
@@ -261,9 +270,22 @@ final class ResultGridTableView: NSTableView, AppCommandFocusResponder {
         ] {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             item.target = copyCoordinator
-            item.isEnabled = enabled
+            item.isEnabled = enabled && copyCoordinator.copyAllowed
             menu.addItem(item)
         }
+        let formats = NSMenu(title: "Copy as")
+        formats.autoenablesItems = false
+        for format in ResultCopyFormat.allCases {
+            let item = NSMenuItem(title: format.title,
+                action: #selector(ResultTableView.Coordinator.copyAs(_:)), keyEquivalent: "")
+            item.target = copyCoordinator
+            item.representedObject = format.rawValue
+            item.isEnabled = copyCoordinator.canCopy(format: format)
+            formats.addItem(item)
+        }
+        let copyAs = NSMenuItem(title: "Copy as", action: nil, keyEquivalent: "")
+        copyAs.submenu = formats
+        menu.addItem(copyAs)
         if copyCoordinator.onShowRowDetails != nil {
             menu.addItem(.separator())
             let details = NSMenuItem(title: "Row Details", action: #selector(ResultTableView.Coordinator.showContextRowDetails(_:)), keyEquivalent: "")
@@ -391,20 +413,13 @@ private final class ResultGridHeaderView: NSTableHeaderView {
     }
 }
 
-struct ResultClipboardPayload: Codable, Equatable, Sendable {
-    let version: Int
-    let columns: [ResultColumn]
-    let sourceRows: [Int]
-    let sourceColumnIndices: [Int]
-    let values: [[ResultClipboardValue]]
-}
-
 struct ResultTableView: NSViewRepresentable {
     static let clipboardType = NSPasteboard.PasteboardType("dev.dbeer.result-selection+json")
-    static let nullMarker = "\\N"
+    static let nullMarker = ResultCopy.nullMarker
     let columns: [ResultColumn]
     let rows: [[String?]]
     var pasteboard: NSPasteboard = .general
+    var copySettings: ResultCopySettings = .shared
     var editableColumns: IndexSet = []
     var canSetNullColumns: IndexSet = []
     var canSetDefaultColumns: IndexSet = []
@@ -427,6 +442,10 @@ struct ResultTableView: NSViewRepresentable {
     var sortAscending = true
     var onSortColumn: ((Int) -> Void)?
     var onCoordinatorReady: ((Coordinator) -> Void)?
+    var onSQLInsertCopy: ((ResultClipboardPayload, NSPasteboard) -> Void)?
+    var onCopyError: ((String) -> Void)?
+    var copyAllowed = true
+    var commandHandler: ((NSEvent) -> Bool)?
     var documentID: UUID?
 
     func makeCoordinator() -> Coordinator { Coordinator(pasteboard: pasteboard) }
@@ -461,8 +480,13 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onSortColumn = onSortColumn
         coordinator.sortColumn = sortColumn
         coordinator.sortAscending = sortAscending
+        coordinator.copySettings = copySettings
+        coordinator.onSQLInsertCopy = onSQLInsertCopy
+        coordinator.onCopyError = onCopyError
+        coordinator.copyAllowed = copyAllowed
         coordinator.update(columns: columns, rows: rows, dataIdentity: dataIdentity, in: scrollView)
         (scrollView.documentView as? ResultGridTableView)?.appCommandDocumentID = documentID
+        (scrollView.documentView as? ResultGridTableView)?.commandHandler = commandHandler
         if let selectedRows, let table = scrollView.documentView as? ResultGridTableView,
            table.selectedRowIndexes != selectedRows { table.setRowsExternally(selectedRows) }
         onCoordinatorReady?(coordinator)
@@ -475,6 +499,10 @@ struct ResultTableView: NSViewRepresentable {
         private var columnOrdinals: [NSUserInterfaceItemIdentifier: Int] = [:]
         private let cellIdentifier = NSUserInterfaceItemIdentifier("result-cell")
         private let pasteboard: NSPasteboard
+        var copySettings: ResultCopySettings = .shared
+        var onSQLInsertCopy: ((ResultClipboardPayload, NSPasteboard) -> Void)?
+        var onCopyError: ((String) -> Void)?
+        var copyAllowed = true
         private weak var table: ResultGridTableView?
         var editableColumns: IndexSet = []
         var canSetNullColumns: IndexSet = []
@@ -884,59 +912,90 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         private func copy(rowIndices: [Int], columnIndices: [Int]) {
-            guard !rowIndices.isEmpty, !columnIndices.isEmpty,
-                  rowIndices.allSatisfy(rows.indices.contains), columnIndices.allSatisfy(columns.indices.contains),
-                  rowIndices.allSatisfy({ row in columnIndices.allSatisfy(rows[row].indices.contains) }) else { return }
-            let selectedColumns = columnIndices.map { ordinal in
-                let column = columns[ordinal]
-                guard column.engine == .postgresql, column.typeOid == 17, column.encoding == nil else { return column }
-                return ResultColumn(index: column.index, name: column.name, typeOid: column.typeOid,
-                    engine: column.engine, nativeType: column.nativeType, encoding: "base64")
+            guard copyAllowed else { return }
+            var options = copySettings.options
+            // Inspection grids do not own a target chooser. Their ordinary
+            // Copy remains available when INSERT is the default for data grids.
+            if options.format == .sqlInsert, onSQLInsertCopy == nil { options.format = .tsv }
+            if options.format == .sqlInsert {
+                guard let action = captureCopy(format: .sqlInsert, rowIndices: rowIndices,
+                    columnIndices: columnIndices) else { return }
+                Task { await action() }
+                return
             }
-            let values = rowIndices.map { row in
-                columnIndices.map { column -> ResultClipboardValue in
-                    if let valueKinds, valueKinds.indices.contains(row), valueKinds[row].indices.contains(column), valueKinds[row][column] == "default" {
-                        return ResultClipboardValue(kind: .default, value: nil)
-                    }
-                    guard let value = rows[row][column] else { return ResultClipboardValue(kind: .null, value: nil) }
-                    let metadata = columns[column]
-                    if metadata.encoding == "base64" { return ResultClipboardValue(kind: .binary, value: value) }
-                    if metadata.engine == .postgresql, metadata.typeOid == 17, let binary = Self.postgresBinary(value) {
-                        return ResultClipboardValue(kind: .binary, value: binary)
-                    }
-                    return ResultClipboardValue(kind: .text, value: value)
+            let publisher = ResultCopyPublication.shared
+            let ticket = publisher.capture(changeCount: pasteboard.changeCount)
+            do {
+                let payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds,
+                    rowIndices: rowIndices, columnIndices: columnIndices)
+                let prepared = try PreparedResultCopy(payload: payload, format: options.format,
+                    includesHeaders: options.includesHeaders)
+                if !publisher.publish(prepared, to: pasteboard, ticket: ticket) {
+                    onCopyError?("The selection could not be copied. Try copying again.")
+                }
+            } catch { onCopyError?(error.localizedDescription) }
+        }
+
+        @objc func copyAs(_ sender: NSMenuItem) {
+            guard let raw = sender.representedObject as? String,
+                  let format = ResultCopyFormat(rawValue: raw), let action = captureCopy(format: format) else { return }
+            Task { await action() }
+        }
+
+        func canCopy(format: ResultCopyFormat) -> Bool {
+            guard copyAllowed, let table, !columns.isEmpty, !rows.isEmpty,
+                  format != .sqlInsert || onSQLInsertCopy != nil else { return false }
+            return table.cellSelection != nil || !table.selectedRowIndexes.isEmpty
+        }
+
+        func captureCopy(format: ResultCopyFormat) -> (@MainActor () async -> Void)? {
+            guard canCopy(format: format), let table else { return nil }
+            if let selection = table.cellSelection {
+                return captureCopy(format: format,
+                    rowIndices: table.selectsWholeRows ? Array(table.selectedRowIndexes) : Array(selection.rowRange),
+                    columnIndices: Array(selection.columnRange))
+            }
+            return captureCopy(format: format, rowIndices: Array(table.selectedRowIndexes),
+                columnIndices: Array(columns.indices))
+        }
+
+        private func captureCopy(format: ResultCopyFormat, rowIndices: [Int],
+                                 columnIndices: [Int]) -> (@MainActor () async -> Void)? {
+            guard copyAllowed else { return nil }
+            let payload: ResultClipboardPayload
+            do {
+                payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds,
+                    rowIndices: rowIndices, columnIndices: columnIndices)
+            } catch {
+                onCopyError?(error.localizedDescription)
+                return nil
+            }
+            let board = pasteboard
+            let reportError = onCopyError
+            let options = copySettings.options
+            let publisher = ResultCopyPublication.shared
+            let ticket = publisher.capture(changeCount: board.changeCount)
+            if format == .sqlInsert {
+                guard let onSQLInsertCopy else { return nil }
+                return {
+                    guard publisher.isCurrent(ticket) else { return }
+                    onSQLInsertCopy(payload, board)
                 }
             }
-            let payload = ResultClipboardPayload(version: 1, columns: selectedColumns, sourceRows: rowIndices,
-                sourceColumnIndices: columnIndices, values: values)
-            guard let encoded = try? JSONEncoder().encode(payload) else { return }
-            let tsv = values.map { row in row.map(Self.tsv).joined(separator: "\t") }.joined(separator: "\n")
-            pasteboard.clearContents()
-            pasteboard.declareTypes([.string, ResultTableView.clipboardType], owner: nil)
-            pasteboard.setData(encoded, forType: ResultTableView.clipboardType)
-            pasteboard.setString(tsv, forType: .string)
-        }
-
-        private static func tsv(_ value: ResultClipboardValue) -> String {
-            if value.kind == .default { return "<DEFAULT>" }
-            guard value.kind != .null, let string = value.value else { return ResultTableView.nullMarker }
-            if string.isEmpty || string == ResultTableView.nullMarker || string.contains("\t") || string.contains("\n") ||
-                string.contains("\r") || string.contains("\"") {
-                return "\"" + string.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+            return {
+                do {
+                    let prepared = try await Task.detached(priority: .userInitiated) {
+                        try PreparedResultCopy(payload: payload, format: format, includesHeaders: options.includesHeaders)
+                    }.value
+                    guard publisher.isCurrent(ticket) else { return }
+                    if !publisher.publish(prepared, to: board, ticket: ticket) {
+                        reportError?("The clipboard changed while preparing this selection. Copy again.")
+                    }
+                } catch {
+                    guard publisher.isCurrent(ticket) else { return }
+                    reportError?(error.localizedDescription)
+                }
             }
-            return string
-        }
-
-        private static func postgresBinary(_ value: String) -> String? {
-            guard value.hasPrefix("\\x") else { return nil }
-            let hex = Array(value.dropFirst(2).utf8)
-            guard hex.count.isMultiple(of: 2) else { return nil }
-            var bytes = Data()
-            for index in stride(from: 0, to: hex.count, by: 2) {
-                guard let byte = UInt8(String(decoding: hex[index...index + 1], as: UTF8.self), radix: 16) else { return nil }
-                bytes.append(byte)
-            }
-            return bytes.base64EncodedString()
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int { rows.count }

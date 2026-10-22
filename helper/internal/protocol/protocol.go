@@ -43,21 +43,22 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
-	SSHTrust        *SSHTrust          `json:"sshTrust,omitempty"`
-	Type            string             `json:"type"`
-	RequestID       string             `json:"requestId"`
-	ProtocolVersion int                `json:"protocolVersion,omitempty"`
-	Connection      *Connection        `json:"connection,omitempty"`
-	SessionID       string             `json:"sessionId,omitempty"`
-	QueryID         string             `json:"queryId,omitempty"`
-	SQL             string             `json:"sql,omitempty"`
-	Catalog         *CatalogRequest    `json:"catalog,omitempty"`
-	Stream          bool               `json:"stream,omitempty"`
-	Export          *ExportRequest     `json:"export,omitempty"`
-	Sequence        int                `json:"sequence,omitempty"`
-	Changes         *ChangesRequest    `json:"changes,omitempty"`
-	Operations      []OperationRequest `json:"operations,omitempty"`
-	Authorization   string             `json:"authorization,omitempty"`
+	SSHTrust        *SSHTrust            `json:"sshTrust,omitempty"`
+	Insert          *InsertFormatRequest `json:"insert,omitempty"`
+	Type            string               `json:"type"`
+	RequestID       string               `json:"requestId"`
+	ProtocolVersion int                  `json:"protocolVersion,omitempty"`
+	Connection      *Connection          `json:"connection,omitempty"`
+	SessionID       string               `json:"sessionId,omitempty"`
+	QueryID         string               `json:"queryId,omitempty"`
+	SQL             string               `json:"sql,omitempty"`
+	Catalog         *CatalogRequest      `json:"catalog,omitempty"`
+	Stream          bool                 `json:"stream,omitempty"`
+	Export          *ExportRequest       `json:"export,omitempty"`
+	Sequence        int                  `json:"sequence,omitempty"`
+	Changes         *ChangesRequest      `json:"changes,omitempty"`
+	Operations      []OperationRequest   `json:"operations,omitempty"`
+	Authorization   string               `json:"authorization,omitempty"`
 }
 
 type ExportRequest struct {
@@ -291,6 +292,13 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.SSHTrust = &trust
 		}
+	case "formatInserts":
+		allowed["insert"] = true
+		request, ok := parseInsertFormat(fields["insert"])
+		if !ok {
+			return command, failure
+		}
+		command.Insert = &request
 	case "execute", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
@@ -587,6 +595,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	SQL                   string
 	SSH                   *SSHProbe
 	AppliedChangeCount    *int
 	CurrentKeyspace       *string
@@ -644,6 +653,8 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
+	case "insertSQL":
+		fields["sql"] = response.SQL
 	case "ssh.probe.result", "ssh.trust.result":
 		fields["ssh"] = response.SSH
 	case "hello.ack":

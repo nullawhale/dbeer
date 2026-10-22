@@ -31,6 +31,9 @@ struct DBeerApp: App {
                 AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
                     .tabItem { Label("Appearance", systemImage: "paintpalette") }
                 if let workspace = appDelegate.workspace {
+                    ResultCopySettingsView(settings: workspace.copySettings)
+                        .applicationTheme(appearance: appDelegate.appearance)
+                        .tabItem { Label("Copying", systemImage: "doc.on.doc") }
                     ShortcutSettingsView(store: workspace.commandShortcuts)
                         .applicationTheme(appearance: appDelegate.appearance)
                         .tabItem { Label("Shortcuts", systemImage: "keyboard") }
@@ -86,6 +89,11 @@ private struct WorkspaceCommands: Commands {
             Button("Find in Connections") { focusCatalogSearch?() }
                 .keyboardShortcut("f", modifiers: .command)
                 .disabled(focusCatalogSearch == nil)
+        }
+        CommandGroup(after: .pasteboard) {
+            commandItem(.copyAsJSON)
+            commandItem(.copyAsMarkdown)
+            commandItem(.copyAsSQLInsert)
         }
         CommandMenu("Query") {
             commandItem(.runCurrent)

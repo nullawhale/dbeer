@@ -122,11 +122,13 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private(set) var isClosing = false
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
+    @Published var insertCopySelection: InsertCopySelection?
     @Published private(set) var isImportingProfiles = false
     let editorState = SQLEditorState()
     let editorThemes: EditorThemeStore
     let appearance: AppAppearance
     let commandShortcuts: AppShortcutStore
+    let copySettings: ResultCopySettings
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
@@ -158,6 +160,7 @@ final class ApplicationWorkspace: ObservableObject {
          credentialStore: any ConnectionCredentialStore = KeychainConnectionCredentialStore(),
          documentStore: any SQLDocumentStore = MemorySQLDocumentStore(),
          commandShortcuts: AppShortcutStore? = nil,
+         copySettings: ResultCopySettings? = nil,
          editorThemes: EditorThemeStore? = nil,
          appearance: AppAppearance? = nil,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
@@ -168,6 +171,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.helperFactory = helperFactory
         self.documentStore = documentStore
         self.commandShortcuts = commandShortcuts ?? AppShortcutStore()
+        self.copySettings = copySettings ?? .shared
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
         self.editorThemes = themes
         self.appearance = appearance ?? AppAppearance(editorThemes: themes)
@@ -178,6 +182,8 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     var selectedDocument: SQLDocument? { documents.first { $0.id == selectedDocumentID } }
+
+    func reportCopyError(_ message: String) { error = message }
 
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil) async {
         guard !started else { return }

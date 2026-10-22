@@ -14,6 +14,13 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
     static let stop = Self(rawValue: "query.stop")
     static let runToJSON = Self(rawValue: "query.runToJSON")
     static let runToCSV = Self(rawValue: "query.runToCSV")
+    static let copyAsJSON = Self(rawValue: "grid.copy.json")
+    static let copyAsMarkdown = Self(rawValue: "grid.copy.markdown")
+    static let copyAsSQLInsert = Self(rawValue: "grid.copy.insert")
+
+    var isGridCopyCommand: Bool {
+        self == .copyAsJSON || self == .copyAsMarkdown || self == .copyAsSQLInsert
+    }
 }
 
 enum AppCommandScope: String, Codable, Hashable, Sendable {
@@ -55,6 +62,12 @@ struct AppCommandDescriptor: Identifiable, Hashable, Sendable {
         .init(id: .stop, title: "Stop", scope: .document),
         .init(id: .runToJSON, title: "Run to JSON File…", scope: .sqlDocument),
         .init(id: .runToCSV, title: "Run to CSV File…", scope: .sqlDocument),
+        .init(id: .copyAsJSON, title: "Copy as JSON", scope: .grid,
+            defaultShortcut: AppShortcut(key: "j", modifiers: [.command, .option])),
+        .init(id: .copyAsMarkdown, title: "Copy as Markdown", scope: .grid,
+            defaultShortcut: AppShortcut(key: "m", modifiers: [.command, .option])),
+        .init(id: .copyAsSQLInsert, title: "Copy as SQL INSERT", scope: .grid,
+            defaultShortcut: AppShortcut(key: "i", modifiers: [.command, .option])),
     ]
 }
 

@@ -10,6 +10,13 @@ enum AppCommandFocus: Equatable { case workspace, sqlEditor, grid, textInput }
     var appCommandDocumentID: UUID? { get }
 }
 
+/// Capture an immutable grid selection before asynchronous serialization starts.
+/// Text field editors do not conform, preserving their native editing commands.
+@MainActor protocol AppGridCopyCommandResponder: AppCommandFocusResponder {
+    func canPerformGridCopy(_ command: AppCommandID) -> Bool
+    func captureGridCopy(_ command: AppCommandID) -> (@MainActor () async -> Void)?
+}
+
 struct AppCommandContext: Equatable {
     let documentID: UUID?
     let focus: AppCommandFocus
@@ -32,13 +39,23 @@ struct AppCommandInvocation {
     private unowned let workspace: ApplicationWorkspace
     private var shortcutObservation: AnyCancellable?
     private var gridHandlers: [AppCommandID: (SQLDocument) async -> Void] = [:]
+    private let gridCopyResponderProvider: (@MainActor () -> (any AppGridCopyCommandResponder)?)?
     private let invocationHandler: ((AppCommandInvocation) async -> Void)?
     private var previousContext: AppCommandContext?
+    private var previousGridCommands: Set<AppCommandID> = []
+
+    convenience init(workspace: ApplicationWorkspace, shortcuts: AppShortcutStore,
+                     invocationHandler: ((AppCommandInvocation) async -> Void)? = nil) {
+        self.init(workspace: workspace, shortcuts: shortcuts, gridCopyResponderProvider: nil,
+            invocationHandler: invocationHandler)
+    }
 
     init(workspace: ApplicationWorkspace, shortcuts: AppShortcutStore,
+         gridCopyResponderProvider: (@MainActor () -> (any AppGridCopyCommandResponder)?)?,
          invocationHandler: ((AppCommandInvocation) async -> Void)? = nil) {
         self.workspace = workspace
         self.shortcuts = shortcuts
+        self.gridCopyResponderProvider = gridCopyResponderProvider
         self.invocationHandler = invocationHandler
         super.init()
         shortcutObservation = shortcuts.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -51,8 +68,14 @@ struct AppCommandInvocation {
 
     @objc private func refreshContext() {
         let context = context()
-        guard context != previousContext else { return }
+        // Native result selections can change while focus stays in the grid,
+        // without a document or SwiftUI binding publishing that change.
+        let gridCommands = Set(shortcuts.descriptors.filter {
+            $0.scope == .grid && canPerform($0.id, context: context)
+        }.map(\.id))
+        guard context != previousContext || gridCommands != previousGridCommands else { return }
         previousContext = context
+        previousGridCommands = gridCommands
         objectWillChange.send()
     }
 
@@ -72,8 +95,8 @@ struct AppCommandInvocation {
             hasModal: NSApp.modalWindow != nil || window?.attachedSheet != nil || workspace.library.isConnectionEditorPresented)
     }
 
-    /// R21 adds descriptors to the same shortcut store and supplies a handler
-    /// that uses the active grid's common serializer.
+    /// Extension point for grid commands that operate on a document. Copy as
+    /// commands instead capture the focused responder's selection synchronously.
     func registerGridCommand(_ command: AppCommandID, handler: @escaping (SQLDocument) async -> Void) {
         gridHandlers[command] = handler
     }
@@ -84,7 +107,11 @@ struct AppCommandInvocation {
               let document = workspace.selectedDocument, context.documentID == document.id,
               let descriptor = shortcuts.descriptors.first(where: { $0.id == command }) else { return false }
         if descriptor.scope == .grid {
-            return context.focus == .grid && gridHandlers[command] != nil && !document.isRunning
+            guard context.focus == .grid, Self.canCopyGrid(in: document, workspace: workspace) else { return false }
+            if command.isGridCopyCommand {
+                return gridCopyResponder(for: document)?.canPerformGridCopy(command) == true
+            }
+            return gridHandlers[command] != nil
         }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true }
         guard context.focus != .textInput else { return false }
@@ -100,6 +127,13 @@ struct AppCommandInvocation {
     @discardableResult
     func perform(_ command: AppCommandID, context: AppCommandContext? = nil) -> Task<Void, Never>? {
         guard canPerform(command, context: context), let document = workspace.selectedDocument else { return nil }
+        if command.isGridCopyCommand {
+            guard let operation = gridCopyResponder(for: document)?.captureGridCopy(command) else { return nil }
+            return Task { [workspace] in
+                guard Self.canCopyGrid(in: document, workspace: workspace) else { return }
+                await operation()
+            }
+        }
         let invocation = AppCommandInvocation(command: command, documentID: document.id, documentText: document.text,
             profile: workspace.library.savedConnections.first { $0.id == document.profileID },
             fragment: document.table == nil && command != .stop ? workspace.executionFragment(document, script: command == .runScript) : nil)
@@ -125,6 +159,20 @@ struct AppCommandInvocation {
                 await workspace.runToFile(document, format: command == .runToJSON ? "json" : "csv", fragment: invocation.fragment)
             }
         }
+    }
+
+    private static func canCopyGrid(in document: SQLDocument, workspace: ApplicationWorkspace) -> Bool {
+        workspace.canStartOperation(document) && !document.isRunning && document.grid?.isApplying != true &&
+            document.grid?.isReloading != true && document.grid?.isClosing != true
+    }
+
+    private func gridCopyResponder(for document: SQLDocument) -> (any AppGridCopyCommandResponder)? {
+        let responder: (any AppGridCopyCommandResponder)?
+        if let gridCopyResponderProvider { responder = gridCopyResponderProvider() }
+        else { responder = workspace.presentationWindow?.firstResponder as? any AppGridCopyCommandResponder }
+        guard let responder, responder.appCommandFocus == .grid,
+              responder.appCommandDocumentID == document.id else { return nil }
+        return responder
     }
 
     func handleKeyEvent(_ event: NSEvent, documentID: UUID, selection: NSRange? = nil) -> Bool {

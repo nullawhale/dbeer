@@ -169,6 +169,12 @@ func (manager *Manager) run() {
 				return
 			}
 		case command := <-commands:
+			if command.Type == "formatInserts" {
+				if !emit(formatInserts(command)) {
+					return
+				}
+				continue
+			}
 			if command.Type == "shutdown" {
 				beginShutdown(command)
 				continue

@@ -76,7 +76,7 @@ struct ResultGridCopyTests {
         table.keyDown(with: try key(124, modifiers: .shift))
         table.keyDown(with: try key(125, modifiers: .shift))
         let menu = try #require(table.menu(for: mouse(table, row: 0, column: 0, type: .rightMouseDown)))
-        #expect(menu.items.map(\.title) == ["Copy Cell", "Copy Rows", "Copy Range"])
+        #expect(menu.items.map(\.title) == ["Copy Cell", "Copy Rows", "Copy Range", "Copy as"])
         menu.performActionForItem(at: 0)
         #expect(try payload(board).values == [[ResultClipboardValue(kind: .binary, value: "AAEC")]])
         menu.performActionForItem(at: 1)

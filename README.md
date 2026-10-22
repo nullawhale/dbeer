@@ -20,6 +20,38 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. Version 1 excludes psql/mysql client commands, COPY streams, LOAD DATA LOCAL, SSH tunnels, and external plugins.
 
+## Result copying in the working branch
+
+Copy cells, rows or ranges as TSV, CSV, JSON, Markdown or SQL INSERT. Ordinary
+**⌘C** defaults to TSV without headers; **Settings → Copying** changes the default
+format and whether TSV, CSV and Markdown include column headers. Inspection
+grids without an INSERT target chooser keep TSV when SQL INSERT is the default.
+The context menu provides every format. The Edit menu also has direct **Copy as
+JSON**, **Copy as Markdown** and **Copy as SQL INSERT** commands, initially bound
+to **⌥⌘J**, **⌥⌘M** and **⌥⌘I**. Rebind or clear them in **Settings → Shortcuts**.
+These commands act only on a focused result grid with a selection; SQL and cell
+editors retain their native text shortcuts.
+
+Every format preserves the same internal typed clipboard payload. TSV and CSV
+use unquoted `\N` for NULL, `<DEFAULT>` for DEFAULT, and `<BINARY:base64>` for
+binary. Empty strings and text matching these markers are quoted; quotes and
+embedded line breaks are escaped. JSON keeps column metadata and typed value
+arrays, including duplicate names and exact numeric strings. Markdown text cells
+use JSON string notation with escaped line breaks and Markdown entities; without
+headers, its required header row is blank.
+
+SQL INSERT asks for the PostgreSQL or MySQL target dialect, optional schema or
+database, table and target column names. Rename duplicate source column names in
+this mapping. The helper formats loaded values offline without connecting or
+executing SQL. Text and exact numbers become string literals for the destination
+table to interpret; NULL, DEFAULT and binary remain distinct. MySQL text literals
+are hexadecimal UTF-8 expressions independent of SQL mode. PostgreSQL rejects
+text containing a zero byte. INSERT copy is limited to 1,000 rows, 4,096 columns,
+100,000 cells and 8 MiB of input or generated SQL. Copying never fetches additional
+rows or reruns a query. Delayed work preserves a newer copy or external clipboard
+change. These changes require rebuilding the matching app and helper and are not
+included in the existing build 8 archive.
+
 ## SQL history in the working branch
 
 Query → SQL History records each executed statement once after it finishes,
@@ -114,7 +146,7 @@ helper to use it; Windows/Linux GPUI SSH support is deferred.
 
 The Query menu, execution buttons, and keyboard share a command registry for the active document. Default shortcuts are preserved: **⌘Return** runs the selection or current statement, and **⇧⌘Return** runs the entire script. The Run fragment is highlighted inside the editor and updates with cursor or selection changes. A cursor immediately after `;` still belongs to the completed statement.
 
-DBeer → Settings → Shortcuts records custom Run, Run Script, Stop, and Run to File shortcuts, clears assignments, and restores defaults. Assignments persist between launches; conflicts and protected editing shortcuts are rejected. Commands respect focus and the active tab; settings windows, dialogs, and typing in other text fields never launch SQL.
+DBeer → Settings → Shortcuts records custom Run, Run Script, Stop, Run to File and Copy as shortcuts, clears assignments, and restores defaults. Assignments persist between launches; conflicts and protected editing shortcuts are rejected. Commands respect focus and the active tab; settings windows, dialogs, and typing in other text fields never launch SQL.
 
 The working branch adds unset, development, staging, and production environments and a separate readonly setting. These changes are not yet included in the published 0.1.0 archive. The environment appears as text and color in the profile, SQL tab, and confirmation. The profile editor first routes open sessions through normal transaction completion; Cancel preserves the previous context.
 

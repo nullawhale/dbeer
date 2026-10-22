@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Native result selections copy as TSV, CSV, JSON, Markdown or SQL INSERT through
+  one typed serializer. Settings retain the default format and headers; ordinary
+  Copy still defaults to TSV without headers. NULL, empty text, marker text,
+  DEFAULT, exact numbers, binary values and duplicate names stay distinct.
+- Edit offers direct Copy as JSON, Markdown and SQL INSERT commands with
+  configurable grid-only shortcuts, initially Option-Command-J/M/I. INSERT copy
+  captures the selection and requires an explicit PostgreSQL/MySQL destination
+  and column mapping; adapters format SQL offline without connecting or executing
+  it. Delayed copies preserve newer clipboard contents.
 - SQL history supports favorites that are exempt from automatic age and count
   limits, configurable retention settings, individual deletion and clearing the
   current matches. Clear confirmations preserve favorites unless explicitly
