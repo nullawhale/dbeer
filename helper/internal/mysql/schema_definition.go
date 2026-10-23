@@ -135,7 +135,7 @@ func (r *myDefinition) expression(label string, expression *sc.Expression) {
 func (r *myDefinition) typ(u sc.TypeUse) {
 	name := strings.ToLower(u.Ref.Name)
 	known := false
-	for _, candidate := range []string{"tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "numeric", "float", "double", "real", "bit", "bool", "boolean", "char", "varchar", "binary", "varbinary", "tinytext", "text", "mediumtext", "longtext", "tinyblob", "blob", "mediumblob", "longblob", "date", "datetime", "timestamp", "time", "year", "json", "enum", "set", "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection"} {
+	for _, candidate := range []string{"tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "numeric", "float", "double", "real", "bit", "bool", "boolean", "char", "varchar", "binary", "varbinary", "tinytext", "text", "mediumtext", "longtext", "tinyblob", "blob", "mediumblob", "longblob", "date", "datetime", "timestamp", "time", "year", "json", "enum", "set", "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection", "geomcollection", "vector"} {
 		if name == candidate {
 			known = true
 			break
@@ -161,7 +161,20 @@ func (r *myDefinition) typ(u sc.TypeUse) {
 				if i > 0 {
 					r.w.Write(", ")
 				}
-				r.literal(label)
+				if u.LabelEncoding == "base64" {
+					decoded, err := base64.StdEncoding.DecodeString(label)
+					if err != nil {
+						r.w.Note("Invalid binary type label.")
+						r.w.Write("/* label unavailable */")
+					} else {
+						r.w.Write("X'" + hex.EncodeToString(decoded) + "'")
+					}
+				} else if u.LabelEncoding == "" || u.LabelEncoding == "text" {
+					r.literal(label)
+				} else {
+					r.w.Note("Unsupported type label encoding.")
+					r.w.Write("/* label unavailable */")
+				}
 			}
 			r.w.Write(")")
 		}
@@ -177,14 +190,14 @@ func (r *myDefinition) typ(u sc.TypeUse) {
 		}
 	}
 	switch name {
-	case "char", "varchar", "binary", "varbinary", "bit":
+	case "char", "varchar", "binary", "varbinary", "bit", "vector":
 		if m.Length == nil && (name == "varchar" || name == "varbinary") {
 			r.w.Note("Unavailable " + name + " length.")
 			r.w.Write("(/* length unavailable */)")
 		} else {
 			parameter(m.Length)
 		}
-	case "decimal", "numeric":
+	case "decimal", "numeric", "float", "double", "real":
 		if m.Precision != nil {
 			r.w.Write("(" + strconv.FormatInt(*m.Precision, 10))
 			if m.Scale != nil {
@@ -197,10 +210,8 @@ func (r *myDefinition) typ(u sc.TypeUse) {
 		}
 	case "datetime", "timestamp", "time":
 		parameter(m.DatetimePrecision)
-	case "tinyint", "smallint", "mediumint", "int", "integer", "bigint":
-		if m.Zerofill {
-			parameter(m.Length)
-		}
+	case "tinyint", "smallint", "mediumint", "int", "integer", "bigint", "year":
+		parameter(m.Length)
 	}
 	if m.Unsigned {
 		r.w.Write(" UNSIGNED")
@@ -208,12 +219,20 @@ func (r *myDefinition) typ(u sc.TypeUse) {
 	if m.Zerofill {
 		r.w.Write(" ZEROFILL")
 	}
+	if m.SpatialReferenceID != nil {
+		if spatialType(name) && *m.SpatialReferenceID >= 0 && *m.SpatialReferenceID <= 4294967295 {
+			r.w.Write(" SRID " + strconv.FormatInt(*m.SpatialReferenceID, 10))
+		} else {
+			r.w.Note("Invalid captured spatial reference identifier.")
+		}
+	}
 	if m.ArrayDimensions != 0 || m.Interval != nil || u.Element != nil {
 		r.w.Note("Unsupported MySQL type modifiers.")
 	}
 }
 
 var myDefinitionNumber = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
+var myDefinitionBits = regexp.MustCompile(`^b'[01]{1,64}'$`)
 
 func (r *myDefinition) defaultValue(d sc.Default) {
 	switch d.Kind {
@@ -257,7 +276,14 @@ func (r *myDefinition) defaultValue(d sc.Default) {
 			return
 		}
 		switch strings.ToLower(d.Type.Ref.Name) {
-		case "tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "numeric", "float", "double", "real", "bit", "bool", "boolean":
+		case "bit":
+			if myDefinitionBits.MatchString(*d.Value) {
+				r.w.Write(" DEFAULT " + *d.Value)
+			} else {
+				r.w.Note("Invalid captured bit default.")
+				r.w.Write(" /* default unavailable */")
+			}
+		case "tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "numeric", "float", "double", "real", "bool", "boolean":
 			if !myDefinitionNumber.MatchString(*d.Value) {
 				r.w.Note("Invalid captured numeric default.")
 				r.w.Write(" /* default unavailable */")
@@ -381,7 +407,12 @@ func (r *myDefinition) indexKeys(x sc.Index) {
 			r.w.Write("(" + strconv.FormatInt(*prefix, 10) + ")")
 		}
 		if desc := myRequiredDefinitionFact(r, "index order", key.Descending); desc != nil {
-			if *desc {
+			unordered := x.Method.Value != nil && (strings.EqualFold(*x.Method.Value, "RTREE") || strings.EqualFold(*x.Method.Value, "SPATIAL") || strings.EqualFold(*x.Method.Value, "FULLTEXT"))
+			if unordered {
+				if *desc {
+					r.w.Note("Unsupported descending order on a spatial or full-text index.")
+				}
+			} else if *desc {
 				r.w.Write(" DESC")
 			} else {
 				r.w.Write(" ASC")
@@ -404,7 +435,7 @@ func (r *myDefinition) indexOptions(x sc.Index) {
 		switch strings.ToUpper(*method) {
 		case "BTREE", "HASH":
 			r.w.Write(" USING " + strings.ToUpper(*method))
-		case "FULLTEXT", "SPATIAL":
+		case "FULLTEXT", "SPATIAL", "RTREE":
 		default:
 			r.w.Note("Unsupported index method " + *method + ".")
 		}
@@ -529,8 +560,12 @@ func (r *myDefinition) constraint(c sc.Constraint, backing *sc.Index) {
 	}
 }
 func (r *myDefinition) index(x sc.Index) {
-	if method := sc.DefinitionFact(r.w, "index method", x.Method); method != nil && (strings.EqualFold(*method, "FULLTEXT") || strings.EqualFold(*method, "SPATIAL")) {
-		r.w.Write(strings.ToUpper(*method) + " ")
+	if method := sc.DefinitionFact(r.w, "index method", x.Method); method != nil && (strings.EqualFold(*method, "FULLTEXT") || strings.EqualFold(*method, "SPATIAL") || strings.EqualFold(*method, "RTREE")) {
+		kind := strings.ToUpper(*method)
+		if kind == "RTREE" {
+			kind = "SPATIAL"
+		}
+		r.w.Write(kind + " ")
 	} else if unique := myRequiredDefinitionFact(r, "index uniqueness", x.Unique); unique != nil && *unique {
 		r.w.Write("UNIQUE ")
 	}

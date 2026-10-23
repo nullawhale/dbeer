@@ -29,7 +29,7 @@ func (session *Session) executeResults(sql string, parent *collector, target *wi
 	remainingRows, remainingBytes := MaxResultRows, MaxResultBytes
 	capture := func(current *collector, result *wire.Result) {
 		response := current.finishSingle(result, 0, "")
-		set := protocol.ResultSet{Columns: response.Columns, Rows: response.Rows, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice}
+		set := protocol.ResultSet{Columns: response.Columns, Rows: response.Rows, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice, StorageTokens: response.StorageTokens}
 		if set.Columns == nil {
 			set.Columns = []protocol.Column{}
 		}

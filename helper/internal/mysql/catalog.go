@@ -267,11 +267,12 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 	if request.Kind == "browse" && len(primaryKey) == 0 {
 		*notice = "This object has no primary key. No stable page order is guaranteed, even when data is unchanged; rows may repeat or be skipped between pages."
 	}
-	columns, err := session.work.client.Execute(`SELECT COLUMN_NAME,DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION LIMIT 4097`, request.Schema, request.Object)
+	columns, err := session.work.client.Execute(`SELECT COLUMN_NAME,DATA_TYPE,CHARACTER_SET_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION LIMIT 4097`, request.Schema, request.Object)
 	if err != nil {
 		return err
 	}
 	actual := map[string]string{}
+	columnOrder := []string{}
 	for index := 0; index < columns.RowNumber(); index++ {
 		name, err := columns.GetString(index, 0)
 		if err != nil {
@@ -283,10 +284,15 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 			columns.Close()
 			return err
 		}
+		charset, _ := columns.GetString(index, 2)
+		if (kind == "enum" || kind == "set") && (charset == "" || charset == "binary") {
+			kind += "Binary"
+		}
 		actual[name] = kind
+		columnOrder = append(columnOrder, name)
 	}
 	columns.Close()
-	plan, err := buildBrowsePlan(request, actual, primaryKey)
+	plan, err := buildBrowsePlan(request, actual, primaryKey, columnOrder)
 	if err != nil {
 		return err
 	}
@@ -294,6 +300,7 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 	if request.Kind == "select" {
 		return collectCatalogRows(collector, []string{"sql", "name"}, [][]*string{{text(plan.sourceSQL), text(QuoteIdentifier(request.Schema) + "." + QuoteIdentifier(request.Object))}})
 	}
+	collector.hiddenStorageFields = len(plan.storageColumns)
 	if len(plan.args) == 0 {
 		return session.work.client.ExecuteSelectStreaming(plan.statement, result, collector.row, collector.columns)
 	}
@@ -354,7 +361,7 @@ UNION ALL SELECT TRIGGER_NAME AS name,'trigger' AS kind,TRIGGER_SCHEMA AS ` + "`
 WHEN COALESCE(t.ENGINE,'') <> 'InnoDB' THEN 'Only InnoDB tables support data editing.'
 WHEN NOT EXISTS (SELECT 1 FROM information_schema.TABLE_CONSTRAINTS pk WHERE pk.TABLE_SCHEMA=c.TABLE_SCHEMA AND pk.TABLE_NAME=c.TABLE_NAME AND pk.CONSTRAINT_TYPE='PRIMARY KEY') THEN 'A primary key is required for data editing.'
 WHEN COALESCE(c.GENERATION_EXPRESSION,'') <> '' THEN 'Generated columns are read-only.'
-WHEN c.DATA_TYPE NOT IN ('tinyint','smallint','mediumint','int','bigint','decimal','numeric','char','varchar','tinytext','text','mediumtext','longtext','binary','varbinary','tinyblob','blob','mediumblob','longblob','date','datetime','timestamp','time','year') THEN 'This native type is read-only.' ELSE '' END`
+WHEN c.DATA_TYPE NOT IN ('tinyint','smallint','mediumint','int','bigint','decimal','numeric','float','double','bit','json','enum','set','geometry','point','linestring','polygon','multipoint','multilinestring','multipolygon','geometrycollection','geomcollection','vector','char','varchar','tinytext','text','mediumtext','longtext','binary','varbinary','tinyblob','blob','mediumblob','longblob','date','datetime','timestamp','time','year') THEN 'This native type is read-only.' ELSE '' END`
 		return `SELECT c.COLUMN_NAME AS name, c.COLUMN_TYPE AS nativeType, IF(c.IS_NULLABLE='YES','true','false') AS nullable, c.COLUMN_DEFAULT AS ` + "`default`" + `, COALESCE(c.GENERATION_EXPRESSION,'') AS ` + "`generated`" + `, COALESCE(k.ORDINAL_POSITION,0) AS primaryKey, IF((` + condition + `)='','true','false') AS editable, (` + condition + `) AS editReason
 FROM information_schema.COLUMNS c JOIN information_schema.TABLES t ON t.TABLE_SCHEMA=c.TABLE_SCHEMA AND t.TABLE_NAME=c.TABLE_NAME
 LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY'

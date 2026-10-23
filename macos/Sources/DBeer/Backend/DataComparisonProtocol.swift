@@ -82,8 +82,8 @@ struct DataComparisonCaptureContext: Codable, Equatable, Sendable {
     var descriptorDigest: String; var captureDigest: String; var table: DataComparisonTable; var engine: DatabaseEngine; var excludedColumns: Int
     var valid: Bool {
         !startedAt.isEmpty && !finishedAt.isEmpty && startedAt.utf8.count <= 64 && finishedAt.utf8.count <= 64 &&
-        ["repeatableRead", "repeatableReadBestEffortMetadata"].contains(consistency) &&
-        ["postgresTextUTCISOv1", "mysqlTextUTCUTF8v1"].contains(rendering) && (1...100_000).contains(readLimit) &&
+        consistency == (engine == .postgresql ? "repeatableRead" : "repeatableReadBestEffortMetadata") &&
+        (engine == .postgresql ? rendering == "postgresTextUTCISOv1" : ["mysqlTextUTCUTF8v1", "mysqlTextUTCUTF8v2", "mysqlTextUTCUTF8v3"].contains(rendering)) && (1...100_000).contains(readLimit) &&
         storedRows >= 0 && storedRows <= readLimit && observedAtLeast >= storedRows && observedAtLeast <= Int64(readLimit) + 1 &&
         (!partialReasons.contains("readLimit") || storedRows == readLimit && observedAtLeast == Int64(readLimit) + 1) &&
         partialReasons.count <= 2 && partialReasons.allSatisfy { ["readLimit", "storageLimit"].contains($0) } &&

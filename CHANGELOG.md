@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Preserve MySQL ENUM/SET labels, spatial reference IDs and exact modifiers.
+  Detect hidden choice, floating-point and timestamp changes before Apply.
+
 - Compare PostgreSQL range/multirange, array, composite, domain and extension
   definitions. Preserve exact query type identities and detect hidden row changes
   before applying edits to complex values.

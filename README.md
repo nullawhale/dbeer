@@ -363,6 +363,11 @@ Query metadata is read on the owning session before SQL executes once. Complex
 values use Preview/Apply with private row-version evidence; caller-controlled or
 lossy output cannot establish equality in saved-result comparisons.
 
+MySQL comparison preserves ordered ENUM/SET labels, binary labels, spatial
+reference IDs and exact type modifiers. Table captures retain stored choice
+identities, roundtrip floating-point projections and UTC timestamps. Apply checks
+hidden original-value evidence when visible text alone cannot identify storage.
+
 ## Value inspector in the working branch
 
 SQL results and table grids include a resizable **Value Inspector** beside the

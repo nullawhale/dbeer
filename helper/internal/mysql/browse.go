@@ -9,14 +9,32 @@ import (
 )
 
 type browsePlan struct {
-	statement string
-	args      []any
-	sourceSQL string
+	statement      string
+	args           []any
+	storageColumns []string
+	sourceSQL      string
 }
 
 // The executed statement and its standalone source share one plan. Only bound
 // operands differ; text and binary quoting reuse the offline INSERT formatter.
-func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, primaryKey []string) (browsePlan, error) {
+func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, primaryKey []string, columnOrders ...[]string) (browsePlan, error) {
+	storageColumns := mysqlBrowseStorageColumns(actual)
+	visibleProjection := "*"
+	canonical := false
+	for _, kind := range actual {
+		canonical = canonical || kind == "float" || kind == "double" || kind == "timestamp"
+	}
+	if canonical && len(columnOrders) > 0 {
+		columns := []string{}
+		for _, name := range columnOrders[0] {
+			expression := mysqlStableProjection(name, actual[name])
+			if expression != QuoteIdentifier(name) {
+				expression += " AS " + QuoteIdentifier(name)
+			}
+			columns = append(columns, expression)
+		}
+		visibleProjection = strings.Join(columns, ", ")
+	}
 	var order []string
 	seen := map[string]bool{}
 	for _, sort := range request.Sort {
@@ -53,14 +71,16 @@ func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, 
 			}
 			cell := protocol.CellValue{Kind: "text", Value: filter.Value}
 			var value any = *filter.Value
-			switch kind {
-			case "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "bit", "geometry", "vector":
+			if binaryType(kind) {
 				decoded, err := base64.StdEncoding.DecodeString(*filter.Value)
 				if err != nil {
 					return browsePlan{}, invalidSettings("MySQL binary filter values must use base64.")
 				}
 				value = decoded
 				cell.Kind = "binary"
+			}
+			if spatialType(kind) || kind == "vector" {
+				column = "UNHEX(HEX(" + column + "))"
 			}
 			literal, err := insertLiteral(cell)
 			if err != nil {
@@ -89,7 +109,11 @@ func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, 
 		}
 	}
 	statement := func(predicates []string) string {
-		query := "SELECT * FROM " + QuoteIdentifier(request.Schema) + "." + QuoteIdentifier(request.Object)
+		projection := visibleProjection
+		if len(storageColumns) > 0 {
+			projection += ", " + strings.Join(mysqlStorageProjections(storageColumns, actual), ", ")
+		}
+		query := "SELECT " + projection + " FROM " + QuoteIdentifier(request.Schema) + "." + QuoteIdentifier(request.Object)
 		if len(predicates) > 0 {
 			query += " WHERE " + strings.Join(predicates, " AND ")
 		}
@@ -103,5 +127,9 @@ func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, 
 		return query
 	}
 	sourceSQL := statement(sourcePredicates)
-	return browsePlan{statement: statement(predicates), args: args, sourceSQL: sourceSQL}, nil
+	// Copy SQL is the user's visible query, without transport-only ordinals.
+	if len(storageColumns) > 0 {
+		sourceSQL = strings.Replace(sourceSQL, "SELECT "+visibleProjection+", "+strings.Join(mysqlStorageProjections(storageColumns, actual), ", "), "SELECT "+visibleProjection, 1)
+	}
+	return browsePlan{statement: statement(predicates), args: args, sourceSQL: sourceSQL, storageColumns: storageColumns}, nil
 }

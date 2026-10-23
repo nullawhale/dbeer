@@ -14,6 +14,10 @@ import (
 type editColumn struct {
 	name, nativeType, dataType, generated string
 	primary                               int
+	binary                                bool
+	ambiguousEmptyEnum                    bool
+	ambiguousEnum                         bool
+	ambiguousSet                          bool
 }
 type editMetadata struct {
 	columns   []editColumn
@@ -22,6 +26,7 @@ type editMetadata struct {
 }
 type editPlan struct {
 	kind, sql, lockSQL string
+	storageToken       string
 	parameters, keys   []protocol.CellValue
 	original           []protocol.CellValue
 }
@@ -46,7 +51,7 @@ func (session *Session) editMetadata(request protocol.ChangesRequest) (editMetad
 	if kind != "BASE TABLE" || engine != "InnoDB" {
 		return metadata, editFailure("validation", "Data editing requires an InnoDB table with a primary key.")
 	}
-	rows, err := session.work.client.Execute(`SELECT c.COLUMN_NAME,c.COLUMN_TYPE,c.DATA_TYPE,COALESCE(c.GENERATION_EXPRESSION,''),COALESCE(k.ORDINAL_POSITION,0),c.EXTRA FROM information_schema.COLUMNS c LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY' WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? ORDER BY c.ORDINAL_POSITION LIMIT 4097`, request.Schema, request.Table)
+	rows, err := session.work.client.Execute(`SELECT c.COLUMN_NAME,c.COLUMN_TYPE,c.DATA_TYPE,COALESCE(c.GENERATION_EXPRESSION,''),COALESCE(k.ORDINAL_POSITION,0),c.EXTRA,c.CHARACTER_SET_NAME FROM information_schema.COLUMNS c LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY' WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? ORDER BY c.ORDINAL_POSITION LIMIT 4097`, request.Schema, request.Table)
 	if err != nil {
 		return metadata, err
 	}
@@ -61,10 +66,25 @@ func (session *Session) editMetadata(request protocol.ChangesRequest) (editMetad
 		generated, _ := rows.GetString(index, 3)
 		primary, _ := rows.GetInt(index, 4)
 		extra, _ := rows.GetString(index, 5)
-		if name != expected.Name || expected.Engine != "mysql" || !strings.EqualFold(native, expected.NativeType) || strings.Contains(extra, "INVISIBLE") {
+		charset, _ := rows.GetString(index, 6)
+		if name != expected.Name || expected.Engine != "mysql" || native != expected.NativeType || strings.Contains(extra, "INVISIBLE") {
 			return metadata, editFailure("validation", "The table structure or native types changed. Reload data before editing.")
 		}
-		metadata.columns = append(metadata.columns, editColumn{name: name, nativeType: native, dataType: dataType, generated: generated, primary: int(primary)})
+		ambiguousEmpty := false
+		ambiguousValues := false
+		if dataType == "enum" || dataType == "set" {
+			labels, ok := mysqlTypeLabels(native, dataType)
+			if !ok {
+				return metadata, editFailure("validation", "The native ENUM/SET definition is unavailable. Reload the table structure.")
+			}
+			for _, label := range labels {
+				if label == "" {
+					ambiguousEmpty = true
+				}
+			}
+			ambiguousValues = mysqlAmbiguousChoiceLabels(dataType, labels)
+		}
+		metadata.columns = append(metadata.columns, editColumn{name: name, nativeType: native, dataType: dataType, generated: generated, primary: int(primary), binary: binaryType(dataType) || charset == "binary" || (dataType == "enum" || dataType == "set") && charset == "", ambiguousEmptyEnum: ambiguousEmpty && dataType == "enum", ambiguousEnum: ambiguousValues && dataType == "enum", ambiguousSet: ambiguousValues && dataType == "set"})
 		if primary > 0 {
 			metadata.primary = append(metadata.primary, index)
 		}
@@ -80,7 +100,7 @@ func (session *Session) editMetadata(request protocol.ChangesRequest) (editMetad
 
 func editableType(kind string) bool {
 	switch kind {
-	case "tinyint", "smallint", "mediumint", "int", "bigint", "decimal", "numeric", "char", "varchar", "tinytext", "text", "mediumtext", "longtext", "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "date", "datetime", "timestamp", "time", "year":
+	case "tinyint", "smallint", "mediumint", "int", "bigint", "decimal", "numeric", "float", "double", "bit", "char", "varchar", "tinytext", "text", "mediumtext", "longtext", "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "date", "datetime", "timestamp", "time", "year", "json", "enum", "set", "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection", "geomcollection", "vector":
 		return true
 	}
 	return false
@@ -88,7 +108,7 @@ func editableType(kind string) bool {
 
 func binaryType(kind string) bool {
 	switch kind {
-	case "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "bit", "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection", "vector":
+	case "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob", "bit", "geometry", "point", "linestring", "polygon", "multipoint", "multilinestring", "multipolygon", "geometrycollection", "geomcollection", "vector", "enumBinary", "setBinary":
 		return true
 	}
 	return false
@@ -101,9 +121,10 @@ func planChanges(metadata editMetadata, request protocol.ChangesRequest) ([]edit
 		indices[column.name] = index
 		quoted = append(quoted, QuoteIdentifier(column.name))
 	}
+	quoted = append(quoted, mysqlStorageProjections(mysqlStorageColumns(metadata), mysqlStorageKinds(metadata))...)
 	plans := make([]editPlan, 0, len(request.Changes))
 	for _, change := range request.Changes {
-		plan := editPlan{kind: change.Kind, original: change.Original}
+		plan := editPlan{kind: change.Kind, original: change.Original, storageToken: change.StorageToken}
 		var columns, expressions, updates, predicates []string
 		for _, assignment := range change.Values {
 			column := metadata.columns[indices[assignment.Column]]
@@ -111,7 +132,8 @@ func planChanges(metadata editMetadata, request protocol.ChangesRequest) ([]edit
 				return nil, editFailure("validation", "Generated columns and unsupported native types are read-only.")
 			}
 			value := assignment.Value
-			if value.Kind == "text" && binaryType(column.dataType) || value.Kind == "binary" && !binaryType(column.dataType) {
+			binary := column.binary || binaryType(column.dataType)
+			if value.Kind == "text" && binary || value.Kind == "binary" && !binary {
 				return nil, editFailure("validation", "The assignment value does not match the column's native type.")
 			}
 			columns = append(columns, QuoteIdentifier(column.name))

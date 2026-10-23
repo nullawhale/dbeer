@@ -7,6 +7,7 @@ import (
 	tc "dbeer/helper/internal/tablecapture"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	wire "github.com/go-mysql-org/go-mysql/mysql"
 	"strconv"
@@ -16,7 +17,7 @@ import (
 )
 
 func (s *Session) dataSetup() error {
-	for _, sql := range []string{"SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ", "SET SESSION time_zone='+00:00'", "SET NAMES utf8mb4", "SET SESSION show_gipk_in_create_table_and_information_schema=ON", "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY"} {
+	for _, sql := range []string{"SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ", "SET SESSION time_zone='+00:00'", "SET NAMES utf8mb4", "SET SESSION sql_mode=TRIM(BOTH ',' FROM REPLACE(CONCAT(',',@@SESSION.sql_mode,','),',PAD_CHAR_TO_FULL_LENGTH,',','))", "SET SESSION show_gipk_in_create_table_and_information_schema=ON", "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY"} {
 		result, e := s.work.client.Execute(sql)
 		if e != nil {
 			return e
@@ -112,24 +113,46 @@ func (s *Session) describeDataTable(table tc.Table) (tc.Descriptor, error) {
 	}
 	for i, c := range columns {
 		kind := myText(c, 2)
-		supported := strings.Contains("|tinyint|smallint|mediumint|int|bigint|decimal|float|double|bit|char|varchar|binary|varbinary|tinyblob|blob|mediumblob|longblob|tinytext|text|mediumtext|longtext|date|datetime|timestamp|time|year|json|enum|set|", "|"+kind+"|")
+		supported := editableType(kind)
 		if !supported {
 			return d, tc.ErrUnsupported
 		}
-		native, _ := json.Marshal(struct{ DataType, ColumnType, Charset, Collation string }{kind, myText(c, 3), myText(c, 8), myText(c, 9)})
-		definition, _ := json.Marshal(c)
+		typ := mysqlSchemaType(kind, myText(c, 3), myText(c, 8), myText(c, 10), myText(c, 11), myText(c, 12), myText(c, 13), myText(c, 14))
+		if typ.Modifiers.State != "known" || !typ.Labels.Complete {
+			return d, tc.ErrUnsupported
+		}
+		native, _ := json.Marshal(struct {
+			Type               sc.TypeUse
+			Charset, Collation string
+		}{typ, myText(c, 8), myText(c, 9)})
+		definition, _ := json.Marshal(mysqlRawRows([][]*string{c})[0])
 		encoding := ""
-		if kind == "bit" || strings.Contains(kind, "blob") || kind == "binary" || kind == "varbinary" {
+		if binaryType(kind) || myText(c, 8) == "binary" || (kind == "enum" || kind == "set") && c[8] == nil {
 			encoding = "base64"
 		}
+		if kind == "enum" || kind == "set" {
+			encoding = ""
+		}
+		typeLabel := myText(c, 3)
+		if !utf8.ValidString(typeLabel) {
+			labels, ok := mysqlTypeLabels(typeLabel, kind)
+			if !ok {
+				return d, tc.ErrUnsupported
+			}
+			parts := make([]string, len(labels))
+			for i, label := range labels {
+				parts[i] = "X'" + hex.EncodeToString([]byte(label)) + "'"
+			}
+			typeLabel = kind + "(" + strings.Join(parts, ",") + ")"
+		}
 		extra := myText(c, 6)
-		d.Columns = append(d.Columns, tc.Column{Index: i, Name: myText(c, 0), NativeType: string(native), TypeLabel: myText(c, 3), Encoding: encoding, PrimaryKey: primary[myText(c, 0)], Numeric: strings.Contains("|tinyint|smallint|mediumint|int|bigint|decimal|float|double|", "|"+kind+"|"), Generated: myText(c, 7) != "", Identity: strings.Contains(extra, "auto_increment"), Nullable: myText(c, 4) == "YES", Definition: definition})
+		d.Columns = append(d.Columns, tc.Column{Index: i, Name: myText(c, 0), NativeType: string(native), TypeLabel: typeLabel, Encoding: encoding, PrimaryKey: primary[myText(c, 0)], Numeric: strings.Contains("|tinyint|smallint|mediumint|int|bigint|decimal|float|double|", "|"+kind+"|"), Generated: myText(c, 7) != "", Identity: strings.Contains(extra, "auto_increment"), Nullable: myText(c, 4) == "YES", Definition: definition})
 	}
 	d.Definition, e = json.Marshal(struct {
 		Table      [][]*string `json:"table"`
 		Columns    [][]*string `json:"columns"`
 		PrimaryKey [][]*string `json:"primaryKey"`
-	}{tables, columns, keys})
+	}{mysqlRawRows(tables), mysqlRawRows(columns), mysqlRawRows(keys)})
 	if e != nil {
 		return d, e
 	}
@@ -137,7 +160,7 @@ func (s *Session) describeDataTable(table tc.Table) (tc.Descriptor, error) {
 }
 func (s *Session) CaptureTable(ctx context.Context, spec tc.Spec, sink tc.Sink) (tc.Descriptor, tc.Outcome, error) {
 	var d tc.Descriptor
-	out := tc.Outcome{StartedAt: time.Now().UTC().Format(time.RFC3339Nano), ReadLimit: spec.ReadLimit, Consistency: "repeatableReadBestEffortMetadata", Rendering: "mysqlTextUTCUTF8v1", PartialReasons: []string{}, Table: spec.Table, Engine: "mysql"}
+	out := tc.Outcome{StartedAt: time.Now().UTC().Format(time.RFC3339Nano), ReadLimit: spec.ReadLimit, Consistency: "repeatableReadBestEffortMetadata", Rendering: "mysqlTextUTCUTF8v3", PartialReasons: []string{}, Table: spec.Table, Engine: "mysql"}
 	var captured error
 	response := s.executeWith(ctx, protocol.Command{}, func(_ *collector, target *wire.Result) error {
 		captured = func() error {
@@ -201,7 +224,18 @@ func mysqlDataSQL(d tc.Descriptor, s tc.Spec) (string, error) {
 	}
 	quoted := []string{}
 	for _, name := range s.Columns {
-		quoted = append(quoted, QuoteIdentifier(name))
+		expression := QuoteIdentifier(name)
+		kind := strings.Split(strings.Split(columns[name].TypeLabel, "(")[0], " ")[0]
+		if kind == "float" || kind == "double" {
+			expression = mysqlStableProjection(name, kind) + " AS " + QuoteIdentifier(name)
+		}
+		if strings.HasPrefix(columns[name].TypeLabel, "enum(") || strings.HasPrefix(columns[name].TypeLabel, "set(") {
+			// The error index 0 and a declared empty member both display as ''.
+			// SET also omits an empty member's bit from its displayed string.
+			// Keep the ordinal/mask and exact label bytes to distinguish them.
+			expression = "IF(" + expression + " IS NULL,NULL,JSON_ARRAY(CAST(" + expression + " AS UNSIGNED),HEX(" + expression + "))) AS " + expression
+		}
+		quoted = append(quoted, expression)
 	}
 	sql := "SELECT " + strings.Join(quoted, ",") + " FROM " + QuoteIdentifier(s.Table.Schema) + "." + QuoteIdentifier(s.Table.Name)
 	predicates := []string{}
@@ -224,6 +258,12 @@ func mysqlDataSQL(d tc.Descriptor, s tc.Spec) (string, error) {
 		literal, e := insertLiteral(cell)
 		if e != nil {
 			return "", tc.ErrInvalid
+		}
+		kind := strings.Split(strings.Split(c.TypeLabel, "(")[0], " ")[0]
+		if spatialType(kind) || kind == "vector" {
+			// HEX is supported by both geometry and VECTOR. Reconstruct bytes
+			// for exact binary predicates without server type coercion.
+			name = "UNHEX(HEX(" + name + "))"
 		}
 		if f.Operator == "contains" {
 			if c.Numeric {

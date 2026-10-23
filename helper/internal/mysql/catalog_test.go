@@ -175,8 +175,8 @@ func TestMySQLCatalogRealObjectsAndStableBrowse(t *testing.T) {
 	if row := catalogRow(response, "computed"); len(row) != 8 || *row[4] == "" || *row[6] != "false" || *row[7] == "" {
 		t.Fatal("generated column was editable")
 	}
-	if row := catalogRow(response, "doc"); len(row) != 8 || *row[6] != "false" || *row[7] == "" {
-		t.Fatal("unsupported native type was editable")
+	if row := catalogRow(response, "doc"); len(row) != 8 || *row[6] != "true" || *row[7] != "" {
+		t.Fatal("JSON metadata did not expose supported editing")
 	}
 	viewColumns := catalogRequest(t, session, protocol.CatalogRequest{Kind: "columns", Schema: schema, Object: view, ObjectKind: "view"})
 	if len(viewColumns.Rows) == 0 || *viewColumns.Rows[0][6] != "false" || !strings.Contains(*viewColumns.Rows[0][7], "Views") {

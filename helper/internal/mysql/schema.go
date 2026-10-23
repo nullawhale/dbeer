@@ -5,16 +5,14 @@ import (
 	"crypto/sha256"
 	"dbeer/helper/internal/protocol"
 	sc "dbeer/helper/internal/schemacompare"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	wire "github.com/go-mysql-org/go-mysql/mysql"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
-
-var schemaTypePattern = regexp.MustCompile(`^[a-z]+(?:\([0-9]+(?:,[0-9]+)?\))?(?: unsigned)?(?: zerofill)?$`)
 
 type mysqlSchemaRead struct {
 	sql    string
@@ -79,7 +77,7 @@ func (r *mysqlSchemaCapture) rows(sql string, args ...any) ([][]*string, error) 
 func (r *mysqlSchemaCapture) tracked(sql string, args ...any) ([][]*string, error) {
 	rows, e := r.rows(sql, args...)
 	if e == nil {
-		b, _ := json.Marshal(rows)
+		b, _ := json.Marshal(mysqlRawRows(rows))
 		d := sha256.Sum256(b)
 		r.reads = append(r.reads, mysqlSchemaRead{sql, args, hex.EncodeToString(d[:])})
 	}
@@ -106,7 +104,7 @@ func (r *mysqlSchemaCapture) issue(ref *sc.Ref, p, code, message string) error {
 }
 func (r *mysqlSchemaCapture) capture() error {
 	started := time.Now().UTC().Format(time.RFC3339Nano)
-	rows, e := r.rows("SELECT VERSION(),DATABASE(),@@sql_mode,@@explicit_defaults_for_timestamp,CURRENT_USER(),CURRENT_ROLE(),@@lower_case_table_names")
+	rows, e := r.rows("SELECT VERSION(),DATABASE(),@@sql_mode,@@explicit_defaults_for_timestamp,CURRENT_USER(),CURRENT_ROLE(),@@lower_case_table_names,@@partial_revokes")
 	if e != nil || len(rows) != 1 {
 		return sc.ErrInvalid
 	}
@@ -133,7 +131,7 @@ func (r *mysqlSchemaCapture) capture() error {
 	capture := sc.CaptureContext{Engine: "mysql", Version: version, Database: myText(v, 1), StartedAt: started, Consistency: "bestEffort", Visibility: "complete", EngineContext: sc.Known([]sc.Option{{Name: "sqlMode", Value: r.sqlMode}, {Name: "explicitDefaultsForTimestamp", Value: myText(v, 3)}, {Name: "lowerCaseTableNames", Value: myText(v, 6)}})}
 	principal := myText(v, 4)
 	user, host, valid := strings.Cut(principal, "@")
-	grantProof := valid && strings.Count(principal, "@") == 1 && myText(v, 5) == "NONE"
+	grantProof := valid && strings.Count(principal, "@") == 1 && myText(v, 5) == "NONE" && myText(v, 7) == "0"
 	grantee := "'" + strings.ReplaceAll(user, "'", "''") + "'@'" + strings.ReplaceAll(host, "'", "''") + "'"
 	global := false
 	if grantProof {
@@ -193,7 +191,7 @@ func (r *mysqlSchemaCapture) capture() error {
 		if e != nil {
 			return e
 		}
-		b, _ := json.Marshal(rows)
+		b, _ := json.Marshal(mysqlRawRows(rows))
 		d := sha256.Sum256(b)
 		if hex.EncodeToString(d[:]) != read.digest {
 			capture.Visibility = "partial"
@@ -233,31 +231,12 @@ func (r *mysqlSchemaCapture) table(ref sc.Ref, row []*string) error {
 			return sc.ErrLimit
 		}
 		name, datatype, definition, extra := myText(v, 0), myText(v, 2), myText(v, 3), myText(v, 6)
-		typ := sc.TypeUse{Ref: sc.Ref{Kind: "type", Name: datatype}, Kind: "builtin", Modifiers: sc.Known(sc.TypeModifiers{Length: myNumber(myText(v, 11)), Precision: myNumber(myText(v, 12)), Scale: myNumber(myText(v, 13)), DatetimePrecision: myNumber(myText(v, 14)), Unsigned: strings.Contains(definition, " unsigned"), Zerofill: strings.Contains(definition, " zerofill")}), Labels: sc.Complete[string](nil)}
-		if !schemaTypePattern.MatchString(definition) {
-			typ.Modifiers = sc.Unknown[sc.TypeModifiers]("typeModifiers")
-		}
-		if strings.Contains(definition, "zerofill") {
-			if _, rest, ok := strings.Cut(definition, "("); ok {
-				width, _, _ := strings.Cut(rest, ")")
-				if typ.Modifiers.Value != nil {
-					typ.Modifiers.Value.Length = myNumber(width)
-				}
-			}
-		}
-		if datatype == "enum" || datatype == "set" {
-			typ.Kind = datatype
-			typ.Modifiers = sc.Unknown[sc.TypeModifiers]("inlineEnumSet")
-			if e = r.issue(&ref, "type", "inlineEnumSet", "Inline ENUM/SET labels require manual review."); e != nil {
-				return e
-			}
-		}
-		if v[15] != nil {
-			typ.Modifiers = sc.Unknown[sc.TypeModifiers]("spatialReference")
-		}
+		typ := mysqlSchemaType(datatype, definition, myText(v, 8), myText(v, 11), myText(v, 12), myText(v, 13), myText(v, 14), myText(v, 15))
 		c := sc.Column{Ref: sc.Ref{Kind: "column", Schema: ref.Schema, Table: ref.Name, Name: name}, Ordinal: sc.Known(intValue(myText(v, 1)) - 1), Type: sc.Known(typ), Nullable: sc.Known(myText(v, 4) == "YES"), Default: sc.Known(sc.Default{Kind: "none"}), Generated: sc.Known(sc.Generated{Kind: "none"}), Identity: sc.Known(sc.Identity{Kind: "none"}), Charset: sc.Absent[string](), Collation: sc.Absent[sc.Ref](), Visible: sc.Known(!strings.Contains(extra, "INVISIBLE")), Comment: sc.Known(myText(v, 10)), OnUpdate: sc.Absent[sc.Expression]()}
 		if v[8] != nil {
 			c.Charset = sc.Known(myText(v, 8))
+		} else if datatype == "enum" || datatype == "set" {
+			c.Charset = sc.Known("binary")
 		}
 		if v[9] != nil {
 			c.Collation = sc.Known(sc.Ref{Kind: "collation", Name: myText(v, 9)})
@@ -274,6 +253,24 @@ func (r *mysqlSchemaCapture) table(ref sc.Ref, row []*string) error {
 			} else {
 				value := *v[5]
 				c.Default = sc.Known(sc.Default{Kind: "literal", Type: &typ, Encoding: "text", Value: &value})
+				if datatype == "binary" || datatype == "varbinary" || typ.LabelEncoding == "base64" {
+					// I_S renders binary defaults as 0x... and older supported
+					// servers truncate that representation at the first NUL.
+					// Evaluate the constant default without reading table rows.
+					defaults, err := r.tracked("SELECT HEX(DEFAULT(t." + QuoteIdentifier(name) + ")) FROM " + QuoteIdentifier(ref.Schema) + "." + QuoteIdentifier(ref.Name) + " AS t RIGHT JOIN (SELECT 1 AS n) AS d ON FALSE")
+					if err != nil {
+						return err
+					}
+					if len(defaults) != 1 || defaults[0][0] == nil {
+						return sc.ErrInvalid
+					}
+					bytes, err := hex.DecodeString(*defaults[0][0])
+					if err != nil {
+						return sc.ErrInvalid
+					}
+					value = base64.StdEncoding.EncodeToString(bytes)
+					c.Default = sc.Known(sc.Default{Kind: "literal", Type: &typ, Encoding: "base64", Value: &value})
+				}
 			}
 		} else if c.Nullable.Value != nil && *c.Nullable.Value {
 			c.Default = sc.Known(sc.Default{Kind: "sqlNull"})
@@ -364,7 +361,7 @@ func (r *mysqlSchemaCapture) indexes(table sc.Ref, constraints []sc.Constraint) 
 					x.Constraint = sc.Known(c.Ref)
 				}
 			}
-			if myText(v, 6) != "BTREE" {
+			if method := myText(v, 6); method != "BTREE" && method != "HASH" && method != "SPATIAL" && method != "RTREE" {
 				x.Method = sc.Unknown[string]("indexMethod")
 			}
 			if myText(v, 9) != "" {
@@ -379,7 +376,9 @@ func (r *mysqlSchemaCapture) indexes(table sc.Ref, constraints []sc.Constraint) 
 		if v[8] != nil {
 			key.Expression = sc.Known(sc.Expression{Text: *v[8], Dependencies: sc.Collection[sc.Ref]{Items: []sc.Ref{}, State: "unavailable", Code: "expressionDependencies"}})
 		}
-		if n := myNumber(myText(v, 5)); n != nil {
+		// RTREE SUB_PART is the internal MBR key length, not a declared SQL
+		// prefix. MySQL rejects a prefix length on a SPATIAL index.
+		if n := myNumber(myText(v, 5)); n != nil && myText(v, 6) != "RTREE" && myText(v, 6) != "SPATIAL" {
 			key.PrefixLength = sc.Known(*n)
 		}
 		out[len(out)-1].Keys.Items = append(out[len(out)-1].Keys.Items, key)
