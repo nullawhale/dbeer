@@ -125,7 +125,7 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		return fail(c)
 	}
 	if c.Type == "data.start" || c.Type == "data.describe" {
-		if len(m.jobs) > 0 || r.Source == nil || r.Target == nil || r.Source.Connection.DatabaseEngine() != r.Target.Connection.DatabaseEngine() || (r.Source.Connection.DatabaseEngine() != "postgresql" && r.Source.Connection.DatabaseEngine() != "mysql") {
+		if len(m.jobs) > 0 || r.Source == nil || r.Target == nil || r.Source.Connection.DatabaseEngine() != r.Target.Connection.DatabaseEngine() {
 			m.mu.Unlock()
 			return protocol.ErrorResponse(c, "busy", "Close the current data comparison before starting another.")
 		}
@@ -301,12 +301,16 @@ func (m *Manager) run(j *job, r protocol.DataComparisonRequest, describe bool) {
 				if !ok {
 					return tc.ErrUnsupported
 				}
-				readonly, ok := session.(adapter.ReadOnlySession)
-				if !ok {
-					return tc.ErrUnsupported
-				}
-				if e = readonly.SetReadOnly(readCtx, true); e != nil {
-					return e
+				// Cassandra has no server read-only transaction mode. Its capture
+				// adapter accepts only catalog-validated, generated SELECT reads.
+				if side.Connection.DatabaseEngine() != "cassandra" {
+					readonly, ok := session.(adapter.ReadOnlySession)
+					if !ok {
+						return tc.ErrUnsupported
+					}
+					if e = readonly.SetReadOnly(readCtx, true); e != nil {
+						return e
+					}
 				}
 				out.descriptor, e = reader.DescribeTable(readCtx, side.Table)
 				if e != nil || describe {

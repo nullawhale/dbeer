@@ -42,7 +42,7 @@ func TestSchemaStrictRequestsFailBeforeOpen(t *testing.T) {
 	}
 	_ = json.Unmarshal(b, &fixture)
 	start := string(fixture.Commands[0])
-	for _, bad := range []string{strings.Replace(start, `"schemas":`, `"schemas":null,"other":`, 1), strings.Replace(start, `"postgresql"`, `"mysql"`, 1), strings.Replace(start, `"postgresql"`, `"cassandra"`, -1), strings.Replace(start, `"tables": []`, `"tables": null`, 1), strings.Replace(start, `"requestId": "start"`, `"requestId":"start","sql":"SELECT 1"`, 1), strings.Replace(start, `"port": 5432`, `"port":5432,"port":5433`, 1), `{"type":"schema.page","requestId":"p","schemaComparison":{"jobId":"j","collection":"issues","limit":0}}`, `{"type":"schema.value","requestId":"v","schemaComparison":{"jobId":"j","valueRef":"v","offset":null}}`, `{"type":"schema.export","requestId":"e","schemaComparison":{"jobId":"j","maxBytes":1048577}}`} {
+	for _, bad := range []string{strings.Replace(start, `"schemas":`, `"schemas":null,"other":`, 1), strings.Replace(start, `"postgresql"`, `"mysql"`, 1), strings.Replace(start, `"postgresql"`, `"unknown"`, -1), strings.Replace(start, `"tables": []`, `"tables": null`, 1), strings.Replace(start, `"requestId": "start"`, `"requestId":"start","sql":"SELECT 1"`, 1), strings.Replace(start, `"port": 5432`, `"port":5432,"port":5433`, 1), `{"type":"schema.page","requestId":"p","schemaComparison":{"jobId":"j","collection":"issues","limit":0}}`, `{"type":"schema.value","requestId":"v","schemaComparison":{"jobId":"j","valueRef":"v","offset":null}}`, `{"type":"schema.export","requestId":"e","schemaComparison":{"jobId":"j","maxBytes":1048577}}`} {
 		if _, e := ParseCommand([]byte(bad)); e == nil {
 			t.Fatal("invalid schema request admitted")
 		}

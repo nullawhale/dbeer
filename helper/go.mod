@@ -2,6 +2,8 @@ module dbeer/helper
 
 go 1.27.1
 
+replace github.com/apache/cassandra-gocql-driver/v2 => ./third_party/cassandra-gocql-driver
+
 require (
 	github.com/apache/cassandra-gocql-driver/v2 v2.1.2
 	github.com/go-mysql-org/go-mysql v1.16.0

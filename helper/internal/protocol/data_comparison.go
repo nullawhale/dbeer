@@ -146,7 +146,7 @@ func parseDataComparison(raw json.RawMessage, kind string) (DataComparisonReques
 				}
 			}
 		}
-		if r.Source.Connection.DatabaseEngine() != r.Target.Connection.DatabaseEngine() || r.Source.Connection.DatabaseEngine() != "postgresql" && r.Source.Connection.DatabaseEngine() != "mysql" {
+		if r.Source.Connection.DatabaseEngine() != r.Target.Connection.DatabaseEngine() {
 			return r, false
 		}
 		if kind == "data.describe" {

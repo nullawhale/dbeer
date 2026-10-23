@@ -420,6 +420,10 @@ func Build(ctx context.Context, dir string, source, target Capture, m Mappings) 
 		}
 	}()
 	s := Summary{FormatVersion: 1, Engine: source.Context.Engine, Source: source.Context, Target: target.Context, Mappings: m, Scope: Scope{"mappedTableStructure", []string{"views", "routines", "triggers", "privileges", "statistics", "physicalContents", "sequenceCounters", "autoIncrementCounters"}}, Complete: true}
+	if s.Engine == "cassandra" {
+		// Cassandra's adapter also captures materialized-view structure.
+		s.Scope.ExcludedObjectKinds = []string{"routines", "triggers", "privileges", "statistics", "physicalContents"}
+	}
 	for i, c := range []Capture{source, target} {
 		side := "source"
 		if i == 1 {

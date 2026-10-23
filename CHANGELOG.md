@@ -2,18 +2,16 @@
 
 ## Unreleased
 
-- Preserve MySQL ENUM/SET labels, spatial reference IDs and exact modifiers.
-  Detect hidden choice, floating-point and timestamp changes before Apply.
-
 - Compare PostgreSQL range/multirange, array, composite, domain and extension
-  definitions. Preserve exact query type identities and detect hidden row changes
-  before applying edits to complex values.
-
-- Retain private original-row evidence through streaming, grid drafts and
-  Preview/Apply requests without exporting it in offline artifacts.
-
-- Preserve structural type identities in saved results and comparisons;
-  unresolved definitions never establish equality.
+  type definitions, including their modifiers and dependencies. MySQL captures
+  ENUM/SET labels, binary labels, spatial reference IDs and exact type modifiers.
+  Cassandra schema and table-data comparison includes nested collections, tuples,
+  UDTs and vectors. Cassandra data reads disclose their non-snapshot consistency
+  and cannot claim full equality. Saved results retain structural type identities;
+  unresolved definitions never establish equality. PostgreSQL complex values and
+  additional MySQL types use the existing Preview/Apply and conflict checks.
+  Detect hidden ENUM/SET, floating-point and timestamp changes before Apply;
+  caller-controlled or lossy SQL output cannot establish snapshot equality.
 
 - Show SQL definition diffs for schema comparisons, with SQL syntax highlighting
   and changed fragments. Definitions come from the frozen captures, with mapped

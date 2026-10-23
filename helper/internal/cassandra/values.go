@@ -19,6 +19,45 @@ import (
 
 var errValue = errors.New("Cassandra value could not be decoded losslessly")
 
+// The wire custom-class name must survive legacy driver aliases. External
+// Java implementations remain opaque: preserve bytes and identity without
+// applying a built-in decoder or claiming semantic equivalence.
+type opaqueCQLType string
+
+func (t opaqueCQLType) String() string { return string(t) }
+func (opaqueCQLType) Type() gocql.Type { return gocql.TypeCustom }
+func (opaqueCQLType) Zero() any        { return []byte(nil) }
+func (opaqueCQLType) Marshal(value any) ([]byte, error) {
+	if value == nil {
+		return nil, nil
+	}
+	if data, ok := value.([]byte); ok {
+		if data == nil {
+			return nil, nil
+		}
+		return append([]byte{}, data...), nil
+	}
+	return nil, errValue
+}
+func (opaqueCQLType) Unmarshal(data []byte, value any) error {
+	if destination, ok := value.(*[]byte); ok {
+		if data == nil {
+			*destination = nil
+		} else {
+			*destination = append([]byte{}, data...)
+		}
+		return nil
+	}
+	return errValue
+}
+func resolveCustomWireType(_ int, name string, resolved gocql.TypeInfo, _ error) (gocql.TypeInfo, error) {
+	if vector, ok := resolved.(gocql.VectorType); ok {
+		vector.WireCustomClass = name
+		return vector, nil
+	}
+	return opaqueCQLType(name), nil
+}
+
 // rawValue receives wire bytes before scalar zero-value conversion. Nil and an
 // allocated empty byte slice therefore retain their distinct CQL meanings.
 type rawValue struct {
@@ -94,7 +133,9 @@ func cqlValue(info gocql.TypeInfo, data []byte, nested bool, depth int) (string,
 			text = quoteText(text)
 		}
 		return text, nil
-	case gocql.TypeBlob:
+	case gocql.TypeBlob, gocql.TypeCustom:
+		// CQL custom Java types use the blob literal/wire representation.
+		// VectorType is handled above before its TypeCustom discriminator.
 		if nested {
 			return "0x" + hex.EncodeToString(data), nil
 		}
@@ -342,6 +383,9 @@ func typeName(info gocql.TypeInfo) string {
 	if u, ok := info.(gocql.UDTTypeInfo); ok {
 		return qualified(u.Keyspace, u.Name)
 	}
+	if info.Type() == gocql.TypeCustom {
+		return quoteText(fmt.Sprint(info))
+	}
 	// Driver v2 scalar TypeInfo values do not implement fmt.Stringer. Formatting
 	// the implementation struct produces "{}" or "{13}", not a CQL type name.
 	// Cassandra canonicalizes the varchar alias to text in system_schema.
@@ -356,4 +400,11 @@ func typeName(info gocql.TypeInfo) string {
 		return name
 	}
 	return "unknown"
+}
+
+func binaryCQLType(info gocql.TypeInfo) bool {
+	if _, vector := info.(gocql.VectorType); vector {
+		return false
+	}
+	return info.Type() == gocql.TypeBlob || info.Type() == gocql.TypeCustom
 }

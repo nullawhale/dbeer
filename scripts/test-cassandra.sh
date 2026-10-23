@@ -97,6 +97,8 @@ for version in "${versions[@]}"; do
 import pathlib, re, sys
 root=pathlib.Path(sys.argv[1]); tls=sys.argv[2]=='tls'; multi=sys.argv[3]=='1'
 config=(root/'base.yaml').read_text()
+# Comparison fixtures verify captured materialized-view predicates and CQL.
+config=re.sub(r'^materialized_views_enabled:.*$', 'materialized_views_enabled: true',config,flags=re.M)
 if sys.argv[4]=='1':config=re.sub(r'^(enable_user_defined_functions|user_defined_functions_enabled):.*$',r'\1: true',config,flags=re.M)
 if tls:
     config=re.sub(r'^authenticator:.*$', 'authenticator: PasswordAuthenticator',config,flags=re.M)
@@ -212,6 +214,7 @@ passed={e['Test'] for e in events if e.get('Action')=='pass' and e.get('Test')}
 required={'TestCassandraLiveSessionsCQLAndLosslessTypes','TestCassandraLiveBrowsePagingCatalogAndFullExport','TestCassandraLiveBrowsePagingCatalogAndFullExport/csv','TestCassandraLiveBrowsePagingCatalogAndFullExport/json'}
 required.update({'TestCassandraLiveAcknowledgedWritesSurviveDeliveryAndExportFailures','TestCassandraLiveUDTFieldsAndWideEmptyResultsStayBounded','TestCassandraLiveSpecialSelectorsAndNativeFunctions','TestCassandraLiveGeneratedNativeFunctionCompletions','TestCassandraLiveConditionalGridEdits','TestCassandraLiveAtomicGridApply'})
 required.add('TestCassandraLiveClusterNodes')
+required.add('TestCassandraLiveSchemaAndDataComparisonTypes')
 for name in 'COUNT SUM AVG MIN MAX TOKEN TTL WRITETIME UUID NOW CURRENTTIMESTAMP CURRENTDATE CURRENTTIME CURRENTTIMEUUID TODATE TOTIMESTAMP TOUNIXTIMESTAMP MINTIMEUUID MAXTIMEUUID CAST TOJSON'.split():required.add('TestCassandraLiveGeneratedNativeFunctionCompletions/'+name)
 if sys.argv[2]=='tls':required.add('TestCassandraLiveTLSAndAuthenticationFailures')
 if sys.argv[2]=='plain':required.add('TestCassandraLiveLostWriteAcknowledgementIsUnknownAndNotRepeated')

@@ -50,6 +50,7 @@ func NewClusterConfig(connection protocol.Connection) (*gocql.ClusterConfig, err
 	// Query defaults use NonSpeculativeExecution. Explicitly apply it to each
 	// query through ConfigureQuery so later code cannot accidentally speculate.
 	cluster.Logger = quietLogger{}
+	cluster.CustomWireTypeResolver = resolveCustomWireType
 	if connection.LocalDatacenter != "" {
 		cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.DCAwareRoundRobinPolicy(connection.LocalDatacenter))
 	} else {

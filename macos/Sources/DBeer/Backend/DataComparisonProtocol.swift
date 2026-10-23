@@ -16,7 +16,7 @@ struct DataComparisonDescriptor: Codable, Equatable, Sendable {
     var formatVersion: Int; var engine: DatabaseEngine; var table: DataComparisonTable
     var columns: [DataComparisonColumn]; var digest: String
     var valid: Bool {
-        formatVersion == 1 && engine != .cassandra && table.valid && DataComparisonRequest.digestValid(digest) &&
+        formatVersion == 1 && table.valid && DataComparisonRequest.digestValid(digest) &&
         (1...4_096).contains(columns.count) && Set(columns.map { Data($0.name.utf8) }).count == columns.count &&
         columns.enumerated().allSatisfy { $0.element.index == $0.offset && DataComparisonTable.nameValid($0.element.name) &&
             !$0.element.nativeType.isEmpty && $0.element.nativeType.utf8.count <= 65_536 && $0.element.typeLabel.utf8.count <= 4_096 &&
@@ -53,7 +53,7 @@ struct DataComparisonRequest: Codable, Equatable, Sendable {
         let noInputs = source == nil && target == nil && columns == nil && originals == nil
         switch type {
         case "data.describe", "data.start":
-            guard let source, let target, source.connection.engine == target.connection.engine, source.connection.engine != .cassandra,
+            guard let source, let target, source.connection.engine == target.connection.engine,
                   source.table.valid, target.table.valid, jobId == nil, offset == nil, limit == nil, maxBytes == nil, cellOffset == nil, valueRef == nil else { return false }
             if type == "data.describe" { return source.descriptorDigest == nil && source.filters == nil && source.readLimit == nil &&
                 target.descriptorDigest == nil && target.filters == nil && target.readLimit == nil && columns == nil && originals == nil }
@@ -82,14 +82,17 @@ struct DataComparisonCaptureContext: Codable, Equatable, Sendable {
     var descriptorDigest: String; var captureDigest: String; var table: DataComparisonTable; var engine: DatabaseEngine; var excludedColumns: Int
     var valid: Bool {
         !startedAt.isEmpty && !finishedAt.isEmpty && startedAt.utf8.count <= 64 && finishedAt.utf8.count <= 64 &&
-        consistency == (engine == .postgresql ? "repeatableRead" : "repeatableReadBestEffortMetadata") &&
-        (engine == .postgresql ? rendering == "postgresTextUTCISOv1" : ["mysqlTextUTCUTF8v1", "mysqlTextUTCUTF8v2", "mysqlTextUTCUTF8v3"].contains(rendering)) && (1...100_000).contains(readLimit) &&
+        (engine == .cassandra ? consistency == "bestEffort" && rendering == "cassandraCQLv1" && partialReasons.contains("nonSnapshot") :
+            consistency == (engine == .postgresql ? "repeatableRead" : "repeatableReadBestEffortMetadata") &&
+            (engine == .postgresql ? rendering == "postgresTextUTCISOv1" : ["mysqlTextUTCUTF8v1", "mysqlTextUTCUTF8v2", "mysqlTextUTCUTF8v3"].contains(rendering)) && !partialReasons.contains("nonSnapshot")) &&
+        (1...100_000).contains(readLimit) &&
         storedRows >= 0 && storedRows <= readLimit && observedAtLeast >= storedRows && observedAtLeast <= Int64(readLimit) + 1 &&
         (!partialReasons.contains("readLimit") || storedRows == readLimit && observedAtLeast == Int64(readLimit) + 1) &&
-        partialReasons.count <= 2 && partialReasons.allSatisfy { ["readLimit", "storageLimit"].contains($0) } &&
+        partialReasons.count <= 3 && Set(partialReasons).count == partialReasons.count &&
+        partialReasons.allSatisfy { ["readLimit", "storageLimit", "nonSnapshot"].contains($0) } &&
         (partialReasons.isEmpty ? observedAtLeast == storedRows : true) &&
         DataComparisonRequest.digestValid(descriptorDigest) && DataComparisonRequest.digestValid(captureDigest) && table.valid &&
-        engine != .cassandra && (0...4_096).contains(excludedColumns)
+        (0...4_096).contains(excludedColumns)
     }
 }
 struct DataComparisonSummary: Codable, Equatable, Sendable {

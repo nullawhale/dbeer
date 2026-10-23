@@ -50,6 +50,8 @@ func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, 
 		return postgres.RenderSchemaDefinition(ctx, capture, ref)
 	case "mysql":
 		return mysql.RenderSchemaDefinition(ctx, capture, ref)
+	case "cassandra":
+		return cassandra.RenderSchemaDefinition(ctx, capture, ref)
 	default:
 		return schemacompare.Definition{SQL: "-- SQL definition unavailable for this engine.\n", Limited: true}, nil
 	}

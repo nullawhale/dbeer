@@ -99,7 +99,7 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 				r.Target = &SchemaSide{c}
 			}
 		}
-		return r, r.Mappings != nil && r.Mappings.Valid() && r.Source.Connection.DatabaseEngine() == r.Target.Connection.DatabaseEngine() && (r.Source.Connection.DatabaseEngine() == "postgresql" || r.Source.Connection.DatabaseEngine() == "mysql")
+		return r, r.Mappings != nil && r.Mappings.Valid() && r.Source.Connection.DatabaseEngine() == r.Target.Connection.DatabaseEngine()
 	}
 	if !ValidID(r.JobID) || r.Offset < 0 {
 		return r, false

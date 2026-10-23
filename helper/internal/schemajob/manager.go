@@ -93,7 +93,7 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		return fail(c)
 	}
 	if c.Type == "schema.start" {
-		if len(m.jobs) >= 2 || r.Source == nil || r.Target == nil || r.Mappings == nil || !r.Mappings.Valid() || r.Source.Connection.DatabaseEngine() != r.Target.Connection.DatabaseEngine() || r.Source.Connection.DatabaseEngine() == "cassandra" {
+		if len(m.jobs) >= 2 || r.Source == nil || r.Target == nil || r.Mappings == nil || !r.Mappings.Valid() || r.Source.Connection.DatabaseEngine() != r.Target.Connection.DatabaseEngine() {
 			m.mu.Unlock()
 			return fail(c)
 		}
@@ -263,12 +263,16 @@ func (m *Manager) run(j *job, r protocol.SchemaComparisonRequest) {
 				if !ok {
 					return schemacompare.ErrInvalid
 				}
-				readonly, ok := session.(adapter.ReadOnlySession)
-				if !ok {
-					return schemacompare.ErrInvalid
-				}
-				if e = readonly.SetReadOnly(ctx, true); e != nil {
-					return e
+				// Cassandra catalog capture issues only generated SELECT reads;
+				// that engine has no server read-only transaction mode.
+				if side.Connection.DatabaseEngine() != "cassandra" {
+					readonly, ok := session.(adapter.ReadOnlySession)
+					if !ok {
+						return schemacompare.ErrInvalid
+					}
+					if e = readonly.SetReadOnly(ctx, true); e != nil {
+						return e
+					}
 				}
 				return reader.ReadSchema(ctx, spec, collector)
 			}()

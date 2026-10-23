@@ -68,7 +68,7 @@ struct SchemaComparisonRequest: Codable, Equatable, Sendable {
         switch type {
         case "schema.start":
             return source != nil && target != nil && source?.connection.engine == target?.connection.engine &&
-                source?.connection.engine != .cassandra && mappings?.valid == true && jobId == nil &&
+                mappings?.valid == true && jobId == nil &&
                 collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
         case "schema.status", "schema.cancel", "schema.close":
             return noSources && job && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
@@ -94,7 +94,7 @@ struct SchemaCaptureContext: Codable, Equatable, Sendable {
     var consistency: String
     var visibility: String
     var valid: Bool {
-        ["postgresql", "mysql"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
+        ["postgresql", "mysql", "cassandra"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
         ["repeatableRead", "bestEffort"].contains(consistency) && ["complete", "partial", "unknown"].contains(visibility) &&
         startedAt.utf8.count <= 64 && finishedAt.utf8.count <= 64 && !startedAt.isEmpty && !finishedAt.isEmpty
     }

@@ -86,10 +86,10 @@ func (s *Session) query(ctx context.Context, command protocol.Command, sql strin
 			completeColumns = make([]protocol.Column, 0, len(columns))
 			for i, column := range columns {
 				encoding := ""
-				if column.TypeInfo.Type() == gocql.TypeBlob {
+				if binaryCQLType(column.TypeInfo) {
 					encoding = "base64"
 				}
-				completeColumns = append(completeColumns, protocol.Column{Index: i, Name: column.Name, Engine: "cassandra", NativeType: typeName(column.TypeInfo), Encoding: encoding})
+				completeColumns = append(completeColumns, protocol.Column{Index: i, Name: column.Name, Engine: "cassandra", NativeType: typeName(column.TypeInfo), TypeIdentity: cassandraResultTypeIdentity(column.TypeInfo), Encoding: encoding})
 			}
 			retained = budget.retainColumns(completeColumns)
 			if retained {

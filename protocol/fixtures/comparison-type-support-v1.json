@@ -1,0 +1,320 @@
+{
+  "formatVersion": 1,
+  "commands": [
+    {
+      "type": "schema.start",
+      "requestId": "start",
+      "schemaComparison": {
+        "source": {
+          "connection": {
+            "engine": "cassandra",
+            "host": "localhost",
+            "port": 9042,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable",
+            "localDatacenter": "datacenter1",
+            "consistency": "LOCAL_QUORUM"
+          }
+        },
+        "target": {
+          "connection": {
+            "engine": "cassandra",
+            "host": "localhost",
+            "port": 9042,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable",
+            "localDatacenter": "datacenter1",
+            "consistency": "LOCAL_QUORUM"
+          }
+        },
+        "mappings": {
+          "schemas": [
+            {
+              "source": "source_schema",
+              "target": "target_schema"
+            }
+          ],
+          "tables": [],
+          "types": []
+        }
+      }
+    },
+    {
+      "type": "data.describe",
+      "requestId": "describe",
+      "dataComparison": {
+        "source": {
+          "connection": {
+            "engine": "cassandra",
+            "host": "localhost",
+            "port": 9042,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable",
+            "localDatacenter": "datacenter1",
+            "consistency": "LOCAL_QUORUM"
+          },
+          "table": {
+            "schema": "public",
+            "name": "source_orders"
+          }
+        },
+        "target": {
+          "connection": {
+            "engine": "cassandra",
+            "host": "localhost",
+            "port": 9042,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable",
+            "localDatacenter": "datacenter1",
+            "consistency": "LOCAL_QUORUM"
+          },
+          "table": {
+            "schema": "public",
+            "name": "target_orders"
+          }
+        }
+      }
+    },
+    {
+      "type": "data.start",
+      "requestId": "start",
+      "dataComparison": {
+        "source": {
+          "connection": {
+            "engine": "cassandra",
+            "host": "localhost",
+            "port": 9042,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable",
+            "localDatacenter": "datacenter1",
+            "consistency": "LOCAL_QUORUM"
+          },
+          "table": {
+            "schema": "public",
+            "name": "source_orders"
+          },
+          "descriptorDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "filters": [],
+          "readLimit": 3
+        },
+        "target": {
+          "connection": {
+            "engine": "cassandra",
+            "host": "localhost",
+            "port": 9042,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable",
+            "localDatacenter": "datacenter1",
+            "consistency": "LOCAL_QUORUM"
+          },
+          "table": {
+            "schema": "public",
+            "name": "target_orders"
+          },
+          "descriptorDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "filters": [],
+          "readLimit": 3
+        },
+        "columns": [
+          {
+            "source": "id",
+            "target": "id",
+            "key": true
+          },
+          {
+            "source": "value",
+            "target": "value",
+            "key": false
+          },
+          {
+            "source": "bytes",
+            "target": "bytes",
+            "key": false
+          }
+        ],
+        "originals": "allColumns"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "type": "schema.status.result",
+      "requestId": "status",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "summary": {
+          "formatVersion": 1,
+          "engine": "cassandra",
+          "source": {
+            "engine": "cassandra",
+            "version": "5.0",
+            "database": "fixture",
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "bestEffort",
+            "visibility": "complete",
+            "engineContext": {
+              "state": "known",
+              "value": []
+            }
+          },
+          "target": {
+            "engine": "cassandra",
+            "version": "5.0",
+            "database": "fixture",
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "bestEffort",
+            "visibility": "complete",
+            "engineContext": {
+              "state": "known",
+              "value": []
+            }
+          },
+          "mappings": {
+            "schemas": [
+              {
+                "source": "source_schema",
+                "target": "target_schema"
+              }
+            ],
+            "tables": [],
+            "types": []
+          },
+          "scope": {
+            "kind": "mappedTableStructure",
+            "excludedObjectKinds": [
+              "routines",
+              "triggers",
+              "privileges",
+              "statistics",
+              "physicalContents"
+            ]
+          },
+          "equalObjects": 0,
+          "sourceOnlyObjects": 0,
+          "targetOnlyObjects": 0,
+          "changedObjects": 1,
+          "indeterminateObjects": 0,
+          "differenceCount": 1,
+          "issueCount": 0,
+          "complete": true,
+          "fullEquality": false,
+          "modelDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "data.status.result",
+      "requestId": "status",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "completed",
+        "summary": {
+          "formatVersion": 1,
+          "comparison": {
+            "leftRows": 3,
+            "rightRows": 3,
+            "equalRows": 2,
+            "addedRows": 0,
+            "deletedRows": 0,
+            "changedRows": 1,
+            "ambiguousRows": 0,
+            "uncertainRows": 0,
+            "reportRows": 1,
+            "complete": false,
+            "fullEquality": false,
+            "schemaDifferences": [],
+            "schemaDifferenceCount": 0,
+            "schemaDifferencesTruncated": false,
+            "warnings": [
+              "Left input is partial; complete-set equality cannot be established."
+            ]
+          },
+          "source": {
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "bestEffort",
+            "rendering": "cassandraCQLv1",
+            "storedRows": 3,
+            "observedAtLeast": 4,
+            "readLimit": 3,
+            "partialReasons": [
+              "readLimit",
+              "nonSnapshot"
+            ],
+            "fullOriginals": true,
+            "descriptorDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "captureDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "table": {
+              "schema": "public",
+              "name": "source_orders"
+            },
+            "engine": "cassandra",
+            "excludedColumns": 0
+          },
+          "target": {
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "bestEffort",
+            "rendering": "cassandraCQLv1",
+            "storedRows": 3,
+            "observedAtLeast": 3,
+            "readLimit": 3,
+            "partialReasons": [
+              "nonSnapshot"
+            ],
+            "fullOriginals": true,
+            "descriptorDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "captureDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "table": {
+              "schema": "public",
+              "name": "target_orders"
+            },
+            "engine": "cassandra",
+            "excludedColumns": 0
+          },
+          "mappedColumns": 3,
+          "keyColumns": 1,
+          "modelDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        }
+      }
+    }
+  ],
+  "columns": [
+    {
+      "index": 0,
+      "name": "mood",
+      "engine": "postgresql",
+      "nativeType": "\"fixture\".\"mood\"",
+      "typeOid": 16384,
+      "typeIdentity": "pgtype-v1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "index": 1,
+      "name": "raw",
+      "engine": "mysql",
+      "nativeType": "GEOMETRY",
+      "encoding": "base64"
+    },
+    {
+      "index": 2,
+      "name": "tuple",
+      "engine": "cassandra",
+      "nativeType": "frozen<tuple<text, decimal>>"
+    }
+  ]
+}

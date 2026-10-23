@@ -80,7 +80,7 @@ struct DataComparisonView: View {
                 }.disabled(model.isWorking || model.isStopping)
                 if let source = model.profiles.first(where: { $0.id == model.sourceID }),
                    let target = model.profiles.first(where: { $0.id == model.targetID }), source.engine != target.engine {
-                    Label("Choose two PostgreSQL or two MySQL connections.", systemImage: "exclamationmark.triangle")
+                    Label("Choose two connections using the same database engine.", systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.orange)
                 }
                 if let descriptors = model.descriptors, model.metadataMatches {
@@ -182,7 +182,7 @@ struct DataComparisonView: View {
                 }.accessibilityIdentifier("dataCompareOriginals")
                 Text(model.originals == "allColumns" ? "Retain all original columns in the temporary capture." : "Excluded columns are not captured; full-original planning is unavailable.")
                     .font(.caption).appSecondaryText().accessibilityIdentifier("dataCompareOriginalsNotice")
-                Text("Captures use independent read-only sessions, with no common snapshot across servers. Keys are matched by exact type and value; duplicate keys are ambiguous. Samples may differ because server ordering and collations differ. Temporary files share a 256 MiB budget and are removed on close. No database writes or synchronization SQL.")
+                Text("Captures use independent read-only sessions, with no common snapshot across servers. Cassandra reads have no snapshot and always remain partial. Keys are matched by exact type and value; duplicate keys are ambiguous. Samples may differ because server ordering and collations differ. Temporary files share a 256 MiB budget and are removed on close. No database writes or synchronization SQL.")
                     .font(.caption).appSecondaryText().fixedSize(horizontal: false, vertical: true)
             }.padding(.top, 10)
             }

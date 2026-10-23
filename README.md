@@ -271,7 +271,7 @@ supports independent views but has no foreign keys.
 ## Table data comparison in the working branch
 
 Use **Connections → Compare Table Data…** to select one source and target table
-on saved PostgreSQL or MySQL profiles with the same engine. Enter exact schema
+on saved PostgreSQL, MySQL or Cassandra profiles with the same engine. Enter exact schema
 and table names, then explicitly **Read Table Metadata**. Opening or configuring
 the sheet never connects. Map columns one-to-one and select at least one key;
 primary keys are labelled as suggestions and are never selected automatically.
@@ -280,7 +280,9 @@ default, up to 100,000. NULL predicates are separate from the text `NULL`.
 
 **Compare** opens two new physical read-only sessions, including when both sides
 use the same profile. Each side rechecks its typed table descriptor and reads in
-a repeatable-read transaction. SQL tabs and their transactions remain independent.
+a repeatable-read transaction on PostgreSQL/MySQL. Cassandra reads have no
+transactional snapshot and always remain partial, even when the configured scope
+is exhausted. SQL tabs and their transactions remain independent.
 Capture intervals are recorded separately: there is no common atomic snapshot
 across servers. Database sessions close before the local comparison begins.
 
@@ -307,7 +309,9 @@ MySQL requires conservative direct SELECT-grant visibility, no active roles and
 partial revokes disabled;
 unsupported or hidden metadata fails explicitly. Descriptors include exact type
 identity, modifiers and relevant definitions; schema changes invalidate capture.
-Cassandra, cross-engine comparison and unsupported table kinds are unavailable.
+Cassandra supports tables and materialized views with its configured consistency
+level; filters must satisfy Cassandra's supported key/index rules. Cross-engine
+comparison and unsupported table kinds are unavailable.
 
 **Stop**, closing or resetting the comparison removes its private temporary data;
 the application also cleans its owned directory after forced helper termination.
@@ -327,7 +331,7 @@ Explicit pairs consume their endpoints before remaining exact-name matching;
 names are case-sensitive, and renames are never inferred from similar content.
 PostgreSQL local OIDs are resolved to qualified semantic references. Defaults,
 generated/identity columns, exact type modifiers, keys, index properties and
-referenced enum/domain/composite/sequence definitions come from adapter metadata,
+referenced enum/domain/composite/range/multirange/base-type/sequence definitions come from adapter metadata,
 without parsing displayed DDL or converting numeric values through floating point.
 
 The report shows property differences, incomplete observations, capture intervals
@@ -343,9 +347,13 @@ AUTO_INCREMENT counters. PostgreSQL 14+ captures use a dedicated repeatable-read
 read-only transaction. MySQL 8.0.30+ captures use structured Information Schema
 metadata, conservative direct-grant visibility proof and a best-effort recheck for
 concurrent DDL; they do not promise an atomic snapshot shared by two servers.
+Cassandra captures keyspace options, ordered UDT fields, nested type arguments,
+partition/clustering/static columns, indexes and materialized-view structure.
+Schema agreement and version checks detect concurrent DDL; metadata remains
+best effort and never promises a shared snapshot.
 
-Unsupported table kinds, extension types/index options, unresolved expression
-dependencies and MySQL inline ENUM/SET definitions require manual review and
+Unsupported table kinds/index options and unresolved expression dependencies
+require manual review and
 prevent full equality. Unknown metadata on both sides is never equality. Large
 captures fail explicitly at bounded node/member/scalar/storage limits. Only a
 complete comparison can say **Selected table structure matches**. This feature
@@ -353,20 +361,65 @@ does not generate or apply migration SQL.
 
 ## Type coverage in the working branch
 
-Saved results retain structural type identities. Unresolved definitions never
-establish equality, and old snapshots remain readable. Only context-independent,
-parameterless built-in scalar identities can be recovered from legacy names.
+Type support is checked separately for metadata, value capture and writes:
 
-PostgreSQL comparison preserves exact type modifiers and definitions for arrays,
-enums, domains, composites, ranges, multiranges and custom base/extension types.
-Query metadata is read on the owning session before SQL executes once. Complex
-values use Preview/Apply with private row-version evidence; caller-controlled or
-lossy output cannot establish equality in saved-result comparisons.
+| Engine | Schema and table-data comparison |
+| --- | --- |
+| PostgreSQL | Built-in scalar types, exact modifiers, true arrays, enums, domains, nested composites, ranges, multiranges and custom base/extension type catalog definitions. Type references and function signatures use qualified names rather than server-local OIDs. |
+| MySQL | Numeric widths/precision/scale, unsigned/zerofill, temporal precision, text/binary lengths, JSON, BIT, ordered ENUM/SET labels including binary labels, spatial types with SRID, and VECTOR metadata where the server provides it. |
+| Cassandra | Scalars, counters, duration, blobs, frozen/nested collections, maps, tuples, UDTs and vectors where available. Custom Java types preserve binary values and class identity; unavailable implementation identity blocks schema equality. |
 
-MySQL comparison preserves ordered ENUM/SET labels, binary labels, spatial
-reference IDs and exact type modifiers. Table captures retain stored choice
-identities, roundtrip floating-point projections and UTC timestamps. Apply checks
-hidden original-value evidence when visible text alone cannot identify storage.
+Live type checks cover PostgreSQL 16/17/18, MySQL 8.0/8.4 and Cassandra 4.1/5.0.
+MySQL VECTOR metadata has unit coverage; no MySQL 9 live run is claimed.
+
+SQL definition previews use frozen typed facts, including literal escaping and
+type dependencies. They do not run migration SQL. Missing permissions, malformed
+server metadata, unsupported properties and exhausted limits stay explicit;
+matching unknown facts never prove equality.
+
+An arbitrary extension's text output is not assumed to distinguish every stored
+value. Such values remain readable, but their comparisons are marked uncertain
+unless a lossless representation is established. PostgreSQL row-version evidence
+still permits safe Preview/Apply without trusting an extension's text output.
+
+MySQL table-data capture retains ENUM's stored index and exact label bytes so
+the historical error value at index zero differs from a declared empty label.
+Both still display as empty text in ordinary SQL results. Table browsing retains
+private row storage evidence through Preview/Apply, including ENUM/SET masks and
+PostgreSQL row versions. It distinguishes hidden stored-value changes even when
+displayed text is identical. An old or arbitrary original row without required
+evidence cannot pass Apply's conflict check. These tokens are not exported or
+saved in offline result artifacts. Arbitrary MySQL
+query results do not expose every ENUM/SET label or spatial/vector definition;
+their unresolved type identities cannot establish full snapshot equality.
+Ordinary MySQL FLOAT, fixed-decimal DOUBLE, TIMESTAMP and text without utf8mb4 or
+binary result metadata also retain uncertain value identity. Table
+captures use UTC, UTF-8 and roundtrip floating-point projections; table browsing
+keeps exact floating-point and timestamp evidence for conflict detection.
+
+PostgreSQL query results retain structural type fingerprints for custom types
+and exact result modifiers. Type discovery uses Parse/Describe on the owning
+session before executing SQL once; it sees that session's temporary and
+uncommitted types. Saved results preserve these identities across offline reopen.
+Old snapshots remain readable; only context-independent, parameterless built-in
+scalar identities can be recovered from their names. Missing modifiers or custom definitions remain
+uncertain, and matching local OIDs never establish equality. MySQL and Cassandra results also retain stable type metadata
+available in their result protocols.
+Ordinary PostgreSQL SQL can change its own rendering settings while executing.
+Date/time, floating-point, geometric, monetary and symbolic object-reference
+output therefore remains uncertain in saved-result comparisons, including nested
+values. Table-data capture uses its separate, controlled rendering context.
+When PostgreSQL reports a domain expression as its base result type, the result
+keeps that reported type; table-data/schema comparison retains the full domain
+definition from catalog metadata.
+
+PostgreSQL arrays, composites, enum/domain/range values and custom server text
+types use the existing Preview/Apply path with full original-row comparison.
+Additional MySQL JSON, ENUM/SET, BIT, floating-point and spatial/vector values use
+typed bindings and retain exact binary data. Conversion warnings roll back Apply.
+Generated columns, missing keys and permissions retain their existing limits.
+Cassandra conditional grid editing retains its scalar, single-partition limits;
+complex values, counters and durations remain available through explicit CQL.
 
 ## Value inspector in the working branch
 

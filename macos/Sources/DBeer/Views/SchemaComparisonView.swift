@@ -93,7 +93,7 @@ struct SchemaComparisonView: View {
                 }
                 if let source = model.profiles.first(where: { $0.id == model.sourceID }),
                    let target = model.profiles.first(where: { $0.id == model.targetID }), source.engine != target.engine {
-                    Label("Choose two PostgreSQL or two MySQL connections.", systemImage: "exclamationmark.triangle")
+                    Label("Choose two connections using the same database engine.", systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.orange)
                 }
                 VStack(alignment: .leading, spacing: 8) {
@@ -109,7 +109,7 @@ struct SchemaComparisonView: View {
                     }.padding(.top, 10)
                 }
                 DisclosureGroup("What is compared?") {
-                    Text("Table structure and referenced types and sequences. Views, routines, triggers, privileges, statistics, stored data and sequence counters are excluded. Captures are independent; MySQL metadata is best effort.")
+                    Text("Table structure and referenced types and sequences. Views, routines, triggers, privileges, statistics, stored data and sequence counters are excluded. Captures are independent; MySQL and Cassandra metadata are best effort.")
                         .font(.callout).appSecondaryText().fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 8)
                 }

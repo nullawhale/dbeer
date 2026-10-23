@@ -50,6 +50,8 @@ done
 cp "$repo_root/macos/Resources/Assets.car" "$app/Contents/Resources/Assets.car"
 cp "$repo_root/LICENSE" "$app/Contents/Resources/LICENSE"
 cp "$repo_root/helper/internal/textdiff/LICENSE.revdiff" "$app/Contents/Resources/LICENSE-revdiff.txt"
+cp "$repo_root/helper/third_party/cassandra-gocql-driver/LICENSE" "$app/Contents/Resources/LICENSE-cassandra-gocql-driver.txt"
+cp "$repo_root/helper/third_party/cassandra-gocql-driver/NOTICE" "$app/Contents/Resources/NOTICE-cassandra-gocql-driver.txt"
 export GOCACHE="$build_root/.cache/go"
 export GOMODCACHE="$build_root/.cache/go-mod"
 export CLANG_MODULE_CACHE_PATH="$build_root/.cache/clang"
