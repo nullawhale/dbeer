@@ -509,8 +509,10 @@ actor BackendClient {
                 result.displayedRowCount = first.displayedRowCount
                 result.truncated = first.truncated; result.displayNotice = first.displayNotice
                 result.affectedRowCountKnown = first.affectedRowCountKnown; result.nextCursor = first.nextCursor
+                result.storageTokens = first.storageTokens
             } else {
                 result.columns = []; result.rows = []; result.displayedRowCount = 0
+                result.storageTokens = nil
             }
         }
         try result.validate()
@@ -533,7 +535,7 @@ actor BackendClient {
             sets = [QueryResultSet(columns: reply.columns ?? [], rows: reply.rows ?? [],
                 commandTag: reply.commandTag ?? "", rowCount: reply.rowCount ?? 0,
                 displayedRowCount: reply.displayedRowCount ?? 0, truncated: reply.truncated ?? false,
-                displayNotice: reply.displayNotice)]
+                displayNotice: reply.displayNotice, storageTokens: reply.storageTokens)]
         } else { return }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]

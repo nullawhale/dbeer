@@ -78,6 +78,23 @@ struct GridDraftTests {
         #expect(draft().canEdit)
     }
 
+    @Test func originalStorageEvidenceSurvivesStagingDiscardAndDelete() throws {
+        let reference = TableReference(schema: "fixture", name: "items", kind: "table")
+        let result = BackendMessage(type: "query.result", requestId: "storage", columns: [ResultColumn(index: 0, name: "id", nativeType: "int4")],
+            rows: [["1"]], storageTokens: ["123/(0,1)/456"])
+        let metadata = [["name": "id", "nativeType": "integer", "primaryKey": "1", "editable": "true"]]
+        let grid = GridDraft(reference: reference, result: result, metadata: metadata)
+        grid.set(ChangeValue(kind: "text", value: "2"), row: 0, column: 0)
+        let request = grid.request()
+        #expect(request.changes[0].storageToken == result.storageTokens?[0])
+        #expect(try JSONDecoder().decode(ChangesRequest.self, from: JSONEncoder().encode(request)) == request)
+        grid.discard()
+        grid.selectedRows = IndexSet(integer: 0); grid.deleteSelected()
+        #expect(grid.request().changes[0].storageToken == result.storageTokens?[0])
+        grid.discard(); grid.insert()
+        #expect(grid.request().changes[0].kind == "insert" && grid.request().changes[0].storageToken == nil)
+    }
+
     @Test func viewsAndTablesWithoutPrimaryKeysExplainTheirRestriction() {
         let view = GridDraft(reference: TableReference(schema: "public", name: "v", kind: "view"),
             result: BackendMessage(type: "query.result", requestId: "fixture", columns: [], rows: []), metadata: [])

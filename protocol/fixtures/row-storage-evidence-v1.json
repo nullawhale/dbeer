@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "command": {
+    "type": "changes.apply",
+    "requestId": "storage-apply",
+    "sessionId": "session",
+    "queryId": "query",
+    "changes": {
+      "schema": "fixture",
+      "table": "items",
+      "columns": [
+        {
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "integer"
+        }
+      ],
+      "changes": [
+        {
+          "kind": "update",
+          "original": [
+            {
+              "kind": "text",
+              "value": "1"
+            }
+          ],
+          "values": [
+            {
+              "column": "id",
+              "value": {
+                "kind": "text",
+                "value": "2"
+              }
+            }
+          ],
+          "storageToken": "pgrow-v1/16384/(0,1)/456"
+        }
+      ]
+    }
+  },
+  "response": {
+    "type": "query.result",
+    "requestId": "storage-browse",
+    "sessionId": "session",
+    "queryId": "query",
+    "transactionStatus": "idle",
+    "durationMs": 1,
+    "columns": [
+      {
+        "index": 0,
+        "name": "id",
+        "engine": "postgresql",
+        "nativeType": "int4"
+      }
+    ],
+    "rows": [
+      [
+        "1"
+      ]
+    ],
+    "storageTokens": [
+      "pgrow-v1/16384/(0,1)/456"
+    ],
+    "commandTag": "SELECT 1",
+    "rowCount": 1,
+    "displayedRowCount": 1,
+    "truncated": false
+  }
+}

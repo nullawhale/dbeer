@@ -173,6 +173,20 @@ func (sink *streamSink) End(index int, summary protocol.ResultSet) error {
 	set.summary = summary
 	set.summary.Columns, set.summary.Rows = set.columns, nil
 	set.summary.DisplayedRowCount = set.sent
+	if len(summary.StorageTokens) >= set.sent {
+		set.summary.StorageTokens = append([]string(nil), summary.StorageTokens[:set.sent]...)
+		encoded, _ := json.Marshal(set.summary.StorageTokens)
+		if sink.bytes+len(encoded) <= displayBytes {
+			sink.bytes += len(encoded)
+		} else {
+			// Rows already acknowledged by the client cannot be retracted.
+			// Omit evidence rather than exceeding the frame/display budget;
+			// Apply retains its safe refusal when required evidence is absent.
+			set.summary.StorageTokens = nil
+		}
+	} else {
+		set.summary.StorageTokens = nil
+	}
 	set.summary.Truncated = summary.Truncated && strings.Contains(summary.DisplayNotice, "Cassandra") || set.dropped || int64(set.sent) < set.seen
 	if summary.Truncated && !set.summary.Truncated {
 		set.summary.DisplayNotice = strings.TrimSpace(strings.ReplaceAll(set.summary.DisplayNotice, "Result display is limited to 1000 rows and 8 MiB. The command completed in full.", ""))
@@ -208,6 +222,7 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 			response.DisplayNotice = set.summary.DisplayNotice
 			response.NextCursor = set.summary.NextCursor
 			response.AffectedRowCountKnown = set.summary.AffectedRowCountKnown
+			response.StorageTokens = set.summary.StorageTokens
 			first = false
 		}
 		response.ResultSets = append(response.ResultSets, set.summary)

@@ -56,6 +56,7 @@ struct ResultSnapshotSource: Sendable {
             projected.displayNotice = set.displayNotice
             projected.affectedRowCountKnown = set.affectedRowCountKnown
             projected.nextCursor = set.nextCursor
+            projected.storageTokens = set.storageTokens
         } else if resultSetIndex != 0 { return nil }
         return projected
     }

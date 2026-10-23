@@ -193,15 +193,24 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     var displayNotice: String?
     var affectedRowCountKnown: Bool?
     var nextCursor: String?
+    var storageTokens: [String]?
 
     static func validCursor(_ value: String) -> Bool { BackendMessage.validID(value) && !value.contains("\0") }
 
     func valid(streamed: Bool = false) -> Bool {
         (nextCursor == nil || Self.validCursor(nextCursor!)) && rowCount >= 0 && displayedRowCount >= 0 &&
+            Self.validStorageTokens(storageTokens, rowCount: displayedRowCount) &&
             (streamed ? rows.isEmpty : displayedRowCount == rows.count) &&
             columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
                 ($0.element.encoding == nil || $0.element.encoding == "base64") } &&
             rows.allSatisfy { $0.count == columns.count }
+    }
+
+    static func validStorageTokens(_ tokens: [String]?, rowCount: Int) -> Bool {
+        guard let tokens else { return true }
+        return tokens.count == rowCount && tokens.count <= 1_000 && tokens.allSatisfy {
+            !$0.isEmpty && $0.utf8.count <= 4_096 && !$0.contains("\0") && !$0.contains("\n") && !$0.contains("\r")
+        }
     }
 }
 
@@ -380,6 +389,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var durationMs: Double?
     var columns: [ResultColumn]?
     var rows: [[String?]]?
+    var storageTokens: [String]?
     var commandTag: String?
     var rowCount: Int64?
     var displayedRowCount: Int?
@@ -417,6 +427,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
         if let sessionId, !Self.validID(sessionId) { throw BackendTransportError(.invalidMessage) }
         if let queryId, !Self.validID(queryId) { throw BackendTransportError(.invalidMessage) }
         if let nextCursor, !QueryResultSet.validCursor(nextCursor) { throw BackendTransportError(.invalidMessage) }
+        if storageTokens != nil && (type != "query.result" || !QueryResultSet.validStorageTokens(storageTokens, rowCount: displayedRowCount ?? -1)) {
+            throw BackendTransportError(.invalidMessage)
+        }
         if let appliedChangeCount, !(0...1000).contains(appliedChangeCount) || !["query.result", "error"].contains(type) {
             throw BackendTransportError(.invalidMessage)
         }

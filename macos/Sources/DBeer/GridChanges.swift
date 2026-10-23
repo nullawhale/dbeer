@@ -23,6 +23,7 @@ struct RowChange: Codable, Equatable, Sendable {
     var kind: String
     var original: [ChangeValue]?
     var values: [ColumnAssignment]?
+    var storageToken: String?
 }
 
 struct ChangesRequest: Codable, Equatable, Sendable {
@@ -38,6 +39,7 @@ struct GridRow: Identifiable {
     var values: [ChangeValue]
     var assignments: [Int: ChangeValue] = [:]
     var isDeleted = false
+    var originalStorageToken: String?
     var isInserted: Bool { original == nil }
 }
 
@@ -114,12 +116,12 @@ final class GridDraft: ObservableObject {
         let byName = Dictionary(metadata.compactMap { record in record["name"].map { ($0, record) } }, uniquingKeysWith: { _, last in last })
         let alignedMetadata = columns.map { byName[$0.name] ?? [:] }
         self.metadata = alignedMetadata
-        let loadedRows = (result.rows ?? []).map { row in
+        let loadedRows = (result.rows ?? []).enumerated().map { rowIndex, row in
             let values = row.enumerated().map { index, value -> ChangeValue in
                 guard let value else { return .null }
                 return ChangeValue(kind: loadedColumns.indices.contains(index) && loadedColumns[index].encoding == "base64" ? "binary" : "text", value: value)
             }
-            return GridRow(original: values, values: values)
+            return GridRow(original: values, values: values, originalStorageToken: result.storageTokens.flatMap { $0.indices.contains(rowIndex) ? $0[rowIndex] : nil })
         }
         rows = loadedRows
         partitionMarkers = GridPartitions.markers(columns: loadedColumns, metadata: alignedMetadata, rows: loadedRows)
@@ -212,7 +214,7 @@ final class GridDraft: ObservableObject {
 
     func discard() {
         guard !isApplying, !isReloading, !isClosing else { return }
-        rows = rows.compactMap { row in row.original.map { GridRow(original: $0, values: $0) } }
+        rows = rows.compactMap { row in row.original.map { GridRow(original: $0, values: $0, originalStorageToken: row.originalStorageToken) } }
         selectedRows = []
         error = nil
         preview = nil
@@ -228,11 +230,11 @@ final class GridDraft: ObservableObject {
                         ColumnAssignment(column: columns[$0].name, value: row.assignments[$0]!)
                     })
                 }
-                if row.isDeleted { return RowChange(kind: "delete", original: row.original) }
+                if row.isDeleted { return RowChange(kind: "delete", original: row.original, storageToken: row.originalStorageToken) }
                 guard !row.assignments.isEmpty else { return nil }
                 return RowChange(kind: "update", original: row.original, values: row.assignments.keys.sorted().map {
                     ColumnAssignment(column: columns[$0].name, value: row.assignments[$0]!)
-                })
+                }, storageToken: row.originalStorageToken)
             })
     }
 }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Retain private original-row evidence through streaming, grid drafts and
+  Preview/Apply requests without exporting it in offline artifacts.
+
 - Preserve structural type identities in saved results and comparisons;
   unresolved definitions never establish equality.
 
