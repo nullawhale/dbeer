@@ -59,3 +59,25 @@ func TestPrivateCaptureReusesVerifiedArtifactReader(t *testing.T) {
 		t.Fatal("profile metadata persisted")
 	}
 }
+
+func TestUnprovenValueEncodingRemainsUncertainInPublishedArtifacts(t *testing.T) {
+	root := t.TempDir()
+	writer, err := NewWriter(root, []Column{{Index: 0, Name: "opaque", NativeType: "custom", ValueComparison: "unresolved"}}, "postgresql", &Budget{Limit: 128 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	value := "same output for distinct stored values"
+	if err := writer.Row([]*string{&value}); err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := writer.Publish(context.Background(), Outcome{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer artifact.Close()
+	identity := artifact.Metadata().Columns[0].TypeIdentity
+	if len(identity) < len("unresolved:") || identity[:len("unresolved:")] != "unresolved:" {
+		t.Fatal("publication erased unresolved value encoding")
+	}
+}

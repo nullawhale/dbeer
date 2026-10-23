@@ -67,7 +67,7 @@ enum ResultCopy {
             let column = columns[ordinal]
             guard isLegacyPostgresBinary(column) else { return column }
             return ResultColumn(index: column.index, name: column.name, typeOid: column.typeOid,
-                engine: column.engine, nativeType: column.nativeType, encoding: "base64")
+                engine: column.engine, nativeType: column.nativeType, encoding: "base64", typeIdentity: column.typeIdentity)
         }
         let values = try rowIndices.map { row in
             try columnIndices.map { column in

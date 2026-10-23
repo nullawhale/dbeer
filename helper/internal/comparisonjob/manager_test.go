@@ -242,8 +242,8 @@ func TestManagedArtifactAdapterUsesUUIDAndPreservesPartial(t *testing.T) {
 	command.Comparison.Columns = []resultcompare.Mapping{{Left: 0, Right: 0}, {Left: 1, Right: 1}, {Left: 2, Right: 2}}
 	job := m.Handle(command).Comparison.JobID
 	s := waitState(t, m, job, "completed").Summary
-	if s.Complete || s.FullEquality || s.EqualRows != 3 {
-		t.Fatal("managed partial artifact asserted full equality")
+	if s.Complete || s.FullEquality || s.UncertainRows != 3 {
+		t.Fatal("legacy artifact lost its partial or incomplete type evidence")
 	}
 }
 

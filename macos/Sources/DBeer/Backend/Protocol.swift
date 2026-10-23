@@ -324,20 +324,22 @@ struct ResultColumn: Codable, Sendable, Equatable {
     let name: String
     let engine: DatabaseEngine
     let nativeType: String
+    let typeIdentity: String?
     let typeOid: UInt32
     let encoding: String?
 
     init(index: Int, name: String, typeOid: UInt32 = 0, engine: DatabaseEngine = .postgresql,
-         nativeType: String = "", encoding: String? = nil) {
+         nativeType: String = "", encoding: String? = nil, typeIdentity: String? = nil) {
         self.index = index
         self.name = name
         self.engine = engine
         self.nativeType = nativeType
+        self.typeIdentity = typeIdentity
         self.typeOid = typeOid
         self.encoding = encoding
     }
 
-    private enum CodingKeys: String, CodingKey { case index, name, engine, nativeType, typeOid, encoding }
+    private enum CodingKeys: String, CodingKey { case index, name, engine, nativeType, typeOid, encoding, typeIdentity }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -345,6 +347,7 @@ struct ResultColumn: Codable, Sendable, Equatable {
         name = try values.decode(String.self, forKey: .name)
         engine = try values.decodeIfPresent(DatabaseEngine.self, forKey: .engine) ?? .postgresql
         nativeType = try values.decodeIfPresent(String.self, forKey: .nativeType) ?? ""
+        typeIdentity = try values.decodeIfPresent(String.self, forKey: .typeIdentity)
         typeOid = try values.decodeIfPresent(UInt32.self, forKey: .typeOid) ?? 0
         encoding = try values.decodeIfPresent(String.self, forKey: .encoding)
     }
@@ -355,6 +358,7 @@ struct ResultColumn: Codable, Sendable, Equatable {
         try values.encode(name, forKey: .name)
         try values.encode(engine, forKey: .engine)
         try values.encode(nativeType, forKey: .nativeType)
+        try values.encodeIfPresent(typeIdentity, forKey: .typeIdentity)
         if typeOid != 0 { try values.encode(typeOid, forKey: .typeOid) }
         try values.encodeIfPresent(encoding, forKey: .encoding)
     }

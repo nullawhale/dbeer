@@ -530,7 +530,8 @@ actor ResultSnapshotStore {
     private static func validColumns(_ columns: [ResultColumn]) -> Bool {
         columns.count <= 65_536 && columns.enumerated().allSatisfy {
             $0.offset == $0.element.index && ($0.element.encoding == nil || $0.element.encoding == "base64") &&
-            $0.element.name.utf8.count <= 65_536 && $0.element.nativeType.utf8.count <= 65_536
+            $0.element.name.utf8.count <= 65_536 && $0.element.nativeType.utf8.count <= 65_536 &&
+            ($0.element.typeIdentity?.utf8.count ?? 0) <= 65_536
         }
     }
 

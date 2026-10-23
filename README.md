@@ -351,6 +351,12 @@ captures fail explicitly at bounded node/member/scalar/storage limits. Only a
 complete comparison can say **Selected table structure matches**. This feature
 does not generate or apply migration SQL.
 
+## Type coverage in the working branch
+
+Saved results retain structural type identities. Unresolved definitions never
+establish equality, and old snapshots remain readable. Only context-independent,
+parameterless built-in scalar identities can be recovered from legacy names.
+
 ## Value inspector in the working branch
 
 SQL results and table grids include a resizable **Value Inspector** beside the

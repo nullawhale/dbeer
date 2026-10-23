@@ -93,9 +93,9 @@ type Result struct {
 func (m Mappings) mapRef(r Ref) Ref {
 	original := r
 	for _, p := range m.Tables {
-		if original.Schema == p.Source.Schema && (original.Kind == "table" && original.Name == p.Source.Name || original.Table == p.Source.Name) {
+		if original.Schema == p.Source.Schema && ((original.Kind == "table" || original.Kind == "type" && original.RowType) && original.Name == p.Source.Name || original.Table == p.Source.Name) {
 			r.Schema = p.Target.Schema
-			if original.Kind == "table" {
+			if original.Kind == "table" || original.Kind == "type" && original.RowType {
 				r.Name = p.Target.Name
 			} else {
 				r.Table = p.Target.Name

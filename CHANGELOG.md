@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Preserve structural type identities in saved results and comparisons;
+  unresolved definitions never establish equality.
+
 - Show SQL definition diffs for schema comparisons, with SQL syntax highlighting
   and changed fragments. Definitions come from the frozen captures, with mapped
   names aligned for comparison; unsupported facts are marked as incomplete.

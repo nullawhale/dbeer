@@ -54,6 +54,7 @@ func (r *Result) key(row []*string, side byte) ([]byte, bool) {
 		}
 		key = tagged(key, c.Engine)
 		key = tagged(key, c.NativeType)
+		key = tagged(key, effectiveIdentity(c))
 		key = tagged(key, c.Encoding)
 		if row[index] == nil {
 			key = append(key, 0)

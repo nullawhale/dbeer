@@ -10,6 +10,7 @@ struct DataComparisonTable: Codable, Equatable, Sendable {
 struct DataComparisonColumn: Codable, Equatable, Sendable {
     var index: Int; var name: String; var nativeType: String; var typeLabel: String; var encoding: String?
     var primaryKey: Int; var numeric: Bool; var generated: Bool; var identity: Bool; var nullable: Bool
+    var valueComparison: String?
 }
 struct DataComparisonDescriptor: Codable, Equatable, Sendable {
     var formatVersion: Int; var engine: DatabaseEngine; var table: DataComparisonTable
@@ -20,6 +21,7 @@ struct DataComparisonDescriptor: Codable, Equatable, Sendable {
         columns.enumerated().allSatisfy { $0.element.index == $0.offset && DataComparisonTable.nameValid($0.element.name) &&
             !$0.element.nativeType.isEmpty && $0.element.nativeType.utf8.count <= 65_536 && $0.element.typeLabel.utf8.count <= 4_096 &&
             $0.element.primaryKey >= 0 && $0.element.primaryKey <= 32 &&
+            ($0.element.valueComparison == nil || $0.element.valueComparison == "unresolved") &&
             ($0.element.encoding == nil || $0.element.encoding == "base64") }
     }
 }

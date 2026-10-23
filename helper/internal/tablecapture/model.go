@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -33,17 +34,18 @@ func Name(v string) bool {
 }
 
 type Column struct {
-	Index      int             `json:"index"`
-	Name       string          `json:"name"`
-	NativeType string          `json:"nativeType"`
-	TypeLabel  string          `json:"typeLabel"`
-	Encoding   string          `json:"encoding,omitempty"`
-	PrimaryKey int             `json:"primaryKey"`
-	Numeric    bool            `json:"numeric"`
-	Generated  bool            `json:"generated"`
-	Identity   bool            `json:"identity"`
-	Nullable   bool            `json:"nullable"`
-	Definition json.RawMessage `json:"definition"`
+	ValueComparison string          `json:"valueComparison,omitempty"`
+	Index           int             `json:"index"`
+	Name            string          `json:"name"`
+	NativeType      string          `json:"nativeType"`
+	TypeLabel       string          `json:"typeLabel"`
+	Encoding        string          `json:"encoding,omitempty"`
+	PrimaryKey      int             `json:"primaryKey"`
+	Numeric         bool            `json:"numeric"`
+	Generated       bool            `json:"generated"`
+	Identity        bool            `json:"identity"`
+	Nullable        bool            `json:"nullable"`
+	Definition      json.RawMessage `json:"definition"`
 }
 type Descriptor struct {
 	FormatVersion int             `json:"formatVersion"`
@@ -60,7 +62,7 @@ func (d *Descriptor) Seal() error {
 	}
 	seen := map[string]bool{}
 	for i, c := range d.Columns {
-		if c.Index != i || !Name(c.Name) || seen[c.Name] || len(c.NativeType) > 65536 || !utf8.ValidString(c.NativeType) {
+		if c.Index != i || !Name(c.Name) || seen[c.Name] || len(c.NativeType) > 65536 || !utf8.ValidString(c.NativeType) || c.ValueComparison != "" && c.ValueComparison != "unresolved" {
 			return ErrUnsupported
 		}
 		seen[c.Name] = true
@@ -177,16 +179,32 @@ func PostgresType(u sc.TypeUse, definitions []sc.TypeDefinition) (string, error)
 		if t.Modifiers.State != "known" {
 			return ErrUnsupported
 		}
-		if refs[t.Ref] && t.Element == nil {
+		if t.Kind == "array" {
+			if t.Element == nil {
+				return ErrUnsupported
+			}
+			return visit(*t.Element)
+		}
+		if refs[t.Ref] {
 			return nil
 		}
 		refs[t.Ref] = true
 		if d, ok := byRef[t.Ref]; ok {
-			if d.Kind.State != "known" {
+			if d.Kind.State != "known" || !completeTypeCatalog(reflect.ValueOf(d)) {
 				return ErrUnsupported
 			}
 			if d.Base.Value != nil {
 				if e := visit(*d.Base.Value); e != nil {
+					return e
+				}
+			}
+			if d.Range != nil {
+				if e := visit(d.Range.Subtype); e != nil {
+					return e
+				}
+			}
+			if d.BaseType != nil && d.BaseType.Element != nil {
+				if e := visit(*d.BaseType.Element); e != nil {
 					return e
 				}
 			}
@@ -197,6 +215,13 @@ func PostgresType(u sc.TypeUse, definitions []sc.TypeDefinition) (string, error)
 				if e := visit(*attribute.Type.Value); e != nil {
 					return e
 				}
+			}
+		} else if t.Kind != "array" && (t.Kind != "builtin" || t.Ref.Schema != "pg_catalog") {
+			return ErrUnsupported
+		}
+		for _, argument := range t.Arguments {
+			if e := visit(argument); e != nil {
+				return e
 			}
 		}
 		if t.Element != nil {
@@ -227,4 +252,35 @@ func PostgresType(u sc.TypeUse, definitions []sc.TypeDefinition) (string, error)
 		Definitions []sc.TypeDefinition `json:"definitions"`
 	}{u, selected})
 	return string(b), e
+}
+
+// Incomplete nested constraints, attributes or expression dependencies cannot
+// silently become a complete structural identity for captured values.
+func completeTypeCatalog(v reflect.Value) bool {
+	if v.Kind() == reflect.Pointer {
+		return v.IsNil() || completeTypeCatalog(v.Elem())
+	}
+	switch v.Kind() {
+	case reflect.Struct:
+		if state := v.FieldByName("State"); state.IsValid() && state.Kind() == reflect.String && state.String() != "" {
+			if state.String() != "known" {
+				return false
+			}
+			if complete := v.FieldByName("Complete"); complete.IsValid() && !complete.Bool() {
+				return false
+			}
+		}
+		for i := 0; i < v.NumField(); i++ {
+			if !completeTypeCatalog(v.Field(i)) {
+				return false
+			}
+		}
+	case reflect.Slice:
+		for i := 0; i < v.Len(); i++ {
+			if !completeTypeCatalog(v.Index(i)) {
+				return false
+			}
+		}
+	}
+	return true
 }

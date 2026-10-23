@@ -115,7 +115,12 @@ func (w *Writer) Publish(ctx context.Context, out Outcome) (resultartifact.Artif
 	w.sealed = true
 	columns := make([]resultartifact.Column, len(w.columns))
 	for i, c := range w.columns {
-		columns[i] = resultartifact.Column{Index: i, Name: c.Name, Engine: w.engine, NativeType: c.NativeType, Encoding: c.Encoding}
+		identity := sha256.Sum256([]byte(c.NativeType))
+		stable := "capture-v1:" + hex.EncodeToString(identity[:])
+		if c.ValueComparison == "unresolved" {
+			stable = "unresolved:" + stable
+		}
+		columns[i] = resultartifact.Column{Index: i, Name: c.Name, Engine: w.engine, NativeType: c.NativeType, TypeIdentity: stable, Encoding: c.Encoding}
 	}
 	partial := len(out.PartialReasons) > 0
 	manifest := map[string]any{"version": 1, "id": w.ID, "title": "Temporary table capture", "capturedAt": 0, "engine": w.engine, "sql": "", "environment": "unspecified", "outcome": "succeeded", "columns": columns, "rowCount": w.rows, "truncated": partial, "partial": partial, "commandTag": "", "rowsBytes": w.bytes, "rowsSHA256": w.Digest()}

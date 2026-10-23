@@ -4,13 +4,15 @@ package resultcompare
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 )
 
 type Column struct {
-	Index                              int
-	Name, Engine, NativeType, Encoding string
+	Index                                            int
+	Name, Engine, NativeType, TypeIdentity, Encoding string
 }
 type Metadata struct {
 	Columns  []Column
@@ -114,10 +116,43 @@ var ErrReference = errors.New("Comparison reference is invalid.")
 var ErrClosed = errors.New("Comparison is closed.")
 
 func known(c Column) bool {
-	return strings.TrimSpace(c.Engine) != "" && strings.TrimSpace(c.NativeType) != "" && !strings.HasPrefix(strings.ToLower(strings.TrimSpace(c.NativeType)), "oid:")
+	if strings.TrimSpace(c.Engine) == "" || strings.TrimSpace(c.NativeType) == "" ||
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(c.NativeType)), "oid:") ||
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(c.TypeIdentity)), "unresolved:") {
+		return false
+	}
+	return c.TypeIdentity != "" || legacyScalar(c)
 }
 func sameType(a, b Column) bool {
-	return a.Engine == b.Engine && a.NativeType == b.NativeType && a.Encoding == b.Encoding
+	return a.Engine == b.Engine && a.NativeType == b.NativeType && effectiveIdentity(a) == effectiveIdentity(b) && a.Encoding == b.Encoding
+}
+
+// Legacy snapshots have no structural fingerprint. Only parameterless built-in
+// scalar names can identify a type completely without that missing evidence.
+func legacyScalar(c Column) bool {
+	var names string
+	switch c.Engine {
+	case "postgresql":
+		// Output GUCs can make dates ambiguous and round floats (including
+		// geometry); old snapshots contain no rendering evidence for them.
+		names = "|bool|bytea|char|name|int2|int4|int8|oid|text|json|xml|uuid|jsonb|inet|cidr|macaddr|macaddr8|pg_lsn|tsvector|tsquery|"
+	case "cassandra":
+		names = "|ascii|text|varchar|blob|boolean|tinyint|smallint|int|bigint|counter|varint|decimal|float|double|uuid|timeuuid|inet|date|time|timestamp|duration|"
+	default:
+		return false
+	}
+	return strings.Contains(names, "|"+c.NativeType+"|")
+}
+
+func effectiveIdentity(c Column) string {
+	if c.Engine == "cassandra" && legacyScalar(c) {
+		return "cassandra-scalar-v1:" + c.NativeType
+	}
+	if c.TypeIdentity == "" && c.Engine == "postgresql" && legacyScalar(c) {
+		digest := sha256.Sum256([]byte(c.NativeType + ":-1"))
+		return "pgtype-v1:" + hex.EncodeToString(digest[:])
+	}
+	return c.TypeIdentity
 }
 func sameValue(a, b *string) bool { return a == nil && b == nil || a != nil && b != nil && *a == *b }
 func intp(n int) *int             { return &n }

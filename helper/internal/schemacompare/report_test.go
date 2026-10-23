@@ -132,3 +132,18 @@ func TestIncompleteInventoryNeverInfersAbsence(t *testing.T) {
 		t.Fatal("partial inventory inferred absence")
 	}
 }
+
+func TestTableMappingIncludesOnlyMarkedPostgresRowTypes(t *testing.T) {
+	mapping := Mappings{Schemas: []NamePair{{Source: "source", Target: "target"}}, Tables: []TablePair{{Source: QualifiedName{Schema: "source", Name: "records"}, Target: QualifiedName{Schema: "target", Name: "renamed"}}}}
+	row := Ref{Kind: "type", Schema: "source", Name: "records", RowType: true}
+	got := mapping.mapRef(row)
+	if got.Schema != "target" || got.Name != "renamed" || !got.RowType {
+		t.Fatal("table row type mapping lost", got)
+	}
+	ordinary := row
+	ordinary.RowType = false
+	got = mapping.mapRef(ordinary)
+	if got.Schema != "target" || got.Name != "records" {
+		t.Fatal("unrelated same-name type was renamed", got)
+	}
+}

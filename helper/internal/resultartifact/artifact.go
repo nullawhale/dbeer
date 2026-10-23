@@ -36,12 +36,13 @@ var (
 // Column preserves positional identity, native type, and wire encoding. TypeOID
 // is provenance only and cannot establish type equality across database servers.
 type Column struct {
-	Index      int    `json:"index"`
-	Name       string `json:"name"`
-	Engine     string `json:"engine"`
-	NativeType string `json:"nativeType"`
-	TypeOID    uint32 `json:"typeOid"`
-	Encoding   string `json:"encoding,omitempty"`
+	Index        int    `json:"index"`
+	Name         string `json:"name"`
+	Engine       string `json:"engine"`
+	NativeType   string `json:"nativeType"`
+	TypeIdentity string `json:"typeIdentity,omitempty"`
+	TypeOID      uint32 `json:"typeOid"`
+	Encoding     string `json:"encoding,omitempty"`
 }
 
 type Metadata struct {

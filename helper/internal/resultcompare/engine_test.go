@@ -51,6 +51,9 @@ func cols(types ...string) []Column {
 	c := make([]Column, len(types))
 	for i, typ := range types {
 		c[i] = Column{Index: i, Name: fmt.Sprintf("c%d", i), Engine: "postgresql", NativeType: typ}
+		if !legacyScalar(c[i]) {
+			c[i].TypeIdentity = "fixture-v1:" + typ
+		}
 	}
 	return c
 }
@@ -79,8 +82,8 @@ func TestSharedTypedValueFixtures(t *testing.T) {
 			Name, Mode                string
 			Columns                   []Mapping
 			LeftColumns, RightColumns []struct {
-				Index                              int
-				Name, Engine, NativeType, Encoding string
+				Index                                            int
+				Name, Engine, NativeType, TypeIdentity, Encoding string
 			}
 			LeftRows, RightRows [][]*string
 			Expected            map[string]any
@@ -92,12 +95,12 @@ func TestSharedTypedValueFixtures(t *testing.T) {
 	for _, c := range f.Cases {
 		t.Run(c.Name, func(t *testing.T) {
 			convert := func(input []struct {
-				Index                              int
-				Name, Engine, NativeType, Encoding string
+				Index                                            int
+				Name, Engine, NativeType, TypeIdentity, Encoding string
 			}) []Column {
 				output := make([]Column, len(input))
 				for i, v := range input {
-					output[i] = Column(v)
+					output[i] = Column{Index: v.Index, Name: v.Name, Engine: v.Engine, NativeType: v.NativeType, TypeIdentity: v.TypeIdentity, Encoding: v.Encoding}
 				}
 				return output
 			}

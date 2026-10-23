@@ -709,12 +709,13 @@ func uniqueObjectKeys(frame []byte) bool {
 }
 
 type Column struct {
-	Index      int    `json:"index"`
-	Name       string `json:"name"`
-	Engine     string `json:"engine,omitempty"`
-	NativeType string `json:"nativeType,omitempty"`
-	Encoding   string `json:"encoding,omitempty"`
-	TypeOID    uint32 `json:"typeOid,omitempty"`
+	Index        int    `json:"index"`
+	Name         string `json:"name"`
+	Engine       string `json:"engine,omitempty"`
+	NativeType   string `json:"nativeType,omitempty"`
+	TypeIdentity string `json:"typeIdentity,omitempty"`
+	Encoding     string `json:"encoding,omitempty"`
+	TypeOID      uint32 `json:"typeOid,omitempty"`
 }
 
 type ResultSet struct {

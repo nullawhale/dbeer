@@ -54,10 +54,11 @@ type QualifiedName struct {
 	Name   string `json:"name"`
 }
 type Ref struct {
-	Kind   string `json:"kind"`
-	Schema string `json:"schema"`
-	Name   string `json:"name"`
-	Table  string `json:"table,omitempty"`
+	RowType bool   `json:"rowType,omitempty"`
+	Kind    string `json:"kind"`
+	Schema  string `json:"schema"`
+	Name    string `json:"name"`
+	Table   string `json:"table,omitempty"`
 }
 type NamePair struct {
 	Source string `json:"source"`
@@ -113,23 +114,31 @@ type Option struct {
 	Value string `json:"value"`
 }
 type TypeModifiers struct {
-	Length            *int64 `json:"length"`
-	Precision         *int64 `json:"precision"`
-	Scale             *int64 `json:"scale"`
-	DatetimePrecision *int64 `json:"datetimePrecision"`
-	Interval          *int64 `json:"interval"`
-	ArrayDimensions   int    `json:"arrayDimensions"`
-	Unsigned          bool   `json:"unsigned"`
-	Zerofill          bool   `json:"zerofill"`
+	Raw                *int64  `json:"raw,omitempty"`
+	SQL                *string `json:"sql,omitempty"`
+	SpatialReferenceID *int64  `json:"spatialReferenceID,omitempty"`
+	Length             *int64  `json:"length"`
+	Precision          *int64  `json:"precision"`
+	Scale              *int64  `json:"scale"`
+	DatetimePrecision  *int64  `json:"datetimePrecision"`
+	Interval           *int64  `json:"interval"`
+	ArrayDimensions    int     `json:"arrayDimensions"`
+	Unsigned           bool    `json:"unsigned"`
+	Zerofill           bool    `json:"zerofill"`
 }
 type TypeUse struct {
-	Ref       Ref                 `json:"ref"`
-	Kind      string              `json:"kind"`
-	Element   *TypeUse            `json:"element,omitempty"`
-	Modifiers Fact[TypeModifiers] `json:"modifiers"`
-	Labels    Collection[string]  `json:"labels"`
+	LabelEncoding string              `json:"labelEncoding,omitempty"`
+	Arguments     []TypeUse           `json:"arguments,omitempty"`
+	Ref           Ref                 `json:"ref"`
+	Kind          string              `json:"kind"`
+	Element       *TypeUse            `json:"element,omitempty"`
+	Modifiers     Fact[TypeModifiers] `json:"modifiers"`
+	Labels        Collection[string]  `json:"labels"`
 }
 type Expression struct {
+	Collations   []TypeCollation `json:"collations,omitempty"`
+	Functions    []TypeFunction  `json:"functions,omitempty"`
+	Operators    []TypeOperator  `json:"operators,omitempty"`
 	Text         string          `json:"text"`
 	Dependencies Collection[Ref] `json:"dependencies"`
 }
@@ -150,18 +159,19 @@ type Identity struct {
 	Sequence *Ref   `json:"sequence,omitempty"`
 }
 type Column struct {
-	Ref       Ref              `json:"ref"`
-	Ordinal   Fact[int]        `json:"ordinal"`
-	Type      Fact[TypeUse]    `json:"type"`
-	Nullable  Fact[bool]       `json:"nullable"`
-	Default   Fact[Default]    `json:"default"`
-	Generated Fact[Generated]  `json:"generated"`
-	Identity  Fact[Identity]   `json:"identity"`
-	Charset   Fact[string]     `json:"charset"`
-	Collation Fact[Ref]        `json:"collation"`
-	Visible   Fact[bool]       `json:"visible"`
-	Comment   Fact[string]     `json:"comment"`
-	OnUpdate  Fact[Expression] `json:"onUpdate"`
+	Ref                 Ref                 `json:"ref"`
+	CollationProperties *Collection[Option] `json:"collationProperties,omitempty"`
+	Ordinal             Fact[int]           `json:"ordinal"`
+	Type                Fact[TypeUse]       `json:"type"`
+	Nullable            Fact[bool]          `json:"nullable"`
+	Default             Fact[Default]       `json:"default"`
+	Generated           Fact[Generated]     `json:"generated"`
+	Identity            Fact[Identity]      `json:"identity"`
+	Charset             Fact[string]        `json:"charset"`
+	Collation           Fact[Ref]           `json:"collation"`
+	Visible             Fact[bool]          `json:"visible"`
+	Comment             Fact[string]        `json:"comment"`
+	OnUpdate            Fact[Expression]    `json:"onUpdate"`
 }
 type ColumnPair struct {
 	Source Ref `json:"source"`
@@ -235,15 +245,73 @@ type Table struct {
 	Indexes      Collection[Index]      `json:"indexes"`
 	Dependencies Collection[Dependency] `json:"dependencies"`
 }
+
+// TypeFunction records stable routine identities and catalog behavior. OIDs are
+// resolved at capture time and never participate in cross-server equality.
+type TypeFunction struct {
+	Role       string             `json:"role"`
+	Ref        Ref                `json:"ref"`
+	Arguments  []Ref              `json:"arguments"`
+	Result     Ref                `json:"result"`
+	Properties Collection[Option] `json:"properties"`
+}
+type TypeCollation struct {
+	Ref        Ref                `json:"ref"`
+	Properties Collection[Option] `json:"properties"`
+}
+type TypeOperator struct {
+	Strategy   int64        `json:"strategy"`
+	Ref        Ref          `json:"ref"`
+	Purpose    string       `json:"purpose"`
+	Left       Ref          `json:"left"`
+	Right      Ref          `json:"right"`
+	Function   TypeFunction `json:"function"`
+	SortFamily *Ref         `json:"sortFamily,omitempty"`
+}
+type TypeOperatorClass struct {
+	Method    string         `json:"method"`
+	Family    Ref            `json:"family"`
+	Input     Ref            `json:"input"`
+	Default   bool           `json:"default"`
+	Operators []TypeOperator `json:"operators"`
+	Functions []TypeFunction `json:"functions"`
+}
+type TypeRange struct {
+	CollationProperties     *Collection[Option] `json:"collationProperties,omitempty"`
+	OperatorClassDefinition *TypeOperatorClass  `json:"operatorClassDefinition,omitempty"`
+	Subtype                 TypeUse             `json:"subtype"`
+	Multirange              Ref                 `json:"multirange"`
+	Collation               *Ref                `json:"collation,omitempty"`
+	OperatorClass           Ref                 `json:"operatorClass"`
+	Canonical               *TypeFunction       `json:"canonical,omitempty"`
+	Difference              *TypeFunction       `json:"difference,omitempty"`
+}
+type TypeBase struct {
+	Options   Collection[Option] `json:"options"`
+	Element   *TypeUse           `json:"element,omitempty"`
+	Functions []TypeFunction     `json:"functions"`
+}
+type TypeExtension struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Schema      Ref    `json:"schema"`
+	Relocatable bool   `json:"relocatable"`
+}
 type TypeDefinition struct {
-	Ref        Ref                    `json:"ref"`
-	Kind       Fact[string]           `json:"kind"`
-	Labels     Collection[string]     `json:"labels"`
-	Base       Fact[TypeUse]          `json:"base"`
-	Default    Fact[Default]          `json:"default"`
-	Nullable   Fact[bool]             `json:"nullable"`
-	Checks     Collection[Constraint] `json:"checks"`
-	Attributes Collection[Column]     `json:"attributes"`
+	Ref                 Ref                    `json:"ref"`
+	Range               *TypeRange             `json:"range,omitempty"`
+	BaseType            *TypeBase              `json:"baseType,omitempty"`
+	Extension           *TypeExtension         `json:"extension,omitempty"`
+	Collation           *Ref                   `json:"collation,omitempty"`
+	Kind                Fact[string]           `json:"kind"`
+	Labels              Collection[string]     `json:"labels"`
+	Base                Fact[TypeUse]          `json:"base"`
+	Default             Fact[Default]          `json:"default"`
+	Nullable            Fact[bool]             `json:"nullable"`
+	Checks              Collection[Constraint] `json:"checks"`
+	Attributes          Collection[Column]     `json:"attributes"`
+	Comment             *string                `json:"comment,omitempty"`
+	CollationProperties *Collection[Option]    `json:"collationProperties,omitempty"`
 }
 type Sequence struct {
 	Ref       Ref           `json:"ref"`

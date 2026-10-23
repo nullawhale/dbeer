@@ -81,10 +81,10 @@ func decodeColumn(data []byte, index int) (Column, error) {
 		return Column{}, ErrCorrupt
 	}
 	// These defaults match Swift's legacy-compatible ResultColumn decoder.
-	var engine, nativeType, encoding *string
+	var engine, nativeType, encoding, typeIdentity *string
 	var typeOID *uint32
 	if !decodeOptional(object, "engine", &engine) || !decodeOptional(object, "nativeType", &nativeType) ||
-		!decodeOptional(object, "typeOid", &typeOID) || !decodeOptional(object, "encoding", &encoding) {
+		!decodeOptional(object, "typeOid", &typeOID) || !decodeOptional(object, "encoding", &encoding) || !decodeOptional(object, "typeIdentity", &typeIdentity) {
 		return Column{}, ErrCorrupt
 	}
 	if engine != nil {
@@ -92,6 +92,9 @@ func decodeColumn(data []byte, index int) (Column, error) {
 	}
 	if nativeType != nil {
 		c.NativeType = *nativeType
+	}
+	if typeIdentity != nil {
+		c.TypeIdentity = *typeIdentity
 	}
 	if typeOID != nil {
 		c.TypeOID = *typeOID
@@ -102,7 +105,7 @@ func decodeColumn(data []byte, index int) (Column, error) {
 		}
 		c.Encoding = *encoding
 	}
-	if !validEngine(c.Engine) || len(c.NativeType) > 65_536 {
+	if !validEngine(c.Engine) || len(c.NativeType) > 65_536 || len(c.TypeIdentity) > 65_536 {
 		return Column{}, ErrCorrupt
 	}
 	return c, nil

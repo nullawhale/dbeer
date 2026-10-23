@@ -28,7 +28,7 @@ func FromArtifact(a resultartifact.Artifact) resultcompare.Source {
 	metadata := a.Metadata()
 	columns := make([]resultcompare.Column, len(metadata.Columns))
 	for i, c := range metadata.Columns {
-		columns[i] = resultcompare.Column{Index: c.Index, Name: c.Name, Engine: c.Engine, NativeType: c.NativeType, Encoding: c.Encoding}
+		columns[i] = resultcompare.Column{Index: c.Index, Name: c.Name, Engine: c.Engine, NativeType: c.NativeType, TypeIdentity: c.TypeIdentity, Encoding: c.Encoding}
 	}
 	return &artifactSource{artifact: a, metadata: resultcompare.Metadata{Columns: columns, RowCount: metadata.RowCount, Complete: metadata.Complete()}}
 }

@@ -233,7 +233,8 @@
           "index": 2,
           "name": "same",
           "engine": "postgresql",
-          "nativeType": "numeric"
+          "nativeType": "numeric",
+          "typeIdentity": "pgtype-v1:0bda421a9e8a70f87f0da4e16bbab56f6ad8287fcb3bdfe92f10854b45e010fe"
         },
         {
           "index": 3,
@@ -260,7 +261,8 @@
           "index": 2,
           "name": "same",
           "engine": "postgresql",
-          "nativeType": "numeric"
+          "nativeType": "numeric",
+          "typeIdentity": "pgtype-v1:0bda421a9e8a70f87f0da4e16bbab56f6ad8287fcb3bdfe92f10854b45e010fe"
         },
         {
           "index": 3,

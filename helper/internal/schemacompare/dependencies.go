@@ -9,6 +9,10 @@ import (
 // database-local address is used to reconstruct this graph.
 func linkDependencies(table *Table) {
 	edges := map[string]Dependency{}
+	declared := table.Dependencies
+	for _, edge := range declared.Items {
+		edges[refKey(edge.From)+refKey(edge.To)+edge.Kind+edge.State] = edge
+	}
 	var visit func(reflect.Value, Ref)
 	visit = func(v reflect.Value, from Ref) {
 		if !v.IsValid() {
@@ -18,7 +22,7 @@ func linkDependencies(table *Table) {
 			to := v.Interface().(Ref)
 			if to != from {
 				edge := Dependency{From: from, To: to, Kind: "catalogReference", State: "observed"}
-				edges[refKey(from)+refKey(to)] = edge
+				edges[refKey(from)+refKey(to)+edge.Kind+edge.State] = edge
 			}
 			return
 		}
@@ -31,7 +35,7 @@ func linkDependencies(table *Table) {
 			if ref := nodeRef(v); ref != nil {
 				if *ref != from {
 					edge := Dependency{From: from, To: *ref, Kind: "catalogReference", State: "observed"}
-					edges[refKey(from)+refKey(*ref)] = edge
+					edges[refKey(from)+refKey(*ref)+edge.Kind+edge.State] = edge
 				}
 				from = *ref
 			}
@@ -59,6 +63,11 @@ func linkDependencies(table *Table) {
 	}
 	sort.Strings(keys)
 	table.Dependencies = Complete[Dependency](nil)
+	if declared.State != "" {
+		table.Dependencies.Complete = declared.Complete
+		table.Dependencies.State = declared.State
+		table.Dependencies.Code = declared.Code
+	}
 	for _, key := range keys {
 		table.Dependencies.Items = append(table.Dependencies.Items, edges[key])
 	}

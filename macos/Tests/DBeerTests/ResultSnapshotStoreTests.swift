@@ -61,6 +61,20 @@ struct ResultSnapshotStoreTests {
         #expect(rowBytes.count == first.manifest.rowsBytes)
     }
 
+    @Test func structuralTypeIdentitySurvivesSaveAndOfflineRestart() async throws {
+        let directory = try directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var source = capture(rows: [["new", "1", "AP8="]])
+        source.columns[0] = ResultColumn(index: 0, name: "mood", nativeType: "\"fixture\".\"mood\"",
+            typeIdentity: "pgtype-v1:" + String(repeating: "a", count: 64))
+        let saved = try await ResultSnapshotStore(rootURL: directory).save(source)
+        let restarted = ResultSnapshotStore(rootURL: directory)
+        let loaded = try await restarted.load(id: saved.id)
+        #expect(loaded.manifest.columns == source.columns)
+        #expect(loaded.manifest.columns[0].typeIdentity == source.columns[0].typeIdentity)
+        #expect(loaded.rows == source.rows)
+    }
+
     @Test func quotaCountsWrittenManifestAndRowsAndNeverEvictsExistingSnapshots() async throws {
         let directory = try directory()
         defer { try? FileManager.default.removeItem(at: directory) }
