@@ -307,8 +307,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "shutdown": "shutdown.ack"
         case "operation.assess": "operation.assessment"
         case "formatInserts": "insertSQL"
-        case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.cancel", "data.close": type + ".result"
-        case "schema.start", "schema.status", "schema.page", "schema.value", "schema.export", "schema.cancel", "schema.close": type + ".result"
+        case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.diff", "data.cancel", "data.close": type + ".result"
+        case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.export", "schema.cancel", "schema.close": type + ".result"
         case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close": type + ".result"
         default: nil
         }
@@ -419,9 +419,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
-        case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.cancel.result", "data.close.result":
+        case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.cancel.result", "data.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && dataComparison?.valid(for: type) == true
-        case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
+        case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && schemaComparison?.valid(for: type) == true
         case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&

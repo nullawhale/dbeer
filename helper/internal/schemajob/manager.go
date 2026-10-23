@@ -17,8 +17,9 @@ import (
 )
 
 type Options struct {
-	Root     string
-	Deadline time.Duration
+	Root             string
+	Deadline         time.Duration
+	RenderDefinition schemacompare.DefinitionRenderer
 }
 type status struct {
 	state, code, message string
@@ -158,6 +159,13 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 	out := response(c, j)
 	out.SchemaComparison.Summary = nil
 	switch c.Type {
+	case "schema.diff":
+		d, e := j.result.TextDiff(j.ctx, r.Offset, m.options.RenderDefinition)
+		if e != nil {
+			return fail(c)
+		}
+		out.SchemaComparison.Diff = &d
+		out.SchemaComparison.Offset = &r.Offset
 	case "schema.page":
 		limit, maxBytes := r.Limit, r.MaxBytes
 		if limit == 0 {

@@ -47,6 +47,14 @@ struct SchemaComparisonWindowTests {
             try #require(button.isEnabled); button.performClick(nil)
         } else { try #require(item.flag("isAccessibilityEnabled", fallback: true) && item.flag("accessibilityPerformPress")) }
     }
+    private func selectReport(_ title: String, _ window: NSWindow) throws {
+        let control = try #require(elements(window).compactMap { $0.object as? NSSegmentedControl }.first { control in
+            (0..<control.segmentCount).contains { control.label(forSegment: $0)?.hasPrefix(title) == true }
+        }, "Missing report selector: \(title)")
+        let segment = try #require((0..<control.segmentCount).first { control.label(forSegment: $0)?.hasPrefix(title) == true })
+        control.selectedSegment = segment
+        try #require(control.sendAction(control.action, to: control.target))
+    }
     private func waitFor(_ window: NSWindow, _ condition: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(6))
         repeat {
@@ -56,7 +64,7 @@ struct SchemaComparisonWindowTests {
         } while ContinuousClock.now < deadline
         try #require(condition(), "Schema window controls: \(elements(window).compactMap(\.identifier).sorted())")
     }
-    private func host(_ model: SchemaComparisonModel, scheme: ColorScheme, width: CGFloat = 1000, close: @escaping () -> Void = {}) -> NSWindow {
+    private func host(_ model: SchemaComparisonModel, scheme: ColorScheme, width: CGFloat = 1120, close: @escaping () -> Void = {}) -> NSWindow {
         let app = NSApplication.shared
         app.accessibilitySetValue(true, forAttribute: .init(rawValue: "AXEnhancedUserInterface"))
         app.accessibilitySetValue(true, forAttribute: .init(rawValue: "AXManualAccessibility"))
@@ -90,15 +98,24 @@ struct SchemaComparisonWindowTests {
             model.sourceID = profiles[0].id; model.targetID = profiles[1].id
             try await waitFor(window) { (try? element("schemaCompareStart", window).flag("isAccessibilityEnabled")) == true }
             try press("schemaCompareStart", window)
-            try await waitFor(window) { model.page != nil && elements(window).contains { $0.identifier == "schemaCompareConclusion" } }
+            try await waitFor(window) { model.page != nil && model.diff != nil && elements(window).contains { $0.text.contains("Value difference") } }
             #expect(created == 1 && model.summary?.fullEquality == false)
+            #expect(model.selectedDifference?.id == model.page?.differences.first?.id)
+            #expect(await backend.operations.contains("diff"))
+            let diffPanes = elements(window).compactMap { $0.object as? NSTextView }
+            #expect(diffPanes.count == 2)
+            #expect(diffPanes.allSatisfy { ($0.textStorage?.length ?? 0) > 0 && ($0.layoutManager?.numberOfGlyphs ?? 0) > 0 })
             #expect(try element("schemaCompareConclusion", window).text.contains("differences"))
             #expect(try element("schemaCompareDirection", window).text.contains("Source fixture → Target fixture"))
             #expect((try element("schemaCompareExport", window)).flag("isAccessibilityEnabled", fallback: true))
             #expect(window.attachedSheet == nil)
             try capture(window, name: "schema-report-\(scheme)")
-            await model.loadPage(collection: "issues")
-            #expect(model.page?.issues.isEmpty == true)
+            try selectReport("Issues", window)
+            try await waitFor(window) { model.page?.collection == "issues" && !model.isLoading }
+            #expect(model.page?.issues.isEmpty == true && model.selectedDifference == nil)
+            try selectReport("Differences", window)
+            try await waitFor(window) { model.page?.collection == "differences" && model.diff != nil }
+            #expect(model.selectedDifference?.id == model.page?.differences.first?.id)
             try press("schemaCompareReset", window)
             try await waitFor(window) { !model.hasStarted }
             #expect(created == 1)
@@ -110,7 +127,7 @@ struct SchemaComparisonWindowTests {
         let model = SchemaComparisonModel(profiles: profiles, resolve: { $0.settings(password: "") }, factory: { backend })
         model.sourceID = profiles[0].id; model.targetID = profiles[0].id
         var closed = false
-        let window = host(model, scheme: .light, width: 780, close: { closed = true }); defer { window.close() }
+        let window = host(model, scheme: .light, width: 900, close: { closed = true }); defer { window.close() }
         try await waitFor(window) { (try? element("schemaCompareStart", window).flag("isAccessibilityEnabled")) == true }
         try press("schemaCompareStart", window)
         try await waitFor(window) { elements(window).contains { $0.identifier == "schemaCompareStop" } }

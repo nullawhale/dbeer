@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dbeer/helper/internal/resultcompare"
 	tc "dbeer/helper/internal/tablecapture"
+	"dbeer/helper/internal/textdiff"
 	"encoding/json"
 	"strings"
 )
@@ -43,6 +44,9 @@ type DataComparisonSummary struct {
 	ModelDigest   string                `json:"modelDigest"`
 }
 type DataComparisonResponse struct {
+	Offset      *int64                 `json:"offset,omitempty"`
+	CellOffset  *int                   `json:"cellOffset,omitempty"`
+	Diff        *textdiff.Diff         `json:"diff,omitempty"`
 	JobID       string                 `json:"jobId"`
 	State       string                 `json:"state"`
 	Phase       string                 `json:"phase,omitempty"`
@@ -79,6 +83,8 @@ func parseDataComparison(raw json.RawMessage, kind string) (DataComparisonReques
 	case "data.start":
 		needed = []string{"source", "target", "columns", "originals"}
 	case "data.status", "data.cancel", "data.close":
+	case "data.diff":
+		allowed = map[string]bool{"offset": true, "cellOffset": true}
 	case "data.page":
 		allowed = map[string]bool{"offset": true, "limit": true, "maxBytes": true, "cellOffset": true}
 	case "data.value":

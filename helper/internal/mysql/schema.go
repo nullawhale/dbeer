@@ -213,6 +213,9 @@ func (r *mysqlSchemaCapture) table(ref sc.Ref, row []*string) error {
 	if v := myText(row, 3); v != "" {
 		options.Items = append(options.Items, sc.Option{Name: "createOptions", Value: v})
 	}
+	if comment := myText(row, 4); comment != "" {
+		options.Items = append(options.Items, sc.Option{Name: "comment", Value: comment})
+	}
 	t := sc.Table{Ref: ref, Kind: sc.Known("table"), Storage: sc.Known(myText(row, 1)), Charset: sc.Known(charset), Collation: sc.Known(sc.Ref{Kind: "collation", Name: collation}), Options: options, Columns: sc.Complete[sc.Column](nil), Constraints: sc.Complete[sc.Constraint](nil), Indexes: sc.Complete[sc.Index](nil), Dependencies: sc.Complete[sc.Dependency](nil)}
 	if myText(row, 1) != "InnoDB" || myText(row, 3) != "" {
 		t.Kind = sc.Unknown[string]("tableEngineOrOptions")

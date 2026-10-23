@@ -61,6 +61,9 @@ struct DataComparisonRequest: Codable, Equatable, Sendable {
                 Set(columns.map { Data($0.source.utf8) }).count == columns.count && Set(columns.map { Data($0.target.utf8) }).count == columns.count
         case "data.status", "data.cancel", "data.close":
             return noInputs && jobId.map(BackendMessage.validID) == true && offset == nil && limit == nil && maxBytes == nil && cellOffset == nil && valueRef == nil
+        case "data.diff":
+            return noInputs && jobId.map(BackendMessage.validID) == true && (offset ?? 0) >= 0 &&
+                (cellOffset ?? 0) >= 0 && limit == nil && maxBytes == nil && valueRef == nil
         case "data.page":
             return noInputs && jobId.map(BackendMessage.validID) == true && (offset ?? 0) >= 0 && (1...1_000).contains(limit ?? 100) &&
                 (4_096...1_048_576).contains(maxBytes ?? 262_144) && (cellOffset ?? 0) >= 0 && valueRef == nil
@@ -102,10 +105,15 @@ struct DataComparisonResponse: Codable, Equatable, Sendable {
     var jobId: String; var state: ResultComparisonState; var phase: String?; var code: String?; var message: String?
     var descriptors: DataComparisonDescriptors?; var summary: DataComparisonSummary?
     var page: ResultComparisonPage?; var value: ResultComparisonValueChunk?
+    var diff: ComparisonTextDiff?
+    var offset: Int64?
+    var cellOffset: Int?
     func valid(for type: String) -> Bool {
+        guard (diff == nil && offset == nil && cellOffset == nil) || type == "data.diff.result" else { return false }
         guard BackendMessage.validID(jobId), (message?.utf8.count ?? 0) <= 4_096, (code?.utf8.count ?? 0) <= 128,
               phase == nil || ["capturing", "comparing"].contains(phase), summary?.valid != false, descriptors?.valid != false else { return false }
         switch type {
+        case "data.diff.result": return state == .completed && diff?.valid == true && (offset ?? -1) >= 0 && (cellOffset ?? -1) >= 0 && descriptors == nil && summary == nil && page == nil && value == nil
         case "data.start.result", "data.describe.result": return state == .pending && descriptors == nil && summary == nil && page == nil && value == nil
         case "data.status.result": return page == nil && value == nil &&
             (state == .completed ? (descriptors != nil) != (summary != nil) : descriptors == nil && summary == nil)

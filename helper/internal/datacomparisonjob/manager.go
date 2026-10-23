@@ -188,6 +188,14 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 	}
 	out := protocol.Response{Type: c.Type + ".result", RequestID: c.RequestID, DataComparison: &protocol.DataComparisonResponse{JobID: j.id, State: "completed"}}
 	switch c.Type {
+	case "data.diff":
+		d, e := j.result.TextDiff(j.ctx, r.Offset, r.CellOffset)
+		if e != nil {
+			return fail(c)
+		}
+		out.DataComparison.Diff = &d
+		out.DataComparison.Offset = &r.Offset
+		out.DataComparison.CellOffset = &r.CellOffset
 	case "data.page":
 		limit, maxBytes := r.Limit, r.MaxBytes
 		if limit == 0 {

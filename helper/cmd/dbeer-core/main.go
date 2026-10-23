@@ -19,6 +19,7 @@ import (
 	"dbeer/helper/internal/productidentity"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/resultartifact"
+	"dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/schemajob"
 	"dbeer/helper/internal/session"
 	"dbeer/helper/internal/sqllsp"
@@ -41,6 +42,17 @@ type writeResult struct {
 type inputEnd struct {
 	err      error
 	shutdown bool
+}
+
+func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, ref schemacompare.Ref) (schemacompare.Definition, error) {
+	switch capture.Context.Engine {
+	case "postgresql":
+		return postgres.RenderSchemaDefinition(ctx, capture, ref)
+	case "mysql":
+		return mysql.RenderSchemaDefinition(ctx, capture, ref)
+	default:
+		return schemacompare.Definition{SQL: "-- SQL definition unavailable for this engine.\n", Limited: true}, nil
+	}
 }
 
 func openDatabase(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
@@ -196,7 +208,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			continue
 		}
 		if strings.HasPrefix(command.Type, "data.") {
-			if command.Type != "data.page" && command.Type != "data.value" {
+			if command.Type != "data.page" && command.Type != "data.value" && command.Type != "data.diff" {
 				if !emit(dataComparisons.Handle(command)) {
 					return
 				}
@@ -221,7 +233,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			continue
 		}
 		if strings.HasPrefix(command.Type, "schema.") {
-			if command.Type != "schema.page" && command.Type != "schema.value" && command.Type != "schema.export" {
+			if command.Type != "schema.page" && command.Type != "schema.value" && command.Type != "schema.diff" && command.Type != "schema.export" {
 				if !emit(schemas.Handle(command)) {
 					return
 				}
@@ -367,7 +379,7 @@ func runWithSSH(input io.Reader, output io.Writer, opener adapter.OpenFunc, iden
 
 func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity, tunnels *sshtunnel.Manager, comparisons *comparisonjob.Manager) error {
 	defer comparisons.Close()
-	schemas, err := schemajob.New(opener, schemajob.Options{})
+	schemas, err := schemajob.New(opener, schemajob.Options{RenderDefinition: renderSchemaDefinition})
 	if err != nil {
 		return err
 	}

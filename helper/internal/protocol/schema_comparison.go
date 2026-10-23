@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"dbeer/helper/internal/schemacompare"
+	"dbeer/helper/internal/textdiff"
 	"encoding/json"
 )
 
@@ -23,6 +24,8 @@ type SchemaComparisonRequest struct {
 	ValueRef   string                  `json:"valueRef,omitempty"`
 }
 type SchemaComparisonResponse struct {
+	Offset  *int64                 `json:"offset,omitempty"`
+	Diff    *textdiff.Diff         `json:"diff,omitempty"`
 	JobID   string                 `json:"jobId"`
 	State   string                 `json:"state"`
 	Code    string                 `json:"code,omitempty"`
@@ -45,6 +48,8 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 	case "schema.start":
 		needed = []string{"source", "target", "mappings"}
 	case "schema.status", "schema.cancel", "schema.close":
+	case "schema.diff":
+		allowed["offset"] = true
 	case "schema.page":
 		allowed["collection"] = true
 		needed = append(needed, "collection")

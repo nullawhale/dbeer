@@ -82,4 +82,6 @@ results="$build_root/landing-screenshots.log"
 if ! grep -Eq 'Test run with 1 test .*passed after' "$results"; then
     printf 'Screenshot capture did not complete successfully.\n' >&2; exit 1
 fi
-printf 'Five real application screenshots saved in %s\n' "$DBEER_QA_OUTPUT_DIR"
+capture_count=7
+if [[ "${DBEER_CAPTURE_COMPARISONS:-0}" == 1 ]]; then capture_count=9; fi
+printf '%s real application screenshots saved in %s\n' "$capture_count" "$DBEER_QA_OUTPUT_DIR"

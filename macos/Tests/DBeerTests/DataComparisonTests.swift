@@ -40,6 +40,9 @@ actor DataComparisonTestBackend: DataComparisonBackend {
     }
     func request(_ operation: String, _ request: DataComparisonRequest) async throws -> DataComparisonResponse {
         operations.append(operation)
+        if operation == "diff" {
+            return .init(jobId: request.jobId!, state: .completed, diff: try ComparisonTextDiffTestFixtures.diff(), offset: request.offset, cellOffset: request.cellOffset)
+        }
         if operation == "status" {
             if running && !describing { return .init(jobId: "data-job", state: .running, phase: "capturing") }
             if describing { return fixture.responses.last!.dataComparison! }

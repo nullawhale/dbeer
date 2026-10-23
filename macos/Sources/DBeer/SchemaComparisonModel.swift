@@ -49,6 +49,10 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
     @Published private(set) var valueTotalBytes: Int64 = 0
     @Published private(set) var valueBoundaryBytes = 0
     @Published private(set) var exportComplete = false
+    @Published private(set) var selectedDifference: SchemaDifference?
+    @Published private(set) var diff: ComparisonTextDiff?
+    @Published private(set) var isLoadingDiff = false
+    @Published private(set) var diffError: String?
     private let resolve: @MainActor (SavedConnection) async throws -> ConnectionSettings
     private let factory: @MainActor () -> any SchemaComparisonBackend
     private var backend: (any SchemaComparisonBackend)?
@@ -56,6 +60,7 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
     private var generation = UUID()
     private var pageGeneration = UUID()
     private var valueGeneration = UUID()
+    private var diffGeneration = UUID()
     private var poll: Task<Void, Never>?
     private var offsets: [Int64] = [0]
     private var selectedPreview: SchemaValuePreview?
@@ -121,7 +126,7 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
         if let backend { if let jobID { _ = try? await backend.request("cancel", .init(jobId: jobID)) }; await backend.shutdown() }
     }
     func close() async {
-        generation = UUID(); pageGeneration = UUID(); valueGeneration = UUID(); poll?.cancel(); phase = .closed
+        generation = UUID(); pageGeneration = UUID(); valueGeneration = UUID(); clearDiff(); poll?.cancel(); phase = .closed
         cancelReviews(); isLoading = false
         if let backend { if let jobID { _ = try? await backend.request("close", .init(jobId: jobID)) }; await backend.shutdown() }
         backend = nil; page = nil; valueText = nil
@@ -133,7 +138,7 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
     func loadPage(collection: String, offset: Int64 = 0) async {
         guard phase == .completed, let backend, let jobID else { return }
         let token = generation; pageGeneration = UUID(); let pageToken = pageGeneration
-        isLoading = true; error = nil
+        isLoading = true; error = nil; clearDiff()
         defer { if pageGeneration == pageToken { isLoading = false } }
         do {
             let response = try await backend.request("page", .init(jobId: jobID, collection: collection, offset: offset))
@@ -145,6 +150,28 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
     }
     func nextPage() async { guard canNext, let page else { return }; offsets.append(page.nextOffset); await loadPage(collection: page.collection, offset: page.nextOffset) }
     func previousPage() async { guard canPrevious, let page else { return }; offsets.removeLast(); await loadPage(collection: page.collection, offset: offsets.last ?? 0) }
+    private func clearValue() {
+        valueGeneration = UUID(); selectedPreview = nil; valueText = nil; valueHasMore = false
+        valueOffsets = [0]; valueOffset = 0; valueNextOffset = 0; valueTotalBytes = 0; valueBoundaryBytes = 0
+    }
+    private func clearDiff() {
+        clearValue(); diffGeneration = UUID(); selectedDifference = nil; diff = nil; diffError = nil; isLoadingDiff = false
+    }
+    func inspectDifference(_ difference: SchemaDifference) async {
+        guard phase == .completed, let backend, let jobID, page?.differences.contains(difference) == true else { return }
+        if selectedDifference != difference { clearValue() }
+        diffGeneration = UUID(); let requestToken = diffGeneration; let token = generation
+        selectedDifference = difference; diff = nil; diffError = nil; isLoadingDiff = true
+        defer { if diffGeneration == requestToken { isLoadingDiff = false } }
+        do {
+            let response = try await backend.request("diff", .init(jobId: jobID, offset: difference.index))
+            guard !Task.isCancelled, generation == token, diffGeneration == requestToken else { return }
+            guard response.jobId == jobID, response.valid(for: "schema.diff.result"), response.offset == difference.index, let result = response.diff else { throw BackendTransportError(.invalidMessage) }
+            diff = result
+        } catch {
+            if !Task.isCancelled, generation == token, diffGeneration == requestToken { diffError = "The difference could not be read." }
+        }
+    }
     func inspect(_ preview: SchemaValuePreview) async {
         selectedPreview = preview; valueOffsets = [0]
         await loadValue(preview, offset: 0)

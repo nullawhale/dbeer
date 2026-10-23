@@ -72,6 +72,8 @@ struct SchemaComparisonRequest: Codable, Equatable, Sendable {
                 collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
         case "schema.status", "schema.cancel", "schema.close":
             return noSources && job && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
+        case "schema.diff":
+            return noSources && job && (offset ?? 0) >= 0 && collection == nil && limit == nil && maxBytes == nil && valueRef == nil
         case "schema.page":
             return noSources && job && ["differences", "issues"].contains(collection) && (offset ?? 0) >= 0 &&
                 (1...1_000).contains(limit ?? 100) && (4_096...1_048_576).contains(maxBytes ?? 262_144) && valueRef == nil
@@ -185,9 +187,13 @@ struct SchemaComparisonChunk: Codable, Equatable, Sendable {
 struct SchemaComparisonResponse: Codable, Equatable, Sendable {
     var jobId: String; var state: ResultComparisonState; var code: String?; var message: String?
     var summary: SchemaComparisonSummary?; var page: SchemaComparisonPage?; var value: SchemaComparisonChunk?; var export: SchemaComparisonChunk?
+    var diff: ComparisonTextDiff?
+    var offset: Int64?
     func valid(for type: String) -> Bool {
+        guard (diff == nil && offset == nil) || type == "schema.diff.result" else { return false }
         guard BackendMessage.validID(jobId), (message?.utf8.count ?? 0) <= 4_096, (code?.utf8.count ?? 0) <= 128 else { return false }
         switch type {
+        case "schema.diff.result": return state == .completed && diff?.valid == true && (offset ?? -1) >= 0 && summary == nil && page == nil && value == nil && export == nil
         case "schema.start.result": return state == .pending && summary == nil && page == nil && value == nil && export == nil
         case "schema.status.result": return (state == .completed ? summary?.valid == true : summary == nil) && page == nil && value == nil && export == nil
         case "schema.page.result": return state == .completed && summary == nil && page?.valid == true && value == nil && export == nil

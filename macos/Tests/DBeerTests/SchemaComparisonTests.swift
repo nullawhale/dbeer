@@ -24,6 +24,9 @@ actor SchemaComparisonTestBackend: SchemaComparisonBackend {
     func start(_ request: SchemaComparisonRequest) async throws -> SchemaComparisonResponse { starts.append(request); return fixture.responses[0].schemaComparison! }
     func request(_ operation: String, _ request: SchemaComparisonRequest) async throws -> SchemaComparisonResponse {
         operations.append(operation)
+        if operation == "diff" {
+            return .init(jobId: request.jobId!, state: .completed, diff: try SchemaSQLDiffTestFixtures.diff(), offset: request.offset)
+        }
         if operation == "status", running { return .init(jobId: "schema-job", state: .running) }
         let index = try #require(["start", "status", "page", "value", "export", "cancel", "close"].firstIndex(of: operation))
         var response = fixture.responses[index].schemaComparison!

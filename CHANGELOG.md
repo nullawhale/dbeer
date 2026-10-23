@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Show SQL definition diffs for schema comparisons, with SQL syntax highlighting
+  and changed fragments. Definitions come from the frozen captures, with mapped
+  names aligned for comparison; unsupported facts are marked as incomplete.
+  Raw property JSON and metadata paths remain available under Technical details.
+
+- Review schema and table-data differences in native side-by-side text panes,
+  with aligned lines, line numbers and highlighted changed fragments computed
+  by the Go helper. Schema changes are grouped by object; table rows show their
+  matching keys and changed cells. Setup separates table selection from key
+  mapping, with filters, row limits and capture details under additional options.
+  Large values use an explicitly limited diff; exact value inspection remains
+  available. SQL NULL, empty text, absent values and binary data stay distinct.
+
 - Compare PostgreSQL or MySQL table data from Connections → Compare Table Data
   in two dedicated read-only sessions. Explicitly read metadata, map columns,
   select keys and configure independent filters and row limits. Exact typed

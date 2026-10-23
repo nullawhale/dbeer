@@ -84,7 +84,7 @@ struct DataComparisonWindowTests {
             let window = host(model, scheme: scheme); defer { window.close() }
             try await waitFor(window) { elements(window).contains { $0.identifier == "dataCompareDescribe" } }
             #expect(created == 0 && model.sourceLimit == 10_000 && model.targetLimit == 10_000)
-            #expect(!(try element("dataCompareStart", window)).flag("isAccessibilityEnabled", fallback: true))
+            #expect(!elements(window).contains { $0.identifier == "dataCompareStart" && $0.flag("isAccessibilityEnabled", fallback: true) })
             DataComparisonTestFixtures.configure(model, profiles)
             try await waitFor(window) { (try? element("dataCompareDescribe", window).flag("isAccessibilityEnabled")) == true }
             #expect(created == 0)
@@ -92,22 +92,37 @@ struct DataComparisonWindowTests {
             try await waitFor(window) { model.descriptors != nil && !model.isWorking && elements(window).contains { $0.identifier == "dataCompareKey-0" } }
             #expect(created == 1 && model.mappings.allSatisfy { !$0.key })
             #expect(!(try element("dataCompareStart", window)).flag("isAccessibilityEnabled", fallback: true))
-            #expect(try element("dataCompareOriginalsNotice", window).text.contains("Excluded columns are retained"))
+            try await press("dataCompareAdvanced", window)
+            try await waitFor(window) { elements(window).contains { $0.identifier == "dataCompareOriginalsNotice" } }
+            #expect(try element("dataCompareOriginalsNotice", window).text.contains("Retain all original columns"))
+            _ = try element("dataCompareSourceLimit", window); _ = try element("dataCompareTargetLimit", window)
             try capture(window, name: "data-config-\(scheme)")
             try await press("dataCompareKey-0", window)
             model.sourceLimit = 3; model.targetLimit = 3
             try await waitFor(window) { model.canCompare && (try? element("dataCompareStart", window).flag("isAccessibilityEnabled")) == true }
             try await press("dataCompareStart", window)
-            try await waitFor(window) { model.page != nil && elements(window).contains { $0.identifier == "dataCompareInspect-source-value" } }
+            try await waitFor(window) { model.page != nil && model.diff != nil && elements(window).contains { $0.text.contains("Value difference") } }
             #expect(created == 2 && model.summary?.comparison.complete == false)
-            #expect(try element("dataCompareConclusion", window).text.contains("Partial capture"))
+            #expect(model.selectedCell?.mapping == 1)
+            #expect(await backend.operations.contains("diff"))
+            let diffPanes = elements(window).compactMap { $0.object as? NSTextView }
+            #expect(diffPanes.count == 2)
+            #expect(diffPanes.allSatisfy { ($0.textStorage?.length ?? 0) > 0 && ($0.layoutManager?.numberOfGlyphs ?? 0) > 0 })
+            #expect(try element("dataCompareConclusion", window).text.contains("Partial comparison"))
             #expect(try element("dataCompareDirection", window).text.contains("Source fixture → Target fixture"))
+            try capture(window, name: "data-diff-\(scheme)")
+            try await press("dataCompareRow-0", window)
+            #expect(model.diff != nil && model.selectedCell?.mapping == 1)
+            try await press("dataCompareExactToggle", window)
             try await press("dataCompareInspect-source-value", window)
             try await waitFor(window) { model.valueChunk != nil && elements(window).contains { $0.identifier == "dataCompareNextValue" } }
             #expect(model.valueChunk?.text == "9007199254740993.123456789")
             try capture(window, name: "data-report-\(scheme)")
+            try await press("dataCompareExactToggle", window)
             try await press("dataCompareNextColumns", window)
-            try await waitFor(window) { model.selectedRow?.cellOffset == 2 }
+            try await waitFor(window) { model.selectedRow?.cellOffset == 2 && model.selectedCell?.mapping == 2 && model.diff != nil }
+            try await press("dataCompareExactToggle", window)
+            #expect(!elements(window).contains { $0.identifier == "dataCompareExactValue" })
             try await press("dataCompareInspect-source-binary", window)
             try await waitFor(window) { model.valueChunk?.valueRef == "source-binary" && elements(window).contains { $0.identifier == "dataCompareBinaryValue" } }
             #expect(model.valueChunk?.text == "AP8=")
@@ -128,7 +143,8 @@ struct DataComparisonWindowTests {
         model.mappings[0].key = true; model.sourceLimit = 3; model.targetLimit = 3
         try await waitFor(window) { (try? element("dataCompareStart", window).flag("isAccessibilityEnabled")) == true }
         try await press("dataCompareStart", window)
-        try await waitFor(window) { elements(window).contains { $0.identifier == "dataCompareInspect-source-value" } }
+        try await waitFor(window) { model.diff != nil && model.selectedCell?.mapping == 1 && elements(window).contains { $0.identifier == "dataCompareExactToggle" } }
+        try await press("dataCompareExactToggle", window)
         try await press("dataCompareInspect-source-value", window)
         try await waitFor(window) { model.valueChunk != nil && elements(window).contains { $0.identifier == "dataCompareNextValue" } }
         #expect(model.valueText?.trailingBytes == 1 && model.valueText?.text.contains("�") == false)

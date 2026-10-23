@@ -74,6 +74,10 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     @Published private(set) var page: ResultComparisonPage?
     @Published private(set) var selectedRow: ResultComparisonRow?
     @Published private(set) var valueChunk: ResultComparisonValueChunk?
+    @Published private(set) var diff: ComparisonTextDiff?
+    @Published private(set) var isLoadingDiff = false
+    @Published private(set) var diffError: String?
+    @Published private(set) var selectedCell: ResultComparisonCell?
     @Published private(set) var selectedValue: ResultComparisonValuePreview?
     @Published private(set) var valueTitle = ""
     @Published private(set) var valueEncoding: String?
@@ -94,6 +98,7 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     private var generation = UUID()
     private var pageGeneration = UUID()
     private var valueGeneration = UUID()
+    private var diffGeneration = UUID()
     private var poll: Task<Void, Never>?
     private var preparation: Task<DataComparisonResponse, Error>?
     private var stopTask: Task<Void, Never>?
@@ -232,16 +237,16 @@ final class DataComparisonModel: ObservableObject, Identifiable {
         poll?.cancel(); preparation?.cancel()
         for profile in [sourceProfile, targetProfile].compactMap({ $0 }) { SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, previous)) }
         let service = backend, job = jobID; backend = nil; jobID = nil
-        phase = .cancelled; isLoadingPage = false; isLoadingValue = false
+        phase = .cancelled; isLoadingPage = false; isLoadingValue = false; clearDiff()
         if let service { await retire(service, job: job) }; isStopping = false
     }
     func close() async { await stop(); clearOutput(); phase = .closed }
     func reset() async { await close(); operation = ""; phase = .closed }
-    private func clearOutput() { summary = nil; page = nil; selectedRow = nil; selectedValue = nil; valueChunk = nil; error = nil; pageOffsets = [0]; cellOffsets = [0]; valueOffsets = [0] }
+    private func clearOutput() { clearDiff(); summary = nil; page = nil; selectedRow = nil; selectedValue = nil; valueChunk = nil; error = nil; pageOffsets = [0]; cellOffsets = [0]; valueOffsets = [0] }
     func loadPage(offset: Int64) async {
         guard let backend, let jobID, summary != nil else { return }
         let token = generation; pageGeneration = UUID(); let pageToken = pageGeneration
-        isLoadingPage = true; defer { if pageGeneration == pageToken { isLoadingPage = false } }
+        clearDiff(); isLoadingPage = true; defer { if pageGeneration == pageToken { isLoadingPage = false } }
         do {
             let reply = try await backend.request("page", .init(jobId: jobID, offset: offset))
             guard generation == token, pageGeneration == pageToken else { return }
@@ -254,11 +259,12 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     var canNext: Bool { !isLoadingPage && page?.hasMore == true }
     func nextPage() async { guard canNext, let page else { return }; pageOffsets.append(page.nextOffset); await loadPage(offset: page.nextOffset) }
     func previousPage() async { guard canPrevious else { return }; pageOffsets.removeLast(); await loadPage(offset: pageOffsets.last ?? 0) }
-    func selectRow(_ row: ResultComparisonRow) { selectedRow = row; cellOffsets = [row.cellOffset]; valueGeneration = UUID(); selectedValue = nil; valueChunk = nil }
+    func selectRow(_ row: ResultComparisonRow) { clearDiff(); selectedRow = row; cellOffsets = [row.cellOffset]; valueGeneration = UUID(); selectedValue = nil; valueChunk = nil }
     func cells(next: Bool) async {
         guard let row = selectedRow, let backend, let jobID, !isLoadingPage else { return }
         if next { guard row.cellsTruncated else { return }; cellOffsets.append(row.nextCellOffset) }
         else { guard cellOffsets.count > 1 else { return }; cellOffsets.removeLast() }
+        clearDiff()
         let offset = cellOffsets.last ?? 0; let token = generation
         isLoadingPage = true; defer { if generation == token { isLoadingPage = false } }
         do {
@@ -270,6 +276,28 @@ final class DataComparisonModel: ObservableObject, Identifiable {
         } catch { if generation == token { self.error = "The mapped columns could not be read." } }
     }
     var canPreviousCells: Bool { cellOffsets.count > 1 && !isLoadingPage }
+    private func clearValue() {
+        valueGeneration = UUID(); selectedValue = nil; valueChunk = nil; isLoadingValue = false
+        valueTitle = ""; valueEncoding = nil; valueOffsets = [0]
+    }
+    private func clearDiff() {
+        clearValue(); diffGeneration = UUID(); selectedCell = nil; diff = nil; diffError = nil; isLoadingDiff = false
+    }
+    func inspectCell(_ cell: ResultComparisonCell) async {
+        guard phase == .completed, let backend, let jobID, let row = selectedRow, row.cells.contains(cell) else { return }
+        if selectedCell != cell { clearValue() }
+        diffGeneration = UUID(); let requestToken = diffGeneration; let token = generation
+        selectedCell = cell; diff = nil; diffError = nil; isLoadingDiff = true
+        defer { if diffGeneration == requestToken { isLoadingDiff = false } }
+        do {
+            let response = try await backend.request("diff", .init(jobId: jobID, offset: row.index, cellOffset: cell.mapping))
+            guard !Task.isCancelled, generation == token, diffGeneration == requestToken else { return }
+            guard response.jobId == jobID, response.valid(for: "data.diff.result"), response.offset == row.index, response.cellOffset == cell.mapping, let result = response.diff else { throw BackendTransportError(.invalidMessage) }
+            diff = result
+        } catch {
+            if !Task.isCancelled, generation == token, diffGeneration == requestToken { diffError = "The cell difference could not be read." }
+        }
+    }
     func inspect(_ preview: ResultComparisonValuePreview, title: String, encoding: String? = nil) async {
         selectedValue = preview; valueTitle = title; valueEncoding = encoding; valueOffsets = [0]; await loadValue(offset: 0)
     }

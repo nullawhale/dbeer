@@ -398,6 +398,9 @@ actor BackendClient {
         guard command.type.hasPrefix("data."), reply.type != "error" else { return }
         guard let request = command.dataComparison, let response = reply.dataComparison,
               request.jobId == nil || request.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if response.diff != nil {
+            guard response.offset == (request.offset ?? 0), response.cellOffset == (request.cellOffset ?? 0) else { throw BackendTransportError(.invalidMessage) }
+        }
         if let page = response.page {
             guard page.offset == (request.offset ?? 0), page.rows.count <= (request.limit ?? 100),
                   page.rows.allSatisfy({ $0.cellOffset == (request.cellOffset ?? 0) }),
@@ -413,6 +416,9 @@ actor BackendClient {
         guard command.type.hasPrefix("schema."), reply.type != "error" else { return }
         guard let requested = command.schemaComparison, let response = reply.schemaComparison,
               requested.jobId == nil || requested.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if response.diff != nil {
+            guard response.offset == (requested.offset ?? 0) else { throw BackendTransportError(.invalidMessage) }
+        }
         if let page = response.page {
             guard page.collection == requested.collection, page.offset == (requested.offset ?? 0),
                   page.count <= (requested.limit ?? 100), try JSONEncoder().encode(page).count <= (requested.maxBytes ?? 262_144) else { throw BackendTransportError(.invalidMessage) }
