@@ -18,25 +18,21 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Only built-in values with a lossless text or bytea representation participate
-// in optimistic comparisons. A table containing another type stays read-only:
-// comparing a partially decoded row could miss another client's changes.
-const editablePostgresTypeOIDs = "16,17,18,19,20,21,23,25,26,114,142,650,700,701,774,790,829,869,1042,1043,1082,1083,1114,1184,1186,1266,1560,1562,1700,2950,3802"
-
-var postgresChangeTypes = func() map[uint32]bool {
-	result := map[uint32]bool{}
-	for _, value := range strings.Split(editablePostgresTypeOIDs, ",") {
-		oid, _ := strconv.ParseUint(value, 10, 32)
-		result[uint32(oid)] = true
-	}
-	return result
-}()
+// PostgreSQL's input/output functions retain arrays, composites, ranges and
+// extension values as server text. Domains over bytea use the same binary
+// representation as bytea; parameters still bind to the actual domain OID.
+const postgresBinaryTypeSQL = `EXISTS (WITH RECURSIVE base AS (
+ SELECT t.oid,t.typbasetype FROM pg_catalog.pg_type t WHERE t.oid=a.atttypid
+ UNION ALL SELECT t.oid,t.typbasetype FROM pg_catalog.pg_type t JOIN base b ON t.oid=b.typbasetype WHERE b.typbasetype<>0
+) SELECT 1 FROM base WHERE oid=17)`
 
 type changeColumn struct {
 	name, nativeType string
 	oid              uint32
 	primaryKey       int
 	generated        bool
+	binary           bool
+	lossless         bool
 	canInsert        bool
 	canUpdate        bool
 }
@@ -119,7 +115,7 @@ func changesWithCommit(ctx context.Context, conn *pgx.Conn, command protocol.Com
 	for index, statement := range statements {
 		change := request.Changes[index]
 		if change.Kind != "insert" {
-			if err := compareLockedRow(ctx, conn, table, change.Original); err != nil {
+			if err := compareLockedRow(ctx, conn, table, change.Original, change.StorageToken); err != nil {
 				return failure(err, true)
 			}
 		}
@@ -176,7 +172,7 @@ WHERE n.nspname=$1 AND c.relname=$2`, request.Schema, request.Table).Scan(&kind,
 	rows, err := conn.Query(ctx, `SELECT a.attname::text, pg_catalog.format_type(a.atttypid,a.atttypmod),a.atttypid::bigint,
 COALESCE((SELECT key.ordinality FROM pg_catalog.pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality)
  WHERE i.indrelid=c.oid AND i.indisprimary AND i.indisvalid AND key.ordinality<=i.indnkeyatts AND key.attnum=a.attnum),0)::integer,
-(a.attgenerated<>'' OR a.attidentity='a'),has_column_privilege(c.oid,a.attnum,'INSERT'),has_column_privilege(c.oid,a.attnum,'UPDATE')
+(a.attgenerated<>'' OR a.attidentity='a'),has_column_privilege(c.oid,a.attnum,'INSERT'),has_column_privilege(c.oid,a.attnum,'UPDATE'),`+postgresBinaryTypeSQL+`
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 WHERE n.nspname=$1 AND c.relname=$2 ORDER BY a.attnum`, request.Schema, request.Table)
@@ -187,17 +183,22 @@ WHERE n.nspname=$1 AND c.relname=$2 ORDER BY a.attnum`, request.Schema, request.
 	for rows.Next() {
 		var column changeColumn
 		var oid int64
-		if err := rows.Scan(&column.name, &column.nativeType, &oid, &column.primaryKey, &column.generated, &column.canInsert, &column.canUpdate); err != nil {
+		if err := rows.Scan(&column.name, &column.nativeType, &oid, &column.primaryKey, &column.generated, &column.canInsert, &column.canUpdate, &column.binary); err != nil {
 			return table, err
 		}
 		column.oid = uint32(oid)
-		if !postgresChangeTypes[column.oid] {
-			return table, changeInvalid("This table contains an unsupported type and is read only.")
-		}
 		table.columns = append(table.columns, column)
 	}
 	if err := rows.Err(); err != nil {
 		return table, err
+	}
+	rows.Close()
+	lossless, loading := map[uint32]bool{}, map[uint32]bool{}
+	for i := range table.columns {
+		table.columns[i].lossless, err = postgresLosslessType(ctx, conn, table.columns[i].oid, lossless, loading)
+		if err != nil {
+			return table, err
+		}
 	}
 	if len(table.columns) != len(request.Columns) {
 		return table, changeConflict("The table structure changed. Reload the table before applying changes.")
@@ -247,15 +248,29 @@ func planChanges(table changeTable, request protocol.ChangesRequest) ([]changeSt
 			return "$" + strconv.Itoa(len(statement.values))
 		}
 		if change.Kind != "insert" {
+			if change.StorageToken != "" && !validPostgresStorageToken(change.StorageToken) {
+				return nil, changeInvalid("The row storage identity is invalid. Reload the table.")
+			}
+			if change.StorageToken == "" {
+				for _, column := range table.columns {
+					if !column.lossless {
+						return nil, changeInvalid("This row requires fresh storage metadata. Reload the table before editing.")
+					}
+				}
+			}
 			key := make([]protocol.CellValue, len(table.primary))
 			for index, ordinal := range table.primary {
 				key[index] = change.Original[ordinal]
 			}
 			encoded, _ := json.Marshal(key)
-			if targets[string(encoded)] {
+			target := string(encoded)
+			if change.StorageToken != "" {
+				target = change.StorageToken
+			}
+			if targets[target] {
 				return nil, changeInvalid("The same row cannot be changed twice in one Apply.")
 			}
-			targets[string(encoded)] = true
+			targets[target] = true
 			for index, value := range change.Original {
 				if err := validateChangeValue(value, table.columns[index], false); err != nil {
 					return nil, err
@@ -279,6 +294,15 @@ func planChanges(table changeTable, request protocol.ChangesRequest) ([]changeSt
 			}
 		}
 		where := func() string {
+			if change.StorageToken != "" {
+				values := strings.Split(change.StorageToken, "/")
+				predicates := []string{}
+				for i, column := range []changeColumn{{name: "tableoid", oid: 26}, {name: "ctid", oid: 27}, {name: "xmin", oid: 28}} {
+					value := values[i+1]
+					predicates = append(predicates, column.name+"="+bind(protocol.CellValue{Kind: "text", Value: &value}, column))
+				}
+				return strings.Join(predicates, " AND ")
+			}
 			predicates := make([]string, len(table.primary))
 			for index, ordinal := range table.primary {
 				column := table.columns[ordinal]
@@ -313,7 +337,8 @@ func planChanges(table changeTable, request protocol.ChangesRequest) ([]changeSt
 }
 
 func validateChangeValue(value protocol.CellValue, column changeColumn, allowDefault bool) error {
-	if !value.Valid(allowDefault) || value.Kind == "binary" && column.oid != 17 || value.Kind == "text" && column.oid == 17 {
+	binary := column.binary || column.oid == 17
+	if !value.Valid(allowDefault) || value.Kind == "binary" && !binary || value.Kind == "text" && binary {
 		return changeInvalid("A change contains a value incompatible with its column type.")
 	}
 	return nil
@@ -339,7 +364,10 @@ func changeParameters(values []protocol.CellValue) ([][]byte, error) {
 	return parameters, nil
 }
 
-func compareLockedRow(ctx context.Context, conn *pgx.Conn, table changeTable, original []protocol.CellValue) error {
+func compareLockedRow(ctx context.Context, conn *pgx.Conn, table changeTable, original []protocol.CellValue, storageToken string) error {
+	if storageToken != "" {
+		return compareStorageLockedRow(ctx, conn, table, storageToken)
+	}
 	quoted := make([]string, len(table.columns))
 	for index, column := range table.columns {
 		quoted[index] = pgx.Identifier{column.name}.Sanitize()
@@ -355,16 +383,24 @@ func compareLockedRow(ctx context.Context, conn *pgx.Conn, table changeTable, or
 	if err != nil {
 		return err
 	}
-	reader := conn.PgConn().ExecParams(ctx, "SELECT "+strings.Join(quoted, ",")+" FROM "+table.name+" WHERE "+strings.Join(predicates, " AND ")+" FOR UPDATE", parameters, types, nil, nil)
+	reader := conn.PgConn().ExecParams(ctx, "SELECT "+strings.Join(quoted, ",")+","+postgresStorageProjection+" FROM "+table.name+" WHERE "+strings.Join(predicates, " AND ")+" FOR UPDATE", parameters, types, nil, nil)
 	matched, rows := true, 0
 	for reader.NextRow() {
 		rows++
-		for index, value := range reader.Values() {
+		values := reader.Values()
+		if len(values) != len(table.columns)+1 {
+			matched = false
+			continue
+		}
+		if storageToken != "" && (values[len(values)-1] == nil || storageToken != string(values[len(values)-1])) {
+			matched = false
+		}
+		for index, value := range values[:len(values)-1] {
 			actual := protocol.CellValue{Kind: "null"}
 			if value != nil {
 				text := string(value)
 				actual.Kind = "text"
-				if table.columns[index].oid == 17 {
+				if table.columns[index].binary || table.columns[index].oid == 17 {
 					decoded, binaryErr := decodeBytea(value)
 					if binaryErr != nil {
 						matched = false

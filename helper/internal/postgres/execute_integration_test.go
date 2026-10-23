@@ -181,6 +181,24 @@ func (h *sqlIntegrationSession) waitBackend(pid int32, active, exists bool) {
 	}
 }
 
+func (h *sqlIntegrationSession) waitSleeping(pid int32) {
+	h.t.Helper()
+	// Parse/Describe can briefly be active before Execute. Tests interrupting
+	// server execution wait for the actual sleep event rather than that phase.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for {
+		var sleeping bool
+		if err := h.observer.QueryRow(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event='PgSleep')", pid).Scan(&sleeping); err != nil {
+			h.t.Fatal("server execution did not begin")
+		}
+		if sleeping {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func assertSQLCell(t *testing.T, response protocol.Response, row, column int, expected *string) {
 	t.Helper()
 	if row >= len(response.Rows) || column >= len(response.Rows[row]) {
@@ -330,6 +348,7 @@ func TestPostgresExecuteCancelAndBusyGuards(t *testing.T) {
 	pid := h.backendPID()
 	query := h.start("SELECT pg_sleep(20)")
 	h.waitBackend(pid, true, true)
+	h.waitSleeping(pid)
 	for _, command := range []protocol.Command{
 		{Type: "execute", RequestID: h.id(), SessionID: h.sessionID, QueryID: h.id(), SQL: "SELECT 1"},
 		{Type: "disconnect", RequestID: h.id(), SessionID: h.sessionID},
@@ -552,7 +571,7 @@ func TestPostgresExecuteConnectionLossInvalidatesSession(t *testing.T) {
 			}
 			query := h.start(sql)
 			if !selfTermination {
-				h.waitBackend(pid, true, true)
+				h.waitSleeping(pid)
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
 				var terminated bool

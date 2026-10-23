@@ -40,6 +40,10 @@ func executeParams(ctx context.Context, conn *pgx.Conn, command protocol.Command
 }
 
 func executeParamsSink(ctx context.Context, conn *pgx.Conn, command protocol.Command, sql string, values [][]byte, sink adapter.ResultSink) protocol.Response {
+	return executeParamsSinkWithStorage(ctx, conn, command, sql, values, sink, false)
+}
+
+func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command protocol.Command, sql string, values [][]byte, sink adapter.ResultSink, storageProjection bool) protocol.Response {
 	started := time.Now()
 	if ctx.Err() != nil {
 		category, message := "cancelled", "Execution was cancelled before it started."
@@ -51,24 +55,52 @@ func executeParamsSink(ctx context.Context, conn *pgx.Conn, command protocol.Com
 		failure.Connected, failure.TransactionStatus = !conn.IsClosed(), transactionStatus(conn)
 		return failure
 	}
-	reader := conn.PgConn().ExecParams(ctx, sql, values, nil, nil, nil)
+	statement, columns, prepareErr := prepareQueryTypes(ctx, conn, sql)
+	if prepareErr != nil {
+		failure := queryError(command, ctx, conn, prepareErr)
+		// Parse/coercion and catalog deparsing can call user type routines.
+		// Without a clean completion, preserve transport-outcome uncertainty.
+		failure.SQLNotExecuted = false
+		var serverError *pgconn.PgError
+		if !errors.As(prepareErr, &serverError) && ctx.Err() == nil && !conn.IsClosed() {
+			failure.Category, failure.Message = "result", "Result type metadata could not be read."
+		}
+		return failure
+	}
+	defer releaseQueryTypes(conn, statement)
+	reader := conn.PgConn().ExecPrepared(ctx, statement, values, nil, nil)
 	collector := newResultCollector(command, reader.FieldDescriptions(), MaxResultBytes)
-	for index, field := range reader.FieldDescriptions() {
-		if nativeType, ok := conn.TypeMap().TypeForOID(field.DataTypeOID); ok {
-			collector.response.Columns[index].NativeType = nativeType.Name
+	if assignQueryTypes(columns, reader.FieldDescriptions()) {
+		collector.response.Columns = columns
+	}
+	if storageProjection {
+		if len(collector.response.Columns) == 0 || collector.response.Columns[len(collector.response.Columns)-1].Name != postgresStorageAlias {
+			closeConnection(conn)
+			failure := protocol.ErrorResponse(command, "result", "Row storage metadata is unavailable.")
+			failure.Connected = false
+			return failure
 		}
-		if field.DataTypeOID == 17 {
-			collector.response.Columns[index].Encoding = "base64"
-		}
+		collector.response.Columns = collector.response.Columns[:len(collector.response.Columns)-1]
+		collector.response.StorageTokens = []string{}
 	}
 	sinkOK := sink != nil
 	if sinkOK && sink.Begin(0, collector.response.Columns) != nil {
 		sinkOK = false
 	}
-	var binaryError bool
+	var binaryError, storageError bool
 	for reader.NextRow() {
-		row := make([]*string, len(reader.Values()))
-		for index, value := range reader.Values() {
+		values := reader.Values()
+		storageToken := ""
+		if storageProjection {
+			if len(values) != len(collector.response.Columns)+1 || values[len(values)-1] == nil || !validPostgresStorageToken(string(values[len(values)-1])) {
+				storageError = true
+				continue
+			}
+			storageToken = string(values[len(values)-1])
+			values = values[:len(values)-1]
+		}
+		row := make([]*string, len(values))
+		for index, value := range values {
 			if value == nil {
 				continue
 			}
@@ -83,7 +115,11 @@ func executeParamsSink(ctx context.Context, conn *pgx.Conn, command protocol.Com
 			}
 			row[index] = &text
 		}
+		retained := len(collector.response.Rows)
 		collector.addRow(row)
+		if storageProjection && len(collector.response.Rows) > retained {
+			collector.response.StorageTokens = append(collector.response.StorageTokens, storageToken)
+		}
 		if sinkOK && sink.Row(0, row) != nil {
 			sinkOK = false
 		}
@@ -93,13 +129,18 @@ func executeParamsSink(ctx context.Context, conn *pgx.Conn, command protocol.Com
 		return queryError(command, ctx, conn, err)
 	}
 	response := collector.finish(tag, time.Since(started), transactionStatus(conn))
+	if storageError {
+		failure := protocol.ErrorResponse(command, "result", "The read completed, but row storage metadata could not be decoded.")
+		failure.Connected, failure.TransactionStatus = true, response.TransactionStatus
+		return failure
+	}
 	if binaryError {
 		failure := protocol.ErrorResponse(command, "result", "The command completed, but PostgreSQL binary data could not be decoded.")
 		failure.Connected, failure.TransactionStatus = true, response.TransactionStatus
 		return failure
 	}
 	if sinkOK {
-		_ = sink.End(0, protocol.ResultSet{Columns: response.Columns, Rows: [][]*string{}, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice})
+		_ = sink.End(0, protocol.ResultSet{Columns: response.Columns, Rows: [][]*string{}, StorageTokens: response.StorageTokens, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice})
 	}
 	return response
 }
@@ -225,6 +266,9 @@ func (collector *resultCollector) finish(tag pgconn.CommandTag, elapsed time.Dur
 				collector.rowBytes--
 			}
 			response.Rows = rows[:last]
+			if len(response.StorageTokens) > last {
+				response.StorageTokens = response.StorageTokens[:last]
+			}
 			collector.rowSizes = collector.rowSizes[:last]
 			continue
 		}

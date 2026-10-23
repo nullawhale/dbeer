@@ -254,8 +254,8 @@ func TestChangesConstraintFailureGeneratedColumnsAndReadOnlyReasons(t *testing.T
 	}
 	fixture.exec("CREATE TABLE " + fixture.table("unsupported") + " (id integer PRIMARY KEY,items integer[])")
 	unsupported := fixture.request("unsupported", protocol.RowChange{Kind: "insert", Values: []protocol.ColumnAssignment{changeAssign("id", changeText("1"))}})
-	if response = fixture.apply(unsupported); response.Category != "validation" || !strings.Contains(response.Message, "unsupported type") {
-		t.Fatal("a table containing an unsupported type must explain why editing is unavailable")
+	if response = fixture.apply(unsupported); response.Type != "query.result" {
+		t.Fatal("array columns must support the normal Preview/Apply workflow")
 	}
 	catalog := catalog(context.Background(), fixture.conn, protocol.Command{Type: "catalog", RequestID: "metadata", SessionID: "fixture", QueryID: "metadata",
 		Catalog: &protocol.CatalogRequest{Kind: "columns", Schema: fixture.schema, Object: "unsupported", ObjectKind: "table"}})
@@ -263,8 +263,8 @@ func TestChangesConstraintFailureGeneratedColumnsAndReadOnlyReasons(t *testing.T
 		t.Fatal("unsupported table metadata must remain available")
 	}
 	for _, row := range catalog.Rows {
-		if row[6] == nil || *row[6] != "false" || row[7] == nil || !strings.Contains(*row[7], "unsupported type") {
-			t.Fatal("catalog editing reasons must agree with the Apply adapter")
+		if row[6] == nil || *row[6] != "true" || row[7] == nil || *row[7] != "" {
+			t.Fatal("catalog editing permissions must agree with the Apply adapter")
 		}
 	}
 	fixture.exec("CREATE TABLE " + fixture.table("no_key") + " (id integer)")

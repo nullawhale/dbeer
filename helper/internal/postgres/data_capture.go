@@ -20,7 +20,7 @@ func (s *Session) dataTransaction(ctx context.Context) (pgx.Tx, error) {
 	if e != nil {
 		return nil, e
 	}
-	_, e = tx.Exec(ctx, "SET LOCAL search_path=pg_catalog; SET LOCAL row_security=off; SET LOCAL timezone='UTC'; SET LOCAL datestyle='ISO, YMD'; SET LOCAL intervalstyle='iso_8601'; SET LOCAL extra_float_digits=3; SET LOCAL bytea_output='hex'; SET LOCAL client_encoding='UTF8'")
+	_, e = tx.Exec(ctx, "SET LOCAL search_path=pg_catalog; SET LOCAL row_security=off; SET LOCAL timezone='UTC'; SET LOCAL datestyle='ISO, YMD'; SET LOCAL intervalstyle='iso_8601'; SET LOCAL extra_float_digits=3; SET LOCAL bytea_output='hex'; SET LOCAL client_encoding='UTF8'; SET LOCAL lc_monetary='C'")
 	if e != nil {
 		rollbackData(tx)
 		return nil, e
@@ -94,7 +94,11 @@ func describeDataTable(ctx context.Context, tx pgx.Tx, table tc.Table) (tc.Descr
 			encoding = "base64"
 		}
 		definition, _ := json.Marshal(c)
-		d.Columns = append(d.Columns, tc.Column{Index: i, Name: c.Ref.Name, NativeType: native, TypeLabel: c.Type.Value.Ref.Schema + "." + c.Type.Value.Ref.Name, Encoding: encoding, PrimaryKey: primary[c.Ref.Name], Numeric: strings.Contains("|int2|int4|int8|numeric|float4|float8|", "|"+base+"|"), Generated: c.Generated.Value != nil && c.Generated.Value.Kind != "none", Identity: c.Identity.Value != nil && c.Identity.Value.Kind != "none", Nullable: c.Nullable.Value != nil && *c.Nullable.Value, Definition: definition})
+		valueComparison := ""
+		if !postgresLosslessUse(*c.Type.Value, definitions, map[sc.Ref]bool{}) {
+			valueComparison = "unresolved"
+		}
+		d.Columns = append(d.Columns, tc.Column{ValueComparison: valueComparison, Index: i, Name: c.Ref.Name, NativeType: native, TypeLabel: c.Type.Value.Ref.Schema + "." + c.Type.Value.Ref.Name, Encoding: encoding, PrimaryKey: primary[c.Ref.Name], Numeric: strings.Contains("|int2|int4|int8|numeric|float4|float8|", "|"+base+"|"), Generated: c.Generated.Value != nil && c.Generated.Value.Kind != "none", Identity: c.Identity.Value != nil && c.Identity.Value.Kind != "none", Nullable: c.Nullable.Value != nil && *c.Nullable.Value, Definition: definition})
 	}
 	d.Definition, e = json.Marshal(struct {
 		Persistence string              `json:"persistence"`
@@ -112,6 +116,9 @@ func postgresDataBase(u sc.TypeUse, defs []sc.TypeDefinition) string {
 		return "array"
 	}
 	for depth := 0; depth < 128; depth++ {
+		if u.Kind == "array" {
+			return "array"
+		}
 		if u.Kind == "builtin" {
 			return u.Ref.Name
 		}

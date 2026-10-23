@@ -16,7 +16,10 @@ import (
 // RenderSchemaDefinition formats frozen catalog facts without opening a
 // connection. Arbitrary SQL expressions retain their captured spelling.
 func RenderSchemaDefinition(ctx context.Context, capture sc.Capture, ref sc.Ref) (sc.Definition, error) {
-	r := pgDefinition{w: &sc.DefinitionWriter{Context: ctx}}
+	r := pgDefinition{w: &sc.DefinitionWriter{Context: ctx}, types: map[sc.Ref]sc.TypeDefinition{}}
+	for _, t := range capture.Types {
+		r.types[t.Ref] = t
+	}
 	switch ref.Kind {
 	case "table":
 		for _, t := range capture.Tables {
@@ -47,7 +50,10 @@ func RenderSchemaDefinition(ctx context.Context, capture sc.Capture, ref sc.Ref)
 	return r.w.Finish()
 }
 
-type pgDefinition struct{ w *sc.DefinitionWriter }
+type pgDefinition struct {
+	w     *sc.DefinitionWriter
+	types map[sc.Ref]sc.TypeDefinition
+}
 
 func pgDefinitionRequired[T any](w *sc.DefinitionWriter, label string, f sc.Fact[T]) *T {
 	v := sc.DefinitionFact(w, label, f)
@@ -123,6 +129,13 @@ func (r pgDefinition) typeAt(u sc.TypeUse, depth int) {
 	}
 	if u.Ref.Schema != "pg_catalog" {
 		r.write(r.ref(u.Ref))
+		if m := pgDefinitionRequired(r.w, "type modifiers", u.Modifiers); m != nil && m.Raw != nil {
+			if m.SQL != nil {
+				r.write(r.scalar(*m.SQL))
+			} else {
+				r.w.Note("Unavailable user-defined type modifier SQL.")
+			}
+		}
 		if m := pgDefinitionRequired(r.w, "type modifiers", u.Modifiers); m != nil && (m.Length != nil || m.Precision != nil || m.Scale != nil || m.DatetimePrecision != nil || m.Interval != nil) {
 			r.w.Note("User-defined type modifiers require metadata review.")
 		}
@@ -303,6 +316,12 @@ func (r pgDefinition) constraint(c sc.Constraint, backing *sc.Index, domain bool
 			}
 			r.options(backing.Options, " WITH (")
 			r.indexState(*backing)
+		}
+	case "n":
+		r.write("NOT NULL ")
+		r.columns(c.Columns, "not-null column")
+		if v := pgDefinitionRequired(r.w, "constraint inheritance", c.NoInherit); v != nil && *v {
+			r.write(" NO INHERIT")
 		}
 	case "c":
 		r.write("CHECK (")
@@ -573,8 +592,19 @@ func (r pgDefinition) table(t sc.Table) {
 		name = r.name(t.Ref.Name)
 	}
 	r.write("TABLE ", name, " (\n")
+	namedNulls := map[sc.Ref]bool{}
+	for _, c := range t.Constraints.Items {
+		if c.Kind.Value != nil && *c.Kind.Value == "n" {
+			for _, col := range c.Columns.Items {
+				namedNulls[col] = true
+			}
+		}
+	}
 	count := 0
 	for _, c := range sc.DefinitionItems(r.w, "table columns", t.Columns) {
+		if namedNulls[c.Ref] {
+			c.Nullable = sc.Known(true)
+		}
 		if r.w.Full() {
 			break
 		}
@@ -620,7 +650,7 @@ func (r pgDefinition) table(t sc.Table) {
 		if c.Validated.State != "known" || c.Validated.Value == nil || *c.Validated.Value {
 			continue
 		}
-		if c.Kind.Value == nil || (*c.Kind.Value != "c" && *c.Kind.Value != "f") {
+		if c.Kind.Value == nil || (*c.Kind.Value != "c" && *c.Kind.Value != "f" && *c.Kind.Value != "n") {
 			r.w.Note("Unsupported unvalidated constraint.")
 			continue
 		}
@@ -649,6 +679,10 @@ func (r pgDefinition) typeDefinition(t sc.TypeDefinition) {
 		r.write("-- Type definition unavailable.\n")
 		return
 	}
+	if t.Extension != nil {
+		r.write("-- Extension ", r.name(t.Extension.Name), " version ", r.literal(t.Extension.Version), " owns this type.\n")
+		r.w.Note("Extension-managed types must be recreated through their extension.")
+	}
 	switch *kind {
 	case "e":
 		r.write("CREATE TYPE ", r.ref(t.Ref), " AS ENUM (")
@@ -669,6 +703,9 @@ func (r pgDefinition) typeDefinition(t sc.TypeDefinition) {
 		} else {
 			r.w.Note("Unavailable domain base type.")
 			r.write("/* base type unavailable */")
+		}
+		if t.Collation != nil {
+			r.write(" COLLATE ", r.ref(*t.Collation))
 		}
 		if d := pgDefinitionRequired(r.w, "domain default", t.Default); d != nil {
 			r.defaultSQL(*d)
@@ -711,9 +748,122 @@ func (r pgDefinition) typeDefinition(t sc.TypeDefinition) {
 			r.column(c, true)
 		}
 		r.write("\n);\n")
+	case "r":
+		r.rangeDefinition(t)
+	case "m":
+		if t.Base.Value == nil {
+			r.w.Note("Unavailable multirange owner type.")
+			return
+		}
+		if owner, ok := r.types[t.Base.Value.Ref]; ok && owner.Range != nil {
+			r.write("-- Multirange is created with its owning range type.\n")
+			r.rangeDefinition(owner)
+		} else {
+			r.w.Note("Unavailable multirange owner definition.")
+		}
+	case "b":
+		r.baseDefinition(t)
 	default:
 		r.w.Note("Unsupported type kind.")
 	}
+	if t.Comment != nil && *t.Comment != "" {
+		keyword := "TYPE"
+		if *kind == "d" {
+			keyword = "DOMAIN"
+		}
+		r.write("COMMENT ON ", keyword, " ", r.ref(t.Ref), " IS ", r.literal(*t.Comment), ";\n")
+	}
+}
+func (r pgDefinition) rangeDefinition(t sc.TypeDefinition) {
+	if t.Range == nil {
+		r.w.Note("Unavailable range metadata.")
+		return
+	}
+	v := t.Range
+	r.write("CREATE TYPE ", r.ref(t.Ref), " AS RANGE (\n    SUBTYPE = ")
+	r.typ(v.Subtype)
+	r.write(",\n    SUBTYPE_OPCLASS = ", r.ref(v.OperatorClass))
+	if v.Collation != nil {
+		r.write(",\n    COLLATION = ", r.ref(*v.Collation))
+	}
+	if v.Canonical != nil {
+		r.write(",\n    CANONICAL = ", r.ref(v.Canonical.Ref))
+	}
+	if v.Difference != nil {
+		r.write(",\n    SUBTYPE_DIFF = ", r.ref(v.Difference.Ref))
+	}
+	r.write(",\n    MULTIRANGE_TYPE_NAME = ", r.ref(v.Multirange), "\n);\n")
+}
+func (r pgDefinition) baseDefinition(t sc.TypeDefinition) {
+	if t.BaseType == nil {
+		r.w.Note("Unavailable base type metadata.")
+		return
+	}
+	b := t.BaseType
+	r.write("CREATE TYPE ", r.ref(t.Ref), ";\nCREATE TYPE ", r.ref(t.Ref), " (\n")
+	parts := 0
+	option := func(name, value string) {
+		if parts > 0 {
+			r.write(",\n")
+		}
+		r.write("    ", name)
+		if value != "" {
+			r.write(" = ", value)
+		}
+		parts++
+	}
+	for _, f := range b.Functions {
+		switch f.Role {
+		case "input", "output", "receive", "send", "typmod_in", "typmod_out", "analyze", "subscript":
+			option(strings.ToUpper(f.Role), r.ref(f.Ref))
+		}
+	}
+	for _, o := range sc.DefinitionItems(r.w, "base type options", b.Options) {
+		switch o.Name {
+		case "internalLength":
+			value := o.Value
+			if value == "-1" {
+				value = "VARIABLE"
+			}
+			option("INTERNALLENGTH", value)
+		case "passedByValue":
+			if o.Value == "true" {
+				option("PASSEDBYVALUE", "")
+			}
+		case "alignment":
+			if v, ok := map[string]string{"c": "char", "s": "int2", "i": "int4", "d": "double"}[o.Value]; ok {
+				option("ALIGNMENT", v)
+			} else {
+				r.w.Note("Unavailable base type alignment.")
+			}
+		case "storage":
+			if v, ok := map[string]string{"p": "plain", "e": "external", "x": "extended", "m": "main"}[o.Value]; ok {
+				option("STORAGE", v)
+			} else {
+				r.w.Note("Unavailable base type storage.")
+			}
+		case "category":
+			option("CATEGORY", r.literal(o.Value))
+		case "preferred":
+			option("PREFERRED", strings.ToUpper(o.Value))
+		case "collatable":
+			option("COLLATABLE", strings.ToUpper(o.Value))
+		case "delimiter":
+			option("DELIMITER", r.literal(o.Value))
+		case "default":
+			if o.Value != "" {
+				option("DEFAULT", r.literal(o.Value))
+			}
+		}
+	}
+	if b.Element != nil {
+		if parts > 0 {
+			r.write(",\n")
+		}
+		r.write("    ELEMENT = ")
+		r.typ(*b.Element)
+	}
+	r.write("\n);\n")
 }
 func (r pgDefinition) sequence(s sc.Sequence) {
 	r.write("CREATE SEQUENCE ", r.ref(s.Ref))

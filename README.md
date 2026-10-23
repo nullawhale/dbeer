@@ -357,6 +357,12 @@ Saved results retain structural type identities. Unresolved definitions never
 establish equality, and old snapshots remain readable. Only context-independent,
 parameterless built-in scalar identities can be recovered from legacy names.
 
+PostgreSQL comparison preserves exact type modifiers and definitions for arrays,
+enums, domains, composites, ranges, multiranges and custom base/extension types.
+Query metadata is read on the owning session before SQL executes once. Complex
+values use Preview/Apply with private row-version evidence; caller-controlled or
+lossy output cannot establish equality in saved-result comparisons.
+
 ## Value inspector in the working branch
 
 SQL results and table grids include a resizable **Value Inspector** beside the

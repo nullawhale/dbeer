@@ -31,14 +31,16 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 	}
 	sql, values, notice := catalogSQL(request)
 	var sourceSQL string
+	storageProjection := false
 	if request.Kind == "browse" {
 		plan, failure := browseSQL(ctx, conn, command)
 		sql, values, notice, sourceSQL = plan.statement, plan.values, plan.notice, plan.sourceSQL
+		storageProjection = plan.storageProjection
 		if failure != nil {
 			return *failure
 		}
 	}
-	response := executeParamsSink(ctx, conn, command, sql, values, sink)
+	response := executeParamsSinkWithStorage(ctx, conn, command, sql, values, sink, storageProjection)
 	if response.Type == "error" && response.Category == "sql" {
 		response.Message = "Catalog information is unavailable or access was denied."
 		response.ErrorPosition = 0
@@ -197,13 +199,9 @@ CASE WHEN a.attgenerated<>'' THEN pg_catalog.pg_get_expr(d.adbin,d.adrelid)
 COALESCE((SELECT key.ordinality FROM pg_catalog.pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality)
  WHERE i.indrelid=c.oid AND i.indisprimary AND key.ordinality<=i.indnkeyatts AND key.attnum=a.attnum),0)::text AS "primaryKey",
 CASE WHEN c.relkind IN ('r','p') AND a.attgenerated='' AND a.attidentity<>'a' AND has_column_privilege(c.oid,a.attnum,'UPDATE')
- AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute unsupported WHERE unsupported.attrelid=c.oid AND unsupported.attnum>0
- AND NOT unsupported.attisdropped AND unsupported.atttypid NOT IN (` + editablePostgresTypeOIDs + `))
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=c.oid AND i.indisprimary) THEN 'true' ELSE 'false' END AS editable,
 CASE WHEN c.relkind NOT IN ('r','p') THEN 'Only base tables support data editing.'
  WHEN NOT EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=c.oid AND i.indisprimary) THEN 'The table has no primary key.'
- WHEN EXISTS(SELECT 1 FROM pg_catalog.pg_attribute unsupported WHERE unsupported.attrelid=c.oid AND unsupported.attnum>0
- AND NOT unsupported.attisdropped AND unsupported.atttypid NOT IN (` + editablePostgresTypeOIDs + `)) THEN 'This table contains an unsupported type.'
  WHEN a.attgenerated<>'' OR a.attidentity='a' THEN 'The server generates this value.'
  WHEN NOT has_column_privilege(c.oid,a.attnum,'UPDATE') THEN 'UPDATE privilege is unavailable.' ELSE '' END AS "editReason"
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace

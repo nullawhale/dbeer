@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Compare PostgreSQL range/multirange, array, composite, domain and extension
+  definitions. Preserve exact query type identities and detect hidden row changes
+  before applying edits to complex values.
+
 - Retain private original-row evidence through streaming, grid drafts and
   Preview/Apply requests without exporting it in offline artifacts.
 
