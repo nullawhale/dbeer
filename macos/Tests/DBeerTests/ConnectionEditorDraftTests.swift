@@ -16,7 +16,8 @@ struct ConnectionEditorDraftTests {
             contactPoints: engine == .cassandra ? ["127.0.0.1", "127.0.0.2"] : nil,
             localDatacenter: engine == .cassandra ? "dc1" : nil,
             consistency: engine == .cassandra ? "LOCAL_ONE" : nil,
-            ssh: ssh.runtime(profileId: id, password: "fixture-ssh-secret"))
+            ssh: ssh.runtime(profileId: id, password: "fixture-ssh-secret"),
+            mongodb: engine == .mongodb ? MongoDBSettings(directConnection: true) : nil)
         return SavedConnection(id: id, name: name, settings: settings)
     }
 
@@ -41,6 +42,8 @@ struct ConnectionEditorDraftTests {
     @Test(arguments: DatabaseEngine.allCases)
     func duplicatePrefillsSettingsWithANewSSHIdentityAndAnEditableEngine(engine: DatabaseEngine) throws {
         let source = profile(engine: engine)
+        let fixtureIsValid = source.settings(password: "fixture-database-secret").hasValidNativeFields
+        try #require(fixtureIsValid, "The duplicated connection fixture must be valid for its engine and SSH topology.")
         let request = ConnectionEditorRequest.duplicate(source)
         let draft = request.makeDraft()
         #expect(request.existingConnection == nil && request.credentialSource == source)

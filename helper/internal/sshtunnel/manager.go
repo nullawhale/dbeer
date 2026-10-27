@@ -29,6 +29,7 @@ type Manager struct {
 	closed                  bool
 	done                    chan struct{}
 	configurationOperations sync.WaitGroup
+	forwardingAddress       func() (string, error)
 }
 type entry struct {
 	key         string
@@ -301,12 +302,14 @@ func (m *Manager) launchAttempt(ctx context.Context, s *protocol.SSHSettings) (s
 	}
 	// Reserving and handing off a port has a race; ExitOnForwardFailure plus an
 	// owned control socket proves this SSH process owns the final listener.
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	reserve := m.forwardingAddress
+	if reserve == nil {
+		reserve = reserveForwardingAddress
+	}
+	address, err := reserve()
 	if err != nil {
 		return "", nil, nil, failure("initialization", "Cannot allocate SSH forwarding.")
 	}
-	address := listener.Addr().String()
-	listener.Close()
 	control := filepath.Join(dir, "control")
 	args := []string{"-F", "/dev/null", "-N", "-T", "-M", "-S", control, "-D", address, "-p", strconv.Itoa(s.Port), "-l", s.User,
 		"-o", "ExitOnForwardFailure=yes", "-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + known, "-o", "GlobalKnownHostsFile=/dev/null", "-o", "UpdateHostKeys=no", "-o", "CheckHostIP=no", "-o", "HostKeyAlgorithms=" + hostKeyAlgorithms(pinned.algorithm),
@@ -385,6 +388,15 @@ func (m *Manager) launchAttempt(ctx context.Context, s *protocol.SSHSettings) (s
 			}
 		}
 	}
+}
+
+func reserveForwardingAddress() (string, error) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
+	address := listener.Addr().String()
+	return address, listener.Close()
 }
 
 func hostKeyAlgorithms(algorithm string) string {

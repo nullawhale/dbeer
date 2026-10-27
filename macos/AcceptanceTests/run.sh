@@ -114,12 +114,15 @@ if not records:
 if len(records) != 1:
     raise SystemExit('XCTest did not publish exactly one acceptance evidence record.')
 record = records[0]
-if (record.get('passed') is not True or record.get('normalQuit') is not True or
+ssh_crash = kind == 'ssh' and settings['phase'] == 'ssh-crash'
+expected_normal_quit = not ssh_crash
+if (record.get('passed') is not True or record.get('normalQuit') is not expected_normal_quit or
     record.get('phase') != settings['phase'] or record.get('pid') != settings['ownedPID'] or
     record.get('expectedBuild') != settings['expectedBuild']):
     raise SystemExit('Acceptance evidence does not match the owned fixture phase.')
 if kind == 'ssh':
-    required = ('firstConnect', 'hostKeyReview', 'hostKeyCancelled', 'encryptedKey',
+    required = ('firstConnect', 'encryptedKey', 'readyForForcedTermination') if ssh_crash else (
+                'firstConnect', 'hostKeyReview', 'hostKeyCancelled', 'encryptedKey',
                 'twoTabs', 'independentSessions', 'stoppedQuery', 'otherTabUnaffected',
                 'profileDisconnected')
     if not all(record.get(key) is True for key in required):

@@ -2,6 +2,14 @@
 
 A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0 in the working branch.
 
+This README describes the working branch. The existing **0.2.0/build 8** archive
+is an earlier prerelease; rebuilding with the same version metadata does
+not update that archive. MongoDB, SQL result editing, synchronization SQL plans,
+snapshots, investigations, and the expanded workspace are implemented in source
+and await a separate packaged release. The existing prerelease ZIP and SHA256 are
+available from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8).
+Homebrew installation is not available.
+
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
 
 ## Using the application
@@ -25,7 +33,7 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
-The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. Version 1 excludes psql/mysql client commands, COPY streams, LOAD DATA LOCAL, SSH tunnels, and external plugins.
+The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. The original version 1 scope excluded psql/mysql client commands, COPY streams, LOAD DATA LOCAL, SSH tunnels, and external plugins. SSH is now implemented in the working branch; the other exclusions remain.
 
 ## SQL result source rows and editing in the working branch
 
@@ -1024,7 +1032,15 @@ runner.
 
 For small changes, select affected Swift suites or methods with `--filter` (a regular expression; the flag can be repeated). This mode skips Go tests. Theme and UI checks run only when selected by the filter. A complete Go race and Swift Testing run requires explicit `--all`; use it for cross-cutting changes and final verification. Without a mode, the script prints usage and exits without building or testing. CI runs the full suite.
 
-Both `test.sh` modes build the application and run Swift Testing in a temporary test Keychain. An empty test selection is a failure. Database-dependent checks are skipped when no database is available. The test-postgres.sh and test-mysql.sh scripts start isolated Docker databases with random passwords; a missing required database is a failure. To run the complete native scenario with both engines:
+Both `test.sh` modes build the application and run Swift Testing in a temporary test Keychain. An empty test selection is a failure. Database-dependent checks are skipped when no database is available. The test-postgres.sh and test-mysql.sh scripts start isolated Docker databases with random passwords; a missing required database is a failure.
+
+The native host also receives a private Foundation data home under ignored
+`build/`, so default workspace, investigation and snapshot stores do not read or
+rewrite normal application data. The caller's `HOME`, signing identity and
+Keychain setup remain unchanged. The private Foundation data is removed after
+successful and failed native runs.
+
+To run the complete native scenario with both engines:
 
 ```sh
 DBEER_QA_OUTPUT_DIR="$PWD/build/qa" ./scripts/test-postgres.sh ./scripts/test-mysql.sh ./scripts/test.sh --all --require-postgres
@@ -1055,15 +1071,43 @@ Reproduce the separate packaged-archive acceptance run from build 5 to build 6 u
 
 Only this UI runner requires full Xcode and control of a separate application; Docker and both archives with SHA256 files are also required. Any other DBeer instance must be quit normally. The run uses isolated profiles and new test UUIDs in the regular Keychain. **October 18, 2026 — PASS**, five phases and cleanup, actual exit code 0: two-profile import, PostgreSQL/MySQL `SELECT 1` before and after updating, Cancel/Stop and Continue during a long query, UUID/draft/Keychain preservation, and normal shutdown. Native/model matrices are checked separately.
 
+The same runner can verify an existing archive against a current signed app
+without creating a release ZIP:
+
+```sh
+./scripts/test-install-update.sh \
+  --baseline-archive "$PWD/build/releases/DBeer-0.1.0-6-macos-arm64.zip" \
+  --candidate-app "$PWD/build/DBeer.app"
+```
+
+Repeat with the existing `DBeer-0.2.0-8-macos-arm64.zip` baseline. This mode checks
+the immutable archive checksum, persistent app/helper signatures, exact migration
+backups, disconnected restoration and PostgreSQL/MySQL reconnection using the
+baseline's Keychain credentials. Candidate identity includes full bundle hashes
+even when version/build metadata match. It uses isolated data and new fixture
+credentials; it does not update the owner's installed app or certify a future
+release ZIP. See [acceptance details](macos/AcceptanceTests/README.md).
+
 ## Internal release
 
 After verification on the owner's machine, run `./scripts/package-release.sh`. It builds the application with the persistent signature, verifies signing, and creates `build/releases/DBeer-<version>-<build>-macos-arm64.zip` and .zip.sha256. The archive includes the [license](LICENSE), changelog and [installation instructions](INSTALL.md). Existing releases are not overwritten, CI signatures are rejected, and nothing is published.
 
-The current local macOS prerelease is **0.2.0, build 8**. It uses the native SwiftUI/AppKit client and bundled Go helper; Windows/Linux GPUI candidates are outside this release. Packaging creates local files and does not publish a GitHub release.
+The existing macOS prerelease is **0.2.0, build 8**, available with its checksum
+from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8).
+It uses the native SwiftUI/AppKit client and bundled Go helper; Windows/Linux GPUI
+candidates are outside this release. Packaging creates local files and does not
+publish a GitHub release.
 
 The previous **0.1.0** internal release passed installation and update acceptance from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived that release's required second-Mac check. This evidence does not cover the 0.2.0 prerelease. Finder/Gatekeeper and installation on a clean second device have not been verified.
 
-The 0.2.0 prerelease includes execution safety, grid copying and editing, contextual SQL completion, themes, and native Cassandra support. Result snapshots, SQL folders, and data and schema comparison remain later stages. Windows/Linux contributions are welcome outside the release roadmap. MCP comes last among planned engineering tasks and does not depend on Windows/Linux clients. Public overview sources: [dbeer-landing](https://github.com/nullawhale/dbeer-landing); a feature implemented in the working branch does not imply a newly published archive.
+The existing 0.2.0/build 8 archive includes execution safety, grid copying and
+editing, contextual SQL completion, themes, and native Cassandra support. The
+working branch additionally implements result snapshots, SQL folders and library,
+investigations, schema/data comparison, SQL result editing, PostgreSQL/MySQL
+synchronization SQL plans, and MongoDB. These additions do not modify the existing
+archive. Windows/Linux contributions are welcome outside the release roadmap.
+MCP and expanded CQL language assistance remain future work. Public overview
+sources: [dbeer-landing](https://github.com/nullawhale/dbeer-landing).
 
 ## License
 

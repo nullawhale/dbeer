@@ -201,8 +201,10 @@ struct InvestigationWorkspaceTests {
         fixture.parent.title = "Latest title"
         fixture.model.setText("# Complete current Markdown\n😀", for: markdownID)
         fixture.workspace.moveDocument(fixture.parent.id, to: .right)
+        let keeper = fixture.workspace.newDocument(text: "SELECT 'keep this pane';")
+        let keeperState = keeper.storedState
         await fixture.workspace.closeDocument(fixture.parent)
-        #expect(fixture.workspace.documents.isEmpty)
+        #expect(fixture.workspace.documents.map(\.id) == [keeper.id])
         let saved = try #require(await fixture.store.load().documents.first)
         #expect(saved.title == "Latest title")
         #expect(saved.blocks.first { $0.id == firstBlockID }?.text == first.text)
@@ -219,7 +221,24 @@ struct InvestigationWorkspaceTests {
         first.text = "Late callback on closed child"
         #expect(fresh.text != first.text)
         #expect(fixture.workspace.openInvestigation(id: saved.id) === reopened)
-        #expect(fixture.workspace.documents.count == 1 && fixture.workspace.activePaneID == .right)
+        #expect(fixture.workspace.documents.count == 2 && fixture.workspace.activePaneID == .right)
+        #expect(keeper.storedState == keeperState && keeper.runtime == nil)
+        await fixture.workspace.shutdown()
+    }
+
+    @Test func reopenUsesTheSurvivingPaneAfterClosingTheLastInvestigationInItsPane() async throws {
+        let fixture = try await InvestigationRuntimeTestSupport.fixture(sql: ["SELECT 1"])
+        let originalChild = fixture.children[0]
+        let blockID = try #require(fixture.model.blockID(for: originalChild))
+        fixture.workspace.moveDocument(fixture.parent.id, to: .right)
+        await fixture.workspace.closeDocument(fixture.parent)
+        #expect(fixture.workspace.documents.isEmpty && !fixture.workspace.paneLayout.paneIDs.contains(.right))
+        let survivingPane = fixture.workspace.activePaneID
+        let reopened = try #require(fixture.workspace.reopenClosedTab())
+        let child = try #require(reopened.investigationModel?.sqlDocument(for: blockID))
+        #expect(fixture.workspace.pane(containing: reopened.id) == survivingPane)
+        #expect(fixture.workspace.documents.count == 1 && fixture.workspace.paneLayout.paneIDs.count == 1)
+        #expect(child.id != originalChild.id && child.runtime == nil && child.executions.isEmpty)
         await fixture.workspace.shutdown()
     }
 

@@ -1410,10 +1410,12 @@ final class ApplicationWorkspace: ObservableObject {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed before execution. Review it and run again.")
             }
             if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
-            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested,
-                  document.profileID == profileID, SQLFileDocument.sameBytes(document.text, boundText),
-                  library.savedConnections.first(where: { $0.id == profileID }) == profile,
-                  services[profileID]?.connectionState == .connected else { return }
+            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested else { return }
+            guard document.profileID == profileID, SQLFileDocument.sameBytes(document.text, boundText),
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile else {
+                throw ExecutionPolicyError(message: "The SQL or connection context changed while connecting. Review it and run again.")
+            }
+            guard services[profileID]?.connectionState == .connected else { return }
             guard hasSQLLibraryExecutionBinding(document, libraryBinding) else {
                 throw ExecutionPolicyError(message: "The SQL library scope changed while connecting. Review the file and connection before running again.")
             }

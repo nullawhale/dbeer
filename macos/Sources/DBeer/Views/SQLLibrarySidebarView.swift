@@ -126,6 +126,7 @@ struct SQLLibrarySidebarView: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(.plain).controlHover().help(entry.fileURL.path)
+            .accessibilityIdentifier("openSQLLibrary-\(entry.id.uuidString)")
             .contextMenu {
                 Button("Open in New Tab") { Task { await workspace.openSQLLibraryEntry(entry) } }
                 Button("Edit Library Details…") { editing.wrappedValue = SQLLibraryEditRequest(url: entry.fileURL) }

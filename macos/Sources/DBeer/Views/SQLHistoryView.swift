@@ -29,6 +29,7 @@ struct SQLHistoryView: View {
             }
             HStack {
                 Toggle("Record executed SQL", isOn: $workspace.historyEnabled).controlHover()
+                    .accessibilityIdentifier("historyRecording")
                 Spacer()
                 Button("Storage Settings…") { settingsPresented.wrappedValue = true }.controlHover()
                     .accessibilityIdentifier("historyStorageSettings")
@@ -150,6 +151,7 @@ struct SQLHistoryView: View {
                     Text("\(search.results.count.formatted()) of \(workspace.history.count.formatted()) executions")
                 }
                 Button("Reset Filters", action: resetFilters).controlHover().disabled(!hasFilters)
+                    .accessibilityIdentifier("resetHistoryFilters")
             }.font(.caption).appSecondaryText()
         }
     }
@@ -225,6 +227,7 @@ struct SQLHistoryView: View {
                 Text("Open in SQL Tab").padding(.horizontal, 8).frame(minHeight: 24).contentShape(Rectangle())
             }
             .buttonStyle(.plain).foregroundStyle(AppPalette.accent).controlHover()
+            .accessibilityIdentifier("openHistory-\(entry.id.uuidString)")
         }.padding(.vertical, 5)
     }
 

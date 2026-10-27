@@ -348,13 +348,17 @@ struct ConnectionsSidebarIntegrationTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let key = directory.appendingPathComponent("synthetic-key")
         try Data("Synthetic local key selection fixture; never used for authentication.".utf8).write(to: key)
+        let config = directory.appendingPathComponent("ssh_config")
+        try Data("Host sidebar-fixture\n  HostName bastion.example\n  User analyst\n  Port 2222\n".utf8).write(to: config)
         let model = WorkspaceModel(helperFactory: helper, connectionStore: MemoryConnectionLibraryStore(),
             credentialStore: MemoryConnectionCredentialStore())
         await model.start()
         defer { Task { await model.shutdown() } }
         for method in SSHConfiguration.Authentication.allCases {
-            let configuration = SSHConfiguration(host: "bastion.example", port: 2222, user: "analyst", authMethod: method,
-                identityFile: method == .privateKey ? key.path : nil)
+            let configured = method == .openSSH
+            let configuration = SSHConfiguration(host: configured ? "sidebar-fixture" : "bastion.example",
+                port: configured ? 0 : 2222, user: configured ? "" : "analyst", authMethod: method,
+                identityFile: method == .privateKey ? key.path : nil, configFile: configured ? config.path : nil)
             let settings = ConnectionSettings(host: "database.internal", port: 5432, database: "warehouse", user: "reader",
                 password: "", sslMode: "verify-full", ssh: configuration.runtime(profileId: UUID(),
                     password: method == .password ? "" : nil, passphrase: method == .privateKey ? "" : nil))
@@ -380,10 +384,22 @@ struct ConnectionsSidebarIntegrationTests {
                 try await NativeConnectionEditorTabs.select("SSH", in: host)
                 host.layoutSubtreeIfNeeded()
                 #expect(!descendants(host, of: NSScrollView.self).isEmpty)
-                for identifier in ["sshEnabled", "sshHost", "sshPort", "sshUser", "sshAuthentication"] {
+                let common = ["sshEnabled", "sshHost", "sshAuthentication"]
+                let controls = common + (configured ? ["sshConfigFile"] : ["sshPort", "sshUser"])
+                for identifier in controls {
                     #expect(try element(identifier, in: window).isAccessibilityEnabled(), "Disabled SSH control \(identifier)/\(method.rawValue)/\(theme)")
                 }
-                var fields = ["sshHost", "sshPort", "sshUser"]
+                var fields = configured ? ["sshHost", "sshConfigFile"] : ["sshHost", "sshPort", "sshUser"]
+                if configured {
+                    for hidden in ["sshPort", "sshUser", "sshIdentityFile", "sshPassword", "sshPassphrase"] {
+                        #expect((try? element(hidden, in: window)) == nil, "Unexpected manual SSH control \(hidden)/\(theme)")
+                    }
+                    let object = try element("sshConfigFile", in: window).object
+                    let field = try #require((object as? NSTextField) ?? ((object as? NSCell)?.controlView as? NSTextField))
+                    #expect(field.stringValue == config.path)
+                } else {
+                    #expect((try? element("sshConfigFile", in: window)) == nil)
+                }
                 if method == .password { fields.append("sshPassword") }
                 if method == .privateKey {
                     fields.append(contentsOf: ["sshIdentityFile", "sshPassphrase"])
@@ -528,12 +544,46 @@ struct ConnectionsSidebarIntegrationTests {
         let failedItem = try #require(outline.item(atRow: 1))
         #expect(outline.isExpandable(failedItem))
         outline.expandItem(failedItem)
-        try await waitFor({ workspace.error != nil && window.attachedSheet != nil }, "A connection error was not shown.")
+        try await waitFor({ workspace.notifications.entries.contains {
+            $0.message == "Connection refused." && $0.connection?.id == failed
+        } }, "The failed profile did not publish its connection error.")
+        let notification = try #require(workspace.notifications.entries.first {
+            $0.message == "Connection refused." && $0.connection?.id == failed
+        })
+        #expect(notification.connection?.name == "Fails" && workspace.notifications.unreadCount == 1)
+        #expect(window.attachedSheet == nil)
         #expect(workspace.services[failed]?.connectionState == .disconnected)
         #expect(!outline.isItemExpanded(failedItem))
         #expect(outline.numberOfRows == 2)
-        window.attachedSheet?.endEditing(for: nil)
-        if let sheet = window.attachedSheet { window.endSheet(sheet) }
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        let previouslyVisible = Set(NSApplication.shared.windows.filter(\.isVisible).map(ObjectIdentifier.init))
+        try await press("workspaceNotifications", in: window)
+        // A SwiftUI popover may use a child window or a separate native panel.
+        // Bind it to this exact notification UUID, not a global message match.
+        func notificationPopover() -> NSWindow? {
+            NSApplication.shared.windows.first { candidate in
+                guard candidate.isVisible,
+                      candidate === window || candidate.parent === window || !previouslyVisible.contains(ObjectIdentifier(candidate)) else {
+                    return false
+                }
+                let visible = elements(in: candidate)
+                return visible.contains { $0.accessibilityIdentifier() == "workspaceNotificationsList" } &&
+                    visible.contains { $0.accessibilityIdentifier() == "notificationConnection-" + notification.id.uuidString }
+            }
+        }
+        try await waitFor({ notificationPopover() != nil }, "The native notification popover did not show the failed profile.")
+        let popover = try #require(notificationPopover())
+        let text = elements(in: popover).flatMap { element -> [String] in
+            let label: String? = element.objectValue("accessibilityLabel")
+            let value: String? = element.objectValue("accessibilityValue")
+            return [label, value].compactMap { $0 }
+        }
+        #expect(text.contains("Connection refused.") && text.contains("Edit connection Fails"))
+        #expect(workspace.notifications.unreadCount == 0)
+        #expect(!outline.isItemExpanded(failedItem) && outline.numberOfRows == 2)
+        try await press("workspaceNotifications", in: window)
+        try await waitFor({ !popover.isVisible }, "The notification popover did not close.")
         await workspace.shutdown()
     }
 

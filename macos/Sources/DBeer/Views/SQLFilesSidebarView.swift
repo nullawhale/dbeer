@@ -118,6 +118,7 @@ struct SQLFilesSidebarView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain).catalogRowHover().help(match.url.path)
+        .accessibilityIdentifier("openSQLFolderMatch-\(match.attachmentID.uuidString)-\(match.relativePath)-\(match.lineNumber ?? 0)")
         .contextMenu {
             Button("Open") { Task { await workspace.openSQLFile(at: match.url) } }
             Button("Open in New Tab") { Task { await workspace.openSQLFile(at: match.url, inNewTab: true) } }

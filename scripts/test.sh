@@ -160,12 +160,31 @@ native_host="$build_root/dbeer-testing-host"
 export DBEER_TEST_BUNDLE_PATH="$test_bundle"
 export PACKAGE_RESOURCE_BUNDLE_PATH="$swift_bin"
 
+# Default Foundation stores must never read or rewrite the owner's workspace,
+# investigations or snapshots. Scope the data home to the test host only: app
+# signing, SwiftPM and Keychain setup retain the caller's real HOME and context.
+native_data_root="$(mktemp -d "$build_root/.native-test-data.XXXXXX")"
+swift_results=""
+cleanup_native_data() {
+    [[ -z "$swift_results" ]] || rm -f -- "$swift_results"
+    rm -rf -- "$native_data_root"
+}
+trap cleanup_native_data EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+chmod 700 "$native_data_root"
+mkdir -p "$native_data_root/Library/Application Support"
+native_environment=("CFFIXED_USER_HOME=$native_data_root")
+if [[ -z "${DBEER_DATA_COMPARISON_ROOT:-}" ]]; then
+    mkdir "$native_data_root/DataComparisons"
+    native_environment+=("DBEER_DATA_COMPARISON_ROOT=$native_data_root/DataComparisons")
+fi
 swift_results="$(mktemp "$build_root/.swift-results.XXXXXX")"
-trap 'rm -f "$swift_results"' EXIT
+printf 'Native test data: private Foundation home; caller HOME and signing context preserved.\n'
 if [[ "$run_all" == 1 ]]; then
-    "$native_host" 2>&1 | tee "$swift_results"
+    env "${native_environment[@]}" "$native_host" 2>&1 | tee "$swift_results"
 else
-    "$native_host" "${swift_filters[@]}" 2>&1 | tee "$swift_results"
+    env "${native_environment[@]}" "$native_host" "${swift_filters[@]}" 2>&1 | tee "$swift_results"
 fi
 # Exit status alone must never turn an incomplete test run into a green CI job.
 if ! grep -Eq 'Test run with [1-9][0-9]* tests? .*passed after' "$swift_results"; then

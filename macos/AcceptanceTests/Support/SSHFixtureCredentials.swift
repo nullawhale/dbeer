@@ -20,7 +20,10 @@ func perform() throws {
     let request = try JSONDecoder().decode(Request.self, from: data)
     guard let id = UUID(uuidString: request.profileID), id.uuidString == request.profileID,
           request.appPath.hasPrefix("/"), request.appPath.hasSuffix("/DBeer.app") else { throw FixtureFailure.invalidRequest }
-    let accounts = [(id.uuidString, request.databasePassword), (id.uuidString + ":sshPassphrase", request.passphrase)]
+    var accounts = [(id.uuidString, request.databasePassword)]
+    if request.action == "delete" || request.passphrase != nil {
+        accounts.append((id.uuidString + ":sshPassphrase", request.passphrase))
+    }
     let service = "dev.dbeer.connections"
     if request.action == "delete" {
         for (account, _) in accounts {

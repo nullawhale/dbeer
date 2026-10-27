@@ -43,6 +43,9 @@ struct ConnectionTesterTests {
                 assert settings['host'] == 'draft.example.test'
                 assert settings['password'] == 'draft-fixture-secret'
                 assert settings['sslMode'] == 'verify-full'
+                if settings['engine'] == 'mongodb':
+                    assert settings['user'] == 'analyst'
+                    assert settings['mongodb']['authSource'] == 'admin'
                 if settings.get('ssh'):
                     assert settings['ssh']['profileId'] != source
                     assert settings['ssh']['password'] == 'ssh-fixture-secret'
@@ -59,7 +62,7 @@ struct ConnectionTesterTests {
                         connected=False, outcomeUnknown=False)
                 else:
                     reply.update(type='connect.result', engine=settings['engine'], capabilities=['execute'],
-                        sessionId='temporary-test-session', transactionStatus='unsupported' if settings['engine'] == 'cassandra' else 'idle')
+                        sessionId='temporary-test-session', transactionStatus='unsupported' if settings['engine'] in ['cassandra','mongodb'] else 'idle')
             elif kind == 'disconnect':
                 assert command['sessionId'] == 'temporary-test-session'
                 if mode == 'disconnect-error':
@@ -79,9 +82,10 @@ struct ConnectionTesterTests {
 
     private func settings(engine: DatabaseEngine = .postgresql) -> ConnectionSettings {
         ConnectionSettings(host: "draft.example.test", port: engine.defaultPort,
-            database: engine.defaultDatabase, user: engine == .cassandra ? "analyst" : engine.defaultUser, password: "draft-fixture-secret",
+            database: engine.defaultDatabase, user: [.cassandra, .mongodb].contains(engine) ? "analyst" : engine.defaultUser, password: "draft-fixture-secret",
             sslMode: "verify-full", engine: engine,
-            contactPoints: engine == .cassandra ? ["draft.example.test"] : nil)
+            contactPoints: engine == .cassandra ? ["draft.example.test"] : nil,
+            mongodb: engine == .mongodb ? MongoDBSettings(authSource: "admin") : nil)
     }
 
     private func waitUntilEntered(_ fixture: Fixture) async throws {
@@ -99,8 +103,11 @@ struct ConnectionTesterTests {
         defer { fixture.remove() }
         let tester = ConnectionTester(helperFactory: { fixture.client })
         // Testing does not require a saved profile or a nonempty profile name.
-        await tester.test(settings(engine: engine))
-        #expect(tester.state == .succeeded && !tester.isTesting)
+        let connection = settings(engine: engine)
+        let fixtureIsValid = connection.hasValidNativeFields
+        try #require(fixtureIsValid, "The connection-test fixture must be valid for its engine.")
+        await tester.test(connection)
+        try #require(tester.state == .succeeded && !tester.isTesting)
         #expect(fixture.trace == ["hello", "connect", "disconnect", "shutdown"])
         #expect(await fixture.client.waitForExit().status == 0)
         tester.reset()

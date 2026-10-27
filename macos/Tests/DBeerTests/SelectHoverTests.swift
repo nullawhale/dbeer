@@ -128,10 +128,14 @@ struct SelectHoverTests {
                     window.setContentSize(NSSize(width: width, height: 720))
                     try await Task.sleep(for: .milliseconds(200))
                     host.layoutSubtreeIfNeeded()
+                    // Selecting a tab mounts its controls. Ownership must be
+                    // assigned after that hierarchy exists, as it is during a
+                    // production window update, rather than on the old tab.
+                    if name == "connection" { try await NativeConnectionEditorTabs.select("Options", in: host) }
                     let policy = NativeButtonFocusPolicy()
                     policy.apply(to: window)
                     policy.apply(to: window)
-                    if name == "connection" { try await NativeConnectionEditorTabs.select("Options", in: host) }
+                    host.layoutSubtreeIfNeeded()
                     let popups = descendants(host, of: NSPopUpButton.self).filter { !$0.isHiddenOrHasHiddenAncestor && !$0.visibleRect.isEmpty }
                     if name == "workspace" { usesNativePickers = !popups.isEmpty }
                     #expect(popups.count == (usesNativePickers ? nativeCount : (name == "connection" ? 1 : 0)))

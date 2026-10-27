@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Owned signed-application SSH acceptance fixture and external observer."""
 import base64
+import ctypes
 import datetime
 import fcntl
 import hashlib
@@ -24,6 +25,15 @@ ROOT = pathlib.Path(sys.argv[1]).resolve()
 SERVICE = "dev.dbeer.connections"
 BUNDLE = "dev.dbeer.app"
 DOCKER = shutil.which("docker")
+LIBPROC = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+LIBPROC.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+LIBPROC.proc_pidpath.restype = ctypes.c_int
+
+def process_executable(pid):
+    buffer = ctypes.create_string_buffer(4096)
+    if LIBPROC.proc_pidpath(pid, buffer, len(buffer)) > 0:
+        return os.fsdecode(buffer.value)
+    return None
 
 class Failure(Exception):
     pass
@@ -49,11 +59,65 @@ def private_json(path, value):
 
 def processes():
     result = {}
-    for line in command(["/bin/ps", "-ww", "-axo", "pid=,ppid=,comm="], "Read-only process inventory").decode().splitlines():
-        fields = line.strip().split(None, 2)
-        if len(fields) == 3:
-            result[int(fields[0])] = {"parent": int(fields[1]), "path": fields[2]}
-    return result
+    for line in command(["/bin/ps", "-ww", "-axo", "pid=,ppid=,stat=,comm="], "Read-only process inventory").decode().splitlines():
+        fields = line.strip().split(None, 3)
+        if len(fields) == 4:
+            result[int(fields[0])] = {"parent": int(fields[1]), "state": fields[2], "path": fields[3]}
+    # ps may transiently supply a parenthesized comm during fork/exec as well
+    # as exit. For a live child, resolve the executable through the kernel;
+    # never accept a basename as a substitute for a trusted executable path.
+    helper = globals().get("helper_binary")
+    app = globals().get("app_binary")
+    owned = globals().get("owned_processes", {})
+    helper_comm = "(" + pathlib.Path(helper).name + ")" if helper else None
+    for pid, row in result.items():
+        if row["state"].startswith("Z") and row["path"] == "<defunct>" and pid in owned:
+            row["path"] = owned[pid]
+            continue
+        if row["path"] not in {helper_comm, "(ssh)", "(ssh-keyscan)"}:
+            continue
+        ancestor = row["parent"]
+        owned_ancestry = False
+        visited = set()
+        while ancestor in result and ancestor not in visited:
+            visited.add(ancestor)
+            candidate = result[ancestor]
+            if owned.get(ancestor) == candidate["path"] or (ancestor == globals().get("app_pid") and candidate["path"] == app):
+                owned_ancestry = True
+                break
+            ancestor = candidate["parent"]
+        known = owned.get(pid)
+        if known or owned_ancestry:
+            executable = process_executable(pid)
+            allowed = {helper, "/usr/bin/ssh", "/usr/bin/ssh-keyscan"}
+            if executable in allowed:
+                # During fork/exec, comm can name the target while libproc
+                # still reports the trusted parent image. The kernel path,
+                # not that transient basename, is the identity authority.
+                row["path"] = executable
+                continue
+            if executable is None:
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    row["gone"] = True
+                    continue
+                except PermissionError:
+                    pass
+        if not row["state"].startswith("Z"):
+            continue
+        # A zombie no longer has a resolvable executable. Keep only previously
+        # observed IDs or exact expected utility roles under owned ancestry,
+        # and retain their PID until actually reaped for cleanup verification.
+        if known and row["path"] == "(" + pathlib.Path(known).name + ")":
+            row["path"] = known
+            continue
+        parent = result.get(row["parent"], {}).get("path")
+        if helper and owned_ancestry and parent == helper and row["path"] in {"(ssh-keyscan)", "(ssh)"}:
+            row["path"] = "/usr/bin/" + row["path"][1:-1]
+        elif helper and app and owned_ancestry and parent in {helper, app, "/usr/bin/ssh"} and row["path"] == helper_comm:
+            row["path"] = helper
+    return {pid: row for pid, row in result.items() if not row.get("gone")}
 
 def process_arguments():
     # Arguments never enter logs/evidence. Extract only owned process roles and
@@ -281,7 +345,14 @@ exec /usr/sbin/sshd -D -e -h /run/sshd/host_key -o PasswordAuthentication=no -o 
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
         require(existing.returncode == 44, "A fixture credential account already exists; it was left untouched.")
     credential_creation_started = True
-    require(credential("create", password, passphrase).get("created") is True, "Synthetic Keychain credential provisioning failed.")
+    require(credential("create", password, None).get("created") is True, "Synthetic database Keychain credential provisioning failed.")
+    manual_passphrase = state / "manual-passphrase"
+    manual_passphrase.write_text(passphrase + "\n")
+    manual_passphrase.chmod(0o600)
+    report["passphraseSource"] = "nativeSecurePrompt"
+    absent = subprocess.run(["/usr/bin/security", "find-generic-password", "-s", SERVICE, "-a", profile_id + ":sshPassphrase"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15)
+    require(absent.returncode == 44, "Manual passphrase fixture unexpectedly has a saved passphrase.")
     password = passphrase = None
     input_snapshot = json.loads(command([str(input_guard), "snapshot"], "Input source snapshot", environment=ui_environment))
     private_json(state / "input-source-before.json", input_snapshot)
@@ -300,7 +371,8 @@ exec /usr/sbin/sshd -D -e -h /run/sshd/host_key -o PasswordAuthentication=no -o 
         "smokeProfileID": profile_id, "smokeProfileEngine": "postgresql", "sshHost": "127.0.0.1", "sshPort": ssh_port,
         "sshFingerprint": host_fingerprint, "inputSourceOriginalID": input_snapshot["originalID"],
         "inputSourceASCIIID": input_snapshot["asciiID"], "resultFile": str(state / "result.json"),
-        "disconnectEvidenceFile": str(state / "disconnect-evidence.json")}
+        "disconnectEvidenceFile": str(state / "disconnect-evidence.json"),
+        "manualPassphraseFile": str(manual_passphrase)}
     private_json(state / "config.json", configuration)
     observed = {"databasePIDs": [], "noDatabaseTrafficBeforeTrust": True, "hostKeyPinned": False,
         "longQueryActive": False, "otherTabWorkedDuringLongQuery": False, "queryRecoveredAfterStop": False,
@@ -319,9 +391,13 @@ exec /usr/sbin/sshd -D -e -h /run/sshd/host_key -o PasswordAuthentication=no -o 
                     for pid, row in table.items():
                         parent = row["parent"]
                         parent_is_owned = parent in owned_processes and table.get(parent, {}).get("path") == owned_processes[parent]
+                        if pid in owned_processes and row["path"] != owned_processes[pid]:
+                            require(parent_is_owned and owned_processes[pid] == helper_binary and row["path"] in {"/usr/bin/ssh", "/usr/bin/ssh-keyscan"},
+                                    "Owned executable changed to an unexpected image.")
+                            owned_processes[pid] = row["path"]
                         if pid not in owned_processes and parent_is_owned:
                             require(row["path"] in {helper_binary, "/usr/bin/ssh", "/usr/bin/ssh-keyscan"},
-                                    "Owned app started an unexpected child process: " + row["path"])
+                                    "Owned app started an unexpected child process: " + row["path"] + " (state=" + row["state"] + ", parent=" + table[parent]["path"] + ")")
                             owned_processes[pid] = row["path"]
                             changed = True
                 stage = "process-roles"
@@ -331,7 +407,7 @@ exec /usr/sbin/sshd -D -e -h /run/sshd/host_key -o PasswordAuthentication=no -o 
                     if table.get(pid, {}).get("path") != path:
                         continue
                     is_watchdog = path == helper_binary and " --ssh-watchdog " in arguments.get(pid, "")
-                    if path == "/usr/bin/ssh" or is_watchdog:
+                    if not table[pid]["state"].startswith("Z") and (path == "/usr/bin/ssh" or is_watchdog):
                         live_tunnel_processes.append(pid)
                         observed["sshTunnelProcessSeen"] = True
                         match = re.search(r"(?:^|\s)-D\s+127\.0\.0\.1:(\d+)(?:\s|$)", arguments.get(pid, ""))
@@ -425,6 +501,75 @@ exec /usr/sbin/sshd -D -e -h /run/sshd/host_key -o PasswordAuthentication=no -o 
     require("Accepted publickey for dbeer" in server_log, "The bastion did not confirm private-key authentication.")
     report["encryptedKeyAuthenticationObserved"] = True
     require(not database_rows(), "Profile disconnect left database sessions open.")
+    require(all(evidence.get(key) is True for key in ("passphraseCancelled", "incorrectPassphraseRejected", "nativePassphraseEntered")),
+            "Native passphrase cancellation, rejection and secure input were not all verified.")
+    # The crash phase intentionally leaves the real signed app connected. Only
+    # after independently observing its backend, watchdog, SSH process and SOCKS
+    # listener does this fixture kill its exact owned PID.
+    launch_result.unlink()
+    command([str(launcher), str(launch_configuration)], "Launch signed app for owned crash acceptance", environment=ui_environment)
+    app_pid = int(json.loads(launch_result.read_text())["pid"])
+    require(processes().get(app_pid, {}).get("path") == app_binary, "Crash phase launched an unexpected app path.")
+    owned_processes[app_pid] = app_binary
+    crash_configuration = dict(configuration, phase="ssh-crash", ownedPID=app_pid, resultFile=str(state / "crash-result.json"))
+    private_json(state / "crash-config.json", crash_configuration)
+    with (state / "crash-ui-runner.log").open("xb") as output:
+        tested = subprocess.run([str(runner), "--ssh", str(state / "crash-config.json")], stdout=output, stderr=subprocess.STDOUT,
+                                env=ui_environment, timeout=240)
+    require(tested.returncode == 0, "SSH crash preparation XCTest failed; inspect the private crash-ui-runner.log.")
+    crash_evidence = json.loads((state / "crash-result.json").read_text())
+    require(crash_evidence.get("readyForForcedTermination") is True and crash_evidence.get("normalQuit") is False,
+            "Crash phase did not leave the owned connected app ready for forced termination.")
+    crash_ports = set()
+    def crash_ready():
+        table = processes()
+        changed = True
+        while changed:
+            changed = False
+            for pid, row in table.items():
+                parent = row["parent"]
+                parent_is_owned = parent in owned_processes and table.get(parent, {}).get("path") == owned_processes[parent]
+                if pid in owned_processes and row["path"] != owned_processes[pid]:
+                    require(parent_is_owned and owned_processes[pid] == helper_binary and row["path"] in {"/usr/bin/ssh", "/usr/bin/ssh-keyscan"},
+                            "Owned crash-phase executable changed to an unexpected image.")
+                    owned_processes[pid] = row["path"]
+                if pid not in owned_processes and parent_is_owned:
+                    require(row["path"] in {helper_binary, "/usr/bin/ssh", "/usr/bin/ssh-keyscan"}, "Unexpected owned crash-phase child.")
+                    owned_processes[pid] = row["path"]
+                    changed = True
+        arguments = process_arguments()
+        ssh_seen = watchdog_seen = False
+        for pid, path in owned_processes.items():
+            if table.get(pid, {}).get("path") != path:
+                continue
+            if table[pid]["state"].startswith("Z"):
+                continue
+            ssh_seen |= path == "/usr/bin/ssh"
+            watchdog_seen |= path == helper_binary and " --ssh-watchdog " in arguments.get(pid, "")
+            if path == "/usr/bin/ssh":
+                match = re.search(r"(?:^|\s)-D\s+127\.0\.0\.1:(\d+)(?:\s|$)", arguments.get(pid, ""))
+                if match:
+                    crash_ports.add(int(match.group(1)))
+        return app_pid in table and ssh_seen and watchdog_seen and bool(crash_ports) and bool(database_rows())
+    wait(crash_ready, "Owned app, real database session and SSH processes were not active together before crash.")
+    require(processes().get(app_pid, {}).get("path") == app_binary, "Owned app identity changed before the requested crash.")
+    os.kill(app_pid, signal.SIGKILL)
+    def crash_clean():
+        table = processes()
+        if any(table.get(pid, {}).get("path") == path for pid, path in owned_processes.items()):
+            return False
+        if database_rows():
+            return False
+        for port in crash_ports:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.1)
+                if probe.connect_ex(("127.0.0.1", port)) == 0:
+                    return False
+        return True
+    wait(crash_clean, "Forced application termination left an owned helper, SSH process, listener or database session.", 20)
+    report["forcedApplicationTermination"] = {"signal": "SIGKILL", "ownedPID": app_pid,
+        "connectedBeforeKill": True, "watchdogSeenBeforeKill": True, "allOwnedProcessesGone": True,
+        "databaseSessionsGone": True, "ownedListenersClosed": True, "uiEvidence": crash_evidence}
 except Exception as error:
     failure = type(error).__name__ + ": " + str(error)
 finally:
@@ -483,6 +628,7 @@ finally:
         report["cleanupErrors"] = cleanup_errors
         failure = failure or "; ".join(cleanup_errors)
     shutil.rmtree(fixture, ignore_errors=True)
+    (state / "manual-passphrase").unlink(missing_ok=True)
     report["status"] = "FAIL" if failure else "PASS"
     if failure:
         report["failure"] = failure

@@ -108,7 +108,9 @@ func TestPostgresBackpressureControlWithSixteenRealSessions(t *testing.T) {
 			}
 			state := func(pid int32, expected string) bool {
 				var found bool
-				if observer.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND state=$2)", pid, expected).Scan(&found) != nil {
+				// Session preparation also briefly reports active. Establish that
+				// both user sleeps actually started before testing Stop isolation.
+				if observer.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND state=$2 AND ($2 <> 'active' OR wait_event='PgSleep'))", pid, expected).Scan(&found) != nil {
 					t.Fatal("cannot inspect real backpressure backend")
 				}
 				return found

@@ -2,7 +2,7 @@
 
 DBeer requires macOS 14+ on Apple Silicon. Running a packaged application does not require Go, Swift, or the source code.
 
-The current local prerelease is **0.2.0, build 8**, for the native macOS client
+The existing prerelease is **0.2.0, build 8**, for the native macOS client
 and bundled Go helper. It includes PostgreSQL, MySQL and Apache Cassandra support.
 The numeric application version is 0.2.0; this archive remains a prerelease.
 Installed-archive update acceptance for this version is pending. The earlier
@@ -11,7 +11,7 @@ The full local Go race and native Swift runners completed successfully for build
 native database integration cases without configured fixtures were skipped.
 Earlier intermittent editor completion and signature-help failures remain tracked.
 
-1. Obtain the ZIP archive and its `.sha256` file from the project owner. In Terminal, change to the download directory and run `shasum -a 256 -c DBeer-<version>-<build>-macos-arm64.zip.sha256`, substituting the downloaded filename. The result must be `OK`.
+1. Obtain the ZIP archive and its `.sha256` file from [the build 8 prerelease](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8) or directly from the project owner. In Terminal, change to the download directory and run `shasum -a 256 -c DBeer-<version>-<build>-macos-arm64.zip.sha256`, substituting the downloaded filename. The result must be `OK`.
 2. Extract the ZIP and move `DBeer.app` to `Applications`. When updating, quit the running DBeer instance before replacing the application.
 3. Open DBeer. If macOS blocks a trusted internal build, attempt to open it once, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. Follow [Apple's official instructions](https://support.apple.com/en-us/102445). Do not disable application checks system-wide.
 4. Open **Connections → Import Connections…**, review the profiles, and select a local CA if needed; alternatively, create a profile with **⌘N**. PostgreSQL 16/17/18, MySQL 8.0/8.4 and Cassandra 4.1/5.0 are supported. Enter your password in the profile editor. Use `verify-full` and a trusted CA for certificate verification. The password is stored in the local Keychain and excluded from profile exports.
@@ -23,15 +23,30 @@ Version 0.1.0 is an early internal build. On October 18, 2026, the owner waived 
 
 Developers can reproduce the separate UI acceptance run with `./scripts/test-install-update.sh` from the repository root. Its XCTest runner requires full Xcode, Docker, and both verified archives; the packaged DBeer application itself does not require these tools.
 
+For an archive-to-current-app check, pass `--baseline-archive` and
+`--candidate-app` to that runner. Supported baselines are 0.1.0/build 6 and
+0.2.0/build 8. The runner installs private copies, checks the old archive checksum
+and both signatures, and tests migration and existing Keychain access without
+passing passwords to the candidate app. Matching build numbers do not replace
+content/signature verification. This mode creates no release ZIP and does not
+change the owner's installed app or existing archives. Details and commands are
+in [the acceptance guide](macos/AcceptanceTests/README.md).
+
 The 0.2.0 prerelease migrates profiles to format v3 with environment and readonly settings. The first load of v1/v2 creates `connections.json.v1.backup` or `connections.json.v2.backup` containing the original bytes, preserves UUIDs and access to the same Keychain entries, and replaces the file atomically. Unknown versions and corrupt files are not overwritten. Profile export v2 includes environment and readonly, while legacy v1 imports remain compatible. The application and bundled helper must both use protocol v4; incompatible helpers are rejected during the handshake. These changes do not rename or replace existing 0.1.0 archives.
 
-The working branch adds optional SSH tunneling with profile format v4, portable
-profile format v3 and native app/helper protocol v5. Rebuild the complete app;
+The working branch uses profile format v5, portable profile format v3, workspace
+format v10 and native app/helper protocol v5. It adds optional SSH tunneling,
+dynamic password commands, MongoDB, expanded workspace persistence and result
+workflows. Rebuild the complete app;
 mixing it with an older helper fails the handshake. Existing profiles preserve
 their UUIDs and database Keychain credentials and default to SSH disabled. SSH
 passwords and key passphrases have separate Keychain entries. Profile imports
 exclude secrets and SSH trust, and key authentication requires local key-file
-selection. These changes do not modify the existing build 8 release archive.
+selection. Portable profiles also exclude local password commands. Restored SQL,
+table views and investigation blocks remain disconnected until an explicit user
+action. These changes do not modify the existing build 8 release archive. MongoDB
+and the other working-branch additions require a current complete build and are
+not installation features of that older archive.
 
 Readonly in the 0.2.0 prerelease rejects writes and unknown SQL/CQL in the helper. PostgreSQL/MySQL also enable server-side read-only mode; Cassandra uses local assessment. Enforce strict write restrictions with database user permissions: read-only mode does not replace server restrictions and has exceptions for temporary tables. Changing environment or readonly in the profile editor requires the normal session shutdown workflow; active transactions are never silently completed.
 

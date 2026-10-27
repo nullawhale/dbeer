@@ -77,6 +77,56 @@ fixture observer must verify actual backend state and cleanup; the UI runner's
 macOS may require ordinary UI
 Testing authorization; this runner does not grant, reset or bypass it.
 
+## Archive to current application update acceptance
+
+The same isolated installer can update an existing release archive to a current
+owner-signed application without creating a release ZIP or changing version/build
+metadata:
+
+```sh
+./scripts/test-install-update.sh \
+  --baseline-archive "$PWD/build/releases/DBeer-0.1.0-6-macos-arm64.zip" \
+  --candidate-app "$PWD/build/DBeer.app"
+./scripts/test-install-update.sh \
+  --baseline-archive "$PWD/build/releases/DBeer-0.2.0-8-macos-arm64.zip" \
+  --candidate-app "$PWD/build/DBeer.app"
+```
+
+Both options must be supplied together. The no-argument command retains the
+original build 5 → 6 archive scenario. Candidate mode accepts the 0.1.0/build 6
+and 0.2.0/build 8 baselines, verifies the baseline checksum/CRC and both bundles'
+strict signatures, arm64 executables and matching persistent signing identities.
+It snapshots the supplied candidate and compares complete file/symlink hashes;
+identical version/build metadata is permitted when the contents differ.
+
+The baseline UI imports two synthetic profiles into an empty private library.
+An acceptance-only utility, signed with the baseline's exact certificate,
+provisions only those new UUIDs' database passwords through stdin. Baseline
+items must first be verified empty without requesting authentication UI. The
+system `security` utility deletes only that verified service/UUID, and the signed
+utility creates its replacement only if the item is still absent. This avoids
+editing the archived app's Keychain owner ACL and rejects nonempty or duplicate
+items. Baseline PostgreSQL/MySQL queries prove the initial credentials. The
+installer then removes the password files, replaces its private installed copy with the candidate and
+launches it normally. The candidate never receives credentials through startup
+arguments, environment, stdin or UI-test configuration.
+
+The candidate-disconnected phase selects both preserved drafts and checks exact
+text, absence of results and idle controls. An independent observer requires no
+database sessions during this phase. Subsequent PostgreSQL/MySQL phases prove
+access to the same Keychain items. The installer verifies preserved profile UUIDs,
+draft IDs/order/text/bindings, current storage versions and exact private migration
+backups, then confirms normal app/helper/database cleanup and unchanged owner
+files, input source, source archive and candidate bundle.
+
+Candidate configurations add `expectedVersion`, `artifactRole` (`baseline` or
+`candidate`), and the synthetic `restoredDraftIDs`/`restoredDraftTexts`. Supported
+phases are baseline-import, baseline-postgresql, baseline-mysql,
+candidate-disconnected, candidate-postgresql and candidate-mysql. Credentials are
+not part of this external UI interface. Reports remain private under ignored
+`build/install-update/run.*/`; the result covers the supplied `.app`, not a future
+packaged archive, Finder/Gatekeeper or installation on a second Mac.
+
 ## SSH lifecycle acceptance
 
 The current signed native app has a separate external UI scenario:
@@ -95,12 +145,15 @@ unchanged.
 
 A disposable SSH bastion reaches a PostgreSQL container whose database port is
 not published. A fresh profile uses a generated encrypted private key. Only this
-profile's synthetic database password and key passphrase are provisioned in
-Keychain; the UI runner never receives either secret. This verifies encrypted-key
-authentication with a remembered passphrase, rather than typing a passphrase into
-the native prompt. The provisioning utility uses the app's exact persistent
-signing certificate so its scoped synthetic Keychain items have a compatible
-access partition; no Keychain defaults or system permissions are changed.
+profile's synthetic database password is provisioned in Keychain. Its unsaved key
+passphrase comes from a private fixture file into the exact owned secure prompt,
+using native Paste through authorized XCTest keyboard actions. The runner preserves
+all clipboard items/formats and restores them only while it still owns that change;
+the secret is never supplied to XCTest text-action logging or attached diagnostics.
+The scenario covers Cancel, incorrect input and successful input, including prompts
+for independent working sessions. The provisioning utility uses the app's exact
+persistent signing certificate for its scoped database credential; no Keychain
+defaults, event-posting permissions or system trust settings are changed.
 
 `SSHApplicationTests/testSSHConnectionLifecycle` attaches to the owned PID and
 checks Cancel on the first host-key review, a second review of the exact generated
@@ -113,6 +166,15 @@ requires the SSH/watchdog processes and SOCKS listener to disappear after profil
 disconnect while the application is still running. XCTest waits for that
 observer acknowledgement before sending Quit, so application termination cannot
 mask a tunnel left open by Disconnect.
+
+A second `ssh-crash` phase reconnects the same private signed app and publishes
+readiness without terminating it. The independent fixture requires an observed
+database session, SSH process, watchdog and SOCKS listener, then sends SIGKILL to
+only the exact owned app PID. It requires every owned process/session/listener to
+disappear before cleanup can mask the result. This phase is distinct from the
+normal Quit scenario; the XCTest code never calls `XCUIApplication.terminate()`.
+Process observation uses exact kernel executable paths and owned ancestry across
+fork/exec transitions; presentation names from `ps` do not establish identity.
 
 Artifacts are private under ignored `build/SSHAcceptance/run.*/` and
 `build/AcceptanceTests/run.*/`. The report records actual UI evidence, screenshots,

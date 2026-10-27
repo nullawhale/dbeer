@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Carbon
 import Foundation
 import XCTest
@@ -25,6 +26,7 @@ final class SSHApplicationTests: XCTestCase {
         let sshHost: String
         let sshPort: Int
         let sshFingerprint: String
+        let manualPassphraseFile: String?
     }
 
     private struct Evidence: Encodable {
@@ -41,7 +43,11 @@ final class SSHApplicationTests: XCTestCase {
         var hostKeyReview = false
         var hostKeyCancelled = false
         var encryptedKey = false
-        let encryptedKeyPassphraseSource = "preprovisionedKeychain"
+        var encryptedKeyPassphraseSource = "preprovisionedKeychain"
+        var passphraseCancelled = false
+        var incorrectPassphraseRejected = false
+        var nativePassphraseEntered = false
+        var readyForForcedTermination = false
         var twoTabs = false
         var independentSessions = false
         var stoppedQuery = false
@@ -93,7 +99,40 @@ final class SSHApplicationTests: XCTestCase {
         var evidence = Evidence(phase: configuration.phase, appPath: appURL.path, expectedBuild: configuration.expectedBuild,
             pid: configuration.ownedPID, profileID: configuration.smokeProfileID)
 
+        if configuration.manualPassphraseFile != nil {
+            evidence.encryptedKeyPassphraseSource = "nativeSecurePrompt"
+        }
+        if configuration.phase == "ssh-crash" {
+            try chooseProfileAction("Connect", profile: profile, app: app, configuration: configuration, appURL: appURL)
+            if configuration.manualPassphraseFile != nil {
+                try enterPassphrase(app: app, configuration: configuration, appURL: appURL, incorrect: false)
+                evidence.nativePassphraseEntered = true
+            }
+            _ = try newTab(profile: profile, app: app, configuration: configuration, appURL: appURL)
+            _ = try selectValue("SELECT pg_backend_pid()::text AS dbeer_ssh_ui_crash_pid", column: "dbeer_ssh_ui_crash_pid",
+                app: app, configuration: configuration, appURL: appURL)
+            evidence.firstConnect = true
+            evidence.encryptedKey = true
+            evidence.readyForForcedTermination = true
+            evidence.passed = true
+            captureSafeWindow(app, configuration: configuration, appURL: appURL, name: "ssh-ready-for-forced-termination")
+            try restorePhaseInputSource(configuration)
+            publish(evidence)
+            completed = true
+            return
+        }
+        if configuration.manualPassphraseFile != nil {
+            try chooseProfileAction("Connect", profile: profile, app: app, configuration: configuration, appURL: appURL)
+            let prompt = try passphrasePrompt(app: app)
+            try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
+            try visibleButton("Cancel", in: prompt.container).click()
+            guard prompt.field.waitForNonExistence(timeout: 10) else { throw Rejection.secretPromptUnexpected }
+            evidence.passphraseCancelled = true
+        }
         try chooseProfileAction("Connect", profile: profile, app: app, configuration: configuration, appURL: appURL)
+        if configuration.manualPassphraseFile != nil {
+            try enterPassphrase(app: app, configuration: configuration, appURL: appURL, incorrect: true)
+        }
         let firstReview = try hostKeyReview(app: app, configuration: configuration)
         captureSafeWindow(app, configuration: configuration, appURL: appURL, name: "ssh-first-host-key-review")
         try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
@@ -104,12 +143,31 @@ final class SSHApplicationTests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
 
         try chooseProfileAction("Connect", profile: profile, app: app, configuration: configuration, appURL: appURL)
+        if configuration.manualPassphraseFile != nil {
+            try enterPassphrase(app: app, configuration: configuration, appURL: appURL, incorrect: true)
+        }
         let secondReview = try hostKeyReview(app: app, configuration: configuration)
         evidence.hostKeyReview = true
         try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
         secondReview.button.click()
         guard secondReview.button.waitForNonExistence(timeout: 10) else { throw Rejection.missingHostKeyReview }
         checkpoint("trust-accepted")
+        if configuration.manualPassphraseFile != nil {
+            let notifications = window.buttons["workspaceNotifications"]
+            guard notifications.waitForExistence(timeout: 20) else { throw Rejection.missingControl }
+            let failed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS %@", "1 unread"), object: notifications)
+            guard XCTWaiter.wait(for: [failed], timeout: 20) == .completed else { throw Rejection.queryFailed }
+            try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
+            notifications.click()
+            let message = "SSH authentication or forwarding failed"
+            let error = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", message, message)).firstMatch
+            guard error.waitForExistence(timeout: 10) else { throw Rejection.queryFailed }
+            evidence.incorrectPassphraseRejected = true
+            try keyboardAction("ssh-close-failure-notification", configuration: configuration) { app.typeKey(.escape, modifierFlags: []) }
+            try chooseProfileAction("Connect", profile: profile, app: app, configuration: configuration, appURL: appURL)
+            try enterPassphrase(app: app, configuration: configuration, appURL: appURL, incorrect: false)
+            evidence.nativePassphraseEntered = true
+        }
 
         let firstTab = try newTab(profile: profile, app: app, configuration: configuration, appURL: appURL)
         let firstPID = try selectValue("SELECT pg_backend_pid()::text AS dbeer_ssh_ui_first_pid", column: "dbeer_ssh_ui_first_pid",
@@ -117,8 +175,8 @@ final class SSHApplicationTests: XCTestCase {
         guard let firstBackend = Int(firstPID), firstBackend > 0 else { throw Rejection.queryFailed }
         evidence.firstBackendPID = firstBackend
         evidence.firstConnect = true
-        // The fixture provisions a passphrase in this profile's scoped Keychain
-        // account; its SSH private key is encrypted. No secret enters XCTest.
+        // The selected key is encrypted. The fixture independently records
+        // whether its passphrase came from the secure prompt or Keychain.
         evidence.encryptedKey = true
         try runStatement("CREATE TEMP TABLE dbeer_ssh_ui_first(id integer)", app: app, configuration: configuration, appURL: appURL)
         try expectValue("SELECT CASE WHEN COUNT(*)=1 THEN 'yes' ELSE 'no' END AS dbeer_ssh_ui_first_temp FROM information_schema.tables WHERE table_name='dbeer_ssh_ui_first' AND table_type='LOCAL TEMPORARY'", column: "dbeer_ssh_ui_first_temp", app: app, configuration: configuration, appURL: appURL, expected: "yes")
@@ -171,13 +229,81 @@ final class SSHApplicationTests: XCTestCase {
         try restorePhaseInputSource(configuration)
         evidence.normalQuit = true
         evidence.passed = true
-        let encoded = try JSONEncoder().encode(evidence)
+        publish(evidence)
+        completed = true
+    }
+
+    private func publish(_ evidence: Evidence) {
+        guard let encoded = try? JSONEncoder().encode(evidence) else { return }
         let attachment = XCTAttachment(data: encoded, uniformTypeIdentifier: "public.json")
-        attachment.name = configuration.phase + "-evidence.json"
+        attachment.name = evidence.phase + "-evidence.json"
         attachment.lifetime = .keepAlways
         add(attachment)
         FileHandle.standardOutput.write(Data(("DBEER_ACCEPTANCE_EVIDENCE " + String(decoding: encoded, as: UTF8.self) + "\n").utf8))
-        completed = true
+    }
+
+    private func passphrasePrompt(app: XCUIApplication) throws -> (container: XCUIElement, field: XCUIElement) {
+        let prompt = try visibleDialog(containingButton: "Connect", app: app, timeout: 15)
+        let fields = prompt.container.secureTextFields
+        guard fields.count == 1, prompt.container.staticTexts["SSH Private Key Passphrase"].exists else {
+            throw Rejection.secretPromptUnexpected
+        }
+        return (prompt.container, fields.firstMatch)
+    }
+
+    private func enterPassphrase(app: XCUIApplication, configuration: Configuration, appURL: URL, incorrect: Bool) throws {
+        guard let path = configuration.manualPassphraseFile else { throw Rejection.unsafeConfiguration }
+        let attributes = try FileManager.default.attributesOfItem(atPath: path)
+        guard attributes[.type] as? FileAttributeType == .typeRegular,
+              let permissions = attributes[.posixPermissions] as? NSNumber, permissions.intValue & 0o077 == 0,
+              let owner = attributes[.ownerAccountID] as? NSNumber, owner.uint32Value == getuid(),
+              let size = attributes[.size] as? NSNumber, (1...256).contains(size.intValue) else { throw Rejection.unsafeConfiguration }
+        let secret: String
+        if incorrect { secret = "synthetic-incorrect-passphrase" }
+        else { secret = try String(contentsOfFile: path, encoding: .utf8).trimmingCharacters(in: .newlines) }
+        let prompt = try passphrasePrompt(app: app)
+        try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
+        prompt.field.click()
+        // XCTest's authorized native Paste action supplies the secure field
+        // without logging the generated passphrase or requiring separate raw
+        // event-posting privileges. Preserve every clipboard item and format.
+        let clipboard = NSPasteboard.general
+        let originalCount = clipboard.changeCount
+        let previous: [NSPasteboardItem] = try (clipboard.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                guard let data = item.data(forType: type), copy.setData(data, forType: type) else { throw Rejection.unsafeConfiguration }
+            }
+            return copy
+        }
+        guard clipboard.changeCount == originalCount else { throw Rejection.unsafeConfiguration }
+        clipboard.clearContents()
+        var ownedClipboardCount = clipboard.changeCount
+        defer {
+            // Never overwrite a clipboard changed outside this test.
+            if clipboard.changeCount == ownedClipboardCount {
+                clipboard.clearContents()
+                if !previous.isEmpty {
+                    XCTAssertTrue(clipboard.writeObjects(previous), "The owned synthetic clipboard could not restore its previous items.")
+                }
+            }
+        }
+        let wroteSecret = clipboard.setString(secret, forType: .string)
+        ownedClipboardCount = clipboard.changeCount
+        guard wroteSecret else { throw Rejection.unsafeConfiguration }
+        try keyboardAction("ssh-native-secure-paste", configuration: configuration) {
+            prompt.field.typeKey("v", modifierFlags: .command)
+        }
+        guard clipboard.changeCount == ownedClipboardCount else { throw Rejection.unsafeConfiguration }
+        Thread.sleep(forTimeInterval: 0.1)
+        let enteredCount = (prompt.field.value as? String)?.utf16.count ?? -1
+        recordOwnershipDiagnostic(["reason": "owned-secure-input-length", "expectedPID": configuration.ownedPID,
+            "expectedCharacterCount": secret.utf16.count, "enteredCharacterCount": enteredCount,
+            "eventPostingAllowed": CGPreflightPostEventAccess(), "accessibilityTrusted": AXIsProcessTrusted(),
+            "inputMethod": "nativeSecurePaste"])
+        guard enteredCount == -1 || enteredCount == secret.utf16.count else { throw Rejection.secretPromptUnexpected }
+        try visibleButton("Connect", in: prompt.container).click()
+        guard prompt.field.waitForNonExistence(timeout: 10) else { throw Rejection.secretPromptUnexpected }
     }
 
     private func hostKeyReview(app: XCUIApplication, configuration: Configuration) throws -> (container: XCUIElement, button: XCUIElement) {
@@ -233,6 +359,13 @@ final class SSHApplicationTests: XCTestCase {
         try waitEnabled(run, enabled: true, timeout: 10)
         try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
         run.click()
+        // Each independently opened tab may request its own unsaved SSH
+        // credential. Exercise that native prompt instead of waiting for the
+        // modal sheet to disappear without supplying the requested secret.
+        if configuration.manualPassphraseFile != nil,
+           app.secureTextFields.firstMatch.waitForExistence(timeout: 1.5) {
+            try enterPassphrase(app: app, configuration: configuration, appURL: appURL, incorrect: false)
+        }
     }
 
     private func runStatement(_ sql: String, app: XCUIApplication, configuration: Configuration, appURL: URL) throws {
@@ -254,7 +387,17 @@ final class SSHApplicationTests: XCTestCase {
     private func selectValue(_ sql: String, column: String, app: XCUIApplication, configuration: Configuration, appURL: URL) throws -> String {
         try runStatement(sql, app: app, configuration: configuration, appURL: appURL)
         let table = app.windows.firstMatch.tables["Query results"]
-        guard table.waitForExistence(timeout: 15) else { throw Rejection.queryFailed }
+        guard table.waitForExistence(timeout: 15) else {
+            if app.secureTextFields.count == 0 {
+                try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
+                let notifications = app.windows.firstMatch.buttons["workspaceNotifications"]
+                if notifications.exists, notifications.isHittable {
+                    notifications.click()
+                    Thread.sleep(forTimeInterval: 0.3)
+                }
+            }
+            throw Rejection.queryFailed
+        }
         let cell = table.descendants(matching: .any).matching(NSPredicate(format: "label == %@", column + ", row 1")).firstMatch
         guard cell.waitForExistence(timeout: 15), let value = cell.value as? String else { throw Rejection.queryFailed }
         return value
@@ -354,7 +497,7 @@ final class SSHApplicationTests: XCTestCase {
         let configuration = try JSONDecoder().decode(Configuration.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         guard configuration.installAppPath.hasPrefix("/"), configuration.installAppPath.hasSuffix(".app"),
               configuration.bundleIdentifier == "dev.dbeer.app", configuration.expectedVersion == "0.2.0", configuration.expectedBuild == "8",
-              configuration.phase == "ssh-lifecycle", configuration.launchPolicy == "attach", configuration.ownedPID > 1,
+              ["ssh-lifecycle", "ssh-crash"].contains(configuration.phase), configuration.launchPolicy == "attach", configuration.ownedPID > 1,
               configuration.smokeProfileEngine == "postgresql", !configuration.inputSourceOriginalID.isEmpty, !configuration.inputSourceASCIIID.isEmpty,
               configuration.resultFile.hasPrefix("/"), configuration.disconnectEvidenceFile.hasPrefix("/"),
               URL(fileURLWithPath: configuration.disconnectEvidenceFile).lastPathComponent == "disconnect-evidence.json",
@@ -362,6 +505,13 @@ final class SSHApplicationTests: XCTestCase {
                   URL(fileURLWithPath: configuration.resultFile).deletingLastPathComponent().resolvingSymlinksInPath(),
               !configuration.sshHost.isEmpty, (1...65535).contains(configuration.sshPort),
               configuration.sshFingerprint.hasPrefix("SHA256:") else { throw Rejection.unsafeConfiguration }
+        if let path = configuration.manualPassphraseFile {
+            guard URL(fileURLWithPath: path).lastPathComponent == "manual-passphrase",
+                  URL(fileURLWithPath: path).deletingLastPathComponent().resolvingSymlinksInPath() ==
+                    URL(fileURLWithPath: configuration.resultFile).deletingLastPathComponent().resolvingSymlinksInPath() else {
+                throw Rejection.unsafeConfiguration
+            }
+        }
         return configuration
     }
 

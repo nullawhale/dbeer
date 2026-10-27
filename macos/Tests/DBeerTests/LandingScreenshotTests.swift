@@ -1,5 +1,4 @@
 import AppKit
-import ScreenCaptureKit
 import SwiftUI
 import Testing
 @testable import DBeer
@@ -46,45 +45,10 @@ struct LandingScreenshotTests {
         try await settle()
     }
 
-    private func bitmap(_ view: NSView) throws -> NSBitmapImageRep {
-        view.layoutSubtreeIfNeeded()
-        view.displayIfNeeded()
-        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil,
-            pixelsWide: Int(view.bounds.width * 2), pixelsHigh: Int(view.bounds.height * 2),
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
-        bitmap.size = view.bounds.size
-        view.cacheDisplay(in: view.bounds, to: bitmap)
-        return bitmap
-    }
-
     private func windowBitmap(_ window: NSWindow) async throws -> NSBitmapImageRep {
-        let content = try #require(window.contentView)
-        let frame = try #require(content.superview)
-        if #available(macOS 14.4, *) {
-            // Current-process content requires no Screen Recording permission and
-            // renders native composited controls that cacheDisplay cannot capture.
-            let available = try await SCShareableContent.currentProcess
-            let ownWindow = try #require(available.windows.first {
-                $0.windowID == CGWindowID(window.windowNumber)
-                    && $0.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier
-            })
-            let configuration = SCStreamConfiguration()
-            configuration.width = Int(frame.bounds.width * 2)
-            configuration.height = Int(frame.bounds.height * 2)
-            configuration.scalesToFit = true
-            configuration.captureResolution = .best
-            configuration.showsCursor = false
-            configuration.ignoreShadowsSingleWindow = true
-            configuration.includeChildWindows = false
-            let captured = try await SCScreenshotManager.captureImage(
-                contentFilter: SCContentFilter(desktopIndependentWindow: ownWindow),
-                configuration: configuration)
-            let image = NSBitmapImageRep(cgImage: captured)
-            image.size = frame.bounds.size
-            return image
-        }
-        return try bitmap(frame)
+        let image = try await NativeOwnedWindowCapture.bitmap(window)
+        image.size = try #require(window.contentView?.superview).bounds.size
+        return image
     }
 
     private func capture(_ window: NSWindow, name: String, directory: URL) async throws {

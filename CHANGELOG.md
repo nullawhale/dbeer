@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Show a clear execution rejection when SQL or its connection changes during
+  initial connection setup, marking the captured statements as not executed.
+- Distinguish the existing local build 8 archive from implemented working-branch
+  features in the product and installation documentation. User interviews are
+  optional research and do not block native macOS development or acceptance.
+- Add an opt-in archive-to-current-app update acceptance mode with immutable
+  archive checks, signed candidate identity, migration backups, disconnected
+  restoration and existing Keychain credential checks, without packaging a new ZIP.
+
 - Generate selective PostgreSQL/MySQL synchronization SQL from completed schema
   and table-data comparisons. Review source → target, dependencies, manual steps
   and SQL before saving a private `.sql` file or opening a new target-bound SQL

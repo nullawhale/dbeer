@@ -22,7 +22,7 @@ network_id=""
 container_ids=()
 agent_pid=""
 cleanup() {
-    for container_id in ${container_ids[@]+"${container_ids[@]}"}; do docker rm --force "$container_id" >/dev/null 2>&1 || true; done
+    for container_id in ${container_ids[@]+"${container_ids[@]}"}; do docker unpause "$container_id" >/dev/null 2>&1 || true; docker rm --force "$container_id" >/dev/null 2>&1 || true; done
     if [[ -n "$network_id" ]]; then docker network rm "$network_id" >/dev/null 2>&1 || true; fi
     if [[ -n "$agent_pid" ]]; then kill "$agent_pid" >/dev/null 2>&1 || true; fi
     rm -rf -- "$fixture_root"
@@ -165,6 +165,8 @@ PY
                 [[ "$ready" == 1 ]] || { printf 'Cassandra fixture did not become ready.\n' >&2; exit 1; }
             done
             export DBEER_TEST_SSH_CASSANDRA_HOST="$seed"
+            export DBEER_TEST_SSH_CASSANDRA_FAILURE_NODE="${cassandra_nodes[2]}"
+            export DBEER_TEST_SSH_CASSANDRA_FAILURE_ADDRESS="${cassandra_ips[2]}:9042"
             ;;
     esac
     export DBEER_TEST_SSH_ENGINE="$engine"

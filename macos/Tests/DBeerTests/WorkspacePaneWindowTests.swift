@@ -332,7 +332,7 @@ struct WorkspacePaneWindowTests {
         try #require(undo.canUndo)
         for destination in [WorkspacePaneID.right, .left, .right, .left] {
             let source = try #require(workspace.pane(containing: fixture.left.id))
-            try tabAction(destination == .left ? "Move to Left Pane" : "Move to Right Pane",
+            try tabAction(destination == .left ? "Move to Working pane 1" : "Move to Working pane 2",
                 document: fixture.left, in: pane(source, in: window))
             try await settle(window)
             let moved = try editor(fixture.left, in: window)

@@ -81,6 +81,35 @@ struct HoverConsistencyTests {
         ((view as? T).map { [$0] } ?? []) + view.subviews.flatMap { descendants($0, of: type) }
     }
 
+    private func feedback(_ identifier: String, in hosting: NSView, window: NSWindow,
+                          regions: [ControlFeedbackView]) throws -> ControlFeedbackView {
+        var visited = Set<ObjectIdentifier>()
+        func find(_ object: NSObject) -> NSObject? {
+            guard visited.insert(ObjectIdentifier(object)).inserted else { return nil }
+            let id = NSSelectorFromString("accessibilityIdentifier")
+            if object.responds(to: id), object.perform(id)?.takeUnretainedValue() as? String == identifier {
+                return object
+            }
+            let children = NSSelectorFromString("accessibilityChildren")
+            if object.responds(to: children), let children = object.perform(children)?.takeUnretainedValue() as? [Any] {
+                for case let child as NSObject in children { if let found = find(child) { return found } }
+            }
+            if let view = object as? NSView {
+                for child in view.subviews { if let found = find(child) { return found } }
+            }
+            return nil
+        }
+        let element = try #require(find(hosting), "Missing plus action: \(identifier)")
+        let screen = try #require(element.value(forKey: "accessibilityFrame") as? NSValue).rectValue
+        let frame = hosting.convert(window.convertFromScreen(screen), from: nil)
+        let matches = regions.filter {
+            let rect = $0.convert($0.bounds, to: hosting)
+            return abs(rect.midX - frame.midX) <= 1 && abs(rect.midY - frame.midY) <= 1
+        }
+        #expect(matches.count == 1, "\(identifier) must own exactly one compact hover surface")
+        return try #require(matches.first)
+    }
+
     private func makeWindow(content: NSView) -> NSWindow {
         _ = NSApplication.shared
         let window = NSWindow(contentRect: content.bounds, styleMask: [.titled],
@@ -246,19 +275,23 @@ struct HoverConsistencyTests {
             let appearance = try #require(NSAppearance(named: name))
             window.appearance = appearance
             try await settle(content, policy: policy, window: window)
-            // An empty workspace has only two compact controls: the connection
-            // and tab plus. Use the real containers to catch inherited sizing.
+            // Sidebar actions also use compact icon controls. Select the actual
+            // plus actions by identity while retaining the real containers, so
+            // a new sidebar button cannot replace a plus in this comparison.
             func compactRegions(in view: NSView) -> [ControlFeedbackView] {
                 descendants(view, of: ControlFeedbackView.self).filter {
                     !$0.isHiddenOrHasHiddenAncestor && !$0.cursorRect.isEmpty &&
                         $0.bounds.width <= 40 && $0.bounds.height <= 32
                 }
             }
-            let workspacePluses = compactRegions(in: app)
-            let legacyPlus = compactRegions(in: sidebar)
-            #expect(workspacePluses.count == 2)
-            #expect(legacyPlus.count == 1)
-            let pluses = workspacePluses + legacyPlus
+            let appRegions = compactRegions(in: app)
+            let workspacePluses = try ["newConnection", "newSQLTab"].map {
+                try feedback($0, in: app, window: window, regions: appRegions)
+            }
+            #expect(Set(workspacePluses.map(ObjectIdentifier.init)).count == 2)
+            let legacyPlus = try feedback("newConnection", in: sidebar, window: window,
+                regions: compactRegions(in: sidebar))
+            let pluses = workspacePluses + [legacyPlus]
             let reference = try #require(pluses.first)
             reference.isHovered = true
             let expected = try bytes(render(reference, appearance: appearance))

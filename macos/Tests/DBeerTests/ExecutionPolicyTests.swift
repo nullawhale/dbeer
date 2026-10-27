@@ -212,6 +212,7 @@ struct ExecutionPolicyTests {
         await task.value
         #expect(confirmations == 0 && fixture.commands.isEmpty)
         #expect(document.localError?.contains("changed while connecting") == true)
+        #expect(document.runtime == nil && document.executions.allSatisfy { $0.status == "Not executed" })
         await workspace.shutdown()
     }
 
