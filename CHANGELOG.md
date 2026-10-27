@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 — build 12 — 2026-10-27
+## 0.4.0 — build 13 — 2026-10-27
 
 - Expand the native editor with local find/replace, whole-word and regular-expression
   search, multi-cursor editing, line commands, automatic indentation and matching
@@ -11,6 +11,14 @@
   folding. Search and error navigation reveal hidden text; multiple cursors
   suspend assistance and require a single cursor for Run Current/Run to File.
   Routine/custom-delimiter formatting is conservatively rejected without edits.
+- Show native PostgreSQL/MySQL column types and Cassandra collection/UDT types
+  in editor information from the loaded catalog. MongoDB shows observed BSON
+  type unions with an explicit sampling limitation; information and navigation
+  never fetch data or connect on their own.
+- Add live editor-metadata contract coverage for PostgreSQL 17, MySQL 8.4,
+  Cassandra 4.1/5.0 and MongoDB 8.0, including cached information after disconnect.
+
+## 0.3.0 — build 12 — 2026-10-27
 
 - Prepare table filters and sorting as a local draft, then explicitly Apply one
   read. PostgreSQL, MySQL and MongoDB support nested AND/OR groups and ordered
