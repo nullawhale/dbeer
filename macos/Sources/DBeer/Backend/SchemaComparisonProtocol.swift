@@ -61,11 +61,15 @@ struct SchemaComparisonRequest: Codable, Equatable, Sendable {
     var limit: Int?
     var maxBytes: Int?
     var valueRef: String?
+    var modelDigest: String?
 
     func valid(for type: String) -> Bool {
         let noSources = source == nil && target == nil && mappings == nil
         let job = jobId.map(BackendMessage.validID) == true
+        if type != "schema.plan", modelDigest != nil { return false }
         switch type {
+        case "schema.plan":
+            return noSources && job && modelDigest.map(DataComparisonRequest.digestValid) == true && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
         case "schema.start":
             return source != nil && target != nil && source?.connection.engine == target?.connection.engine &&
                 mappings?.valid == true && jobId == nil &&
@@ -189,10 +193,13 @@ struct SchemaComparisonResponse: Codable, Equatable, Sendable {
     var summary: SchemaComparisonSummary?; var page: SchemaComparisonPage?; var value: SchemaComparisonChunk?; var export: SchemaComparisonChunk?
     var diff: ComparisonTextDiff?
     var offset: Int64?
+    var plan: SynchronizationSQLPlan?
     func valid(for type: String) -> Bool {
+        guard plan == nil || type == "schema.plan.result" else { return false }
         guard (diff == nil && offset == nil) || type == "schema.diff.result" else { return false }
         guard BackendMessage.validID(jobId), (message?.utf8.count ?? 0) <= 4_096, (code?.utf8.count ?? 0) <= 128 else { return false }
         switch type {
+        case "schema.plan.result": return state == .completed && plan?.valid == true && plan?.kind == "schema" && summary == nil && page == nil && value == nil && export == nil
         case "schema.diff.result": return state == .completed && diff?.valid == true && (offset ?? -1) >= 0 && summary == nil && page == nil && value == nil && export == nil
         case "schema.start.result": return state == .pending && summary == nil && page == nil && value == nil && export == nil
         case "schema.status.result": return (state == .completed ? summary?.valid == true : summary == nil) && page == nil && value == nil && export == nil

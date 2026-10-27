@@ -42,6 +42,9 @@ struct SchemaComparisonView: View {
         .frame(minWidth: 900, idealWidth: 1120, minHeight: 660, idealHeight: 780)
         .background(AppPalette.panel).foregroundStyle(AppPalette.text).tint(AppPalette.accent)
         .interactiveDismissDisabled(model.isWorking || model.isExporting)
+        .sheet(item: Binding(get: { model.planDraft }, set: { if $0 == nil { model.dismissPlan() } })) { draft in
+            SynchronizationPlanView(draft: draft, close: { model.dismissPlan() })
+        }
         .accessibilityElement(children: .contain).accessibilityIdentifier("schemaComparison")
         .onChange(of: selectedDifferenceID) { _, id in
             inspectedValueRef = nil
@@ -492,6 +495,10 @@ struct SchemaComparisonView: View {
                 Button("Compare") { Task { await model.start() } }.keyboardShortcut(.defaultAction)
                     .disabled(!model.canStart).accessibilityIdentifier("schemaCompareStart")
             } else {
+                if model.targetProfile.map({ [.postgresql, .mysql].contains($0.engine) }) == true {
+                    Button(model.isGeneratingPlan ? "Generating SQL…" : "Generate SQL Plan") { Task { await model.generatePlan() } }
+                        .disabled(!model.canGeneratePlan).controlHover().accessibilityIdentifier("schemaComparePlan")
+                }
                 Button("New Comparison") { Task { await model.reset() } }.disabled(model.isWorking || model.isExporting)
                     .accessibilityIdentifier("schemaCompareReset")
                 Spacer()

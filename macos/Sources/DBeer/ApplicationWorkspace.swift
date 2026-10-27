@@ -816,11 +816,15 @@ final class ApplicationWorkspace: ObservableObject {
         let store = credentialStore
         dataComparison = DataComparisonModel(profiles: library.savedConnections, resolve: { profile, attempt in
             try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt)
-        })
+        }, openPlan: { [weak self] sql, target in
+            guard let self, self.openSynchronizationPlan(sql, target: target) else { return false }
+            self.dismissDataComparison(); return true
+        }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true })
     }
 
     func dismissDataComparison() {
         guard let model = dataComparison else { return }
+        model.dismissPlan()
         Task { await model.close(); if dataComparison?.id == model.id { dataComparison = nil } }
     }
 
@@ -829,12 +833,30 @@ final class ApplicationWorkspace: ObservableObject {
         let store = credentialStore
         schemaComparison = SchemaComparisonModel(profiles: library.savedConnections, resolve: { profile in
             try await SchemaComparisonCredentials.settings(profile, store: store)
-        })
+        }, openPlan: { [weak self] sql, target in
+            guard let self, self.openSynchronizationPlan(sql, target: target) else { return false }
+            self.dismissSchemaComparison(); return true
+        }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true })
     }
 
     func dismissSchemaComparison() {
-        let model = schemaComparison; schemaComparison = nil
+        let model = schemaComparison; model?.dismissPlan(); schemaComparison = nil
         Task { await model?.close() }
+    }
+
+    func synchronizationTargetMatches(_ target: SavedConnection) -> Bool {
+        guard let current = library.savedConnections.first(where: { $0.id == target.id }) else { return false }
+        return current.matches(target.settings(password: ""))
+    }
+
+    @discardableResult
+    func openSynchronizationPlan(_ sql: String, target: SavedConnection) -> Bool {
+        guard shutdownTask == nil, !isClosing, [.postgresql, .mysql].contains(target.engine),
+              !sql.isEmpty, sql.utf8.count <= SynchronizationSQLPlan.maximumBytes + 1_048_576,
+              synchronizationTargetMatches(target) else { return false }
+        let document = newDocument(profileID: target.id, text: sql)
+        document.title = "Synchronization Plan"
+        return true
     }
 
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil) async {
@@ -3100,6 +3122,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func shutdown() async {
+        commands.shutdown()
         await dataComparison?.close(); dataComparison = nil
         await schemaComparison?.close(); schemaComparison = nil
         if let shutdownTask { await shutdownTask.value; return }

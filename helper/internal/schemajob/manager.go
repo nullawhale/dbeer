@@ -7,6 +7,7 @@ import (
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/schemacompare"
+	"dbeer/helper/internal/syncplan"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -20,6 +21,7 @@ type Options struct {
 	Root             string
 	Deadline         time.Duration
 	RenderDefinition schemacompare.DefinitionRenderer
+	RenderPlan       func(context.Context, schemacompare.Report) (syncplan.Plan, error)
 }
 type status struct {
 	state, code, message string
@@ -159,6 +161,20 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 	out := response(c, j)
 	out.SchemaComparison.Summary = nil
 	switch c.Type {
+	case "schema.plan":
+		if r.ModelDigest != j.result.Report.Summary.ModelDigest || !syncplan.DigestValid(r.ModelDigest) || m.options.RenderPlan == nil {
+			return fail(c)
+		}
+		plan, e := m.options.RenderPlan(j.ctx, j.result.Report)
+		if e != nil || plan.ModelDigest != r.ModelDigest || plan.Kind != "schema" || plan.Engine != j.result.Report.Summary.Engine || plan.Validate() != nil {
+			return fail(c)
+		}
+		// Cancellation can arrive while a renderer works. Never return a draft
+		// from a retired owner, even if the immutable report still exists.
+		if j.ctx.Err() != nil || j.status.Load().state != "completed" {
+			return fail(c)
+		}
+		out.SchemaComparison.Plan = &plan
 	case "schema.diff":
 		d, e := j.result.TextDiff(j.ctx, r.Offset, m.options.RenderDefinition)
 		if e != nil {

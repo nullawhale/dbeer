@@ -91,6 +91,11 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     @Published private(set) var isStopping = false
     @Published private(set) var sourceProfile: SavedConnection?
     @Published private(set) var targetProfile: SavedConnection?
+    @Published private(set) var planDraft: SynchronizationPlanDraft?
+    @Published private(set) var isGeneratingPlan = false
+    private var planGeneration = UUID()
+    private let openPlan: @MainActor (String, SavedConnection) -> Bool
+    private let validatePlanTarget: @MainActor (SavedConnection) -> Bool
     private let resolve: @MainActor (SavedConnection, UUID) async throws -> ConnectionSettings
     private let factory: @MainActor () -> any DataComparisonBackend
     @Published private var backend: (any DataComparisonBackend)?
@@ -109,8 +114,10 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     private(set) var capturedMappings: [DataComparisonMapping] = []
 
     init(profiles: [SavedConnection], resolve: @escaping @MainActor (SavedConnection, UUID) async throws -> ConnectionSettings,
-         factory: @escaping @MainActor () -> any DataComparisonBackend = { DataComparisonHelperBackend() }) {
-        self.profiles = profiles.filter { $0.engine != .mongodb }; self.resolve = resolve; self.factory = factory
+         factory: @escaping @MainActor () -> any DataComparisonBackend = { DataComparisonHelperBackend() },
+         openPlan: @escaping @MainActor (String, SavedConnection) -> Bool = { _, _ in false },
+         validatePlanTarget: @escaping @MainActor (SavedConnection) -> Bool = { _ in true }) {
+        self.profiles = profiles.filter { $0.engine != .mongodb }; self.resolve = resolve; self.factory = factory; self.openPlan = openPlan; self.validatePlanTarget = validatePlanTarget
     }
     var isWorking: Bool { phase.isWorking }
     var canDescribe: Bool {
@@ -233,7 +240,7 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     }
     private func performStop() async {
         guard !isStopping else { return }; isStopping = true
-        let previous = generation; generation = UUID(); pageGeneration = UUID(); valueGeneration = UUID()
+        dismissPlan(); let previous = generation; generation = UUID(); pageGeneration = UUID(); valueGeneration = UUID()
         poll?.cancel(); preparation?.cancel()
         for profile in [sourceProfile, targetProfile].compactMap({ $0 }) { SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, previous)) }
         let service = backend, job = jobID; backend = nil; jobID = nil
@@ -242,7 +249,29 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     }
     func close() async { await stop(); clearOutput(); phase = .closed }
     func reset() async { await close(); operation = ""; phase = .closed }
-    private func clearOutput() { clearDiff(); summary = nil; page = nil; selectedRow = nil; selectedValue = nil; valueChunk = nil; error = nil; pageOffsets = [0]; cellOffsets = [0]; valueOffsets = [0] }
+    private func clearOutput() { dismissPlan(); clearDiff(); summary = nil; page = nil; selectedRow = nil; selectedValue = nil; valueChunk = nil; error = nil; pageOffsets = [0]; cellOffsets = [0]; valueOffsets = [0] }
+    var canGeneratePlan: Bool { phase == .completed && summary != nil && !isGeneratingPlan && targetProfile.map { [.postgresql, .mysql].contains($0.engine) } == true }
+    func dismissPlan() { planGeneration = UUID(); planDraft?.invalidate(); planDraft = nil; isGeneratingPlan = false }
+    func generatePlan() async {
+        guard canGeneratePlan, let backend, let jobID, let summary, let sourceProfile, let targetProfile else { return }
+        dismissPlan(); isGeneratingPlan = true; error = nil
+        let token = generation; let requestToken = planGeneration
+        defer { if planGeneration == requestToken { isGeneratingPlan = false } }
+        do {
+            let reply = try await backend.request("plan", .init(jobId: jobID, modelDigest: summary.modelDigest))
+            guard !Task.isCancelled, generation == token, planGeneration == requestToken, phase == .completed else { return }
+            guard reply.jobId == jobID, reply.valid(for: "data.plan.result"), let plan = reply.plan,
+                  plan.modelDigest == summary.modelDigest, plan.engine == targetProfile.engine.rawValue else { throw BackendTransportError(.invalidMessage) }
+            planDraft = SynchronizationPlanDraft(plan: plan, source: sourceProfile, target: targetProfile, validateTarget: { [weak self] target in
+                guard let self, self.generation == token, self.planGeneration == requestToken, self.phase == .completed else { return false }
+                return self.validatePlanTarget(target)
+            }, open: { [weak self] sql, target in
+                guard let self, self.generation == token, self.planGeneration == requestToken, self.phase == .completed,
+                      self.summary?.modelDigest == plan.modelDigest else { return false }
+                return self.openPlan(sql, target)
+            })
+        } catch { if generation == token, planGeneration == requestToken { self.error = "The SQL plan could not be generated. A compatible helper and complete supported originals are required." } }
+    }
     func loadPage(offset: Int64) async {
         guard let backend, let jobID, summary != nil else { return }
         let token = generation; pageGeneration = UUID(); let pageToken = pageGeneration

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Generate selective PostgreSQL/MySQL synchronization SQL from completed schema
+  and table-data comparisons. Review source → target, dependencies, manual steps
+  and SQL before saving a private `.sql` file or opening a new target-bound SQL
+  tab. Object paths and row keys identify selectable operations; destructive
+  changes start unselected. Explicit column renames and exclusions retain strict
+  mapped-type checks. Data updates and deletes check all
+  captured target originals; incomplete captures and ambiguous keys require
+  manual work. Planning performs no server writes or fresh reads, and execution
+  uses the ordinary editor and execution policy. Unsupported structural changes
+  remain explicit manual steps; DDL has no portable global rollback. Empty/manual
+  plans explain their state, long warnings remain scrollable, and a changed Save
+  selection requires review. Command observers detach when their workspace closes.
+
 - Supported PostgreSQL/MySQL SELECT results can open an exact source row in an
   independent table tab using server-verified origins and the complete primary
   key. Full, unambiguous single-table results support cell updates through the
@@ -57,7 +70,7 @@
   Inspect paged differences, wide rows and exact value chunks with source → target
   context. Private temporary captures and comparison files share a 256 MiB budget
   and are removed on close or Stop, including forced helper shutdown. Comparison
-  performs no database writes and generates no synchronization SQL.
+  performs no database writes; synchronization SQL is a separate explicit action.
 
 - Open Connections, Files, SQL Library and Investigations from a narrow vertical
   strip on the left. Each section has its own resizable panel; clicking the
@@ -75,7 +88,7 @@
   export a private, versioned JSON report with both typed captures and a digest.
   Schema/table/member/type correspondence is explicit, local OIDs never identify
   objects across servers, and incomplete or unsupported facts cannot establish
-  equality. Comparison never generates or applies migration SQL.
+  equality. SQL planning is a separate explicit action; comparison never applies it.
 
 - Inspect PostgreSQL enums and user-defined types directly from the catalog or
   search, including definitions, ordered enum values, dependencies and operation

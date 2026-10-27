@@ -396,8 +396,9 @@ comparison and unsupported table kinds are unavailable.
 
 **Stop**, closing or resetting the comparison removes its private temporary data;
 the application also cleans its owned directory after forced helper termination.
-Captures are transient and are not saved result snapshots. This feature performs
-no database writes and generates no synchronization SQL.
+Captures are transient and are not saved result snapshots. Comparison performs
+no database writes. PostgreSQL/MySQL captures can produce an explicitly requested
+synchronization SQL plan as described below.
 
 ## Schema comparison in the working branch
 
@@ -437,8 +438,53 @@ Unsupported table kinds/index options and unresolved expression dependencies
 require manual review and
 prevent full equality. Unknown metadata on both sides is never equality. Large
 captures fail explicitly at bounded node/member/scalar/storage limits. Only a
-complete comparison can say **Selected table structure matches**. This feature
-does not generate or apply migration SQL.
+complete comparison can say **Selected table structure matches**. SQL planning is
+a separate explicit action; comparison never applies migration SQL.
+
+## Synchronization SQL plans in the working branch
+
+After a PostgreSQL or MySQL schema or table-data comparison finishes, choose
+**Generate SQL Plan**. Review the captured source → target direction, operation
+dependencies and SQL preview. Select operations individually; destructive changes
+start unselected. Object paths and primary-key summaries identify each operation.
+Every prerequisite must be selected before dependent SQL can be
+saved or opened. Unsupported transformations appear as manual steps with reasons.
+Planning uses the retained comparison captures and never reads or changes either
+server. Closing or resetting the comparison invalidates its plan.
+
+Structural plans support ordinary table and column additions, primary/unique/
+foreign-key constraints and standalone indexes. PostgreSQL also supports
+independent enum and schema creation. Supported nullability, literal-default and
+column-comment changes require explicit selection. Type conversions, expressions,
+identity/sequence changes, existing-object replacement and removals that need
+dependency information outside the captured scope remain manual. A manual
+prerequisite also makes its dependent operations manual.
+
+Data plans require complete captures, all original columns, compatible exact
+types, an unambiguous comparison key and the complete target primary key.
+Explicit column mappings, renames and exclusions define the synchronization
+scope. Excluded target originals still participate in stale-row guards; inserts
+require all supported target values.
+Source-only rows produce INSERTs; target-only rows produce DELETEs; changed rows
+produce UPDATEs for mapped values. UPDATE and DELETE start unselected and compare
+every captured target original before changing a row. A concurrently changed row
+is skipped, so inspect affected row counts. A concurrent insert can cause a
+primary-key conflict. NULL, empty text, literal `NULL`, exact numeric strings and
+binary values retain their distinctions. Unavailable originals, generated inserts
+and representations the dialect cannot preserve remain manual. Filters restrict
+the plan to the captured scope. Foreign keys, triggers and other target constraints
+may require manual ordering. Plans are limited to 2,000 operations and 4 MiB;
+an oversized data plan produces a manual explanation instead of a SQL prefix.
+
+**Save .sql…** saves the selected SQL with private file permissions.
+Command-S opens the native save dialog. Changing the selection while that dialog
+is open requires reviewing and saving the SQL again. Escape returns to the
+comparison; Return opens the selected SQL in the target editor.
+**Open in Target Editor** creates a new disconnected SQL tab bound to the captured
+target profile. Changed target connection settings require a fresh comparison.
+Run the reviewed SQL explicitly through the ordinary editor and execution policy.
+Captures are historical; concurrent changes can invalidate a plan. Execution can
+finish partially, and DDL has no portable global rollback.
 
 ## Type coverage in the working branch
 
@@ -963,6 +1009,18 @@ source-row navigation in both appearances, with exact typed fixture values.
 It requires explicitly requested UI verification, Docker and an interactive
 macOS session; screenshots are written to `build/r22-ui/`. Profiles, credentials,
 workspace state and database tables are isolated from normal application data.
+
+The opt-in `./scripts/test-r27-ui.sh` runner checks synchronization plans in native
+windows with disposable PostgreSQL/MySQL profiles. It covers light/dark appearances,
+operation selection and dependencies, manual/empty plans, native Save dialogs,
+keyboard actions and new disconnected target editor drafts. It requires explicit
+UI verification, Docker and an interactive macOS session; screenshots go to
+`build/r27-ui/`. The source session and target data remain unchanged by planning.
+Completing the system Save dialog also requires existing Accessibility access;
+that scenario is skipped without it. The runner does not request or change
+privacy permissions.
+Optional `--filter` arguments select focused scenarios through the same fixture
+runner.
 
 For small changes, select affected Swift suites or methods with `--filter` (a regular expression; the flag can be repeated). This mode skips Go tests. Theme and UI checks run only when selected by the filter. A complete Go race and Swift Testing run requires explicit `--all`; use it for cross-cutting changes and final verification. Without a mode, the script prints usage and exits without building or testing. CI runs the full suite.
 

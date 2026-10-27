@@ -9,6 +9,7 @@ import (
 	"dbeer/helper/internal/comparisonjob"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/resultcompare"
+	"dbeer/helper/internal/syncplan"
 	tc "dbeer/helper/internal/tablecapture"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +25,7 @@ type Options struct {
 	Root           string
 	QuotaBytes     int64
 	CaptureTimeout time.Duration
+	RenderData     syncplan.DataRenderer
 }
 type status struct {
 	state, phase, code, message string
@@ -39,6 +41,7 @@ type job struct {
 	mu             sync.Mutex
 	result         *resultcompare.Result
 	source, target resultcompare.Source
+	planning       *syncplan.DataInput
 }
 type Manager struct {
 	mu        sync.Mutex
@@ -105,6 +108,7 @@ func (j *job) cleanup() {
 		_ = j.target.Close()
 		j.target = nil
 	}
+	j.planning = nil
 	_ = os.RemoveAll(j.dir)
 }
 func response(c protocol.Command, j *job) protocol.Response {
@@ -188,6 +192,16 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 	}
 	out := protocol.Response{Type: c.Type + ".result", RequestID: c.RequestID, DataComparison: &protocol.DataComparisonResponse{JobID: j.id, State: "completed"}}
 	switch c.Type {
+	case "data.plan":
+		summary := j.state.Load().summary
+		if summary == nil || r.ModelDigest != summary.ModelDigest || j.planning == nil || m.options.RenderData == nil {
+			return fail(c)
+		}
+		plan, e := syncplan.BuildData(j.ctx, *j.planning, j.result, r.ModelDigest, m.options.RenderData)
+		if e != nil || j.ctx.Err() != nil || j.state.Load().state != "completed" {
+			return fail(c)
+		}
+		out.DataComparison.Plan = &plan
 	case "data.diff":
 		d, e := j.result.TextDiff(j.ctx, r.Offset, r.CellOffset)
 		if e != nil {
@@ -459,6 +473,13 @@ func (m *Manager) run(j *job, r protocol.DataComparisonRequest, describe bool) {
 		}
 	}
 	summary := &protocol.DataComparisonSummary{FormatVersion: 1, Comparison: sum, Source: source.outcome, Target: target.outcome, MappedColumns: len(r.Columns), KeyColumns: keyCount, ModelDigest: hex.EncodeToString(digest[:])}
+	j.mu.Lock()
+	j.planning = &syncplan.DataInput{
+		Source:   syncplan.DataSide{Descriptor: source.descriptor, Outcome: source.outcome, Filters: *r.Source.Filters},
+		Target:   syncplan.DataSide{Descriptor: target.descriptor, Outcome: target.outcome, Filters: *r.Target.Filters},
+		Mappings: r.Columns, Originals: r.Originals,
+	}
+	j.mu.Unlock()
 	if !j.state.CompareAndSwap(running, &status{state: "completed", summary: summary}) {
 		j.cleanup()
 	}

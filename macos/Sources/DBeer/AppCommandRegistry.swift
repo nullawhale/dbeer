@@ -52,6 +52,7 @@ struct AppCommandInvocation {
     let shortcuts: AppShortcutStore
     private unowned let workspace: ApplicationWorkspace
     private var shortcutObservation: AnyCancellable?
+    private var isShutdown = false
     private var gridHandlers: [AppCommandID: (SQLDocument) async -> Void] = [:]
     private let gridCopyResponderProvider: (@MainActor () -> (any AppGridCopyCommandResponder)?)?
     private let invocationHandler: ((AppCommandInvocation) async -> Void)?
@@ -86,7 +87,17 @@ struct AppCommandInvocation {
         }
     }
 
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    func shutdown() {
+        guard !isShutdown else { return }
+        isShutdown = true
+        NotificationCenter.default.removeObserver(self)
+        shortcutObservation?.cancel(); shortcutObservation = nil
+    }
+
     @objc private func refreshContext() {
+        guard !isShutdown else { return }
         let context = context()
         // Selection and the closed-tab stack can change without moving focus.
         let scopedCommands = Set(shortcuts.descriptors.filter {

@@ -358,14 +358,14 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.SSHTrust = &trust
 		}
-	case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.diff", "data.cancel", "data.close":
+	case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.diff", "data.plan", "data.cancel", "data.close":
 		allowed["dataComparison"] = true
 		request, ok := parseDataComparison(fields["dataComparison"], command.Type)
 		if !ok {
 			return command, failure
 		}
 		command.DataComparison = &request
-	case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.export", "schema.cancel", "schema.close":
+	case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.export", "schema.plan", "schema.cancel", "schema.close":
 		allowed["schemaComparison"] = true
 		request, ok := parseSchemaComparison(fields["schemaComparison"], command.Type)
 		if !ok {
@@ -816,9 +816,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
-	case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.cancel.result", "data.close.result":
+	case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
 		fields["dataComparison"] = response.DataComparison
-	case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
+	case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.plan.result", "schema.cancel.result", "schema.close.result":
 		fields["schemaComparison"] = response.SchemaComparison
 	case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
 		fields["comparison"] = response.Comparison

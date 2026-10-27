@@ -67,6 +67,19 @@ for ((attempt = 0; attempt < 120; attempt++)); do
     sleep 1
 done
 if [[ "$ready" != 1 ]]; then printf 'MySQL test container did not become ready.\n' >&2; exit 1; fi
+if [[ "${DBEER_TEST_MYSQL_SETUP_R27:-0}" == 1 ]]; then
+    # Only this runner's disposable container is eligible for extra UI schemas.
+    docker exec "$container_id" sh -ec '
+        MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --execute="
+            CREATE DATABASE r27_ui_source CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+            CREATE DATABASE r27_ui_target CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+            GRANT ALL PRIVILEGES ON r27_ui_source.* TO '\''dbeer'\''@'\''%'\'';
+            GRANT ALL PRIVILEGES ON r27_ui_target.* TO '\''dbeer'\''@'\''%'\'';
+        "
+    '
+    export DBEER_R27_MYSQL_SOURCE_SCHEMA=r27_ui_source
+    export DBEER_R27_MYSQL_TARGET_SCHEMA=r27_ui_target
+fi
 port_mapping="$(docker port "$container_id" 3306/tcp)"
 export DBEER_TEST_MYSQL_HOST=localhost DBEER_TEST_MYSQL_PORT="${port_mapping##*:}"
 export DBEER_TEST_MYSQL_USER=dbeer DBEER_TEST_MYSQL_DATABASE=dbeer

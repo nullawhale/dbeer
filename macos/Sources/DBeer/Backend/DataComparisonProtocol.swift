@@ -48,10 +48,14 @@ struct DataComparisonReadSide: Codable, Equatable, Sendable {
 struct DataComparisonRequest: Codable, Equatable, Sendable {
     var source: DataComparisonReadSide?; var target: DataComparisonReadSide?; var columns: [DataComparisonMapping]?
     var originals: String?; var jobId: String?; var offset: Int64?; var limit: Int?; var maxBytes: Int?; var cellOffset: Int?; var valueRef: String?
+    var modelDigest: String?
     static func digestValid(_ value: String) -> Bool { value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
     func valid(for type: String) -> Bool {
         let noInputs = source == nil && target == nil && columns == nil && originals == nil
+        if type != "data.plan", modelDigest != nil { return false }
         switch type {
+        case "data.plan":
+            return noInputs && jobId.map(BackendMessage.validID) == true && modelDigest.map(Self.digestValid) == true && offset == nil && limit == nil && maxBytes == nil && cellOffset == nil && valueRef == nil
         case "data.describe", "data.start":
             guard let source, let target, source.connection.engine == target.connection.engine,
                   source.table.valid, target.table.valid, jobId == nil, offset == nil, limit == nil, maxBytes == nil, cellOffset == nil, valueRef == nil else { return false }
@@ -113,11 +117,14 @@ struct DataComparisonResponse: Codable, Equatable, Sendable {
     var diff: ComparisonTextDiff?
     var offset: Int64?
     var cellOffset: Int?
+    var plan: SynchronizationSQLPlan?
     func valid(for type: String) -> Bool {
+        guard plan == nil || type == "data.plan.result" else { return false }
         guard (diff == nil && offset == nil && cellOffset == nil) || type == "data.diff.result" else { return false }
         guard BackendMessage.validID(jobId), (message?.utf8.count ?? 0) <= 4_096, (code?.utf8.count ?? 0) <= 128,
               phase == nil || ["capturing", "comparing"].contains(phase), summary?.valid != false, descriptors?.valid != false else { return false }
         switch type {
+        case "data.plan.result": return state == .completed && plan?.valid == true && plan?.kind == "data" && descriptors == nil && summary == nil && page == nil && value == nil
         case "data.diff.result": return state == .completed && diff?.valid == true && (offset ?? -1) >= 0 && (cellOffset ?? -1) >= 0 && descriptors == nil && summary == nil && page == nil && value == nil
         case "data.start.result", "data.describe.result": return state == .pending && descriptors == nil && summary == nil && page == nil && value == nil
         case "data.status.result": return page == nil && value == nil &&

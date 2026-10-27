@@ -25,6 +25,7 @@ import (
 	"dbeer/helper/internal/session"
 	"dbeer/helper/internal/sqllsp"
 	"dbeer/helper/internal/sshtunnel"
+	"dbeer/helper/internal/syncplan"
 )
 
 // Native GPUI product builds set these explicit -X main.* link values from the
@@ -55,6 +56,28 @@ func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, 
 		return cassandra.RenderSchemaDefinition(ctx, capture, ref)
 	default:
 		return schemacompare.Definition{SQL: "-- SQL definition unavailable for this engine.\n", Limited: true}, nil
+	}
+}
+
+func renderSynchronizationSchema(ctx context.Context, report schemacompare.Report) (syncplan.Plan, error) {
+	switch report.Summary.Engine {
+	case "postgresql":
+		return syncplan.Schema(ctx, report, postgres.RenderSynchronizationSchema)
+	case "mysql":
+		return syncplan.Schema(ctx, report, mysql.RenderSynchronizationSchema)
+	default:
+		return syncplan.Plan{}, syncplan.ErrInvalid
+	}
+}
+
+func renderSynchronizationData(op syncplan.DataOperation) (string, error) {
+	switch op.Descriptor.Engine {
+	case "postgresql":
+		return postgres.RenderDataSynchronization(op)
+	case "mysql":
+		return mysql.RenderDataSynchronization(op)
+	default:
+		return "", syncplan.ErrInvalid
 	}
 }
 
@@ -196,7 +219,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -213,7 +236,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			continue
 		}
 		if strings.HasPrefix(command.Type, "data.") {
-			if command.Type != "data.page" && command.Type != "data.value" && command.Type != "data.diff" {
+			if command.Type != "data.page" && command.Type != "data.value" && command.Type != "data.diff" && command.Type != "data.plan" {
 				if !emit(dataComparisons.Handle(command)) {
 					return
 				}
@@ -238,7 +261,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			continue
 		}
 		if strings.HasPrefix(command.Type, "schema.") {
-			if command.Type != "schema.page" && command.Type != "schema.value" && command.Type != "schema.diff" && command.Type != "schema.export" {
+			if command.Type != "schema.page" && command.Type != "schema.value" && command.Type != "schema.diff" && command.Type != "schema.export" && command.Type != "schema.plan" {
 				if !emit(schemas.Handle(command)) {
 					return
 				}
@@ -384,14 +407,14 @@ func runWithSSH(input io.Reader, output io.Writer, opener adapter.OpenFunc, iden
 
 func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity, tunnels *sshtunnel.Manager, comparisons *comparisonjob.Manager) error {
 	defer comparisons.Close()
-	schemas, err := schemajob.New(opener, schemajob.Options{RenderDefinition: renderSchemaDefinition})
+	schemas, err := schemajob.New(opener, schemajob.Options{RenderDefinition: renderSchemaDefinition, RenderPlan: renderSynchronizationSchema})
 	if err != nil {
 		return err
 	}
 	defer schemas.Close()
 	// The native owner supplies a private parent so it can clean captures after
 	// forced process termination. This path is never accepted over the protocol.
-	dataComparisons, err := datacomparisonjob.New(opener, datacomparisonjob.Options{Root: os.Getenv("DBEER_DATA_COMPARISON_ROOT")})
+	dataComparisons, err := datacomparisonjob.New(opener, datacomparisonjob.Options{Root: os.Getenv("DBEER_DATA_COMPARISON_ROOT"), RenderData: renderSynchronizationData})
 	if err != nil {
 		return err
 	}

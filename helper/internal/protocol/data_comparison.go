@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"dbeer/helper/internal/resultcompare"
+	"dbeer/helper/internal/syncplan"
 	tc "dbeer/helper/internal/tablecapture"
 	"dbeer/helper/internal/textdiff"
 	"encoding/json"
@@ -19,16 +20,17 @@ type DataReadSide struct {
 	ReadLimit        int          `json:"readLimit,omitempty"`
 }
 type DataComparisonRequest struct {
-	Source     *DataReadSide `json:"source,omitempty"`
-	Target     *DataReadSide `json:"target,omitempty"`
-	Columns    []tc.Mapping  `json:"columns,omitempty"`
-	Originals  string        `json:"originals,omitempty"`
-	JobID      string        `json:"jobId,omitempty"`
-	Offset     int64         `json:"offset,omitempty"`
-	Limit      int           `json:"limit,omitempty"`
-	MaxBytes   int           `json:"maxBytes,omitempty"`
-	CellOffset int           `json:"cellOffset,omitempty"`
-	ValueRef   string        `json:"valueRef,omitempty"`
+	Source      *DataReadSide `json:"source,omitempty"`
+	Target      *DataReadSide `json:"target,omitempty"`
+	Columns     []tc.Mapping  `json:"columns,omitempty"`
+	Originals   string        `json:"originals,omitempty"`
+	JobID       string        `json:"jobId,omitempty"`
+	Offset      int64         `json:"offset,omitempty"`
+	Limit       int           `json:"limit,omitempty"`
+	MaxBytes    int           `json:"maxBytes,omitempty"`
+	CellOffset  int           `json:"cellOffset,omitempty"`
+	ValueRef    string        `json:"valueRef,omitempty"`
+	ModelDigest string        `json:"modelDigest,omitempty"`
 }
 type DataDescriptors struct {
 	Source tc.Descriptor `json:"source"`
@@ -56,6 +58,7 @@ type DataComparisonResponse struct {
 	Summary     *DataComparisonSummary `json:"summary,omitempty"`
 	Page        *resultcompare.Page    `json:"page,omitempty"`
 	Value       *resultcompare.Value   `json:"value,omitempty"`
+	Plan        *syncplan.Plan         `json:"plan,omitempty"`
 }
 
 func dataDigest(s string) bool {
@@ -83,6 +86,8 @@ func parseDataComparison(raw json.RawMessage, kind string) (DataComparisonReques
 	case "data.start":
 		needed = []string{"source", "target", "columns", "originals"}
 	case "data.status", "data.cancel", "data.close":
+	case "data.plan":
+		needed = append(needed, "modelDigest")
 	case "data.diff":
 		allowed = map[string]bool{"offset": true, "cellOffset": true}
 	case "data.page":
@@ -173,6 +178,9 @@ func parseDataComparison(raw json.RawMessage, kind string) (DataComparisonReques
 	}
 	if !ValidID(r.JobID) || strings.ContainsAny(r.JobID, "\x00\r\n") || r.Offset < 0 || r.CellOffset < 0 {
 		return r, false
+	}
+	if kind == "data.plan" {
+		return r, syncplan.DigestValid(r.ModelDigest)
 	}
 	if kind == "data.page" {
 		if _, ok := f["limit"]; !ok {

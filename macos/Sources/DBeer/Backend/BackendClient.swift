@@ -88,6 +88,7 @@ actor BackendClient {
     private var resultComparisonSupported = false
     private var schemaComparisonSupported = false
     private var dataComparisonSupported = false
+    private var synchronizationPlanSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -192,6 +193,9 @@ actor BackendClient {
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type == "data.plan" || command.type == "schema.plan" {
+            guard synchronizationPlanSupported else { throw BackendRequestError.invalidCommand }
+        }
         if command.type.hasPrefix("data.") {
             guard dataComparisonSupported, command.dataComparison?.valid(for: command.type) == true,
                   command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
@@ -373,6 +377,7 @@ actor BackendClient {
             resultComparisonSupported = reply.capabilities?.contains("resultComparisonV1") == true
             schemaComparisonSupported = reply.capabilities?.contains("schemaComparisonV1") == true
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
+            synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
@@ -398,6 +403,9 @@ actor BackendClient {
         guard command.type.hasPrefix("data."), reply.type != "error" else { return }
         guard let request = command.dataComparison, let response = reply.dataComparison,
               request.jobId == nil || request.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let plan = response.plan {
+            guard plan.modelDigest == request.modelDigest else { throw BackendTransportError(.invalidMessage) }
+        }
         if response.diff != nil {
             guard response.offset == (request.offset ?? 0), response.cellOffset == (request.cellOffset ?? 0) else { throw BackendTransportError(.invalidMessage) }
         }
@@ -416,6 +424,9 @@ actor BackendClient {
         guard command.type.hasPrefix("schema."), reply.type != "error" else { return }
         guard let requested = command.schemaComparison, let response = reply.schemaComparison,
               requested.jobId == nil || requested.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let plan = response.plan {
+            guard plan.modelDigest == requested.modelDigest else { throw BackendTransportError(.invalidMessage) }
+        }
         if response.diff != nil {
             guard response.offset == (requested.offset ?? 0) else { throw BackendTransportError(.invalidMessage) }
         }

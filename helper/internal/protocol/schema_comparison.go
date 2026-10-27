@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"dbeer/helper/internal/schemacompare"
+	"dbeer/helper/internal/syncplan"
 	"dbeer/helper/internal/textdiff"
 	"encoding/json"
 )
@@ -13,15 +14,16 @@ type SchemaSide struct {
 	Connection Connection `json:"connection"`
 }
 type SchemaComparisonRequest struct {
-	Source     *SchemaSide             `json:"source,omitempty"`
-	Target     *SchemaSide             `json:"target,omitempty"`
-	Mappings   *schemacompare.Mappings `json:"mappings,omitempty"`
-	JobID      string                  `json:"jobId,omitempty"`
-	Collection string                  `json:"collection,omitempty"`
-	Offset     int64                   `json:"offset,omitempty"`
-	Limit      int                     `json:"limit,omitempty"`
-	MaxBytes   int                     `json:"maxBytes,omitempty"`
-	ValueRef   string                  `json:"valueRef,omitempty"`
+	Source      *SchemaSide             `json:"source,omitempty"`
+	Target      *SchemaSide             `json:"target,omitempty"`
+	Mappings    *schemacompare.Mappings `json:"mappings,omitempty"`
+	JobID       string                  `json:"jobId,omitempty"`
+	Collection  string                  `json:"collection,omitempty"`
+	Offset      int64                   `json:"offset,omitempty"`
+	Limit       int                     `json:"limit,omitempty"`
+	MaxBytes    int                     `json:"maxBytes,omitempty"`
+	ValueRef    string                  `json:"valueRef,omitempty"`
+	ModelDigest string                  `json:"modelDigest,omitempty"`
 }
 type SchemaComparisonResponse struct {
 	Offset  *int64                 `json:"offset,omitempty"`
@@ -34,6 +36,7 @@ type SchemaComparisonResponse struct {
 	Page    *schemacompare.Page    `json:"page,omitempty"`
 	Value   *schemacompare.Chunk   `json:"value,omitempty"`
 	Export  *schemacompare.Chunk   `json:"export,omitempty"`
+	Plan    *syncplan.Plan         `json:"plan,omitempty"`
 }
 
 func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRequest, bool) {
@@ -48,6 +51,8 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 	case "schema.start":
 		needed = []string{"source", "target", "mappings"}
 	case "schema.status", "schema.cancel", "schema.close":
+	case "schema.plan":
+		needed = append(needed, "modelDigest")
 	case "schema.diff":
 		allowed["offset"] = true
 	case "schema.page":
@@ -103,6 +108,9 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 	}
 	if !ValidID(r.JobID) || r.Offset < 0 {
 		return r, false
+	}
+	if kind == "schema.plan" {
+		return r, syncplan.DigestValid(r.ModelDigest)
 	}
 	if kind == "schema.page" {
 		if _, ok := f["limit"]; !ok {

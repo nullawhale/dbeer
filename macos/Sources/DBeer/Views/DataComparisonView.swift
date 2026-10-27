@@ -46,6 +46,9 @@ struct DataComparisonView: View {
         .frame(minWidth: 980, idealWidth: 1160, minHeight: 660, idealHeight: 800)
         .background(AppPalette.panel).tint(AppPalette.accent).focusEffectDisabled()
         .interactiveDismissDisabled(model.isWorking || model.isStopping)
+        .sheet(item: Binding(get: { model.planDraft }, set: { if $0 == nil { model.dismissPlan() } })) { draft in
+            SynchronizationPlanView(draft: draft, close: { model.dismissPlan() })
+        }
         .accessibilityElement(children: .contain).accessibilityIdentifier("dataComparison")
     }
 
@@ -182,7 +185,7 @@ struct DataComparisonView: View {
                 }.accessibilityIdentifier("dataCompareOriginals")
                 Text(model.originals == "allColumns" ? "Retain all original columns in the temporary capture." : "Excluded columns are not captured; full-original planning is unavailable.")
                     .font(.caption).appSecondaryText().accessibilityIdentifier("dataCompareOriginalsNotice")
-                Text("Captures use independent read-only sessions, with no common snapshot across servers. Cassandra reads have no snapshot and always remain partial. Keys are matched by exact type and value; duplicate keys are ambiguous. Samples may differ because server ordering and collations differ. Temporary files share a 256 MiB budget and are removed on close. No database writes or synchronization SQL.")
+                Text("Captures use independent read-only sessions, with no common snapshot across servers. Cassandra reads have no snapshot and always remain partial. Keys are matched by exact type and value; duplicate keys are ambiguous. Samples may differ because server ordering and collations differ. Temporary files share a 256 MiB budget and are removed on close. Comparison and planning do not change either server. Generate synchronization SQL explicitly from the completed report.")
                     .font(.caption).appSecondaryText().fixedSize(horizontal: false, vertical: true)
             }.padding(.top, 10)
             }
@@ -226,6 +229,10 @@ struct DataComparisonView: View {
     private var footer: some View {
         HStack {
             if model.summary != nil {
+                if model.targetProfile.map({ [.postgresql, .mysql].contains($0.engine) }) == true {
+                    Button(model.isGeneratingPlan ? "Generating SQL…" : "Generate SQL Plan") { Task { await model.generatePlan() } }
+                        .disabled(!model.canGeneratePlan).controlHover().accessibilityIdentifier("dataComparePlan")
+                }
                 Button("New Comparison") { selectedColumn = nil; showExactValue = false; Task { await model.reset() } }
                     .controlHover().accessibilityIdentifier("dataCompareReset")
             } else if model.metadataMatches {
