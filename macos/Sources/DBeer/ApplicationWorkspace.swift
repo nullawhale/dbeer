@@ -865,7 +865,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     private func makeSQLDocument(profileID: UUID?, text: String? = nil) -> SQLDocument {
         let engine = library.savedConnections.first { $0.id == profileID }?.engine
-        let initialText = text ?? (engine == .cassandra ? "SELECT cluster_name, release_version, data_center FROM system.local;" : "SELECT 1;")
+        let initialText = text ?? (engine == .mongodb ? MongoDBScript.initialText : engine == .cassandra ? "SELECT cluster_name, release_version, data_center FROM system.local;" : "SELECT 1;")
         return SQLDocument(title: "SQL \(documents.count + 1)", text: initialText, profileID: profileID)
     }
 
@@ -1418,6 +1418,7 @@ final class ApplicationWorkspace: ObservableObject {
                   Int(runtime.port) == profile.port, runtime.database == profile.database,
                   runtime.contactPoints == profile.contactPoints, runtime.localDatacenter == profile.localDatacenter,
                   runtime.consistency == profile.consistency, runtime.ssh?.configuration == profile.ssh,
+                  runtime.mongodb == profile.mongodb,
                   runtime.user == profile.user, runtime.sslMode == profile.sslMode,
                   (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
                 throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before loading data or executing SQL.")
@@ -2531,6 +2532,7 @@ final class ApplicationWorkspace: ObservableObject {
             let engine = library.savedConnections.first { $0.id == node.profileID }?.engine
             var groups = engine == .cassandra ? [("Tables", "table"), ("Materialized Views", "view"), ("User-defined Types", "type")] :
                 [("Tables", "table"), ("Views", "view"), ("Functions", "function"), ("Procedures", "procedure"), ("Triggers", "trigger")]
+            if engine == .mongodb { groups = [("Collections", "table"), ("Views", "view")] }
             if engine == .postgresql { groups += [("Enums", "enum"), ("User-defined Types", "type")] }
             node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .group, schema: node.schema, objectKind: kind, engine: engine)
@@ -2543,7 +2545,7 @@ final class ApplicationWorkspace: ObservableObject {
                 await inspectPostgresType(node)
                 return
             }
-            let groups = node.objectKind == "type" ? [("Columns", "columns")] : engine == .cassandra ? [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes")] :
+            let groups = engine == .mongodb ? [("Sampled Fields", "columns"), ("Indexes", "indexes")] : node.objectKind == "type" ? [("Columns", "columns")] : engine == .cassandra ? [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes")] :
                 [("Columns", "columns"), ("Keys", "keys"), ("Indexes", "indexes"), ("Constraints", "constraints"), ("Triggers", "triggers")]
             node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .detailGroup, schema: node.schema,
@@ -2698,8 +2700,9 @@ final class ApplicationWorkspace: ObservableObject {
               let table = document.table, let profileID = document.profileID else { return }
         document.tableForeignKeys = []
         document.foreignKeysError = nil
-        if library.savedConnections.first(where: { $0.id == profileID })?.engine == .cassandra {
-            document.foreignKeysError = "Foreign-key navigation is not supported for Cassandra."
+        if let engine = library.savedConnections.first(where: { $0.id == profileID })?.engine, engine == .mongodb { return }
+        if let engine = library.savedConnections.first(where: { $0.id == profileID })?.engine, engine == .cassandra {
+            document.foreignKeysError = "Foreign-key navigation is not supported for \(engine.displayName)."
             return
         }
         let requestID = UUID()

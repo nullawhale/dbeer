@@ -276,7 +276,7 @@ func (s *server) acceptDocument(uri, text string) bool {
 	return total <= maxTotalDocumentBytes
 }
 func boundedConfiguration(c configuration) bool {
-	if len(c.Keyspace) > 1024 || strings.ContainsRune(c.Keyspace, 0) || c.URI == "" || len(c.URI) > 4096 || (c.Engine != "postgresql" && c.Engine != "mysql" && c.Engine != "cassandra") || len(c.Catalog) > maxCatalogEntries {
+	if len(c.Keyspace) > 1024 || strings.ContainsRune(c.Keyspace, 0) || c.URI == "" || len(c.URI) > 4096 || (c.Engine != "postgresql" && c.Engine != "mysql" && c.Engine != "cassandra" && c.Engine != "mongodb") || len(c.Catalog) > maxCatalogEntries {
 		return false
 	}
 	columns, keyColumns, parameters := 0, 0, 0
@@ -345,7 +345,7 @@ func (s *server) context(d document, uri string) configuration {
 	if c.Engine == "" {
 		c.Engine = d.language
 	}
-	if c.Engine != "mysql" && c.Engine != "cassandra" {
+	if c.Engine != "mysql" && c.Engine != "cassandra" && c.Engine != "mongodb" {
 		c.Engine = "postgresql"
 	}
 	return c

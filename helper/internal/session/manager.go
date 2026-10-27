@@ -419,7 +419,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 		}
 		tx := ""
 		if physical != nil && err == nil {
-			if policy.ReadOnly && engine != "cassandra" {
+			if policy.ReadOnly && engine != "cassandra" && engine != "mongodb" {
 				readOnly, ok := physical.(adapter.ReadOnlySession)
 				if !ok {
 					err = errors.New("adapter has no readonly mode")

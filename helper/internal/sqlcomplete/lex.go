@@ -1,6 +1,7 @@
 package sqlcomplete
 
 import (
+	"dbeer/helper/internal/mongoscript"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -174,6 +175,15 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 
 // Diagnostics reports lexical errors without retaining source text.
 func Diagnostics(text, engine string) []Diagnostic {
+	if engine == "mongodb" {
+		if strings.TrimSpace(text) == "" {
+			return nil
+		}
+		if _, err := mongoscript.Parse(text); err != nil {
+			return []Diagnostic{{Start: 0, End: len(text), Message: "Use a JSON request with collection and find or aggregate. JavaScript, unknown options, and duplicate keys are unsupported."}}
+		}
+		return nil
+	}
 	_, diagnostics := lex(text, engine)
 	return diagnostics
 }

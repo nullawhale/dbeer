@@ -14,6 +14,7 @@ import (
 	"dbeer/helper/internal/cassandra"
 	"dbeer/helper/internal/comparisonjob"
 	"dbeer/helper/internal/datacomparisonjob"
+	"dbeer/helper/internal/mongodb"
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
 	"dbeer/helper/internal/productidentity"
@@ -59,6 +60,8 @@ func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, 
 
 func openDatabase(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
 	switch connection.DatabaseEngine() {
+	case "mongodb":
+		return mongodb.Open(ctx, connection)
 	case "postgresql":
 		return postgres.Open(ctx, connection)
 	case "mysql":

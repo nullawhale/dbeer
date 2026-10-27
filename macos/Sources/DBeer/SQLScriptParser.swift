@@ -44,10 +44,11 @@ enum SQLScriptParser {
         "OFFSET", "ASC", "DESC", "NULL", "TRUE", "FALSE", "AND", "OR", "NOT", "IS", "IN", "EXISTS", "CASE",
         "WHEN", "DEFAULT", "PRIMARY", "KEY", "REFERENCES", "CONSTRAINT", "EXPLAIN", "ANALYZE", "DELIMITER"]
     static let cqlKeywords = ["SELECT", "FROM", "WHERE", "AS", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "MATERIALIZED", "VIEW", "INDEX", "KEYSPACE", "TYPE", "FUNCTION", "AGGREGATE", "TRUNCATE", "USE", "BEGIN", "UNLOGGED", "COUNTER", "BATCH", "APPLY", "IF", "EXISTS", "NOT", "IN", "AND", "OR", "IS", "NULL", "TRUE", "FALSE", "PRIMARY", "KEY", "WITH", "CLUSTERING", "ORDER", "BY", "ASC", "DESC", "LIMIT", "PER", "PARTITION", "ALLOW", "FILTERING", "USING", "TTL", "TIMESTAMP", "STATIC", "FROZEN", "CONTAINS", "TOKEN", "JSON", "DISTINCT", "GROUP", "ANN", "OF", "TO"]
-    static func keywords(for engine: DatabaseEngine) -> [String] { engine == .cassandra ? cqlKeywords : keywords }
+    static func keywords(for engine: DatabaseEngine) -> [String] { engine == .mongodb ? [] : engine == .cassandra ? cqlKeywords : keywords }
 
     static func parse(_ text: String, engine: DatabaseEngine) -> SQLParseResult {
-        Scanner(text: text, engine: engine).scan()
+        if engine == .mongodb { return MongoDBScript.parse(text) }
+        return Scanner(text: text, engine: engine).scan()
     }
 
     static func selectedStatement(in text: String, selection: NSRange, engine: DatabaseEngine) -> SQLStatement? {

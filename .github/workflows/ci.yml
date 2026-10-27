@@ -80,6 +80,18 @@ jobs:
         env:
           DBEER_TEST_MYSQL_IMAGE: mysql:${{ matrix.mysql }}
 
+  mongodb:
+    name: MongoDB 8.0, TLS and replica set / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: helper/go.mod
+          cache-dependency-path: helper/go.sum
+      - run: ./scripts/test-mongodb.sh
+
   macos:
     name: Swift, native UI, Keychain and app / macOS arm64
     runs-on: macos-15

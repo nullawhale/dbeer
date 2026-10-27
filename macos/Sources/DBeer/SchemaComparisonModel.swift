@@ -68,7 +68,7 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
 
     init(profiles: [SavedConnection], resolve: @escaping @MainActor (SavedConnection) async throws -> ConnectionSettings,
          factory: @escaping @MainActor () -> any SchemaComparisonBackend = { SchemaComparisonHelperBackend() }) {
-        self.profiles = profiles; self.resolve = resolve; self.factory = factory
+        self.profiles = profiles.filter { $0.engine != .mongodb }; self.resolve = resolve; self.factory = factory
     }
     var isWorking: Bool { hasStarted && phase.isWorking }
     var canStart: Bool {

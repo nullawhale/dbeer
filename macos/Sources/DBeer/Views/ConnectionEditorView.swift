@@ -176,10 +176,10 @@ struct ConnectionEditorView: View {
     private var generalTab: some View {
         Form {
             Section("Connection") {
-                LabeledContent(draft.engine == .cassandra ? "Contact points" : "Host") {
+                LabeledContent([.cassandra, .mongodb].contains(draft.engine) ? "Contact points" : "Host") {
                     HStack(spacing: 12) {
                         TextField("Host", text: binding(\.host)).labelsHidden()
-                            .accessibilityLabel(draft.engine == .cassandra ? "Contact points" : "Host")
+                            .accessibilityLabel([.cassandra, .mongodb].contains(draft.engine) ? "Contact points" : "Host")
                             .accessibilityIdentifier("Host")
                         Text("Port")
                         TextField("Port", text: binding(\.port)).labelsHidden()
@@ -189,9 +189,9 @@ struct ConnectionEditorView: View {
                 if !draft.port.isEmpty, !draft.hasValidPort {
                     Text("Enter a port from 1 to 65535.").font(.caption).foregroundStyle(.orange)
                 }
-                TextField(draft.engine == .cassandra ? "Keyspace (optional)" : "Database", text: binding(\.database))
+                TextField(draft.engine == .cassandra ? "Keyspace (optional)" : draft.engine == .mongodb ? "Database (optional)" : "Database", text: binding(\.database))
                     .accessibilityIdentifier("Database")
-                if draft.engine != .cassandra {
+                if [.postgresql, .mysql].contains(draft.engine) {
                     LabeledContent("URL") {
                         HStack(spacing: 8) {
                             TextField("Connection URL", text: Binding(get: { urlInputState.wrappedValue }, set: { value in
@@ -225,9 +225,13 @@ struct ConnectionEditorView: View {
                     Text("Separate contact points with commas. Authentication and keyspace are optional.")
                         .font(.caption).appSecondaryText()
                 }
+                if draft.engine == .mongodb {
+                    Text("Separate seed hosts with commas; they use the same port. Database and authentication are optional. Use JSON find requests or aggregation pipelines in the script editor.")
+                        .font(.caption).appSecondaryText()
+                }
             }
             Section("Authentication") {
-                TextField(draft.engine == .cassandra ? "User (optional)" : "User", text: binding(\.user))
+                TextField([.cassandra, .mongodb].contains(draft.engine) ? "User (optional)" : "User", text: binding(\.user))
                     .accessibilityIdentifier("User")
                 Picker("Password source", selection: valueBinding(\.usesPasswordCommand)) {
                     Text("macOS Keychain").tag(false)
@@ -372,7 +376,7 @@ struct ConnectionEditorView: View {
                 }.frame(minHeight: 24).controlHover().connectionButtonFocus().accessibilityIdentifier("connectionEnvironment")
                 Toggle("Readonly", isOn: valueBinding(\.policy.readOnly))
                     .padding(.horizontal, 6).frame(minHeight: 24).controlHover().accessibilityIdentifier("connectionReadOnly")
-                Text(draft.engine == .cassandra ? "Local readonly blocks evaluated writes and unknown CQL in DBeer. It does not enable a server read mode. Use a server role with restricted permissions for strict protection." : "Readonly blocks evaluated writes and unknown SQL, and enables server read mode. Functions and database objects can hide side effects. Use restricted database privileges for strict protection.")
+                Text(draft.engine == .mongodb ? "Local readonly blocks output pipelines and unknown operations in DBeer. Use a MongoDB role with restricted permissions for server protection." : draft.engine == .cassandra ? "Local readonly blocks evaluated writes and unknown CQL in DBeer. It does not enable a server read mode. Use a server role with restricted permissions for strict protection." : "Readonly blocks evaluated writes and unknown SQL, and enables server read mode. Functions and database objects can hide side effects. Use restricted database privileges for strict protection.")
                     .font(.caption).appSecondaryText()
             }
             if draft.engine == .cassandra {
@@ -381,6 +385,20 @@ struct ConnectionEditorView: View {
                     Picker("Consistency", selection: binding(\.consistency)) {
                         ForEach(CassandraSettings.consistencyLevels, id: \.self) { Text($0).tag($0) }
                     }.frame(minHeight: 24).controlHover().connectionButtonFocus().accessibilityIdentifier("cassandraConsistency")
+                }
+            }
+            if draft.engine == .mongodb {
+                Section("MongoDB") {
+                    TextField("Authentication database", text: binding(\.mongoAuthSource))
+                    Picker("Authentication mechanism", selection: binding(\.mongoAuthMechanism)) {
+                        Text("Automatic SCRAM").tag("")
+                        Text("SCRAM-SHA-256").tag("SCRAM-SHA-256")
+                        Text("SCRAM-SHA-1").tag("SCRAM-SHA-1")
+                    }.controlHover()
+                    TextField("Replica set (optional)", text: binding(\.mongoReplicaSet))
+                    Toggle("Direct connection", isOn: valueBinding(\.mongoDirectConnection)).controlHover()
+                    Text("SSH requires a direct connection to one host. TLS verifies the database host name.")
+                        .font(.caption).appSecondaryText()
                 }
             }
         }
@@ -573,6 +591,10 @@ struct ConnectionDraft {
     var policy: ExecutionPolicy
     var localDatacenter: String
     var consistency: String
+    var mongoAuthSource = "admin"
+    var mongoAuthMechanism = ""
+    var mongoReplicaSet = ""
+    var mongoDirectConnection = false
     var sshEnabled = false
     var sshHost = ""
     var sshPort = "22"
@@ -612,6 +634,10 @@ struct ConnectionDraft {
         policy = connection?.policy ?? ExecutionPolicy()
         localDatacenter = connection?.localDatacenter ?? ""
         consistency = connection?.consistency ?? "LOCAL_QUORUM"
+        mongoAuthSource = connection?.mongodb?.authSource ?? "admin"
+        mongoAuthMechanism = connection?.mongodb?.authMechanism ?? ""
+        mongoReplicaSet = connection?.mongodb?.replicaSet ?? ""
+        mongoDirectConnection = connection?.mongodb?.directConnection ?? false
     }
 
     init(duplicating connection: SavedConnection) {
@@ -675,8 +701,8 @@ struct ConnectionDraft {
         let cleanedDatabase = database.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedUser = user.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let portNumber = Int(port.trimmingCharacters(in: .whitespacesAndNewlines)),
-              (1...65_535).contains(portNumber), !cleanedHost.isEmpty, (engine == .cassandra || !cleanedDatabase.isEmpty),
-              (engine == .cassandra || !cleanedUser.isEmpty), engine.sslModes.contains(sslMode) else { return nil }
+              (1...65_535).contains(portNumber), !cleanedHost.isEmpty, ([.cassandra, .mongodb].contains(engine) || !cleanedDatabase.isEmpty),
+              ([.cassandra, .mongodb].contains(engine) || !cleanedUser.isEmpty), engine.sslModes.contains(sslMode) else { return nil }
         var ssh: SSHSettings?
         if sshEnabled {
             let configured = sshAuthMethod == .openSSH
@@ -693,14 +719,16 @@ struct ConnectionDraft {
                 passphrase: sshAuthMethod == .privateKey ? sshPassphrase : nil)
         }
         let rootCert = sslRootCert.trimmingCharacters(in: .whitespacesAndNewlines)
-        let points = engine == .cassandra ? CassandraSettings.contactPoints(cleanedHost) : []
+        let points = [.cassandra, .mongodb].contains(engine) ? CassandraSettings.contactPoints(cleanedHost) : []
         let settings = ConnectionSettings(host: points.first ?? cleanedHost, port: portNumber, database: cleanedDatabase,
             user: cleanedUser, password: password, sslMode: sslMode,
             sslRootCert: rootCert.isEmpty ? nil : rootCert, engine: engine, policy: policy,
-            contactPoints: engine == .cassandra ? points : nil,
+            contactPoints: engine == .cassandra || engine == .mongodb && points.count > 1 ? points : nil,
             localDatacenter: engine == .cassandra && !localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? localDatacenter.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
             consistency: engine == .cassandra ? consistency : nil, ssh: ssh,
-            passwordCommand: usesPasswordCommand ? passwordCommand : nil)
+            passwordCommand: usesPasswordCommand ? passwordCommand : nil,
+            mongodb: engine == .mongodb ? MongoDBSettings(authSource: mongoAuthSource, authMechanism: mongoAuthMechanism,
+                replicaSet: mongoReplicaSet, directConnection: mongoDirectConnection) : nil)
         return settings.hasValidNativeFields ? settings : nil
     }
 }

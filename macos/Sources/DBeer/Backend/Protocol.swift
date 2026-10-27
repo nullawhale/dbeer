@@ -6,19 +6,19 @@ enum BackendProtocol {
 }
 
 enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
-    case postgresql, mysql, cassandra
+    case postgresql, mysql, cassandra, mongodb
 
-    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra]
+    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra, .mongodb]
     var id: String { rawValue }
-    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra" } }
-    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042 } }
-    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra: "" } }
-    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra: "" } }
+    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra"; case .mongodb: "MongoDB" } }
+    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042; case .mongodb: 27017 } }
+    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra, .mongodb: "" } }
+    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra, .mongodb: "" } }
     var sslModes: [String] {
         switch self {
         case .postgresql: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
         case .mysql: ["disable", "require", "verify-ca", "verify-full"]
-        case .cassandra: ["verify-full", "disable"]
+        case .cassandra, .mongodb: ["verify-full", "disable"]
         }
     }
 }
@@ -38,12 +38,14 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     var localDatacenter: String?
     var consistency: String?
     var ssh: SSHSettings?
+    var mongodb: MongoDBSettings?
 
     init(host: String, port: Int, database: String, user: String, password: String,
          sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql,
          policy: ExecutionPolicy = ExecutionPolicy(), contactPoints: [String]? = nil,
          localDatacenter: String? = nil, consistency: String? = nil, ssh: SSHSettings? = nil,
-         passwordCommand: PasswordCommand? = nil) {
+         passwordCommand: PasswordCommand? = nil, mongodb: MongoDBSettings? = nil) {
+        self.mongodb = mongodb
         self.passwordCommand = passwordCommand
         self.ssh = ssh
         self.engine = engine
@@ -61,11 +63,12 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, host, port, database, user, password, passwordCommand, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh
+        case engine, host, port, database, user, password, passwordCommand, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, mongodb
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        mongodb = try values.decodeIfPresent(MongoDBSettings.self, forKey: .mongodb)
         ssh = try values.decodeIfPresent(SSHSettings.self, forKey: .ssh)
         engine = try values.decodeIfPresent(DatabaseEngine.self, forKey: .engine) ?? .postgresql
         host = try values.decode(String.self, forKey: .host)

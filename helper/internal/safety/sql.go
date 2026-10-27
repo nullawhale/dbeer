@@ -5,6 +5,7 @@
 package safety
 
 import (
+	"dbeer/helper/internal/mongoscript"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -33,6 +34,16 @@ type Statement struct {
 // failure makes the whole input unknown, so a partially scanned script can
 // never be authorized as a sequence of reads.
 func Classify(engine, sql string) []Statement {
+	if engine == "mongodb" {
+		script, err := mongoscript.Parse(sql)
+		kind, reason := Read, "mongodb_read"
+		if err != nil {
+			kind, reason = Unknown, "invalid_mongodb_json"
+		} else if script.Write {
+			kind, reason = Write, "mongodb_output_stage"
+		}
+		return []Statement{{0, len(sql), kind, reason}}
+	}
 	if engine == "cassandra" {
 		return classifyCQLScript(sql)
 	}

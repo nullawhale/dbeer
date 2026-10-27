@@ -1,6 +1,6 @@
 # DBeer
 
-A native SQL client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, and Apache Cassandra 4.1/5.0.
+A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0 in the working branch.
 
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
 
@@ -12,7 +12,7 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
   Change or clear each binding in **Settings → Shortcuts → Sidebar Panels**;
   the strip shows icons and names, with current bindings in tooltips. The commands are
   also in the **View** menu. **⌘F** reveals Connections and focuses its search.
-- **⌘N** creates a PostgreSQL, MySQL, or Cassandra profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords use macOS Keychain by default; a local CLI can supply dynamic passwords. Settings live in `~/Library/Application Support/DBeer/connections.json`.
+- **⌘N** creates a PostgreSQL, MySQL, Cassandra, or MongoDB profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords use macOS Keychain by default; a local CLI can supply dynamic passwords. Settings live in `~/Library/Application Support/DBeer/connections.json`.
 - In **General**, paste a `postgresql://`, `postgres://`, `mysql://` or JDBC-prefixed address into **URL** and choose **Use URL**. Single-host URLs support an explicit database, optional user/password, port, IPv6 and encoded values. PostgreSQL accepts `sslmode` and `sslrootcert`; MySQL accepts `ssl-mode` (or JDBC `sslMode`) and `ssl-ca`. Unsupported options and TLS modes are rejected. Omitted credentials and TLS options keep their current field values. The URL preview excludes passwords; imported passwords move into the Password field and use Keychain on Save. Apply or reset a pending URL before saving or testing.
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
 - The tree loads on demand and provides search, Refresh, structure, definitions, Copy Name, and Generate SELECT. Double-click a table to select an existing data view or load its first 200 rows; Open in New Tab creates an independent view. Filtering and sorting run on the server; pagination uses the primary key for stable ordering without automatic COUNT queries.
@@ -57,6 +57,57 @@ existing safe editing workflow. An active SQL transaction is never reused or
 implicitly committed for these actions. Restored documents and offline snapshots
 do not retain source-row permissions or editing state.
 
+## MongoDB in the working branch
+
+MongoDB uses the [official Go driver](https://www.mongodb.com/docs/drivers/go/current/).
+Choose MongoDB when creating a profile. General accepts comma-separated seed
+hosts with one shared port; the database and user are optional. Options includes
+the authentication database (default `admin`), automatic/SCRAM-SHA-256/SCRAM-SHA-1
+authentication, replica set and direct connection. Passwords stay in Keychain or
+the local password command. TLS supports `disable` and `verify-full`, including
+a custom CA. SSH requires a direct connection to a single logical host.
+
+The editor accepts one JSON request, with an optional `database` override:
+
+```json
+{
+  "database": "demo",
+  "collection": "orders",
+  "find": {"price": {"$gte": {"$numberDecimal": "10.00"}}},
+  "sort": {"createdAt": -1},
+  "limit": 200
+}
+```
+
+Use `"aggregate": [{"$match": {}}, {"$group": {"_id": "$region", "count": {"$sum": 1}}}]`
+instead of `find` for aggregation. `find` also accepts `projection`; sort order
+follows JSON key order. JavaScript, mongosh syntax and arbitrary database commands
+are rejected. `$out` and `$merge` are output stages and pass the same execution
+policy as other writes. Production requires confirmation; local readonly blocks
+them. Driver retries are disabled, and interrupted output operations disclose
+uncertain outcomes when applicable. MongoDB roles provide server-side protection.
+SQL transaction commands and document grid editing are unsupported.
+
+Collections open as complete BSON documents in a `document` column. The inspector,
+loaded exports, snapshots and Run to File retain Canonical Extended JSON, including
+ObjectId, int32/int64, Decimal128, dates, binary subtypes, timestamps, nested values
+and legacy BSON types. BSON null, missing fields, empty strings and `"NULL"` remain
+distinct. Field metadata and suggestions are sampled from at most 32 documents;
+they are not a schema. Completion supports collection names, sampled field paths,
+query/aggregation operators and Extended JSON type wrappers, while typing or with
+**⌃Space**. Editing or completion never executes the script.
+
+Collection browsing uses 200-document sequential cursors, bound to the tab,
+collection, filter and sort, with a five-minute client expiry. Filter values use
+JSON/Extended JSON, including quoted strings. **Sort Documents** in the filter
+panel chooses a sampled field and direction; JSON scripts support compound sorts.
+Pages do not provide snapshot isolation. Interactive scripts retain at most 1,000
+documents or 3 MiB of encoded rows; larger documents require Run to File. Run to
+File streams the full result, subject to an explicit query limit and timeout.
+Restored tabs remain disconnected and restart from their first page on explicit
+Load Data. MongoDB schema and live table-data comparison are not supported;
+saved BSON results can use exact snapshot comparison.
+
 ## Workspace restoration in the working branch
 
 DBeer restores SQL, table/view, snapshot and investigation tabs in their saved
@@ -66,8 +117,8 @@ filters and sort order. They initially show this context with an explicit
 **Load Data** action. SQL tabs remain
 disconnected until Run; table tabs remain disconnected until Load Data or Refresh.
 A missing connection stays unavailable until you explicitly choose a replacement.
-PostgreSQL/MySQL reopen the saved page on loading; Cassandra starts from the first
-page because its server cursors cannot survive a session restart.
+PostgreSQL/MySQL reopen the saved page on loading; Cassandra and MongoDB start
+from the first page because their server cursors cannot survive a session restart.
 
 Sessions, transactions, running operations, live results, cursor tokens and pending
 grid changes are excluded. Snapshot and investigation tabs retain local artifact
@@ -890,9 +941,20 @@ scope. Applied runs record their selected paths in
 ./scripts/test-postgres.sh
 ./scripts/test-mysql.sh
 ./scripts/test-tls.sh
+./scripts/test-mongodb.sh  # MongoDB 8.0, authenticated plain/TLS and replica set
 ./scripts/test-cassandra.sh  # Cassandra 4.1/5.0, plain and authentication/TLS
 ./scripts/test-cassandra.sh --version 5.0 --mode tls --multi-node  # replica failure profile
 ```
+
+The opt-in `./scripts/test-mongodb-ui.sh plain` and
+`./scripts/test-mongodb-ui.sh tls` runners open native macOS windows against a
+disposable MongoDB 8.0 server. They check the connection editor, document browsing,
+paging, filters, sort, aggregation and BSON inspection in light and dark
+appearances, plus automatic completion and keyboard acceptance in a native editor.
+They use isolated credentials and synthetic documents;
+screenshots are written to `build/mongodb-ui/`. These checks require an interactive
+macOS session and Screen Recording access; run them only when UI verification is
+requested. They are not part of the default helper integration run.
 
 The opt-in `./scripts/test-r22-ui.sh` runner checks SQL result source rows and
 editing in native windows against disposable PostgreSQL and MySQL servers. It
@@ -925,7 +987,7 @@ of these SSH runners launches the application or performs UI checks.
 
 A separate synchronous Swift Testing host runs native tests: it keeps the main run loop alive after AppKit callbacks and works around the [Swift async-main issue](https://github.com/swiftlang/swift/issues/91716). The runner requires a completed Swift Testing summary; an early exit with code 0 is a failure.
 
-GitHub Actions covers Linux Go race tests, required PostgreSQL 16/17/18 and MySQL 8.0/8.4 with TLS, and macOS arm64 with Swift, native windows, fixtures, application builds, and a temporary Keychain.
+GitHub Actions covers Linux Go race tests, required PostgreSQL 16/17/18 and MySQL 8.0/8.4 with TLS, MongoDB 8.0 with TLS and a replica set, and macOS arm64 with Swift, native windows, fixtures, application builds, and a temporary Keychain.
 
 Reproduce the separate packaged-archive acceptance run from build 5 to build 6 using Apple XCTest UI Testing:
 

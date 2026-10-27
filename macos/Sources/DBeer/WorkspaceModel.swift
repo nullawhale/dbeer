@@ -86,6 +86,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var contactPoints: [String]?
     @Published var localDatacenter: String?
     @Published var consistency: String?
+    @Published var mongodb: MongoDBSettings?
     @Published var ssh: SSHSettings?
     @Published private(set) var connectionProgress: String?
     @Published private var connectionPreparationId: UUID?
@@ -218,7 +219,7 @@ final class WorkspaceModel: ObservableObject {
         let attempt = connectionAttempt
         guard canConnect else { return }
         guard let portNumber = Int(port), (1...65535).contains(portNumber),
-              !host.isEmpty, (engine == .cassandra || (!database.isEmpty && !user.isEmpty)) else {
+              !host.isEmpty, ([.cassandra, .mongodb].contains(engine) || (!database.isEmpty && !user.isEmpty)) else {
             errorMessage = "Enter a host, database, user, and a port from 1 to 65535."
             return
         }
@@ -229,7 +230,7 @@ final class WorkspaceModel: ObservableObject {
         let settings = ConnectionSettings(host: host, port: portNumber, database: database,
             user: user, password: password, sslMode: sslMode,
             sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine, policy: policy,
-            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh, passwordCommand: passwordCommand)
+            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh, passwordCommand: passwordCommand, mongodb: mongodb)
         guard settings.hasValidNativeFields else {
             errorMessage = "Enter valid connection settings for the selected database engine."
             return
@@ -558,6 +559,7 @@ final class WorkspaceModel: ObservableObject {
         contactPoints = settings.contactPoints
         localDatacenter = settings.localDatacenter
         consistency = settings.consistency
+        mongodb = settings.mongodb
     }
 
     private func finishConnectionMutation() {

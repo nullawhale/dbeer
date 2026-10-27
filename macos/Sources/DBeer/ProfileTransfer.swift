@@ -65,9 +65,11 @@ enum ProfileTransfer {
         var localDatacenter: String?
         var consistency: String?
         var ssh: PortableSSH?
+        var mongodb: MongoDBSettings?
 
         init(_ saved: SavedConnection) {
             ssh = saved.ssh.map(PortableSSH.init)
+            mongodb = saved.mongodb
             name = saved.name
             engine = saved.engine
             host = saved.host
@@ -86,7 +88,7 @@ enum ProfileTransfer {
             ImportedProfile(profile: SavedConnection(id: UUID(), name: name, settings: ConnectionSettings(
                 host: host, port: port, database: database, user: user, password: "", sslMode: sslMode,
                 sslRootCert: sslRootCert, engine: engine, policy: policy ?? ExecutionPolicy(), contactPoints: contactPoints,
-                localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.configuration.runtime(profileId: UUID()))))
+                localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.configuration.runtime(profileId: UUID()), mongodb: mongodb)))
         }
     }
 
@@ -109,11 +111,16 @@ enum ProfileTransfer {
             }
             var uniqueKeys = UniqueJSONKeys(data)
             try uniqueKeys.validate()
-            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh"]
-            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh"])
+            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb"]
+            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb"])
             guard raw.allSatisfy({ Set($0.keys).isSubset(of: permitted) && required.isSubset(of: Set($0.keys)) }) else {
                 throw ProfileTransferError.invalid
             }
+            guard raw.allSatisfy({ record in
+                guard let value = record["mongodb"], !(value is NSNull) else { return true }
+                guard let fields = value as? [String: Any] else { return false }
+                return Set(fields.keys).isSubset(of: ["authSource", "authMechanism", "replicaSet", "directConnection"])
+            }) else { throw ProfileTransferError.invalid }
             guard raw.allSatisfy({ record in
                 guard let value = record["ssh"], !(value is NSNull) else { return true }
                 guard let fields = value as? [String: Any] else { return false }
@@ -150,7 +157,7 @@ enum ProfileTransfer {
               profiles.allSatisfy({ profile in
                   var native = profile.imported().profile.settings(password: "")
                   if native.ssh?.authMethod == .privateKey { native.ssh?.identityFile = "/requires-local-selection" }
-                  let fields = [profile.name, profile.host] + (profile.engine == .cassandra ? [] : [profile.database, profile.user])
+                  let fields = [profile.name, profile.host] + ([.cassandra, .mongodb].contains(profile.engine) ? [] : [profile.database, profile.user])
                   return fields.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                       !$0.contains("\0") && $0.utf8.count <= 1_024 } && profile.name.count <= 128 &&
                       native.hasValidNativeFields &&

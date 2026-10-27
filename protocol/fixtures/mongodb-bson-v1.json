@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "engine": "mongodb",
+  "typeIdentity": "mongodb:bson:canonicalExtendedJSON:v1",
+  "document": {
+    "_id": {"$oid": "507f1f77bcf86cd799439011"},
+    "int32": {"$numberInt": "2147483647"},
+    "int64": {"$numberLong": "9007199254740993"},
+    "decimal": {"$numberDecimal": "12345678901234567890.12345678901234"},
+    "double": {"$numberDouble": "-0.0"},
+    "nan": {"$numberDouble": "NaN"},
+    "infinity": {"$numberDouble": "Infinity"},
+    "date": {"$date": {"$numberLong": "-9223372036854775808"}},
+    "binary": {"$binary": {"base64": "AAEC/w==", "subType": "80"}},
+    "uuid": {"$binary": {"base64": "ABEiM0RVZneImaq7zN3u/w==", "subType": "04"}},
+    "timestamp": {"$timestamp": {"t": 4294967295, "i": 4294967295}},
+    "regex": {"$regularExpression": {"pattern": "a.*", "options": "im"}},
+    "minimum": {"$minKey": 1},
+    "maximum": {"$maxKey": 1},
+    "undefined": {"$undefined": true},
+    "symbol": {"$symbol": "legacy"},
+    "code": {"$code": "return 1"},
+    "scopedCode": {"$code": "return value", "$scope": {"value": {"$numberInt": "1"}}},
+    "dbPointer": {"$dbPointer": {"$ref": "demo.items", "$id": {"$oid": "507f1f77bcf86cd799439011"}}},
+    "null": null,
+    "empty": "",
+    "nullText": "NULL",
+    "boolean": false,
+    "nested": {"array": [{"$numberLong": "-9223372036854775808"}, null, "", {}, []]}
+  }
+}

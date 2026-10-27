@@ -25,6 +25,12 @@ func (connection Connection) Valid() bool {
 		return false
 	}
 	engine := connection.DatabaseEngine()
+	if engine == "mongodb" {
+		return connection.validMongoDB()
+	}
+	if connection.MongoDB != nil {
+		return false
+	}
 	if engine != "cassandra" {
 		return (engine == "postgresql" || engine == "mysql") && connection.Host != "" && connection.Database != "" && connection.User != "" &&
 			len(connection.ContactPoints) == 0 && connection.LocalDatacenter == "" && connection.Consistency == ""

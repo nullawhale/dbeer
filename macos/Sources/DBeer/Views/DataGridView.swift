@@ -119,7 +119,7 @@ struct DataGridView: View {
         view.onToggleRowDetails = { showingRowDetails.wrappedValue.toggle() }
         view.sortColumn = document.tableSort.first?.column
         view.sortAscending = document.tableSort.first?.direction != "desc"
-        if canNavigate {
+        if canNavigate && grid.columns.first?.engine != .mongodb {
             view.onSortColumn = { index in
                 TableBrowseNavigation.sort(column: grid.columns[index].name, document: document, workspace: workspace)
             }
@@ -163,7 +163,7 @@ struct DataGridView: View {
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
                 .popover(isPresented: showingColumns.projectedValue) { columnDetails }
-            relatedRowsMenu
+            if grid.columns.first?.engine != .mongodb { relatedRowsMenu }
             Spacer(minLength: 4)
             if !usesCursors {
                 ControlIconButton(systemName: "chevron.left") {

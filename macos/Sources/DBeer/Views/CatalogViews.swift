@@ -114,7 +114,7 @@ struct ProfileCatalogRow: View {
                 Task { await workspace.connectProfile(profile.id) }
             }
         }
-        menu.addCatalogAction("New SQL Tab") { workspace.newDocument(profileID: profile.id) }
+        menu.addCatalogAction(profile.engine == .mongodb ? "New JSON Script" : "New SQL Tab") { workspace.newDocument(profileID: profile.id) }
         if profile.engine == .cassandra {
             menu.addCatalogAction("Cluster Nodes…", enabled: isConnected) {
                 Task { await workspace.showClusterNodes(profile.id) }
@@ -168,7 +168,7 @@ struct CatalogBranchView: View {
             if ["table", "view"].contains(node.objectKind) {
                 menu.addCatalogAction("Open Data") { Task { await workspace.openData(node) } }
                 menu.addCatalogAction("Open in New Tab") { Task { await workspace.openData(node, inNewTab: true) } }
-                menu.addCatalogAction("Generate SELECT") {
+                menu.addCatalogAction(node.engine == .mongodb ? "Generate Find Request" : "Generate SELECT") {
                     Task { await workspace.openGeneratedSelect(node) }
                 }
             }

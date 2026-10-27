@@ -42,6 +42,9 @@ type request struct {
 // Complete tolerates unfinished SQL. It never executes SQL or assumes that a
 // lexical diagnostic is a server-side syntax error.
 func Complete(text string, offset int, context Context) []Item {
+	if context.Engine == "mongodb" {
+		return mongoComplete(text, offset, context)
+	}
 	if offset < 0 || offset > len(text) || !utf8.ValidString(text) || offset < len(text) && !utf8.RuneStart(text[offset]) || len(text) > 2<<20 {
 		return []Item{}
 	}

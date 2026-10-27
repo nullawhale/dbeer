@@ -110,7 +110,7 @@ final class DataComparisonModel: ObservableObject, Identifiable {
 
     init(profiles: [SavedConnection], resolve: @escaping @MainActor (SavedConnection, UUID) async throws -> ConnectionSettings,
          factory: @escaping @MainActor () -> any DataComparisonBackend = { DataComparisonHelperBackend() }) {
-        self.profiles = profiles; self.resolve = resolve; self.factory = factory
+        self.profiles = profiles.filter { $0.engine != .mongodb }; self.resolve = resolve; self.factory = factory
     }
     var isWorking: Bool { phase.isWorking }
     var canDescribe: Bool {

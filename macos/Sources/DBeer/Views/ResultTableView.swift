@@ -39,6 +39,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
     private(set) var contextCell: ResultGridCell?
     private(set) var selectsWholeRows = false
     private var nativeBackground: NSColor?
+    var fillsDocumentColumn = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -153,6 +154,10 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
 
     override func layout() {
         super.layout()
+        if fillsDocumentColumn, let column = tableColumns.first, let clip = enclosingScrollView?.contentView {
+            let width = max(column.minWidth, clip.bounds.width - intercellSpacing.width)
+            if abs(column.width - width) > 0.5 { column.width = width }
+        }
         copyCoordinator?.layoutInlineEditor()
         copyCoordinator?.synchronizeHeaderScroll()
     }
@@ -635,6 +640,8 @@ struct ResultTableView: NSViewRepresentable {
             let presentationChanged = renderedModifiedCells != modifiedCells || renderedDeletedRows != deletedRows ||
                 (dataIdentity == nil && renderedValueKinds != valueKinds)
             self.columns = columns
+            tableView.fillsDocumentColumn = columns.count == 1 && columns[0].engine == .mongodb && columns[0].nativeType == "BSON document"
+            tableView.autoresizingMask = tableView.fillsDocumentColumn ? [.width] : []
             self.rows = rows
             previousDataIdentity = dataIdentity
             renderedModifiedCells = modifiedCells
@@ -660,7 +667,8 @@ struct ResultTableView: NSViewRepresentable {
                         tableColumn.isEditable = false
                         tableColumn.minWidth = 70
                         tableColumn.maxWidth = 2_000
-                        tableColumn.width = max(140, min(320, tableColumn.headerCell.cellSize.width + 24))
+                        tableColumn.width = tableView.fillsDocumentColumn ? max(140, scrollView.contentSize.width - tableView.intercellSpacing.width) :
+                            max(140, min(320, tableColumn.headerCell.cellSize.width + 24))
                         tableColumn.resizingMask = .userResizingMask
                         tableView.addTableColumn(tableColumn)
                         columnOrdinals[identifier] = ordinal

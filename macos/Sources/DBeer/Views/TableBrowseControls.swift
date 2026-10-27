@@ -7,10 +7,14 @@ struct TableBrowseControls: View {
     private var filterColumn = SwiftUI.State(initialValue: "")
     private var filterOperator = SwiftUI.State(initialValue: "eq")
     private var filterValue = SwiftUI.State(initialValue: "")
+    private var sortField = SwiftUI.State(initialValue: "")
+    private var sortDirection = SwiftUI.State(initialValue: "asc")
 
     init(document: SQLDocument, workspace: ApplicationWorkspace) {
         self.document = document
         self.workspace = workspace
+        sortField = SwiftUI.State(initialValue: document.tableSort.first?.column ?? "")
+        sortDirection = SwiftUI.State(initialValue: document.tableSort.first?.direction ?? "asc")
     }
 
     private var isCassandra: Bool { TableBrowseNavigation.isCassandra(document: document, workspace: workspace) }
@@ -33,20 +37,22 @@ struct TableBrowseControls: View {
                 Picker("Column", selection: filterColumn.projectedValue) {
                     Text("Choose…").tag("")
                     ForEach(columns, id: \.self) { Text($0).tag($0) }
-                }.controlHover().labelsHidden().accessibilityLabel("Filter column")
+                }.controlHover().labelsHidden().accessibilityLabel("Filter column").accessibilityIdentifier("tableFilterColumn")
                 Picker("Filter", selection: filterOperator.projectedValue) {
                     ForEach(operators, id: \.1) { Text($0.0).tag($0.1) }
-                }.controlHover().labelsHidden().accessibilityLabel("Filter operator").frame(width: 115)
+                }.controlHover().labelsHidden().accessibilityLabel("Filter operator").accessibilityIdentifier("tableFilterOperator").frame(width: 115)
             }
             if !["isNull", "isNotNull"].contains(filterOperator.wrappedValue) {
                 TextField("Value", text: filterValue.projectedValue).textFieldStyle(.roundedBorder)
-                    .help("Binary column values use Base64.")
+                    .accessibilityIdentifier("tableFilterValue")
+                    .help(document.runtime?.engine == .mongodb ? "Use JSON or Extended JSON; quote strings, for example \"hello\" or {\"$oid\":\"507f1f77bcf86cd799439011\"}." : "Binary column values use Base64.")
                     .onSubmit(addFilter)
             }
             HStack {
                 Spacer()
                 Button("Add Filter", action: addFilter).controlHover()
                     .disabled(filterColumn.wrappedValue.isEmpty)
+                    .accessibilityIdentifier("tableAddFilter")
             }
             if isCassandra {
                 Text("Partition keys require equality. Clustering filters and sorting require the full partition key. Indexed columns support equality. Generated filters support scalar values; use CQL for tuple, UDT, collection, or vector keys. DBeer never adds ALLOW FILTERING.")
@@ -54,6 +60,27 @@ struct TableBrowseControls: View {
                 Button("Apply Filters", action: reload).controlHover()
                     .disabled(!CassandraBrowseRules.canApplyFilters(document))
                     .accessibilityIdentifier("applyCassandraFilters")
+            }
+            if document.runtime?.engine == .mongodb {
+                Divider()
+                Text("Sort Documents").font(.headline)
+                HStack {
+                    Picker("Field", selection: sortField.projectedValue) {
+                        Text("Default (_id)").tag("")
+                        ForEach(columns, id: \.self) { Text($0).tag($0) }
+                    }.controlHover().accessibilityIdentifier("mongoSortField")
+                    Picker("Direction", selection: sortDirection.projectedValue) {
+                        Text("Ascending").tag("asc")
+                        Text("Descending").tag("desc")
+                    }.controlHover().accessibilityIdentifier("mongoSortDirection")
+                }
+                Button("Apply Sort") {
+                    document.tableSort = sortField.wrappedValue.isEmpty ? [] : [CatalogSort(column: sortField.wrappedValue, direction: sortDirection.wrappedValue)]
+                    reload()
+                }.controlHover().accessibilityIdentifier("mongoApplySort")
+                Text("Fields are sampled. Filter values use JSON or Extended JSON; quote strings. Each page preserves complete BSON documents.")
+                    .font(.caption).appSecondaryText()
+                    .fixedSize(horizontal: false, vertical: true)
             }
             if !document.tableFilters.isEmpty {
                 Divider()
@@ -121,6 +148,7 @@ enum TableBrowseNavigation {
     }
 
     static func sort(column: String, document: SQLDocument, workspace: ApplicationWorkspace) {
+        guard document.runtime?.engine != .mongodb else { return }
         guard isEnabled(document: document, workspace: workspace),
               !isCassandra(document: document, workspace: workspace) ||
                 (CassandraBrowseRules.canApplyFilters(document) && CassandraBrowseRules.canSort(column, in: document)) else { return }

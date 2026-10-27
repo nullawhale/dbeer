@@ -655,6 +655,7 @@ struct SQLEditorView: NSViewRepresentable {
         }
 
         private func suppressesCompletion(text: String, offset: Int) -> Bool {
+            if engine == .mongodb { return false }
             let parsed = parse(text)
             let source = text as NSString
             return parsed.tokens.contains { token in
@@ -724,6 +725,7 @@ struct SQLEditorView: NSViewRepresentable {
         }
 
         private func localCompletions(prefix: String, quoted: Bool = false) -> [String] {
+            if engine == .mongodb { return [] }
             let matches: (String) -> Bool = { $0.lowercased().hasPrefix(prefix.lowercased()) }
             let keywords = quoted ? [] : SQLScriptParser.keywords(for: engine).filter(matches)
             let reserved = Set(SQLScriptParser.keywords(for: engine))

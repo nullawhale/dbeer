@@ -19,6 +19,9 @@ type callFrame struct {
 // strings/comments, subqueries, array constructors, and nested calls cannot
 // advance the outer call's argument index. No expression evaluation is needed.
 func Signatures(text string, offset int, context Context) *SignatureHelp {
+	if context.Engine == "mongodb" {
+		return nil
+	}
 	if offset < 0 || offset > len(text) || len(text) > 2<<20 || !utf8.ValidString(text) || offset < len(text) && !utf8.RuneStart(text[offset]) {
 		return nil
 	}

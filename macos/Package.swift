@@ -10,6 +10,7 @@ let package = Package(
             .copy("Resources/postgresql-logo.svg"),
             .copy("Resources/mysql-logo.svg"),
             .copy("Resources/cassandra-logo.svg"),
+            .copy("Resources/mongodb-logo.svg"),
             .copy("Resources/EditorThemes"),
         ]),
         .testTarget(name: "DBeerTests", dependencies: ["DBeer"]),

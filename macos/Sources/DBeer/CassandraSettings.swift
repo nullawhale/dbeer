@@ -27,6 +27,18 @@ extension ConnectionSettings {
         guard fields.allSatisfy({ !$0.contains("\0") && $0.utf8.count <= 1_024 }),
               !host.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               (1...65_535).contains(port), engine.sslModes.contains(sslMode) else { return false }
+        if engine == .mongodb {
+            func validHost(_ value: String) -> Bool {
+                !value.isEmpty && !value.contains(where: { " \t\n\r/@?#,\\[]%".contains($0) }) &&
+                    (!value.contains(":") || CassandraSettings.isNumericAddress(value))
+            }
+            return mongodb?.isValid != false && localDatacenter == nil && consistency == nil &&
+                !(user.isEmpty && !password.isEmpty) && validHost(host) &&
+                (contactPoints?.count ?? 0) <= 32 && contactPoints?.isEmpty != true && (contactPoints ?? []).allSatisfy(validHost) &&
+                (mongodb?.directConnection != true || (contactPoints?.count ?? 0) <= 1) &&
+                (ssh == nil || mongodb?.directConnection == true && contactPoints == nil)
+        }
+        guard mongodb == nil else { return false }
         if engine == .cassandra {
             if ssh != nil, !(contactPoints ?? [host]).allSatisfy(CassandraSettings.isNumericAddress) { return false }
             return (contactPoints?.count ?? 0) <= 32 && !(contactPoints?.isEmpty ?? false) && (contactPoints ?? []).allSatisfy {

@@ -19,6 +19,7 @@ const MaxFrameBytes = 16 * 1024 * 1024
 const MaxIDBytes = 128
 
 type Connection struct {
+	MongoDB         *MongoDBSettings `json:"mongodb,omitempty"`
 	PasswordCommand *PasswordCommand `json:"passwordCommand,omitempty"`
 	SSH             *SSHSettings     `json:"ssh,omitempty"`
 	Engine          string           `json:"engine,omitempty"`
@@ -624,6 +625,13 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 			return connection, false
 		}
 	}
+	if raw, exists := fields["mongodb"]; exists {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&connection.MongoDB) != nil || connection.MongoDB == nil || !connection.MongoDB.Valid() {
+			return connection, false
+		}
+	}
 	if raw, exists := fields["ssh"]; exists {
 		var ok bool
 		connection.SSH, ok = parseSSH(raw)
@@ -644,7 +652,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 	}
 	for name := range fields {
 		switch name {
-		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "passwordCommand":
+		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "passwordCommand", "mongodb":
 		default:
 			return connection, false
 		}

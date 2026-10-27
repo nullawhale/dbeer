@@ -668,10 +668,10 @@ struct SQLDocumentPane: View {
                     document.runtime?.sessionId != nil || document.isRunning || document.isNavigatingTable)
             if let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
                (document.runtime?.policy ?? profile.policy).readOnly {
-                Text(profile.engine == .cassandra ? "Local RO" : "RO")
+                Text([.cassandra, .mongodb].contains(profile.engine) ? "Local RO" : "RO")
                     .font(.caption2.weight(.regular)).foregroundStyle(.tertiary)
-                    .help(profile.engine == .cassandra ? "Local readonly; use restricted server roles for strict protection" : "Readonly")
-                    .accessibilityLabel(profile.engine == .cassandra ? "Local readonly" : "Readonly")
+                    .help([.cassandra, .mongodb].contains(profile.engine) ? "Local readonly; use restricted server roles for strict protection" : "Readonly")
+                    .accessibilityLabel([.cassandra, .mongodb].contains(profile.engine) ? "Local readonly" : "Readonly")
                     .accessibilityIdentifier("documentReadOnly")
             }
             if document.table != nil, document.grid != nil {

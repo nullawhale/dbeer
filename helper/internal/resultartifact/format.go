@@ -177,7 +177,9 @@ func rowWidth(data []byte) int {
 	return width
 }
 
-func validEngine(engine string) bool { return oneOf(engine, "postgresql", "mysql", "cassandra") }
+func validEngine(engine string) bool {
+	return oneOf(engine, "postgresql", "mysql", "cassandra", "mongodb")
+}
 
 func oneOf(value string, choices ...string) bool {
 	for _, choice := range choices {

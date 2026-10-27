@@ -14,6 +14,17 @@
   reveal the complete first column beside row numbers on initial display while
   preserving later horizontal scrolling and pane resizing.
 
+- Add native MongoDB connections with verified TLS, SCRAM authentication, seed
+  hosts and replica-set options. Browse databases and collections with filters,
+  sorting and sequential cursors; execute JSON find and aggregation requests.
+  BSON results retain all scalar and nested types as Canonical Extended JSON.
+  Script completion includes collections, sampled fields, operators and BSON
+  wrappers. Output pipelines pass execution policy; readonly remains local.
+  JavaScript, SQL transactions and document grid editing are unsupported.
+  Completion skips internal collections and retains authorized collection names
+  when field sampling is denied. Document columns fill the available grid width;
+  browsing hides SQL foreign-key actions, and the filter panel retains its sort.
+
 - Compare PostgreSQL range/multirange, array, composite, domain and extension
   type definitions, including their modifiers and dependencies. MySQL captures
   ENUM/SET labels, binary labels, spatial reference IDs and exact type modifiers.

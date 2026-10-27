@@ -51,6 +51,8 @@ func (err *ConnectionError) Error() string { return err.Message }
 func Capabilities(engine string) []string {
 	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment"}
 	switch engine {
+	case "mongodb":
+		return append(common, "localReadOnly", "cursorPagination", "documentModelV1", "canonicalExtendedJSONV1")
 	case "cassandra":
 		return append(common, "localReadOnly", "cursorPagination", "gridEditing")
 	case "", "postgresql", "mysql":

@@ -46,7 +46,8 @@ struct InspectedValue: Equatable, Sendable {
     }
 
     var description: String {
-        switch value.kind {
+        if nativeType == "BSON document" { return "BSON · Canonical Extended JSON" }
+        return switch value.kind {
         case "null": "SQL NULL"
         case "default": "DEFAULT"
         case "binary": text.isEmpty ? "Empty binary · Base64" : "Binary · Base64"

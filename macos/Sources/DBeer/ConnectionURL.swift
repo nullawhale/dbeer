@@ -108,7 +108,7 @@ struct ConnectionURL {
     /// imported through query parameters. SSH and execution policy stay separate.
     static func format(engine: DatabaseEngine, host: String, port: String, database: String,
                        user: String, sslMode: String, sslRootCert: String) -> String? {
-        guard engine != .cassandra, validHost(host), !database.isEmpty, !database.contains("\0"),
+        guard [.postgresql, .mysql].contains(engine), validHost(host), !database.isEmpty, !database.contains("\0"),
               let port = Int(port), (1...65_535).contains(port), engine.sslModes.contains(sslMode) else { return nil }
         var components = URLComponents()
         components.scheme = engine == .postgresql ? "postgresql" : "mysql"

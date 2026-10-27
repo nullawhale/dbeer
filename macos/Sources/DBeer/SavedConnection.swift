@@ -18,10 +18,12 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     var consistency: String?
     var ssh: SSHConfiguration?
     var passwordCommand: PasswordCommand?
+    var mongodb: MongoDBSettings?
 
     init(id: UUID = UUID(), name: String, settings: ConnectionSettings) {
         ssh = settings.ssh?.configuration
         passwordCommand = settings.passwordCommand
+        mongodb = settings.mongodb
         self.id = id
         self.name = name
         engine = settings.engine
@@ -38,11 +40,12 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     }
 
     fileprivate enum CodingKeys: String, CodingKey {
-        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, passwordCommand
+        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, passwordCommand, mongodb
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        mongodb = try values.decodeIfPresent(MongoDBSettings.self, forKey: .mongodb)
         ssh = try values.decodeIfPresent(SSHConfiguration.self, forKey: .ssh)
         passwordCommand = try values.decodeIfPresent(PasswordCommand.self, forKey: .passwordCommand)
         id = try values.decode(UUID.self, forKey: .id)
@@ -63,11 +66,11 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     func settings(password: String) -> ConnectionSettings {
         ConnectionSettings(host: host, port: port, database: database, user: user,
             password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine, policy: policy, contactPoints: contactPoints,
-            localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.runtime(profileId: id), passwordCommand: passwordCommand)
+            localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.runtime(profileId: id), passwordCommand: passwordCommand, mongodb: mongodb)
     }
 
     func matches(_ settings: ConnectionSettings) -> Bool {
-        passwordCommand == settings.passwordCommand && ssh == settings.ssh?.configuration && engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
+        mongodb == settings.mongodb && passwordCommand == settings.passwordCommand && ssh == settings.ssh?.configuration && engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
             user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert && policy == settings.policy &&
             contactPoints == settings.contactPoints && localDatacenter == settings.localDatacenter && consistency == settings.consistency
     }

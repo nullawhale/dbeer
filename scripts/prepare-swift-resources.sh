@@ -11,10 +11,12 @@ fi
 resources="$1"
 if [[ -d "$resources/Contents" ]]; then resources="$resources/Contents/Resources"; fi
 mkdir -p "$resources"
-for engine in postgresql mysql cassandra; do
+for engine in postgresql mysql cassandra mongodb; do
     destination="$resources/$engine-logo.svg"
     if [[ -L "$destination" ]]; then rm -- "$destination"; fi
-    if ! cmp -s "$repo_root/assets/$engine-logo.svg" "$destination"; then
-        cp "$repo_root/assets/$engine-logo.svg" "$destination"
+    source_asset="$repo_root/assets/$engine-logo.svg"
+    if [[ "$engine" == mongodb ]]; then source_asset="$repo_root/assets/mongo-logo.svg"; fi
+    if ! cmp -s "$source_asset" "$destination"; then
+        cp "$source_asset" "$destination"
     fi
 done
