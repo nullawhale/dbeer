@@ -2,12 +2,13 @@
 
 DBeer requires macOS 14+ on Apple Silicon. Running a packaged application does not require Go, Swift, or the source code.
 
-The current release is **0.2.0, build 10**, for the native macOS client and bundled
+The current release is **0.2.1, build 11**, for the native macOS client and bundled
 Go helper. It supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0
-and MongoDB 8.0. It also includes local MCP access for all four engines. Earlier
+and MongoDB 8.0. It includes local MCP access for all four engines and expanded
+Cassandra CQL language assistance. Earlier
 prerelease archives remain unchanged. Homebrew installation is not available.
 
-1. Obtain the ZIP archive and its `.sha256` file from [the 0.2.0 release](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.10) or directly from the project owner. In Terminal, change to the download directory and run `shasum -a 256 -c DBeer-<version>-<build>-macos-arm64.zip.sha256`, substituting the downloaded filename. The result must be `OK`.
+1. Obtain the ZIP archive and its `.sha256` file from [the 0.2.1 release](https://github.com/nullawhale/dbeer/releases/tag/v0.2.1) or directly from the project owner. In Terminal, change to the download directory and run `shasum -a 256 -c DBeer-<version>-<build>-macos-arm64.zip.sha256`, substituting the downloaded filename. The result must be `OK`.
 2. Extract the ZIP and move `DBeer.app` to `Applications`. When updating, quit the running DBeer instance before replacing the application.
 3. Open DBeer. If macOS blocks a trusted internal build, attempt to open it once, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. Follow [Apple's official instructions](https://support.apple.com/en-us/102445). Do not disable application checks system-wide.
 4. Open **Connections → Import Connections…**, review the profiles, and select a local CA if needed; alternatively, create a profile with **⌘N**. PostgreSQL 16/17/18, MySQL 8.0/8.4, Cassandra 4.1/5.0 and MongoDB 8.0 are supported. Enter your password in the profile editor. Use `verify-full` and a trusted CA for certificate verification. The password is stored in the local Keychain and excluded from profile exports.
@@ -28,7 +29,7 @@ content/signature verification. This mode creates no release ZIP and does not
 change the owner's installed app or existing archives. Details and commands are
 in [the acceptance guide](macos/AcceptanceTests/README.md).
 
-DBeer 0.2.0/build 10 uses profile format v5, portable profile format v3, workspace
+DBeer 0.2.1/build 11 uses profile format v5, portable profile format v3, workspace
 format v10 and native app/helper protocol v5. Install the complete application;
 mixing it with an older helper fails the handshake. Migration preserves profile
 UUIDs and access to the same database Keychain entries, writes exact private

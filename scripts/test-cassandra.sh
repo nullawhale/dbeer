@@ -207,7 +207,7 @@ PEERS
             (cd "$repo_root/helper"; go test -json -race -count=1 -p 1 -timeout 8m -run Cassandra ./internal/cassandra ./internal/session) > "$run_log"
         fi
         if [[ "$#" == 0 ]]; then
-            python3 - "$run_log" "$mode" "$multi_node" "$udf_enabled" <<'EVIDENCE'
+            python3 - "$run_log" "$mode" "$multi_node" "$udf_enabled" "$version" <<'EVIDENCE'
 import json,pathlib,sys
 log=pathlib.Path(sys.argv[1]); events=[json.loads(line) for line in log.read_text().splitlines() if line]
 passed={e['Test'] for e in events if e.get('Action')=='pass' and e.get('Test')}
@@ -215,11 +215,15 @@ required={'TestCassandraLiveSessionsCQLAndLosslessTypes','TestCassandraLiveBrows
 required.update({'TestCassandraLiveAcknowledgedWritesSurviveDeliveryAndExportFailures','TestCassandraLiveUDTFieldsAndWideEmptyResultsStayBounded','TestCassandraLiveSpecialSelectorsAndNativeFunctions','TestCassandraLiveGeneratedNativeFunctionCompletions','TestCassandraLiveConditionalGridEdits','TestCassandraLiveAtomicGridApply'})
 required.add('TestCassandraLiveClusterNodes')
 required.add('TestCassandraLiveSchemaAndDataComparisonTypes')
+required.add('TestCassandraLiveExpandedNativeLanguageFunctions')
+if sys.argv[5].startswith('5'):
+    for name in ['math','collections','masking','vectors','selectors','snake_case_aliases']:
+        required.add('TestCassandraLiveExpandedNativeLanguageFunctions/cassandra5/'+name)
 for name in 'COUNT SUM AVG MIN MAX TOKEN TTL WRITETIME UUID NOW CURRENTTIMESTAMP CURRENTDATE CURRENTTIME CURRENTTIMEUUID TODATE TOTIMESTAMP TOUNIXTIMESTAMP MINTIMEUUID MAXTIMEUUID CAST TOJSON'.split():required.add('TestCassandraLiveGeneratedNativeFunctionCompletions/'+name)
 if sys.argv[2]=='tls':required.add('TestCassandraLiveTLSAndAuthenticationFailures')
 if sys.argv[2]=='plain':required.add('TestCassandraLiveLostWriteAcknowledgementIsUnknownAndNotRepeated')
 if sys.argv[3]=='1':required.add('TestCassandraLiveReplicaConsistencyFailure')
-if sys.argv[4]=='1':required.add('TestCassandraLiveUserFunctionShadowingIsNotReadOnly')
+if sys.argv[4]=='1':required.update({'TestCassandraLiveUserFunctionShadowingIsNotReadOnly','TestCassandraLiveRoutineCompletionDeclarations'})
 missing=required-passed
 for event in events:
     if event.get('Action')=='pass' and not event.get('Test'):

@@ -2,12 +2,13 @@
 
 A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0.
 
-The current macOS release is **0.2.0, build 10**. Download the signed application
-ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.10)
+The current macOS release is **0.2.1, build 11**. Download the signed application
+ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.1)
 and follow [the installation instructions](INSTALL.md). This release includes
 MongoDB, SQL result editing, synchronization SQL plans, snapshots, investigations,
-the expanded workspace, and local MCP agent access. Earlier prerelease archives,
-including build 8, remain unchanged. Homebrew installation is not available.
+the expanded workspace, local MCP agent access, and expanded Cassandra CQL language
+assistance. Earlier prerelease archives, including build 8, remain unchanged.
+Homebrew installation is not available.
 
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
 
@@ -32,7 +33,7 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
-The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. SSH tunneling and local MCP agent access are supported. psql/mysql client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
+The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
 ## SQL result source rows and editing
 
@@ -867,6 +868,26 @@ The editor runs CQL statements and scripts, retaining `BEGIN ... BATCH ... APPLY
 BATCH` as one statement. Scripts stop at the first error and keep completed
 results. The catalog includes keyspaces, tables, materialized views, indexes and
 user-defined types, with partition keys, clustering columns and static columns.
+Language assistance includes CQL schema and authorization keywords, native and
+user-defined types in declarations, existing objects in ALTER/DROP/TRUNCATE,
+INSERT column lists, DELETE selectors and ANN ordering. Column suggestions retain
+partition/clustering/static roles. Connected completion snapshots also load UDF
+and aggregate declarations, including overloads, parameter types and return types,
+without fetching their source bodies or executing them. Unqualified calls use
+the target table's keyspace when available, falling back to the tab's current
+keyspace while the statement is incomplete; qualified calls can address another
+keyspace. UDT declaration suggestions stay within the declaration's keyspace.
+
+Offline function completion and signature help cover conversions, JSON, time,
+aggregates and Cassandra 5.0 math, collection, masking and vector functions.
+Nested map, set, list, tuple and UDT literals retain the correct active argument.
+Functions introduced in 5.0 remain visible offline; the connected server determines
+availability. Diagnostics cover incomplete strings, delimiters and unsupported
+cqlsh directives; server-side validation determines semantic correctness. The
+bundled language server also accepts the `cql` document language identifier.
+See Apache's [CQL functions](https://cassandra.apache.org/doc/stable/cassandra/developing/cql/functions.html)
+and [JSON support](https://cassandra.apache.org/doc/stable/cassandra/developing/cql/json.html).
+
 Table browsing uses sequential opaque cursors; changing query conditions or
 reconnecting resets navigation. Generated queries never silently add `ALLOW
 FILTERING`, global sorting or automatic row counts. Cassandra requires queries
@@ -907,8 +928,12 @@ is a local client restriction for Cassandra, so use a restricted server role
 when write prevention must be enforced by the database.
 Unqualified function calls can resolve to keyspace UDF overloads, so ambiguous
 calls require confirmation and are blocked by local readonly. Completion uses
-`system.` for ordinary native functions; `COUNT(*)`, `TTL`, `WRITETIME` and
+`system.` for ordinary native functions; `COUNT(*)`, `TTL`, `WRITETIME`, `MAXWRITETIME` and
 `CAST(... AS ...)` retain their dedicated CQL selector syntax.
+Local readonly assessment recognizes metadata reads (`LIST`, `DESCRIBE`/`DESC`),
+tuple and TOKEN relations, collection/UDT selectors and system-qualified native
+functions. User-defined calls, including calls nested in literals, still require
+the existing execution policy.
 
 Large interactive results stop requesting additional pages at display limits.
 Run to File intentionally reads all pages with bounded streaming. Exact
@@ -1183,8 +1208,8 @@ only its own test windows and requires the usual persistent signing identity.
 
 ## Releases
 
-The current release is **0.2.0, build 10**, available with its checksum from
-[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.10).
+The current release is **0.2.1, build 11**, available with its checksum from
+[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.1).
 It contains the native macOS SwiftUI/AppKit client and bundled Go helper.
 Windows/Linux GPUI candidates are outside this release. Earlier prereleases,
 including [0.2.0/build 8](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8),
@@ -1200,11 +1225,10 @@ Existing archives are never overwritten and temporary CI signatures are rejected
 The previous **0.1.0** internal release passed installation and update acceptance
 from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived
 that release's required second-Mac check. These historical results do not certify
-the new build 10 archive. Finder/Gatekeeper and installation on a clean second
+the new build 11 archive. Finder/Gatekeeper and installation on a clean second
 device have not been verified. An Apple Development signature is not notarization.
 
-Expanded CQL language assistance remains future work. Windows/Linux contributions
-are welcome outside the release roadmap. Public overview sources:
+Windows/Linux contributions are welcome outside the release roadmap. Public overview sources:
 [dbeer-landing](https://github.com/nullawhale/dbeer-landing).
 
 ## License

@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "keyspace": "demo",
+  "catalogRecords": [
+    {
+      "schema": "demo", "name": "events", "kind": "table",
+      "columns": "[\"tenant\",\"created\",\"tags\"]",
+      "partitionKeys": "[\"tenant\"]", "clusteringColumns": "[\"created\"]",
+      "staticColumns": "[]", "foreignKeys": "[]", "signatures": "[]"
+    },
+    {
+      "schema": "demo", "name": "address", "kind": "type",
+      "columns": "[\"street\",\"postcode\"]", "signatures": "[]"
+    },
+    {
+      "schema": "demo", "name": "combine", "kind": "function", "columns": "[]",
+      "signatures": "[{\"parameters\":[{\"name\":\"values\",\"type\":\"map<text, frozen<list<int>>>\",\"position\":1},{\"name\":\"label\",\"type\":\"text\",\"position\":2}],\"returnType\":\"decimal\"},{\"parameters\":[{\"name\":\"value\",\"type\":\"int\",\"position\":1}],\"returnType\":\"int\"}]"
+    },
+    {
+      "schema": "other", "name": "combine", "kind": "function", "columns": "[]",
+      "signatures": "[{\"parameters\":[{\"name\":\"wrong_keyspace\",\"type\":\"text\",\"position\":1}],\"returnType\":\"text\"}]"
+    },
+    {
+      "schema": "other", "name": "events", "kind": "table", "columns": "[\"tenant\"]"
+    },
+    {
+      "schema": "demo", "name": "total", "kind": "function", "columns": "[]",
+      "signatures": "[{\"parameters\":[{\"name\":\"arg1\",\"type\":\"decimal\",\"position\":1}],\"returnType\":\"decimal\"}]"
+    }
+  ],
+  "signatures": [
+    {"text": "SELECT demo.combine({'α': [1, 2], '🌍': [3]}, ", "parameter": "label: text", "returnType": "decimal"},
+    {"text": "SELECT combine({'α': [1, 2], '🌍': [3]}, ", "parameter": "label: text", "returnType": "decimal"},
+    {"text": "SELECT combine() FROM other.events", "offsetUTF16": 15, "parameter": "wrong_keyspace: text", "returnType": "text"},
+    {"text": "SELECT total(", "parameter": "arg1: decimal", "returnType": "decimal"},
+    {"text": "SELECT system.similarity_cosine([1.0, 2.0], ", "parameter": "right: vector<float, n>", "returnType": "float"},
+    {"text": "SELECT system.mask_inner('Alice', 1, 2, ", "parameter": "padding: text", "returnType": "same as value"}
+  ]
+}

@@ -344,6 +344,9 @@ func (s *server) context(d document, uri string) configuration {
 	c := s.contexts[uri]
 	if c.Engine == "" {
 		c.Engine = d.language
+		if c.Engine == "cql" {
+			c.Engine = "cassandra"
+		}
 	}
 	if c.Engine != "mysql" && c.Engine != "cassandra" && c.Engine != "mongodb" {
 		c.Engine = "postgresql"

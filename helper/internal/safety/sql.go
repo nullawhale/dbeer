@@ -171,6 +171,9 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 			}
 		case c == '$' && (l.engine == "postgres" || l.engine == "cassandra"):
 			delimiter := l.dollarDelimiter()
+			if l.engine == "cassandra" && delimiter != "$$" {
+				return nil, false
+			}
 			if delimiter == "" {
 				t.kind, t.text = symbol, "$"
 				l.pos++
@@ -185,7 +188,7 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 			}
 		case isWordStart(l.sql[l.pos:]):
 			t.kind = word
-			for l.pos < len(l.sql) && isWordContinue(l.sql[l.pos:]) {
+			for l.pos < len(l.sql) && isWordContinue(l.sql[l.pos:]) && (l.engine != "cassandra" || l.sql[l.pos] != '$') {
 				_, n := utf8.DecodeRuneInString(l.sql[l.pos:])
 				l.pos += n
 			}

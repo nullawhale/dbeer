@@ -43,7 +43,19 @@ enum SQLScriptParser {
         "DECLARE", "WITH", "RECURSIVE", "UNION", "ALL", "DISTINCT", "GROUP", "BY", "HAVING", "ORDER", "LIMIT",
         "OFFSET", "ASC", "DESC", "NULL", "TRUE", "FALSE", "AND", "OR", "NOT", "IS", "IN", "EXISTS", "CASE",
         "WHEN", "DEFAULT", "PRIMARY", "KEY", "REFERENCES", "CONSTRAINT", "EXPLAIN", "ANALYZE", "DELIMITER"]
-    static let cqlKeywords = ["SELECT", "FROM", "WHERE", "AS", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "MATERIALIZED", "VIEW", "INDEX", "KEYSPACE", "TYPE", "FUNCTION", "AGGREGATE", "TRUNCATE", "USE", "BEGIN", "UNLOGGED", "COUNTER", "BATCH", "APPLY", "IF", "EXISTS", "NOT", "IN", "AND", "OR", "IS", "NULL", "TRUE", "FALSE", "PRIMARY", "KEY", "WITH", "CLUSTERING", "ORDER", "BY", "ASC", "DESC", "LIMIT", "PER", "PARTITION", "ALLOW", "FILTERING", "USING", "TTL", "TIMESTAMP", "STATIC", "FROZEN", "CONTAINS", "TOKEN", "JSON", "DISTINCT", "GROUP", "ANN", "OF", "TO"]
+    static let cqlKeywords = ["SELECT", "FROM", "WHERE", "AS", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
+        "CREATE", "ALTER", "DROP", "TABLE", "COLUMNFAMILY", "MATERIALIZED", "VIEW", "INDEX", "CUSTOM", "KEYSPACE",
+        "KEYSPACES", "TYPE", "FUNCTION", "FUNCTIONS", "AGGREGATE", "TRUNCATE", "USE", "BEGIN", "UNLOGGED", "COUNTER",
+        "BATCH", "APPLY", "IF", "EXISTS", "NOT", "IN", "AND", "OR", "IS", "NULL", "TRUE", "FALSE", "PRIMARY", "KEY",
+        "WITH", "CLUSTERING", "ORDER", "BY", "ASC", "DESC", "LIMIT", "PER", "PARTITION", "ALLOW", "FILTERING", "USING",
+        "TTL", "TIMESTAMP", "STATIC", "FROZEN", "CONTAINS", "TOKEN", "JSON", "DISTINCT", "GROUP", "ANN", "OF", "TO",
+        "ADD", "RENAME", "REPLACE", "RETURNS", "CALLED", "INPUT", "LANGUAGE", "SFUNC", "STYPE", "FINALFUNC", "INITCOND",
+        "GRANT", "REVOKE", "LIST", "ROLE", "ROLES", "USER", "USERS", "PERMISSION", "PERMISSIONS", "ALL", "ON",
+        "NORECURSIVE", "AUTHORIZE", "MODIFY", "EXECUTE", "SELECT_MASKED", "UNMASK", "PASSWORD", "LOGIN", "NOLOGIN",
+        "SUPERUSER", "NOSUPERUSER", "OPTIONS", "MASKED", "DEFAULT", "UNSET", "TRIGGER", "DESCRIBE", "SCHEMA",
+        "ASCII", "BIGINT", "BLOB", "BOOLEAN", "DATE", "DECIMAL", "DOUBLE", "DURATION", "FLOAT", "INET", "INT",
+        "SMALLINT", "TEXT", "TIME", "TIMEUUID", "TINYINT", "UUID", "VARCHAR", "VARINT", "VECTOR", "MAP", "TUPLE",
+        "NAN", "INFINITY", "COMPACT", "STORAGE", "ENTRIES", "KEYS", "FULL", "WRITETIME", "MAXWRITETIME"]
     static func keywords(for engine: DatabaseEngine) -> [String] { engine == .mongodb ? [] : engine == .cassandra ? cqlKeywords : keywords }
 
     static func parse(_ text: String, engine: DatabaseEngine) -> SQLParseResult {
@@ -88,6 +100,8 @@ enum SQLScriptParser {
         var atomicStart: Int?
         var cqlBatchStart: Int?
         var cqlBatchOpen = false
+        var leadingCQLWord: (String, NSRange)?
+        var cqlDelimiters: [(UInt16, Int)] = []
 
         init(text: String, engine: DatabaseEngine) {
             self.text = text as NSString
@@ -132,6 +146,7 @@ enum SQLScriptParser {
                     while index < units.count, isIdentifierPart(units[index]), !matches(delimiter, at: index) { index += 1 }
                     let range = NSRange(location: start, length: index - start)
                     let value = text.substring(with: range).uppercased()
+                    if engine == .cassandra && !hasCode { leadingCQLWord = (value, range) }
                     tokens.append(SQLToken(range: range, kind: SQLScriptParser.keywords(for: engine).contains(value) ? .keyword : .identifier))
                     trackAtomicBody(word: value, range: range)
                     trackCQLBatch(word: value, range: range)
@@ -152,10 +167,12 @@ enum SQLScriptParser {
                     index += 1
                     while index < units.count, !SQLScriptParser.isWhitespace(units[index]), units[index] != 59 { index += 1 }
                     diagnostics.append(SQLDiagnostic(range: NSRange(location: start, length: max(1, index - start)),
-                        message: "psql and mysql client commands are not supported."))
+                        message: engine == .cassandra ? "cqlsh client commands are not supported in CQL documents." :
+                            "psql and mysql client commands are not supported."))
                     hasCode = true
                     continue
                 }
+                trackCQLDelimiter(unit)
                 hasCode = true
                 index += 1
             }
@@ -180,6 +197,23 @@ enum SQLScriptParser {
                 cqlBatchOpen = true
                 cqlBatchStart = words.first?.1.location ?? range.location
             }
+        }
+
+        private func trackCQLDelimiter(_ unit: UInt16) {
+            guard engine == .cassandra else { return }
+            if [40, 91, 123].contains(unit) {
+                cqlDelimiters.append((unit, index))
+            } else if let opening = [UInt16(41): UInt16(40), 93: 91, 125: 123][unit] {
+                if cqlDelimiters.last?.0 == opening { cqlDelimiters.removeLast() }
+                else {
+                    diagnostics.append(SQLDiagnostic(range: NSRange(location: index, length: 1),
+                        message: "Unexpected closing \(cqlDelimiterName(opening))."))
+                }
+            }
+        }
+
+        private func cqlDelimiterName(_ unit: UInt16) -> String {
+            switch unit { case 40: "parenthesis"; case 91: "square bracket"; default: "brace" }
         }
 
         private func trackAtomicBody(word: String, range: NSRange) {
@@ -230,7 +264,7 @@ enum SQLScriptParser {
             guard engine == .mysql, !hasCode, !value.isEmpty,
                   !value.utf16.contains(where: SQLScriptParser.isWhitespace), value.utf16.count <= 32 else {
                 diagnostics.append(SQLDiagnostic(range: range,
-                    message: engine == .postgresql ? "DELIMITER is a MySQL script directive." :
+                    message: engine != .mysql ? "DELIMITER is a MySQL script directive." :
                         "Place DELIMITER and a delimiter without spaces on their own line between statements."))
                 return
             }
@@ -286,7 +320,7 @@ enum SQLScriptParser {
         }
 
         private func dollarTag(at position: Int) -> [UInt16]? {
-            guard position == 0 || !isIdentifierPart(units[position - 1]) else { return nil }
+            guard engine == .cassandra || position == 0 || !isIdentifierPart(units[position - 1]) else { return nil }
             var end = position + 1
             if end < units.count, units[end] == 36 { return [36, 36] }
             guard end < units.count, isIdentifierStart(units[end]) else { return nil }
@@ -304,12 +338,20 @@ enum SQLScriptParser {
             let range = NSRange(location: start, length: index - start)
             tokens.append(SQLToken(range: range, kind: .string))
             hasCode = true
-            if !closed { diagnostics.append(SQLDiagnostic(range: range, message: "Unterminated PostgreSQL dollar-quoted value.")) }
+            if !closed { diagnostics.append(SQLDiagnostic(range: range,
+                message: engine == .cassandra ? "Unterminated CQL dollar-quoted value." : "Unterminated PostgreSQL dollar-quoted value.")) }
         }
 
         private func finishStatement(at end: Int, delimiterLength: Int = 0) {
-            defer { hasCode = false; words.removeAll(); atomicDepth = 0; caseDepth = 0; atomicStart = nil; cqlBatchStart = nil; cqlBatchOpen = false }
+            defer {
+                hasCode = false; words.removeAll(); atomicDepth = 0; caseDepth = 0; atomicStart = nil
+                cqlBatchStart = nil; cqlBatchOpen = false; leadingCQLWord = nil; cqlDelimiters.removeAll()
+            }
             guard hasCode else { return }
+            for delimiter in cqlDelimiters {
+                diagnostics.append(SQLDiagnostic(range: NSRange(location: delimiter.1, length: 1),
+                    message: "Unclosed \(cqlDelimiterName(delimiter.0))."))
+            }
             var lower = segmentStart
             var upper = end
             while lower < upper, SQLScriptParser.isWhitespace(units[lower]) { lower += 1 }
@@ -319,13 +361,23 @@ enum SQLScriptParser {
             statements.append(SQLStatement(sql: text.substring(with: range), range: range))
             statementEditorRanges.append(NSRange(location: lower, length: end + delimiterLength - lower))
             let names = words.map(\.0)
-            if let first = names.first, ["SOURCE", "SYSTEM", "TEE", "NOTEE", "PAGER", "NOPAGER", "CONNECT", "QUIT", "EXIT"].contains(first) {
+            if let leadingCQLWord {
+                let consistency = leadingCQLWord.0 == "CONSISTENCY" ||
+                    leadingCQLWord.0 == "SERIAL" && names.starts(with: ["SERIAL", "CONSISTENCY"])
+                if consistency || ["SOURCE", "COPY", "CAPTURE", "PAGING", "EXPAND", "TRACING", "SHOW", "HELP", "LOGIN", "EXIT", "QUIT"].contains(leadingCQLWord.0) {
+                    let end = leadingCQLWord.0 == "SERIAL" && words.count > 1 ? NSMaxRange(words[1].1) : NSMaxRange(leadingCQLWord.1)
+                    diagnostics.append(SQLDiagnostic(range: NSRange(location: leadingCQLWord.1.location, length: end - leadingCQLWord.1.location),
+                        message: consistency ? "Set Cassandra consistency in connection Options; cqlsh client commands are not supported." :
+                            "cqlsh client commands are not supported in CQL documents."))
+                }
+            }
+            if engine != .cassandra, let first = names.first, ["SOURCE", "SYSTEM", "TEE", "NOTEE", "PAGER", "NOPAGER", "CONNECT", "QUIT", "EXIT"].contains(first) {
                 diagnostics.append(SQLDiagnostic(range: words[0].1, message: "mysql client commands are not supported."))
             }
-            if names.first == "COPY", names.contains("STDIN") || names.contains("STDOUT") {
+            if engine == .postgresql, names.first == "COPY", names.contains("STDIN") || names.contains("STDOUT") {
                 diagnostics.append(SQLDiagnostic(range: range, message: "Streaming COPY is not supported in SQL documents."))
             }
-            if names.starts(with: ["LOAD", "DATA"]), names.prefix(5).contains("LOCAL") {
+            if engine == .mysql, names.starts(with: ["LOAD", "DATA"]), names.prefix(5).contains("LOCAL") {
                 diagnostics.append(SQLDiagnostic(range: range, message: "LOAD DATA LOCAL is not supported in SQL documents."))
             }
         }
@@ -335,7 +387,7 @@ enum SQLScriptParser {
         }
 
         private func isIdentifierPart(_ unit: UInt16) -> Bool {
-            isIdentifierStart(unit) || (48...57).contains(unit) || unit == 36
+            isIdentifierStart(unit) || (48...57).contains(unit) || (engine != .cassandra && unit == 36)
         }
     }
 }

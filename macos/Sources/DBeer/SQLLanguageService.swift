@@ -28,7 +28,7 @@ struct SQLCompletionForeignKey: Codable, Equatable, Sendable {
 struct SQLCompletionRelation: Equatable, Sendable {
     var schema: String
     var name: String
-    /// Adapter-provided catalog kinds: table, view or function.
+    /// Adapter-provided catalog kinds: table, view, function or type.
     var kind: String
     var columns: [String] = []
     var foreignKeys: [SQLCompletionForeignKey] = []

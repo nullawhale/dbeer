@@ -102,8 +102,20 @@ and [LSP signature help](https://microsoft.github.io/language-server-protocol/sp
 
 The Cassandra dialect uses its own keyword/function registry and clause rules in
 `cassandra.go`, keeping SQL joins, OFFSET and transaction commands out of CQL
-suggestions. The catalog supplies keyspaces, tables, materialized views and UDTs;
+suggestions. The catalog supplies keyspaces, tables, materialized views, UDTs and
+bounded UDF/UDA overload declarations without routine source bodies;
 optional partition/clustering/static column lists annotate column candidates.
 An explicit per-document keyspace limits unqualified source resolution after
 `USE`, while qualified names can still address other keyspaces. CQL completion
 never executes queries or adds `ALLOW FILTERING`.
+
+DDL completion supplies existing objects and native/UDT declaration types. CQL
+function signatures include Cassandra 5.0 math, collection, masking and vector
+functions, while the server determines version availability. Literal brackets
+and braces count as nested argument boundaries. Unqualified user signatures use
+the target table's keyspace when available, falling back to the active keyspace
+for incomplete statements. UDT declaration suggestions stay within the target
+keyspace. PostgreSQL named-argument syntax is not applied to CQL.
+The LSP accepts `languageId: "cql"` as well as `"cassandra"` for offline documents.
+`protocol/fixtures/cql-language-v1.json` exercises catalog decoding and signature
+help through both Go LSP and the native Swift client without database or UI access.

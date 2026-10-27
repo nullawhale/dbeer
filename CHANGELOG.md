@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.2.1 — build 11 — 2026-10-27
+
+- Expand native CQL language assistance with schema/authorization keywords,
+  declaration types and UDTs, object and column contexts, ANN ordering, and native
+  conversion, math, collection, masking and vector function signatures. Connected
+  Cassandra metadata supplies UDF/aggregate overloads without loading source bodies;
+  unqualified signatures respect the statement's target keyspace and tab default.
+- Preserve nested CQL literal argument boundaries and `$$` function bodies, report
+  unsupported cqlsh directives, and recognize CQL metadata reads, tuple/TOKEN
+  relations and complex selectors in local readonly assessment. Nested UDFs retain
+  conservative execution policy. The language helper accepts the `cql` language ID.
+
 ## 0.2.0 — build 10 — 2026-10-27
 
 - Extend local MCP to PostgreSQL, MySQL, Cassandra and MongoDB. Query tools accept

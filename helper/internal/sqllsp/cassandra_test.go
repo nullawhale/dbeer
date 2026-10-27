@@ -25,3 +25,16 @@ func TestCassandraConfigurationAndCompletion(t *testing.T) {
 		}
 	}
 }
+
+func TestCQLLanguageIDSelectsCassandraWithoutDatabaseConfiguration(t *testing.T) {
+	uri := "file:///offline.cql"
+	responses := testRun(t, rpc("initialize", 1, nil), open(uri, "cql", "SELECT ", 1),
+		completion(uri, position{Character: 7}, 2), rpc("shutdown", 3, nil), rpc("exit", nil, nil))
+	items := resultItems(t, responses[2])
+	if item, found := itemWithLabel(items, "COLLECTION_COUNT"); !found || item.InsertText != "system.COLLECTION_COUNT" {
+		t.Fatal("cql language ID did not provide offline CQL completion")
+	}
+	if _, found := itemWithLabel(items, "COALESCE"); found {
+		t.Fatal("SQL completion leaked into a CQL document")
+	}
+}

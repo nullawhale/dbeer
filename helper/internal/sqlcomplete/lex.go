@@ -28,12 +28,20 @@ func identifierRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '$'
 }
 
+func dialectIdentifierRune(r rune, engine string) bool {
+	return identifierRune(r) && (engine != "cassandra" || r != '$')
+}
+
 // lex deliberately diagnoses only lexical constructs. It never treats unfamiliar
 // dialect syntax as invalid SQL and never includes source text in diagnostics.
 func lex(text, engine string) ([]token, []Diagnostic) {
 	tokens := make([]token, 0, min(len(text)/4, 4096))
 	diagnostics := []Diagnostic{}
-	parentheses := []int{}
+	type delimiter struct {
+		start int
+		value rune
+	}
+	delimiters := []delimiter{}
 	addDiagnostic := func(start, end int, message string) {
 		if len(diagnostics) < 64 {
 			diagnostics = append(diagnostics, Diagnostic{Start: start, End: end, Message: message})
@@ -81,7 +89,7 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 			add(commentToken, start, i, "", depth > 0)
 			continue
 		}
-		if engine != "mysql" && text[i] == '$' {
+		if (engine == "postgresql" || engine == "cassandra" && strings.HasPrefix(text[i:], "$$")) && text[i] == '$' {
 			end := i + 1
 			for end < len(text) {
 				r, size := utf8.DecodeRuneInString(text[end:])
@@ -104,7 +112,7 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 				continue
 			}
 		}
-		if text[i] == '\'' || text[i] == '"' || text[i] == '`' {
+		if text[i] == '\'' || text[i] == '"' || engine == "mysql" && text[i] == '`' {
 			quote := text[i]
 			backslashEscapes := engine == "mysql" || engine != "cassandra" && quote == '\'' && start > 0 && (text[start-1] == 'e' || text[start-1] == 'E') && (start < 2 || !identifierRune(rune(text[start-2])))
 			i++
@@ -142,11 +150,11 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 			add(kind, start, i, value.String(), !terminated)
 			continue
 		}
-		if identifierRune(r) {
+		if dialectIdentifierRune(r, engine) {
 			i += size
 			for i < len(text) {
 				next, n := utf8.DecodeRuneInString(text[i:])
-				if !identifierRune(next) {
+				if !dialectIdentifierRune(next, engine) {
 					break
 				}
 				i += n
@@ -155,20 +163,32 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 			continue
 		}
 		i += size
-		if r == '(' {
-			parentheses = append(parentheses, start)
+		if r == '(' || engine == "cassandra" && (r == '[' || r == '{') {
+			delimiters = append(delimiters, delimiter{start, r})
 		}
-		if r == ')' {
-			if len(parentheses) == 0 {
-				addDiagnostic(start, i, "Unexpected closing parenthesis.")
+		if r == ')' || engine == "cassandra" && (r == ']' || r == '}') {
+			opening, label := '(', "parenthesis"
+			if r == ']' {
+				opening, label = '[', "square bracket"
+			} else if r == '}' {
+				opening, label = '{', "brace"
+			}
+			if len(delimiters) == 0 || delimiters[len(delimiters)-1].value != opening {
+				addDiagnostic(start, i, "Unexpected closing "+label+".")
 			} else {
-				parentheses = parentheses[:len(parentheses)-1]
+				delimiters = delimiters[:len(delimiters)-1]
 			}
 		}
 		add(punctuationToken, start, i, text[start:i], false)
 	}
-	for _, start := range parentheses {
-		addDiagnostic(start, start+1, "Unclosed parenthesis.")
+	for _, delimiter := range delimiters {
+		label := "parenthesis"
+		if delimiter.value == '[' {
+			label = "square bracket"
+		} else if delimiter.value == '{' {
+			label = "brace"
+		}
+		addDiagnostic(delimiter.start, delimiter.start+1, "Unclosed "+label+".")
 	}
 	return tokens, diagnostics
 }
@@ -184,6 +204,37 @@ func Diagnostics(text, engine string) []Diagnostic {
 		}
 		return nil
 	}
-	_, diagnostics := lex(text, engine)
+	tokens, diagnostics := lex(text, engine)
+	if engine == "cassandra" {
+		first := []token{}
+		check := func() {
+			if len(first) == 0 || first[0].kind != wordToken || len(diagnostics) >= 64 {
+				return
+			}
+			name := strings.ToUpper(first[0].value)
+			end := first[0].end
+			if name == "SERIAL" && len(first) > 1 && word(first[1], "CONSISTENCY") {
+				name, end = "CONSISTENCY", first[1].end
+			}
+			message := "cqlsh client commands are not supported in CQL documents."
+			switch name {
+			case "CONSISTENCY":
+				message = "Set Cassandra consistency in connection Options; cqlsh client commands are not supported."
+			case "SOURCE", "COPY", "CAPTURE", "PAGING", "EXPAND", "TRACING", "SHOW", "HELP", "LOGIN", "EXIT", "QUIT":
+			default:
+				return
+			}
+			diagnostics = append(diagnostics, Diagnostic{Start: first[0].start, End: end, Message: message})
+		}
+		for _, token := range tokens {
+			if punct(token, ";") {
+				check()
+				first = nil
+			} else if token.kind != commentToken && len(first) < 2 {
+				first = append(first, token)
+			}
+		}
+		check()
+	}
 	return diagnostics
 }

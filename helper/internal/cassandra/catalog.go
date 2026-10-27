@@ -134,7 +134,10 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 				continue
 			}
 			var all, partition, clustering, statics []string
-			if object.kind == "type" {
+			if object.kind == "function" {
+				// Routine declarations are metadata only. Their source bodies are
+				// never loaded for language assistance.
+			} else if object.kind == "type" {
 				fields, _, failure := s.typeFields(ctx, command, object.keyspace, object.name)
 				if failure != nil {
 					return *failure
@@ -157,7 +160,12 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 					}
 				}
 			}
-			row := cells(object.name, object.kind, object.keyspace, jsonNames(all), "[]", "[]", jsonNames(partition), jsonNames(clustering), jsonNames(statics))
+			signatures := "[]"
+			if len(object.signatures) > 0 {
+				encoded, _ := json.Marshal(object.signatures)
+				signatures = string(encoded)
+			}
+			row := cells(object.name, object.kind, object.keyspace, jsonNames(all), "[]", signatures, jsonNames(partition), jsonNames(clustering), jsonNames(statics))
 			encoded, _ := json.Marshal(row)
 			rowBytes += len(encoded)
 			if rowBytes > maxBytes-4096 {
@@ -359,7 +367,10 @@ func schemaFingerprint(columns []tableColumn) string {
 	return hex.EncodeToString(sum[:])
 }
 
-type catalogObject struct{ keyspace, name, kind string }
+type catalogObject struct {
+	keyspace, name, kind string
+	signatures           []routineSignature
+}
 
 func (s *Session) catalogObjects(ctx context.Context, command protocol.Command) ([]catalogObject, *protocol.Response) {
 	request := command.Catalog
@@ -400,6 +411,21 @@ func (s *Session) catalogObjects(ctx context.Context, command protocol.Command) 
 					return nil, &failure
 				}
 				objects = append(objects, catalogObject{keyspace: keyspace, name: name, kind: object.kind})
+			}
+		}
+		if request.Kind == "completion" {
+			routines, failure := s.completionRoutines(ctx, command, keyspace)
+			if failure != nil {
+				return nil, failure
+			}
+			for _, routine := range routines {
+				encoded, _ := json.Marshal(routine.signatures)
+				bytes += len(keyspace) + len(routine.name) + len(encoded) + 128
+				if bytes > maxBytes || len(objects) >= 16384 {
+					failure := s.failure(command, "result", "Cassandra catalog metadata exceeds the supported size. Restrict the request to one keyspace.")
+					return nil, &failure
+				}
+				objects = append(objects, routine)
 			}
 		}
 	}

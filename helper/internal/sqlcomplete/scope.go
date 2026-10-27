@@ -223,7 +223,7 @@ func (a *analysis) query(lo, hi int, inherited []*binding, outer []source, depth
 				candidate.name = t[i+2]
 				i += 2
 			}
-			if i+1 < hi && punct(t[i+1], "(") {
+			if a.context.Engine != "cassandra" && i+1 < hi && punct(t[i+1], "(") {
 				// Unknown table-valued functions do not acquire the columns of
 				// an unrelated catalog table with the same spelling.
 				i = min(a.close(i+1, hi), hi-1)
@@ -235,16 +235,16 @@ func (a *analysis) query(lo, hi int, inherited []*binding, outer []source, depth
 			continue
 		}
 		j := i + 1
-		if j < hi && word(t[j], "AS") {
+		if a.context.Engine != "cassandra" && j < hi && word(t[j], "AS") {
 			j++
 		}
-		if j < hi && identifier(t[j]) {
+		if a.context.Engine != "cassandra" && j < hi && identifier(t[j]) {
 			candidate.name = t[j]
 			candidate.schema = token{}
 			i = j
 			j++
 		}
-		if j < hi && punct(t[j], "(") {
+		if a.context.Engine != "cassandra" && j < hi && punct(t[j], "(") {
 			close := a.close(j, hi)
 			names := a.columnList(j+1, close)
 			for k, name := range names {

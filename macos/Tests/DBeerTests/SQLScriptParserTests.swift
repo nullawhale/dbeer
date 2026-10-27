@@ -3,6 +3,75 @@ import Testing
 @testable import DBeer
 
 struct SQLScriptParserTests {
+    @Test func cqlshCommandsHaveCQLDiagnosticsWithoutRejectingNativeMetadataOrIdentifiers() {
+        for command in ["SOURCE 'local.cql'", "COPY demo.events TO 'local.csv'", "CAPTURE 'local.log'", "CONSISTENCY QUORUM",
+                        "SERIAL CONSISTENCY LOCAL_SERIAL", "PAGING 100", "EXPAND ON", "TRACING ON", "SHOW VERSION",
+                        "HELP SELECT", "LOGIN user", "EXIT", "QUIT"] {
+            let sql = "SELECT 1; // client command follows\n\(command);"
+            let parsed = SQLScriptParser.parse(sql, engine: .cassandra)
+            #expect(parsed.diagnostics.count == 1)
+            #expect(parsed.diagnostics.first?.message.contains("cqlsh") == true)
+            #expect(parsed.diagnostics.first?.range.location == (sql as NSString).range(of: command).location)
+        }
+        for sql in ["SELECT consistency, paging, tracing FROM demo.events;", "DESCRIBE SCHEMA; DESC KEYSPACE demo; LIST ALL PERMISSIONS;",
+                    #"SELECT 'SOURCE local.cql', $$CONSISTENCY ALL;$$ FROM demo.events;"#,
+                    #""SOURCE"; "HELP";"#, "CREATE ROLE reader WITH LOGIN = true;"] {
+            #expect(SQLScriptParser.parse(sql, engine: .cassandra).diagnostics.isEmpty)
+        }
+    }
+
+    @Test func cqlCollectionDelimitersAreDiagnosedOutsideStringsAndComments() {
+        for sql in ["INSERT INTO demo.events (id, tags) VALUES (1, {'a', 'b');",
+                    "SELECT similarity_cosine(v, [0.1, 0.2) FROM demo.events;", "SELECT [1, 2};"] {
+            #expect(!SQLScriptParser.parse(sql, engine: .cassandra).diagnostics.isEmpty)
+        }
+        for sql in ["INSERT INTO demo.events (id, v) VALUES (1, {a: [1, 2], b: {'x', 'y'}});",
+                    #"SELECT '{[}]', $$[};$$ FROM demo.events; // [}"#] {
+            #expect(SQLScriptParser.parse(sql, engine: .cassandra).diagnostics.isEmpty)
+        }
+    }
+
+    @Test func cqlBatchesFunctionsAndCommentsKeepTheirStatementBoundaries() {
+        let sql = #"""
+        // Cassandra CQL; not a statement
+        BEGIN UNLOGGED BATCH
+          INSERT INTO demo.events (id, note) VALUES (1, 'one;two');
+          UPDATE demo.events SET note = $$King's ransom;$$ WHERE id = 2;
+        APPLY BATCH;
+        CREATE OR REPLACE FUNCTION demo.note(v text) CALLED ON NULL INPUT
+        RETURNS text LANGUAGE java AS$$return v + ";";$$;
+        SELECT * FROM demo.events;
+        """#
+        let parsed = SQLScriptParser.parse(sql, engine: .cassandra)
+        #expect(parsed.diagnostics.isEmpty)
+        #expect(parsed.statements.count == 3)
+        #expect(parsed.statements[0].sql.hasSuffix("APPLY BATCH"))
+        #expect(parsed.statements[1].sql.hasSuffix(#"AS$$return v + ";";$$"#))
+        for statement in parsed.statements {
+            #expect((sql as NSString).substring(with: statement.range) == statement.sql)
+        }
+    }
+
+    @Test func cqlHighlightingIncludesSchemaRolesTypesAndRoutineClauses() {
+        let sql = "CREATE FUNCTION f(v frozen<map<text, vector<float, 3>>>) CALLED ON NULL INPUT RETURNS text LANGUAGE java; GRANT UNMASK ON ALL KEYSPACES TO ROLE role_name;"
+        let parsed = SQLScriptParser.parse(sql, engine: .cassandra)
+        let source = sql as NSString
+        let highlighted = Set(parsed.tokens.filter { $0.kind == .keyword }.map { source.substring(with: $0.range).uppercased() })
+        #expect(Set(["FUNCTION", "FROZEN", "MAP", "TEXT", "VECTOR", "FLOAT", "CALLED", "INPUT", "RETURNS", "LANGUAGE", "GRANT", "UNMASK", "ALL", "KEYSPACES", "ROLE"]).isSubset(of: highlighted))
+        #expect(!highlighted.contains("ROLE_NAME"))
+        #expect(!SQLScriptParser.cqlKeywords.contains("JOIN"))
+        #expect(!SQLScriptParser.cqlKeywords.contains("COMMIT"))
+    }
+
+    @Test func cqlUnterminatedBodiesUseCQLDiagnosticAndTaggedBodiesStayUnrecognized() {
+        let parsed = SQLScriptParser.parse("CREATE FUNCTION f() RETURNS text LANGUAGE java AS $$return 'x';", engine: .cassandra)
+        #expect(parsed.diagnostics.count == 1)
+        #expect(parsed.diagnostics.first?.message == "Unterminated CQL dollar-quoted value.")
+        let tagged = SQLScriptParser.parse("SELECT $tag$; SELECT 2;", engine: .cassandra)
+        #expect(tagged.statements.count == 2)
+        #expect(tagged.tokens.allSatisfy { $0.kind != .string })
+    }
+
     @Test func postgresProceduresDollarQuotesNestedCommentsAndEscapedValuesStayWhole() {
         let sql = #"""
         /* outer ; /* nested ; */ still comment */

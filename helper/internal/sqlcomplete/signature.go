@@ -26,6 +26,33 @@ func Signatures(text string, offset int, context Context) *SignatureHelp {
 		return nil
 	}
 	tokens, _ := lex(text, context.Engine)
+	if context.Engine == "cassandra" {
+		// Cassandra resolves an unqualified routine in the target table's
+		// keyspace, including when FROM follows the call and the caret.
+		lo, hi := 0, len(tokens)
+		for i, t := range tokens {
+			if punct(t, ";") {
+				if t.end <= offset {
+					lo = i + 1
+				} else {
+					hi = i
+					break
+				}
+			}
+		}
+		statement := make([]token, 0, hi-lo)
+		for _, token := range tokens[lo:hi] {
+			if token.kind != commentToken {
+				statement = append(statement, token)
+			}
+		}
+		_, statementScope := analyze(statement, context, 0, len(text))
+		if len(statementScope.sources) == 1 && statementScope.sources[0].schema.value != "" {
+			context.Keyspace = identifierName(statementScope.sources[0].schema, "cassandra")
+		} else {
+			context.Keyspace = cqlDeclarationKeyspace(statement, context.Keyspace)
+		}
+	}
 	frames := []callFrame{}
 	before := []token{}
 	for _, t := range tokens {
@@ -43,9 +70,15 @@ func Signatures(text string, offset int, context Context) *SignatureHelp {
 			before = nil
 			continue
 		}
-		if punct(t, "(") || punct(t, "[") {
+		if punct(t, "(") || punct(t, "[") || context.Engine == "cassandra" && punct(t, "{") {
 			if len(frames) >= 512 {
 				return nil
+			}
+			if context.Engine == "cassandra" && len(frames) > 0 {
+				// A collection/tuple is one supplied argument even though its
+				// internal tokens belong to the nested delimiter frame.
+				i := len(frames) - 1
+				frames[i].argument = append(frames[i].argument, t)
 			}
 			frame := callFrame{open: t.start, delimiter: t.value}
 			if punct(t, "(") && len(before) > 0 {
@@ -61,10 +94,10 @@ func Signatures(text string, offset int, context Context) *SignatureHelp {
 				}
 			}
 			frames = append(frames, frame)
-		} else if punct(t, ")") || punct(t, "]") {
+		} else if punct(t, ")") || punct(t, "]") || context.Engine == "cassandra" && punct(t, "}") {
 			if len(frames) > 0 {
 				last := frames[len(frames)-1]
-				if last.delimiter == "(" && punct(t, ")") || last.delimiter == "[" && punct(t, "]") {
+				if last.delimiter == "(" && punct(t, ")") || last.delimiter == "[" && punct(t, "]") || last.delimiter == "{" && punct(t, "}") {
 					frames = frames[:len(frames)-1]
 				}
 			}
@@ -150,6 +183,9 @@ func functionSignatures(name, schema token, context Context) []FunctionSignature
 		if entry.Kind != "function" || !identifierEqual(name, entry.Name, context.Engine) || schema.value != "" && !identifierEqual(schema, entry.Schema, context.Engine) {
 			continue
 		}
+		if context.Engine == "cassandra" && schema.value == "" && entry.Schema != context.Keyspace {
+			continue
+		}
 		catalogMatch = true
 		for _, signature := range entry.Signatures {
 			if signature.ReturnType == "" || len(signature.ReturnType) > 4096 || len(signature.Parameters) > 256 {
@@ -183,7 +219,7 @@ func functionSignatures(name, schema token, context Context) []FunctionSignature
 }
 
 func argumentName(tokens []token, engine string) (token, bool) {
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "cassandra" {
 		return token{}, false
 	}
 	if len(tokens) >= 3 && len(tokens[0].value) <= 1024 && identifier(tokens[0]) && (punct(tokens[1], "=") && punct(tokens[2], ">") || punct(tokens[1], ":") && punct(tokens[2], "=")) {

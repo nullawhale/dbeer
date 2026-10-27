@@ -31,7 +31,7 @@ func qualifiedName(relation Relation, engine string) string {
 
 func functions(engine string) []string {
 	if engine == "cassandra" {
-		return strings.Fields("COUNT SUM AVG MIN MAX TOKEN TTL WRITETIME UUID NOW CURRENTTIMESTAMP CURRENTDATE CURRENTTIME CURRENTTIMEUUID TODATE TOTIMESTAMP TOUNIXTIMESTAMP MINTIMEUUID MAXTIMEUUID CAST TOJSON")
+		return cassandraFunctions()
 	}
 	names := strings.Fields("COUNT SUM AVG MIN MAX COALESCE NULLIF LOWER UPPER LENGTH SUBSTRING ROUND ABS")
 	if engine == "mysql" {

@@ -1,5 +1,19 @@
 package sqlcomplete
 
+import "strings"
+
+// Cassandra 4.1 and 5.0 spellings. Availability of newer functions is checked
+// by the connected server; offline completion does not guess its version.
+func cassandraFunctions() []string {
+	names := strings.Fields("COUNT SUM AVG MIN MAX TOKEN TTL WRITETIME MAXWRITETIME UUID NOW CURRENTTIMESTAMP CURRENTDATE CURRENTTIME CURRENTTIMEUUID TODATE TOTIMESTAMP TOUNIXTIMESTAMP MINTIMEUUID MAXTIMEUUID CAST TOJSON FROMJSON ABS EXP LOG LOG10 ROUND MAP_KEYS MAP_VALUES COLLECTION_COUNT COLLECTION_MIN COLLECTION_MAX COLLECTION_SUM COLLECTION_AVG MASK_NULL MASK_DEFAULT MASK_REPLACE MASK_INNER MASK_OUTER MASK_HASH SIMILARITY_COSINE SIMILARITY_DOT_PRODUCT SIMILARITY_EUCLIDEAN")
+	for _, typ := range cassandraBlobTypes {
+		names = append(names, typ+"ASBLOB", "BLOBAS"+typ)
+	}
+	return names
+}
+
+var cassandraBlobTypes = strings.Fields("ASCII BIGINT BOOLEAN COUNTER DATE DECIMAL DOUBLE DURATION FLOAT INET INT SMALLINT TEXT TIME TIMESTAMP TIMEUUID TINYINT UUID VARCHAR VARINT")
+
 // Built-ins are available offline. Polymorphic results are described rather
 // than guessed from incomplete expressions. User-defined signatures come from
 // the adapters and are never inferred from this registry.
@@ -11,6 +25,14 @@ func builtinSignatures(name, engine string) []FunctionSignature {
 		return FunctionSignature{Parameters: parameters, ReturnType: result}
 	}
 	if engine == "cassandra" {
+		for _, typ := range cassandraBlobTypes {
+			if name == typ+"ASBLOB" || name == typ+"_AS_BLOB" {
+				return []FunctionSignature{sig("blob", p("value", strings.ToLower(typ)))}
+			}
+			if name == "BLOBAS"+typ || name == "BLOB_AS_"+typ {
+				return []FunctionSignature{sig(strings.ToLower(typ), p("value", "blob"))}
+			}
+		}
 		switch name {
 		case "COUNT":
 			return []FunctionSignature{sig("bigint", p("expression", "column / *"))}
@@ -23,6 +45,8 @@ func builtinSignatures(name, engine string) []FunctionSignature {
 		case "TTL":
 			return []FunctionSignature{sig("int", p("column", "non-primary-key column"))}
 		case "WRITETIME":
+			return []FunctionSignature{sig("bigint", p("column", "non-primary-key column"))}
+		case "MAXWRITETIME":
 			return []FunctionSignature{sig("bigint", p("column", "non-primary-key column"))}
 		case "UUID":
 			return []FunctionSignature{sig("uuid")}
@@ -38,14 +62,43 @@ func builtinSignatures(name, engine string) []FunctionSignature {
 			return []FunctionSignature{sig("date", p("value", "timeuuid / timestamp"))}
 		case "TO_TIMESTAMP", "TOTIMESTAMP":
 			return []FunctionSignature{sig("timestamp", p("value", "timeuuid / date"))}
+		case "DATEOF":
+			return []FunctionSignature{sig("timestamp", p("value", "timeuuid"))}
+		case "UNIXTIMESTAMPOF":
+			return []FunctionSignature{sig("bigint", p("value", "timeuuid"))}
 		case "TO_UNIX_TIMESTAMP", "TOUNIXTIMESTAMP":
 			return []FunctionSignature{sig("bigint", p("value", "timeuuid / timestamp / date"))}
 		case "MIN_TIMEUUID", "MAX_TIMEUUID", "MINTIMEUUID", "MAXTIMEUUID":
 			return []FunctionSignature{sig("timeuuid", p("value", "timestamp"))}
-		case "TOJSON":
+		case "TOJSON", "TO_JSON":
 			return []FunctionSignature{sig("text", p("value", "any"))}
-		case "FROMJSON":
+		case "FROMJSON", "FROM_JSON":
 			return []FunctionSignature{sig("column type", p("value", "text"))}
+		case "CAST":
+			return []FunctionSignature{sig("target type", p("expression", "value AS native_type"))}
+		case "ABS", "EXP", "LOG", "LOG10", "ROUND":
+			return []FunctionSignature{sig("same as value", p("value", "numeric"))}
+		case "MAP_KEYS":
+			return []FunctionSignature{sig("set<key type>", p("value", "map<key type, value type>"))}
+		case "MAP_VALUES":
+			return []FunctionSignature{sig("list<value type>", p("value", "map<key type, value type>"))}
+		case "COLLECTION_COUNT":
+			return []FunctionSignature{sig("int", p("value", "map / set / list"))}
+		case "COLLECTION_MIN", "COLLECTION_MAX":
+			return []FunctionSignature{sig("element type", p("value", "set / list"))}
+		case "COLLECTION_SUM", "COLLECTION_AVG":
+			return []FunctionSignature{sig("element type", p("value", "numeric set / list"))}
+		case "MASK_NULL", "MASK_DEFAULT":
+			return []FunctionSignature{sig("same as value", p("value", "any"))}
+		case "MASK_REPLACE":
+			return []FunctionSignature{sig("same as value", p("value", "any"), p("replacement", "same as value"))}
+		case "MASK_INNER", "MASK_OUTER":
+			return []FunctionSignature{sig("same as value", p("value", "text / varchar / ascii"), p("begin", "int"), p("end", "int")),
+				sig("same as value", p("value", "text / varchar / ascii"), p("begin", "int"), p("end", "int"), p("padding", "text"))}
+		case "MASK_HASH":
+			return []FunctionSignature{sig("blob", p("value", "any")), sig("blob", p("value", "any"), p("algorithm", "text"))}
+		case "SIMILARITY_COSINE", "SIMILARITY_DOT_PRODUCT", "SIMILARITY_EUCLIDEAN":
+			return []FunctionSignature{sig("float", p("left", "vector<float, n>"), p("right", "vector<float, n>"))}
 		default:
 			return nil
 		}
