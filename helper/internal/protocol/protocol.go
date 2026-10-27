@@ -135,17 +135,18 @@ func (request ExportRequest) Valid() bool {
 }
 
 type CatalogRequest struct {
-	TypeChange *TypeChange     `json:"typeChange,omitempty"`
-	Kind       string          `json:"kind"`
-	Schema     string          `json:"schema,omitempty"`
-	Object     string          `json:"object,omitempty"`
-	ObjectKind string          `json:"objectKind,omitempty"`
-	Identity   string          `json:"identity,omitempty"`
-	Search     string          `json:"search,omitempty"`
-	Cursor     string          `json:"cursor,omitempty"`
-	Page       int             `json:"page,omitempty"`
-	Sort       []CatalogSort   `json:"sort,omitempty"`
-	Filters    []CatalogFilter `json:"filters,omitempty"`
+	TypeChange       *TypeChange              `json:"typeChange,omitempty"`
+	Kind             string                   `json:"kind"`
+	Schema           string                   `json:"schema,omitempty"`
+	Object           string                   `json:"object,omitempty"`
+	ObjectKind       string                   `json:"objectKind,omitempty"`
+	Identity         string                   `json:"identity,omitempty"`
+	Search           string                   `json:"search,omitempty"`
+	Cursor           string                   `json:"cursor,omitempty"`
+	Page             int                      `json:"page,omitempty"`
+	Sort             []CatalogSort            `json:"sort,omitempty"`
+	Filters          []CatalogFilter          `json:"filters,omitempty"`
+	FilterExpression *CatalogFilterExpression `json:"filterExpression,omitempty"`
 }
 
 // TypeChange is a preview request, never an executable catalog operation.
@@ -214,28 +215,24 @@ func (request CatalogRequest) Valid() bool {
 	if request.Page < 0 || request.Page > 1000000 || len(request.Sort) > 32 || len(request.Filters) > 32 {
 		return false
 	}
-	if request.Kind != "browse" && (len(request.Sort) != 0 || len(request.Filters) != 0 || request.Page != 0 && request.Kind != "completion") {
+	if request.FilterExpression != nil && (len(request.Filters) != 0 || !request.FilterExpression.Valid()) {
 		return false
 	}
+	if request.Kind != "browse" && (len(request.Sort) != 0 || len(request.Filters) != 0 || request.FilterExpression != nil || request.Page != 0 && request.Kind != "completion") {
+		return false
+	}
+	seenSort := make(map[string]bool)
 	for _, sort := range request.Sort {
 		if sort.Column == "" || len(sort.Column) > 1024 || strings.ContainsRune(sort.Column, 0) || (sort.Direction != "asc" && sort.Direction != "desc") {
 			return false
 		}
-	}
-	for _, filter := range request.Filters {
-		if filter.Column == "" || len(filter.Column) > 1024 || strings.ContainsRune(filter.Column, 0) {
+		if seenSort[sort.Column] {
 			return false
 		}
-		switch filter.Operator {
-		case "eq", "ne", "lt", "lte", "gt", "gte", "contains":
-			if filter.Value == nil || len(*filter.Value) > 1024*1024 || strings.ContainsRune(*filter.Value, 0) {
-				return false
-			}
-		case "isNull", "isNotNull":
-			if filter.Value != nil {
-				return false
-			}
-		default:
+		seenSort[sort.Column] = true
+	}
+	for _, filter := range request.Filters {
+		if !filter.Valid() {
 			return false
 		}
 	}
@@ -515,6 +512,17 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 			if !required(fields, name) || json.Unmarshal(fields[name], &request.Page) != nil {
 				return request, false
 			}
+			continue
+		}
+		if name == "filterExpression" {
+			if !required(fields, name) {
+				return request, false
+			}
+			var expression CatalogFilterExpression
+			if json.Unmarshal(fields[name], &expression) != nil {
+				return request, false
+			}
+			request.FilterExpression = &expression
 			continue
 		}
 		if name == "sort" || name == "filters" {

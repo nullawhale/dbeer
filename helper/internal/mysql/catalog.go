@@ -261,7 +261,9 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 			keys.Close()
 			return err
 		}
-		primaryKey = append(primaryKey, name)
+		// GetString aliases pooled driver packet storage. The next metadata
+		// query can reuse it after Close, before the browse plan is built.
+		primaryKey = append(primaryKey, strings.Clone(name))
 	}
 	keys.Close()
 	if request.Kind == "browse" && len(primaryKey) == 0 {
@@ -288,6 +290,9 @@ func (session *Session) catalogSelect(collector *collector, result *wire.Result,
 		if (kind == "enum" || kind == "set") && (charset == "" || charset == "binary") {
 			kind += "Binary"
 		}
+		// Map keys, native types and projection order must also outlive the
+		// result; later Prepare/streaming calls reuse its packet buffers.
+		name, kind = strings.Clone(name), strings.Clone(kind)
 		actual[name] = kind
 		columnOrder = append(columnOrder, name)
 	}

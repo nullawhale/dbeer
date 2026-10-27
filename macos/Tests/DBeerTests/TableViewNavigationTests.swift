@@ -27,7 +27,7 @@ struct TableViewNavigationTests {
         deinit { try? FileManager.default.removeItem(at: directory) }
     }
 
-    private func client(_ evidence: Evidence) -> BackendClient {
+    private func client(_ evidence: Evidence, groupedFilters: Bool = false) -> BackendClient {
         BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
         import json, sys, time
         from pathlib import Path
@@ -54,7 +54,7 @@ struct TableViewNavigationTests {
                 connections += 1
                 record('connect:'+str(connections))
                 reply.update(type='connect.result',sessionId='view-'+str(connections),engine='postgresql',
-                    transactionStatus='idle',capabilities=['execute','cancel','catalog','transactions','gridEditing'])
+                    transactionStatus='idle',capabilities=['execute','cancel','catalog','transactions','gridEditing'\(groupedFilters ? ", 'browseFilterTreeV1'" : "")])
             elif kind == 'operation.assess':
                 reply.update(type='operation.assessment',sessionId=command['sessionId'],queryId=command['queryId'],
                     assessment=dict(decision='allow',policy=dict(environment='unspecified',readOnly=False),authorization='fixture-grant',
@@ -101,6 +101,7 @@ struct TableViewNavigationTests {
                             assert (directory / 'release').exists()
                         names,rows = ['sql'], [['SELECT * FROM "source schema"."orders";']]
                     elif operation == 'browse':
+                        if 'filterExpression' in request: record('tree:'+json.dumps(request['filterExpression'],sort_keys=True))
                         if table == 'customers' and mode in ['wait-browse','denied-browse-wait']:
                             (directory / 'entered').touch()
                             deadline = time.monotonic()+8
@@ -155,9 +156,9 @@ struct TableViewNavigationTests {
         }
     }
 
-    private func fixture(decision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = { _ in .cancel }) async throws -> Fixture {
+    private func fixture(groupedFilters: Bool = false, decision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = { _ in .cancel }) async throws -> Fixture {
         let evidence = try Evidence()
-        let client = client(evidence)
+        let client = client(evidence, groupedFilters: groupedFilters)
         let settings = ConnectionSettings(host: "127.0.0.1", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable")
         let profile = SavedConnection(name: "Navigation fixture", settings: settings)
         var other = settings
@@ -608,4 +609,53 @@ struct TableViewNavigationTests {
         while !predicate(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
         try #require(predicate())
     }
+    @Test func groupedBrowseDraftAppliesOnceAndPreservesPreviousResultOnFailure() async throws {
+        let fixture = try await fixture(groupedFilters: true)
+        let source = try await fixture.source()
+        let expression = CatalogFilterExpression.group("or", [
+            .predicate(CatalogFilter(column: "id", operator: "eq", value: "9007199254740993")),
+            .group("and", [.predicate(CatalogFilter(column: "note", operator: "eq", value: "")),
+                           .predicate(CatalogFilter(column: "customer_id", operator: "isNull"))])])
+        let before = try fixture.evidence.events().filter { $0.hasPrefix("browse:") }.count
+        let loaded = source.browseConfiguration
+        source.page = 6
+        source.browseDraftConfiguration = .init(filterExpression: expression,
+            sort: [.init(column: "id", direction: "desc"), .init(column: "note", direction: "asc")])
+        await Task.yield()
+        #expect(source.browseConfiguration == loaded && source.page == 6)
+        #expect(!source.canNavigateTable && !source.canNavigateTableBack)
+        #expect(try fixture.evidence.events().filter { $0.hasPrefix("browse:") }.count == before)
+        let applying = try #require(TableBrowseNavigation.apply(document: source, workspace: fixture.workspace))
+        #expect(TableBrowseNavigation.apply(document: source, workspace: fixture.workspace) == nil)
+        await applying.value
+        #expect(source.tableFilterExpression == expression && !source.hasPendingBrowseChanges && source.page == 0)
+        #expect(source.tableLoadedConfiguration == source.browseConfiguration)
+        #expect(try fixture.evidence.events().filter { $0.hasPrefix("browse:") }.count == before + 1)
+        #expect(try fixture.evidence.events().contains { $0.hasPrefix("tree:") && $0.contains("9007199254740993") })
+        let priorGrid = source.grid
+        let priorLoaded = source.tableLoadedConfiguration
+        try fixture.evidence.setMode("denied-orders")
+        source.browseDraftConfiguration = .init(filterExpression: .predicate(.init(column: "note", operator: "eq", value: "changed")))
+        let failing = try #require(TableBrowseNavigation.apply(document: source, workspace: fixture.workspace))
+        await failing.value
+        #expect(source.grid === priorGrid && source.tableFailure != nil)
+        #expect(source.tableLoadedConfiguration == priorLoaded && source.tableLoadedConfiguration != source.browseConfiguration)
+        await fixture.finish()
+    }
+
+    @Test func resetBrowseDraftAndInvalidPresetNeverReadOrReplaceAppliedState() async throws {
+        let fixture = try await fixture()
+        let source = try await fixture.source()
+        let original = source.storedState
+        let events = try fixture.evidence.events()
+        source.browseDraftConfiguration = .init(filterExpression: .predicate(.init(column: "missing", operator: "eq", value: "NULL")))
+        #expect(TableBrowseNavigation.validationError(configuration: source.browseDraftConfiguration, document: source, workspace: fixture.workspace) != nil)
+        #expect(TableBrowseNavigation.apply(document: source, workspace: fixture.workspace) == nil)
+        #expect(source.hasPendingBrowseChanges && source.storedState == original)
+        TableBrowseNavigation.resetDraft(document: source)
+        #expect(!source.hasPendingBrowseChanges && source.storedState == original)
+        #expect(try fixture.evidence.events() == events)
+        await fixture.finish()
+    }
+
 }

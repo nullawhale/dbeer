@@ -6,51 +6,62 @@ enum StoredWorkspaceDocumentKind: String, Codable, Sendable { case sql, table, s
 struct StoredTableDocument: Codable, Equatable, Sendable {
     var reference: TableReference
     var page: Int
-    var filters: [CatalogFilter]
+    var filterExpression: CatalogFilterExpression?
     var sort: [CatalogSort]
+    var filters: [CatalogFilter] {
+        get { filterExpression?.flattenedConjunction ?? [] }
+        set { filterExpression = .conjunction(newValue) }
+    }
 
     init(reference: TableReference, page: Int = 0, filters: [CatalogFilter] = [], sort: [CatalogSort] = []) {
+        self.init(reference: reference, page: page, filterExpression: .conjunction(filters), sort: sort)
+    }
+
+    init(reference: TableReference, page: Int = 0, filterExpression: CatalogFilterExpression?, sort: [CatalogSort] = []) {
         self.reference = reference
         self.page = page
-        self.filters = filters
+        self.filterExpression = filterExpression
         self.sort = sort
     }
 
     var isValid: Bool {
-        func validName(_ name: String) -> Bool { !name.isEmpty && name.utf8.count <= 1_024 && !name.contains("\0") }
-        guard validName(reference.schema), validName(reference.name), ["table", "view"].contains(reference.kind),
-              (0...1_000_000).contains(page), filters.count <= 32, sort.count <= 32,
-              sort.allSatisfy({ validName($0.column) && ["asc", "desc"].contains($0.direction) }) else { return false }
-        return filters.allSatisfy { filter in
-            guard validName(filter.column) else { return false }
-            switch filter.operator {
-            case "eq", "ne", "lt", "lte", "gt", "gte", "contains":
-                return filter.value.map { $0.utf8.count <= 1_024 * 1_024 && !$0.contains("\0") } == true
-            case "isNull", "isNotNull": return filter.value == nil
-            default: return false
-            }
-        }
+        validBrowseName(reference.schema) && validBrowseName(reference.name) &&
+            ["table", "view"].contains(reference.kind) && (0...1_000_000).contains(page) &&
+            TableBrowseConfiguration(filterExpression: filterExpression, sort: sort).isValid
     }
 
-    private enum CodingKeys: String, CodingKey { case reference, page, filters, sort }
+    private enum CodingKeys: String, CodingKey { case reference, page, filters, filterExpression, sort }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["reference", "page", "filters", "sort"])
+        try requireWorkspaceKeys(decoder, allowed: ["reference", "page", "filters", "filterExpression", "sort"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let referenceDecoder = try values.superDecoder(forKey: .reference)
         try requireWorkspaceKeys(referenceDecoder, allowed: ["schema", "name", "kind"])
         reference = try TableReference(from: referenceDecoder)
         page = try values.decode(Int.self, forKey: .page)
-        filters = try values.decode([CatalogFilter].self, forKey: .filters)
-        sort = try values.decode([CatalogSort].self, forKey: .sort)
-        // Reject unknown operational fields rather than silently dropping them
-        // before the next autosave of a newer document format.
-        var filterValues = try values.nestedUnkeyedContainer(forKey: .filters)
-        while !filterValues.isAtEnd {
-            try requireWorkspaceKeys(filterValues.superDecoder(), allowed: ["column", "operator", "value"])
+        guard !values.contains(.filters) || !values.contains(.filterExpression) else { throw SQLDocumentStoreError.read }
+        if values.contains(.filters) {
+            let legacy = try values.decode([CatalogFilter].self, forKey: .filters)
+            filterExpression = .conjunction(legacy)
+            var operands = try values.nestedUnkeyedContainer(forKey: .filters)
+            while !operands.isAtEnd {
+                try requireWorkspaceKeys(operands.superDecoder(), allowed: ["column", "operator", "value"])
+            }
+        } else {
+            filterExpression = try values.decodeIfPresent(CatalogFilterExpression.self, forKey: .filterExpression)
         }
+        sort = try values.decode([CatalogSort].self, forKey: .sort)
         var sortValues = try values.nestedUnkeyedContainer(forKey: .sort)
         while !sortValues.isAtEnd { try requireWorkspaceKeys(sortValues.superDecoder(), allowed: ["column", "direction"]) }
+        guard isValid else { throw SQLDocumentStoreError.read }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(reference, forKey: .reference)
+        try values.encode(page, forKey: .page)
+        try values.encodeIfPresent(filterExpression, forKey: .filterExpression)
+        try values.encode(sort, forKey: .sort)
     }
 }
 
@@ -211,7 +222,7 @@ private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) thro
 /// results and passwords never enter the format; restoring the snapshot cannot
 /// reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 10
+    static let currentVersion = 11
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -257,6 +268,18 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
         documents = version < 4
             ? try values.decode([LegacyStoredSQLDocument].self, forKey: .documents).map(\.document)
             : try values.decode([StoredSQLDocument].self, forKey: .documents)
+        if version < 11, version >= 4 {
+            var entries = try values.nestedUnkeyedContainer(forKey: .documents)
+            while !entries.isAtEnd {
+                let entry = try entries.superDecoder().container(keyedBy: WorkspaceCodingKey.self)
+                let tableKey = WorkspaceCodingKey(stringValue: "table")!
+                if entry.contains(tableKey), try !entry.decodeNil(forKey: tableKey) {
+                    let table = try entry.superDecoder(forKey: tableKey).container(keyedBy: WorkspaceCodingKey.self)
+                    guard !table.contains(WorkspaceCodingKey(stringValue: "filterExpression")!),
+                          table.contains(WorkspaceCodingKey(stringValue: "filters")!) else { throw SQLDocumentStoreError.read }
+                }
+            }
+        }
         if version < 7 {
             // A newer operational binding in an older version is corruption,
             // not a format that can be silently migrated or overwritten.

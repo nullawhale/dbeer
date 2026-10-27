@@ -40,6 +40,13 @@ SSH trust, and key authentication requires local key-file selection. Portable
 profiles also exclude local password commands. Restored SQL tabs, table views and
 investigation blocks remain disconnected until an explicit user action.
 
+The working source for 0.3.0 advances workspace storage to v11 for grouped table
+filters. Upgrading v10 creates an exact private `.v10.backup` before migration.
+Named table views use a separate private local library and are excluded from
+connection transfer. Applied settings restore disconnected; unapplied browsing
+drafts are not persisted. These changes are not in the 0.2.1/build 11 archive;
+install the matching app and helper together when a new release is available.
+
 For Codex/MCP, keep DBeer running and use
 `/Applications/DBeer.app/Contents/Helpers/dbeer-core` with argument `--mcp`
 (adjust the application location if needed). The first tool call requests

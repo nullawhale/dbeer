@@ -487,6 +487,7 @@ struct ResultTableView: NSViewRepresentable {
     var onToggleRowDetails: (() -> Void)?
     var sortColumn: String?
     var sortAscending = true
+    var sortOrders: [CatalogSort] = []
     var onSortColumn: ((Int) -> Void)?
     var onCoordinatorReady: ((Coordinator) -> Void)?
     var onSQLInsertCopy: ((ResultClipboardPayload, NSPasteboard) -> Void)?
@@ -529,6 +530,7 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onSortColumn = onSortColumn
         coordinator.sortColumn = sortColumn
         coordinator.sortAscending = sortAscending
+        coordinator.sortOrders = sortOrders
         coordinator.copySettings = copySettings
         coordinator.onSQLInsertCopy = onSQLInsertCopy
         coordinator.onCopyError = onCopyError
@@ -576,6 +578,7 @@ struct ResultTableView: NSViewRepresentable {
         var onToggleRowDetails: (() -> Void)?
         var sortColumn: String?
         var sortAscending = true
+        var sortOrders: [CatalogSort] = []
         var onSortColumn: ((Int) -> Void)?
         private var previousSelection: IndexSet = []
         private var isSynchronizingSelection = false
@@ -715,8 +718,23 @@ struct ResultTableView: NSViewRepresentable {
             for (index, column) in table.tableColumns.enumerated() {
                 column.sortDescriptorPrototype = onSortColumn == nil ? nil :
                     NSSortDescriptor(key: column.identifier.rawValue, ascending: true)
-                if columns[index].name == sortColumn {
+                let orderIndex = sortOrders.firstIndex { $0.column == columns[index].name }
+                if let orderIndex {
+                    let order = sortOrders[orderIndex]
+                    let suffix = sortOrders.count > 1 ? "  \(orderIndex + 1) \(order.direction == "desc" ? "↓" : "↑")" : ""
+                    column.title = columns[index].name + suffix
+                } else {
+                    column.title = columns[index].name
+                }
+                if sortOrders.isEmpty, columns[index].name == sortColumn {
                     descriptors = [NSSortDescriptor(key: column.identifier.rawValue, ascending: sortAscending)]
+                }
+            }
+            if !sortOrders.isEmpty {
+                descriptors = sortOrders.compactMap { order in
+                    guard let index = columns.firstIndex(where: { $0.name == order.column }),
+                          table.tableColumns.indices.contains(index) else { return nil }
+                    return NSSortDescriptor(key: table.tableColumns[index].identifier.rawValue, ascending: order.direction != "desc")
                 }
             }
             // Descriptors only drive native header indicators. Rows are always

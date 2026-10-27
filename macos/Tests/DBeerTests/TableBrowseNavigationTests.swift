@@ -32,7 +32,7 @@ struct TableBrowseNavigationTests {
         return (document, grid)
     }
 
-    @Test func headerSortCyclesAscendingDescendingAndPrimaryKeyOrder() async {
+    @Test func headerSortCyclesDraftWithoutExecutingOrChangingPage() async {
         let workspace = workspace()
         let (document, _) = table(in: workspace)
         #expect(TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
@@ -40,8 +40,8 @@ struct TableBrowseNavigationTests {
                          [CatalogSort(column: "label", direction: "desc")], []] {
             document.page = 4
             TableBrowseNavigation.sort(column: "label", document: document, workspace: workspace)
-            #expect(document.tableSort == expected)
-            #expect(document.page == 0)
+            #expect(document.browseDraftConfiguration.sort == expected)
+            #expect(document.tableSort.isEmpty && document.page == 4)
             await Task.yield()
         }
         #expect(document.runtime == nil && !document.isRunning)
@@ -50,14 +50,14 @@ struct TableBrowseNavigationTests {
         await workspace.shutdown()
     }
 
-    @Test func choosingAnotherColumnStartsAscendingOnTheFirstPage() async {
+    @Test func choosingAnotherColumnAppendsToDraftSorting() async {
         let workspace = workspace()
         let (document, _) = table(in: workspace)
         document.tableSort = [CatalogSort(column: "id", direction: "desc")]
         document.page = 9
         TableBrowseNavigation.sort(column: "label", document: document, workspace: workspace)
-        #expect(document.tableSort == [CatalogSort(column: "label", direction: "asc")])
-        #expect(document.page == 0)
+        #expect(document.browseDraftConfiguration.sort == [CatalogSort(column: "id", direction: "desc"), CatalogSort(column: "label", direction: "asc")])
+        #expect(document.tableSort == [CatalogSort(column: "id", direction: "desc")] && document.page == 9)
         await workspace.shutdown()
     }
 
@@ -80,7 +80,8 @@ struct TableBrowseNavigationTests {
         #expect(!TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
         TableBrowseNavigation.sort(column: "id", document: document, workspace: workspace)
         TableBrowseNavigation.sort(column: "label", document: document, workspace: workspace)
-        #expect(document.tableSort == sort)
+        #expect(document.tableSort == sort && !document.hasPendingBrowseChanges)
+        #expect(TableBrowseNavigation.apply(document: document, workspace: workspace) == nil)
         #expect(document.page == 3)
         #expect(document.runtime == nil)
         await workspace.shutdown()
@@ -137,8 +138,64 @@ struct TableBrowseNavigationTests {
         #expect(!grid.canEdit)
         #expect(TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
         TableBrowseNavigation.sort(column: "label", document: document, workspace: workspace)
-        #expect(document.tableSort == [CatalogSort(column: "label", direction: "asc")])
-        #expect(grid.pendingCount == 0)
+        #expect(document.browseDraftConfiguration.sort == [CatalogSort(column: "label", direction: "asc")])
+        #expect(document.tableSort.isEmpty && grid.pendingCount == 0)
+        await workspace.shutdown()
+    }
+
+    @Test func cassandraValidatesDraftKeysAndRefusesORWithoutMutatingAppliedState() async {
+        let profile = SavedConnection(name: "Cassandra fixture", settings: ConnectionSettings(host: "localhost", port: 9042,
+            database: "fixture", user: "", password: "", sslMode: "disable", engine: .cassandra,
+            contactPoints: ["localhost"], localDatacenter: "dc1"))
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(library:
+            SavedConnectionLibrary(connections: [profile], selectedConnectionId: profile.id)),
+            credentialStore: MemoryConnectionCredentialStore())
+        await workspace.library.loadConnections()
+        let document = workspace.newDocument()
+        document.profileID = profile.id
+        document.table = .init(schema: "fixture", name: "records", kind: "table")
+        document.tableColumns = [
+            ["name": "tenant", "nativeType": "text", "partitionKeyPosition": "1"],
+            ["name": "id", "nativeType": "bigint", "clusteringPosition": "1"],
+            ["name": "body", "nativeType": "text"]]
+        let tenant = CatalogFilterExpression.predicate(.init(column: "tenant", operator: "eq", value: ""))
+        let key = CatalogFilterExpression.predicate(.init(column: "id", operator: "gte", value: "9007199254740993"))
+        let valid = TableBrowseConfiguration(filterExpression: .group("and", [tenant, .group("and", [key])]),
+            sort: [.init(column: "id", direction: "desc")])
+        #expect(TableBrowseNavigation.validationError(configuration: valid, document: document, workspace: workspace) == nil)
+        #expect(document.tableFilterExpression == nil && document.tableSort.isEmpty && document.runtime == nil)
+        document.browseDraftConfiguration = .init(filterExpression: .group("or", [tenant, key]))
+        #expect(TableBrowseNavigation.apply(document: document, workspace: workspace) == nil)
+        #expect(document.hasPendingBrowseChanges && document.tableFilterExpression == nil && document.runtime == nil)
+        let incomplete = TableBrowseConfiguration(filterExpression: key, sort: [.init(column: "id", direction: "asc")])
+        #expect(TableBrowseNavigation.validationError(configuration: incomplete, document: document, workspace: workspace) != nil)
+        TableBrowseNavigation.resetDraft(document: document)
+        #expect(!document.hasPendingBrowseChanges)
+        await workspace.shutdown()
+    }
+
+    @Test func cassandraHeaderCanReplaceItsSingleEligibleClusteringSort() async {
+        let profile = SavedConnection(name: "Cassandra fixture", settings: ConnectionSettings(host: "localhost", port: 9042,
+            database: "fixture", user: "", password: "", sslMode: "disable", engine: .cassandra,
+            contactPoints: ["localhost"], localDatacenter: "dc1"))
+        let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(library:
+            SavedConnectionLibrary(connections: [profile], selectedConnectionId: profile.id)),
+            credentialStore: MemoryConnectionCredentialStore())
+        await workspace.library.loadConnections()
+        let document = workspace.newDocument(profileID: profile.id)
+        document.table = .init(schema: "fixture", name: "records", kind: "table")
+        document.tableColumns = [
+            ["name": "tenant", "nativeType": "int", "partitionKeyPosition": "1"],
+            ["name": "rank", "nativeType": "int", "clusteringPosition": "1"],
+            ["name": "id", "nativeType": "int", "clusteringPosition": "2"]]
+        document.tableFilters = [.init(column: "tenant", operator: "eq", value: "1"),
+                                 .init(column: "rank", operator: "eq", value: "1")]
+        document.tableSort = [.init(column: "rank", direction: "desc")]
+        document.page = 4
+        TableBrowseNavigation.sort(column: "id", document: document, workspace: workspace)
+        #expect(document.browseDraftConfiguration.sort == [.init(column: "id", direction: "asc")])
+        #expect(document.tableSort == [.init(column: "rank", direction: "desc")] && document.page == 4)
+        #expect(document.runtime == nil)
         await workspace.shutdown()
     }
 }

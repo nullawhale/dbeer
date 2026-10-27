@@ -34,6 +34,8 @@ final class SQLDocument: ObservableObject, Identifiable {
                 isLoadingForeignKeys = false
                 tableBackHistory = []
                 tableForwardHistory = []
+                tableBrowseDraft = nil
+                tableLoadedConfiguration = nil
                 if profileID != nil { historyConnectionNotice = nil }
             }
         }
@@ -115,14 +117,30 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var tableCursor: String?
     @Published var tableNextCursor: String?
     @Published var tableSort: [CatalogSort] = [] { didSet { if tableSort != oldValue { resetTablePaging() } } }
-    @Published var tableFilters: [CatalogFilter] = [] {
+    @Published var tableFilterExpression: CatalogFilterExpression? {
         didSet {
-            guard tableFilters != oldValue else { return }
+            guard tableFilterExpression != oldValue else { return }
             resetTablePaging()
             if tableColumns.contains(where: { (Int($0["partitionKeyPosition"] ?? "0") ?? 0) > 0 }),
                !CassandraBrowseRules.hasValidSort(self) { tableSort = [] }
         }
     }
+    /// Compatibility for generated primary/foreign-key filters, which are AND only.
+    var tableFilters: [CatalogFilter] {
+        get { tableFilterExpression?.flattenedConjunction ?? [] }
+        set { tableFilterExpression = .conjunction(newValue) }
+    }
+    @Published var tableBrowseDraft: TableBrowseConfiguration?
+    @Published var isApplyingBrowse = false
+    @Published var tableLoadedConfiguration: TableBrowseConfiguration?
+    var browseConfiguration: TableBrowseConfiguration {
+        TableBrowseConfiguration(filterExpression: tableFilterExpression, sort: tableSort)
+    }
+    var browseDraftConfiguration: TableBrowseConfiguration {
+        get { tableBrowseDraft ?? browseConfiguration }
+        set { tableBrowseDraft = newValue == browseConfiguration ? nil : newValue }
+    }
+    var hasPendingBrowseChanges: Bool { browseDraftConfiguration != browseConfiguration }
     @Published var tableColumns: [[String: String]] = []
     @Published var tableResult: BackendMessage?
     @Published var tableSnapshotSource: ResultSnapshotSource?
@@ -163,7 +181,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     var tableViewID: UUID? { table == nil ? nil : id }
     var isSQLDocument: Bool { table == nil && !isSnapshot && !isInvestigation }
     var canNavigateTable: Bool {
-        table != nil && !isRunning && !isNavigatingTable && grid?.isApplying != true &&
+        table != nil && !isRunning && !isApplyingBrowse && !hasPendingBrowseChanges && !isNavigatingTable && grid?.isApplying != true &&
             grid?.isReloading != true && grid?.isPreviewing != true && grid?.isClosing != true
     }
     var canNavigateTableBack: Bool { canNavigateTable && !tableBackHistory.isEmpty }
@@ -187,7 +205,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         }
         if let savedTable = stored.table, stored.kind == .table {
             table = savedTable.reference
-            tableFilters = savedTable.filters
+            tableFilterExpression = savedTable.filterExpression
             tableSort = savedTable.sort
             page = savedTable.page
             tableNeedsExplicitLoad = true
@@ -212,7 +230,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         }
         return StoredSQLDocument(id: id, title: title, text: text, profileID: profileID,
             kind: table == nil ? .sql : .table,
-            table: table.map { StoredTableDocument(reference: $0, page: page, filters: tableFilters, sort: tableSort) },
+            table: table.map { StoredTableDocument(reference: $0, page: page, filterExpression: tableFilterExpression, sort: tableSort) },
             fileURL: table == nil ? fileURL : nil,
             fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil,
             fileDocumentID: table == nil ? (fileDocument?.id ?? restoredFileDocumentID) : nil,
@@ -390,6 +408,7 @@ final class ApplicationWorkspace: ObservableObject {
     let copySettings: ResultCopySettings
     let sqlFolders: SQLFolderLibrary
     let sqlLibrary: SQLLibrary
+    let tableBrowsePresets: TableBrowsePresetStore
     let resultSnapshots: ResultSnapshotsModel
     let investigations: InvestigationLibraryModel
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
@@ -451,6 +470,7 @@ final class ApplicationWorkspace: ObservableObject {
          appearance: AppAppearance? = nil,
          sqlFolders: SQLFolderLibrary? = nil,
          sqlLibrary: SQLLibrary? = nil,
+         tableBrowsePresets: TableBrowsePresetStore? = nil,
          resultSnapshots: ResultSnapshotsModel? = nil,
          investigations: InvestigationLibraryModel? = nil,
          automaticallyWatchFiles: Bool = true,
@@ -465,6 +485,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.copySettings = copySettings ?? .shared
         self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
         self.sqlLibrary = sqlLibrary ?? SQLLibrary()
+        self.tableBrowsePresets = tableBrowsePresets ?? TableBrowsePresetStore()
         let snapshots = resultSnapshots ?? ResultSnapshotsModel()
         self.resultSnapshots = snapshots
         self.investigations = investigations ?? InvestigationLibraryModel(snapshotStore: snapshots.store)
@@ -1484,12 +1505,21 @@ final class ApplicationWorkspace: ObservableObject {
                 }
                 guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested else { return }
                 let historyProfile = SQLHistoryProfile(profile, currentKeyspace: runtime.currentKeyspace)
+                let configuration = document.browseConfiguration
+                let supportsTree = runtime.capabilities.contains("browseFilterTreeV1")
+                if !supportsTree, let expression = configuration.filterExpression, expression.flattenedConjunction == nil {
+                    document.localError = "This helper does not support grouped filters. Update the application and helper together."
+                    return
+                }
                 let completion = await runtime.run(catalog: CatalogRequest(kind: "browse", schema: table.schema,
                     object: table.name, objectKind: table.kind, page: runtime.usesCursorPagination ? 0 : document.page,
-                    cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: document.tableSort, filters: document.tableFilters))
+                    cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: configuration.sort,
+                    filters: supportsTree ? nil : configuration.filterExpression?.flattenedConjunction,
+                    filterExpression: supportsTree ? configuration.filterExpression : nil))
                 if runtime.queryFailure == nil, let result = runtime.result {
                     document.tableFailure = nil
                     document.tableResult = result
+                    document.tableLoadedConfiguration = configuration
                     document.tableSnapshotSource = completion.flatMap { completion in
                         completion.reply?.sql.flatMap { sql in
                             ResultSnapshotSource(sql: sql, profileID: profileID, profile: historyProfile,
@@ -1925,7 +1955,7 @@ final class ApplicationWorkspace: ObservableObject {
             document.$profileID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$table.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$page.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
-            document.$tableFilters.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$tableFilterExpression.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$tableSort.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$sqlLibraryEntryID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
@@ -2742,11 +2772,8 @@ final class ApplicationWorkspace: ObservableObject {
               let table = document.table, let profileID = document.profileID else { return }
         document.tableForeignKeys = []
         document.foreignKeysError = nil
-        if let engine = library.savedConnections.first(where: { $0.id == profileID })?.engine, engine == .mongodb { return }
-        if let engine = library.savedConnections.first(where: { $0.id == profileID })?.engine, engine == .cassandra {
-            document.foreignKeysError = "Foreign-key navigation is not supported for \(engine.displayName)."
-            return
-        }
+        if let engine = library.savedConnections.first(where: { $0.id == profileID })?.engine,
+           engine == .mongodb || engine == .cassandra { return }
         let requestID = UUID()
         document.foreignKeysRequestID = requestID
         document.isLoadingForeignKeys = true
@@ -2860,7 +2887,7 @@ final class ApplicationWorkspace: ObservableObject {
         document.tableNavigationError = nil
         do {
             let columns = try await navigationColumns(target.reference, profileID: target.profileID,
-                required: Set(target.filters.map(\.column) + target.sort.map(\.column)))
+                required: (target.filterExpression?.columns ?? []).union(target.sort.map(\.column)))
             guard navigationIsCurrent(document, source: source),
                   try await prepareNavigationDraft(document, grid: grid) else { return }
             if await moveTable(document, from: source, to: target, columns: columns) {
@@ -2942,8 +2969,9 @@ final class ApplicationWorkspace: ObservableObject {
         document.table = location.reference
         document.profileID = location.profileID
         document.title = location.title
-        document.tableFilters = location.filters
+        document.tableFilterExpression = location.filterExpression
         document.tableSort = location.sort
+        document.tableBrowseDraft = nil
         document.page = location.page
         document.tableCursor = nil
         document.tableNextCursor = nil
@@ -2964,6 +2992,8 @@ final class ApplicationWorkspace: ObservableObject {
         let oldCursor = document.tableCursor
         let oldNextCursor = document.tableNextCursor
         let oldNeedsLoad = document.tableNeedsExplicitLoad
+        let oldLoadedConfiguration = document.tableLoadedConfiguration
+        let oldBrowseDraft = document.tableBrowseDraft
         let oldError = document.localError
         let oldKeys = document.tableForeignKeys
         let oldKeysError = document.foreignKeysError
@@ -2993,6 +3023,8 @@ final class ApplicationWorkspace: ObservableObject {
             document.tableCursor = oldCursor
             document.tableNextCursor = oldNextCursor
             document.tableNeedsExplicitLoad = oldNeedsLoad
+            document.tableLoadedConfiguration = oldLoadedConfiguration
+            document.tableBrowseDraft = oldBrowseDraft
             document.localError = oldError
             document.tableForeignKeys = oldKeys
             document.foreignKeysError = oldKeysError

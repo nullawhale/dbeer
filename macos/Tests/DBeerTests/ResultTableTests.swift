@@ -9,6 +9,25 @@ struct ResultTableTests {
         ResultColumn(index: 1, name: "x", typeOid: 1700),
     ]
 
+    @Test func multipleSortHeadersShowPriorityAndDescriptorsFollowSortOrder() throws {
+        let coordinator = ResultTableView.Coordinator()
+        let scroll = coordinator.makeScrollView()
+        coordinator.onSortColumn = { _ in }
+        coordinator.sortOrders = [.init(column: "label", direction: "desc"), .init(column: "id", direction: "asc")]
+        coordinator.update(columns: [.init(index: 0, name: "id"), .init(index: 1, name: "label")],
+                           rows: [["1", "a"]], in: scroll)
+        let table = try #require(scroll.documentView as? NSTableView)
+        #expect(table.tableColumns.map(\.title) == ["id  2 ↑", "label  1 ↓"])
+        #expect(table.sortDescriptors.map(\.key) == [table.tableColumns[1].identifier.rawValue, table.tableColumns[0].identifier.rawValue])
+        #expect(table.sortDescriptors.map(\.ascending) == [false, true])
+        coordinator.sortOrders = []
+        coordinator.onSortColumn = nil
+        coordinator.update(columns: [.init(index: 0, name: "id"), .init(index: 1, name: "label")],
+                           rows: [["1", "a"]], in: scroll)
+        #expect(table.tableColumns.map(\.title) == ["id", "label"] && table.sortDescriptors.isEmpty)
+        #expect(table.tableColumns.allSatisfy { $0.sortDescriptorPrototype == nil })
+    }
+
     private func field(_ coordinator: ResultTableView.Coordinator, table: NSTableView,
                        column: Int, row: Int) throws -> NSTextField {
         let cell = try #require(coordinator.tableView(table, viewFor: table.tableColumns[column], row: row)

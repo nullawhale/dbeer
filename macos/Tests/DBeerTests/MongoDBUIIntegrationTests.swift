@@ -135,15 +135,17 @@ struct MongoDBUIIntegrationTests {
 
     private func capture(_ window: NSWindow, _ name: String, includeChildren: Bool = false) async throws {
         guard #available(macOS 14.4, *) else { return }
+        var target = window
+        while let parent = target.parent { target = parent }
         let root = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["DBEER_QA_OUTPUT_DIR"]))
         let available = try await SCShareableContent.currentProcess
-        let ownWindow = try #require(available.windows.first { $0.windowID == CGWindowID(window.windowNumber) })
+        let ownWindow = try #require(available.windows.first { $0.windowID == CGWindowID(target.windowNumber) })
         let configuration = SCStreamConfiguration()
-        configuration.width = Int(window.frame.width * 2)
-        configuration.height = Int(window.frame.height * 2)
+        configuration.width = Int(target.frame.width * 2)
+        configuration.height = Int(target.frame.height * 2)
         configuration.scalesToFit = true
         configuration.captureResolution = .best
-        configuration.includeChildWindows = includeChildren
+        configuration.includeChildWindows = includeChildren || target !== window
         configuration.showsCursor = false
         configuration.ignoreShadowsSingleWindow = true
         let image = try await SCScreenshotManager.captureImage(contentFilter: SCContentFilter(desktopIndependentWindow: ownWindow), configuration: configuration)
@@ -159,6 +161,15 @@ struct MongoDBUIIntegrationTests {
     @Test(arguments: ["dark", "light"])
     func connectionDocumentsFiltersAggregationAndTypes(_ theme: String) async throws {
         let workspace = workspace()
+        let originalAppearance = NSApplication.shared.appearance
+        let originalIcon = NSApplication.shared.applicationIconImage
+        workspace.appearance.theme = theme == "dark" ? .dark : .light
+        workspace.appearance.start()
+        defer {
+            workspace.appearance.chooseSelection("system")
+            NSApplication.shared.appearance = originalAppearance
+            NSApplication.shared.applicationIconImage = originalIcon
+        }
         await workspace.start()
         defer { Task { await workspace.shutdown() } }
         let window = try await window(ApplicationWorkspaceView(workspace: workspace), dark: theme == "dark")
@@ -231,22 +242,34 @@ struct MongoDBUIIntegrationTests {
             try await press("tableNextPage", window)
             try await waitFor("The native next-page control did not load the second page.") { !document.isRunning && document.page == 1 && document.grid?.rows.count == 200 }
             try await press("gridFilter", window)
-            try await choose("index", "tableFilterColumn", window)
-            try await choose("≥", "tableFilterOperator", window)
-            try await enter("440", "tableFilterValue", window)
             try await press("tableAddFilter", window)
-            try await waitFor("The native filter did not return ten documents.") { !document.isRunning && document.grid?.rows.count == 10 && document.page == 0 }
-            try await choose("index", "mongoSortField", window)
-            try await choose("Descending", "mongoSortDirection", window)
-            try await press("mongoApplySort", window)
-            try await waitFor("The native MongoDB sort did not finish.") { !document.isRunning && document.tableSort.first?.direction == "desc" }
+            try await choose("index", "tableFilterColumn-0", window)
+            try await choose("≥", "tableFilterOperator-0", window)
+            try await enter("440", "tableFilterValue-0", window)
+            #expect(document.hasPendingBrowseChanges && !document.isRunning)
+            #expect(document.tableFilterExpression == nil && document.grid?.rows.count == 200 && document.page == 1)
+            try await press("tableBrowseApply", window)
+            try await waitFor("The native filter did not return ten documents.") {
+                !document.isRunning && !document.isApplyingBrowse && document.grid?.rows.count == 10 && document.page == 0
+            }
+            try await press("tableAddSort", window)
+            try await choose("index", "tableSortColumn-0", window)
+            try await choose("Descending", "tableSortDirection-0", window)
+            #expect(document.hasPendingBrowseChanges && document.tableSort.isEmpty && !document.isRunning)
+            try await press("tableBrowseApply", window)
+            try await waitFor("The native MongoDB sort did not finish.") {
+                !document.isRunning && !document.isApplyingBrowse && document.tableSort.first?.direction == "desc"
+            }
             #expect(document.grid?.displayedRows.first?.first??.contains("449") == true)
             try await capture(window, "\(theme)-filtered-and-sorted")
             try await press("gridFilter", window)
             try await press("gridFilter", window)
-            #expect(try element("mongoSortField", window).text == "index")
-            #expect(try element("mongoSortDirection", window).text == "Descending")
-            if let popover = window.childWindows?.first(where: { elements($0).contains { $0.identifier == "mongoApplySort" } }) {
+            #expect(try element("tableFilterColumn-0", window).text == "index")
+            #expect(try element("tableFilterOperator-0", window).text == "≥")
+            #expect(try element("tableFilterValue-0", window).text == "440")
+            #expect(try element("tableSortColumn-0", window).text == "index")
+            #expect(try element("tableSortDirection-0", window).text == "Descending")
+            if let popover = window.childWindows?.first(where: { elements($0).contains { $0.identifier == "tableBrowseApply" } }) {
                 try await capture(popover, "\(theme)-filter-panel")
             }
             try await press("gridFilter", window)

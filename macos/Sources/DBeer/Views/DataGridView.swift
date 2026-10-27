@@ -21,6 +21,9 @@ struct DataGridView: View {
     private var canFollowRelationship: Bool {
         workspace.canStartOperation(document) && !workspace.isClosing && document.canNavigateTable
     }
+    private var supportsForeignKeys: Bool {
+        grid.columns.first?.engine == .postgresql || grid.columns.first?.engine == .mysql
+    }
     private var selectedRelationshipRowID: UUID? {
         guard grid.selectedRows.count == 1, let row = grid.selectedRows.first,
               grid.rows.indices.contains(row) else { return nil }
@@ -39,6 +42,20 @@ struct DataGridView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if document.table != nil, let loaded = document.tableLoadedConfiguration,
+               loaded != document.browseConfiguration {
+                Text("These rows are from the previous read. Apply the current view again to load matching rows.")
+                    .font(.caption).foregroundStyle(.orange).padding(8)
+            }
+            if document.table != nil, document.hasPendingBrowseChanges {
+                HStack {
+                    Text("Filters or sorting have unapplied changes.")
+                    Button("Apply View") { TableBrowseNavigation.apply(document: document, workspace: workspace) }
+                        .controlHover().disabled(!canNavigate)
+                    Button("Reset") { TableBrowseNavigation.resetDraft(document: document) }
+                        .controlHover().disabled(!canNavigate)
+                }.font(.caption).padding(8)
+            }
             if let reason = grid.readOnlyReason {
                 Text("Read only: \(reason)").font(.caption).appSecondaryText().padding(8)
             } else if let notice = grid.editingNotice {
@@ -117,9 +134,8 @@ struct DataGridView: View {
         view.onSelectedRows = { selected in if grid.selectedRows != selected { grid.selectedRows = selected } }
         view.onShowRowDetails = { showingRowDetails.wrappedValue = true }
         view.onToggleRowDetails = { showingRowDetails.wrappedValue.toggle() }
-        view.sortColumn = document.tableSort.first?.column
-        view.sortAscending = document.tableSort.first?.direction != "desc"
-        if canNavigate && grid.columns.first?.engine != .mongodb {
+        view.sortOrders = document.browseDraftConfiguration.sort
+        if document.table != nil && canNavigate && grid.columns.first?.engine != .mongodb {
             view.onSortColumn = { index in
                 TableBrowseNavigation.sort(column: grid.columns[index].name, document: document, workspace: workspace)
             }
@@ -163,21 +179,21 @@ struct DataGridView: View {
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
                 .popover(isPresented: showingColumns.projectedValue) { columnDetails }
-            if grid.columns.first?.engine != .mongodb { relatedRowsMenu }
+            if supportsForeignKeys { relatedRowsMenu }
             Spacer(minLength: 4)
             if !usesCursors {
                 ControlIconButton(systemName: "chevron.left") {
-                    guard canNavigate, document.page > 0 else { return }
+                    guard canNavigate, !document.hasPendingBrowseChanges, document.page > 0 else { return }
                     document.page -= 1
                     Task { await workspace.run(document) }
-                }.disabled(!canNavigate || document.page == 0)
+                }.disabled(!canNavigate || document.hasPendingBrowseChanges || document.page == 0)
                     .help("Previous page").accessibilityLabel("Previous page").accessibilityIdentifier("tablePreviousPage")
             }
             Text("Page \(document.page + 1)").font(.caption).monospacedDigit().fixedSize()
                 .help("200 rows per page").accessibilityIdentifier("tablePage")
             ControlIconButton(systemName: "chevron.right") {
                 TableBrowseNavigation.nextPage(document: document, workspace: workspace)
-            }.disabled(!canNavigate || (usesCursors ? document.tableNextCursor == nil : grid.rows.count < 200))
+            }.disabled(!canNavigate || document.hasPendingBrowseChanges || (usesCursors ? document.tableNextCursor == nil : grid.rows.count < 200))
                 .help("Next page").accessibilityLabel("Next page").accessibilityIdentifier("tableNextPage")
         }
         .font(.callout).controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)

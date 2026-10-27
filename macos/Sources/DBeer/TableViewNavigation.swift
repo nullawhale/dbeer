@@ -98,7 +98,8 @@ struct TableViewLocation: Equatable, Sendable {
     let profileID: UUID
     let title: String
     let page: Int
-    let filters: [CatalogFilter]
+    let filterExpression: CatalogFilterExpression?
+    var filters: [CatalogFilter] { filterExpression?.flattenedConjunction ?? [] }
     let sort: [CatalogSort]
 
     @MainActor init?(_ document: SQLDocument) {
@@ -107,7 +108,7 @@ struct TableViewLocation: Equatable, Sendable {
         self.profileID = profileID
         title = document.title
         page = document.page
-        filters = document.tableFilters
+        filterExpression = document.tableFilterExpression
         sort = document.tableSort
     }
 
@@ -117,7 +118,7 @@ struct TableViewLocation: Equatable, Sendable {
         self.profileID = profileID
         self.title = title ?? reference.name
         self.page = page
-        self.filters = filters
+        self.filterExpression = .conjunction(filters)
         self.sort = sort
     }
 }

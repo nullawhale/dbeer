@@ -681,12 +681,12 @@ struct SQLDocumentPane: View {
                     if compact {
                         Image(systemName: "line.3.horizontal.decrease")
                     } else {
-                        Label(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))",
+                        Label(document.browseDraftConfiguration.filterExpression == nil ? "Filter" : "Filter (\(document.browseDraftConfiguration.filterExpression?.conditionCount ?? 0))",
                             systemImage: "line.3.horizontal.decrease")
                     }
                 }.controlHover().controlSize(.small)
                     .disabled(!TableBrowseNavigation.isEnabled(document: document, workspace: workspace))
-                    .accessibilityLabel(document.tableFilters.isEmpty ? "Filter" : "Filter (\(document.tableFilters.count))")
+                    .accessibilityLabel(document.browseDraftConfiguration.filterExpression == nil ? "Filter" : "Filter (\(document.browseDraftConfiguration.filterExpression?.conditionCount ?? 0))")
                     .accessibilityIdentifier("gridFilter")
                     .popover(isPresented: showingFilters.projectedValue) {
                         TableBrowseControls(document: document, workspace: workspace)
@@ -858,13 +858,10 @@ struct SQLDocumentPane: View {
                         Text("\(document.page + 1)").monospacedDigit()
                     }
                 }.font(.callout)
-                if !document.tableFilters.isEmpty {
+                if let expression = document.tableFilterExpression {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Saved filters").font(.headline)
-                        ForEach(Array(document.tableFilters.enumerated()), id: \.offset) { _, filter in
-                            Text(filterDescription(filter))
-                                .font(.callout).textSelection(.enabled).lineLimit(3)
-                        }
+                        Text(expression.displayText).font(.callout).textSelection(.enabled)
                     }
                 }
                 if !document.tableSort.isEmpty {

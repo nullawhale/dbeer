@@ -101,7 +101,7 @@ struct SelectHoverTests {
         document.tableColumns = [["name": "id"], ["name": "name"]]
         let screens: [(String, AnyView, Int)] = [
             ("workspace", AnyView(ApplicationWorkspaceView(workspace: workspace)), 2),
-            ("filters", AnyView(TableBrowseControls(document: document, workspace: workspace)), 2),
+            ("filters", AnyView(TableBrowseControls(document: document, workspace: workspace)), 1),
             ("connection", AnyView(ConnectionEditorView(model: workspace.library, connection: nil) {}), 2),
         ]
         var usesNativePickers = false

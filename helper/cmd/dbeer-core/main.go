@@ -220,7 +220,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{"capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}

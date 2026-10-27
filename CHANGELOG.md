@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Prepare table filters and sorting as a local draft, then explicitly Apply one
+  read. PostgreSQL, MySQL and MongoDB support nested AND/OR groups and ordered
+  multi-column sorting. Cassandra shares the editor while retaining its supported
+  AND key/index predicates and clustering-sort restrictions, without ALLOW FILTERING.
+- Save named local table views per connection and exact object, with explicit
+  selection, update, rename and deletion. Selecting a view never executes it.
+  Workspace v11 preserves grouped applied filters and migrates legacy AND filters
+  with a private backup; unapplied drafts remain local to the open tab.
+- Preserve owned MySQL catalog metadata across driver-buffer reuse during repeated
+  table reads. Keep SQL-result headers free of inactive browse-sort controls,
+  allow switching Cassandra's single sort column directly, and omit unavailable
+  foreign-key actions and retry errors from Cassandra table views.
+
 ## 0.2.1 — build 11 — 2026-10-27
 
 - Expand native CQL language assistance with schema/authorization keywords,

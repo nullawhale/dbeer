@@ -103,8 +103,32 @@ struct CatalogRequest: Codable, Sendable, Equatable {
     var cursor: String?
     var sort: [CatalogSort]?
     var filters: [CatalogFilter]?
+    var filterExpression: CatalogFilterExpression?
     /// PostgreSQL-only, read-only DDL generation. Empty enum labels are values.
     var typeChange: TypeChange?
+}
+
+extension CatalogRequest {
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try values.decode(String.self, forKey: .kind)
+        schema = try values.decodeIfPresent(String.self, forKey: .schema)
+        object = try values.decodeIfPresent(String.self, forKey: .object)
+        objectKind = try values.decodeIfPresent(String.self, forKey: .objectKind)
+        identity = try values.decodeIfPresent(String.self, forKey: .identity)
+        search = try values.decodeIfPresent(String.self, forKey: .search)
+        page = try values.decodeIfPresent(Int.self, forKey: .page)
+        cursor = try values.decodeIfPresent(String.self, forKey: .cursor)
+        sort = try values.decodeIfPresent([CatalogSort].self, forKey: .sort)
+        filters = try values.decodeIfPresent([CatalogFilter].self, forKey: .filters)
+        typeChange = try values.decodeIfPresent(TypeChange.self, forKey: .typeChange)
+        filterExpression = values.contains(.filterExpression)
+            ? try values.decode(CatalogFilterExpression.self, forKey: .filterExpression) : nil
+        let settings = TableBrowseConfiguration(filterExpression: filterExpression ?? .conjunction(filters ?? []), sort: sort ?? [])
+        guard settings.isValid, filterExpression == nil || ((filters ?? []).isEmpty && kind == "browse") else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid browse settings."))
+        }
+    }
 }
 
 struct TypeChange: Codable, Sendable, Equatable {

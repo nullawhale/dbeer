@@ -50,62 +50,96 @@ func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, 
 			seen[name] = true
 		}
 	}
-	var predicates, sourcePredicates []string
 	var args []any
-	for _, filter := range request.Filters {
+	compileCondition := func(filter protocol.CatalogFilter) (string, string, error) {
 		kind, ok := actual[filter.Column]
 		if !ok {
-			return browsePlan{}, invalidSettings("Unknown MySQL filter column.")
+			return "", "", invalidSettings("Unknown MySQL filter column.")
 		}
 		column := QuoteIdentifier(filter.Column)
-		switch filter.Operator {
-		case "isNull":
-			predicates = append(predicates, column+" IS NULL")
-			sourcePredicates = append(sourcePredicates, column+" IS NULL")
-		case "isNotNull":
-			predicates = append(predicates, column+" IS NOT NULL")
-			sourcePredicates = append(sourcePredicates, column+" IS NOT NULL")
-		default:
-			if filter.Value == nil {
-				return browsePlan{}, invalidSettings("A MySQL filter value is missing.")
+		if filter.Operator == "isNull" || filter.Operator == "isNotNull" {
+			if filter.Value != nil {
+				return "", "", invalidSettings("A MySQL NULL filter cannot have a value.")
 			}
-			cell := protocol.CellValue{Kind: "text", Value: filter.Value}
-			var value any = *filter.Value
-			if binaryType(kind) {
-				decoded, err := base64.StdEncoding.DecodeString(*filter.Value)
-				if err != nil {
-					return browsePlan{}, invalidSettings("MySQL binary filter values must use base64.")
-				}
-				value = decoded
-				cell.Kind = "binary"
+			predicate := column + " IS NULL"
+			if filter.Operator == "isNotNull" {
+				predicate = column + " IS NOT NULL"
 			}
-			if spatialType(kind) || kind == "vector" {
-				column = "UNHEX(HEX(" + column + "))"
-			}
-			literal, err := insertLiteral(cell)
+			return predicate, predicate, nil
+		}
+		if filter.Value == nil {
+			return "", "", invalidSettings("A MySQL filter value is missing.")
+		}
+		cell := protocol.CellValue{Kind: "text", Value: filter.Value}
+		var value any = *filter.Value
+		if binaryType(kind) {
+			decoded, err := base64.StdEncoding.DecodeString(*filter.Value)
 			if err != nil {
-				return browsePlan{}, invalidSettings("A MySQL filter value is invalid.")
+				return "", "", invalidSettings("MySQL binary filter values must use base64.")
 			}
-			if filter.Operator == "contains" {
-				predicates = append(predicates, "LOCATE(?, "+column+") > 0")
-				sourcePredicates = append(sourcePredicates, "LOCATE("+literal+", "+column+") > 0")
-			} else {
-				parameter, canonical, err := browseNumericParameter(kind, *filter.Value)
+			value, cell.Kind = decoded, "binary"
+		}
+		if spatialType(kind) || kind == "vector" {
+			column = "UNHEX(HEX(" + column + "))"
+		}
+		literal, err := insertLiteral(cell)
+		if err != nil {
+			return "", "", invalidSettings("A MySQL filter value is invalid.")
+		}
+		var predicate, source string
+		if filter.Operator == "contains" {
+			predicate, source = "LOCATE(?, "+column+") > 0", "LOCATE("+literal+", "+column+") > 0"
+		} else {
+			parameter, canonical, err := browseNumericParameter(kind, *filter.Value)
+			if err != nil {
+				return "", "", err
+			}
+			if parameter != "?" {
+				value = canonical
+				literal, _ = insertLiteral(protocol.CellValue{Kind: "text", Value: &canonical})
+			}
+			operator := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}[filter.Operator]
+			if operator == "" {
+				return "", "", invalidSettings("Unknown MySQL filter operator.")
+			}
+			predicate, source = column+" "+operator+" "+parameter, column+" "+operator+" "+strings.Replace(parameter, "?", literal, 1)
+		}
+		args = append(args, value)
+		return predicate, source, nil
+	}
+	if _, valid := request.EffectiveFilterExpression(); !valid {
+		return browsePlan{}, invalidSettings("Invalid MySQL filter expression.")
+	}
+	var predicates, sourcePredicates []string
+	if request.FilterExpression != nil {
+		var compile func(protocol.CatalogFilterExpression) (string, string, error)
+		compile = func(expression protocol.CatalogFilterExpression) (string, string, error) {
+			if expression.Kind == "condition" {
+				return compileCondition(*expression.Condition)
+			}
+			var predicates, sources []string
+			for _, child := range expression.Children {
+				predicate, source, err := compile(child)
 				if err != nil {
-					return browsePlan{}, err
+					return "", "", err
 				}
-				if parameter != "?" {
-					value = canonical
-					literal, _ = insertLiteral(protocol.CellValue{Kind: "text", Value: &canonical})
-				}
-				operator := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}[filter.Operator]
-				if operator == "" {
-					return browsePlan{}, invalidSettings("Unknown MySQL filter operator.")
-				}
-				predicates = append(predicates, column+" "+operator+" "+parameter)
-				sourcePredicates = append(sourcePredicates, column+" "+operator+" "+strings.Replace(parameter, "?", literal, 1))
+				predicates, sources = append(predicates, predicate), append(sources, source)
 			}
-			args = append(args, value)
+			separator := " " + strings.ToUpper(expression.Kind) + " "
+			return "(" + strings.Join(predicates, separator) + ")", "(" + strings.Join(sources, separator) + ")", nil
+		}
+		predicate, source, err := compile(*request.FilterExpression)
+		if err != nil {
+			return browsePlan{}, err
+		}
+		predicates, sourcePredicates = []string{predicate}, []string{source}
+	} else {
+		for _, filter := range request.Filters {
+			predicate, source, err := compileCondition(filter)
+			if err != nil {
+				return browsePlan{}, err
+			}
+			predicates, sourcePredicates = append(predicates, predicate), append(sourcePredicates, source)
 		}
 	}
 	statement := func(predicates []string) string {

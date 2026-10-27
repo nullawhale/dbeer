@@ -42,17 +42,16 @@ func browseScript(r protocol.CatalogRequest) (mongoscript.Script, error) {
 		}
 		return true
 	}
-	conditions := bson.A{}
-	for _, f := range r.Filters {
+	compileCondition := func(f protocol.CatalogFilter) (bson.D, error) {
 		if !validField(f.Column) {
-			return s, mongoscript.ErrInvalid
+			return nil, mongoscript.ErrInvalid
 		}
 		var value any
 		if f.Value != nil {
 			var err error
 			value, err = mongoscript.Value(*f.Value)
 			if err != nil {
-				return s, err
+				return nil, err
 			}
 		}
 		var condition bson.D
@@ -66,21 +65,57 @@ func browseScript(r protocol.CatalogRequest) (mongoscript.Script, error) {
 		case "contains":
 			text, ok := value.(string)
 			if !ok {
-				return s, mongoscript.ErrInvalid
+				return nil, mongoscript.ErrInvalid
 			}
 			condition = bson.D{{Key: "$regex", Value: regexp.QuoteMeta(text)}}
 		default:
-			return s, mongoscript.ErrInvalid
+			return nil, mongoscript.ErrInvalid
 		}
-		conditions = append(conditions, bson.D{{Key: f.Column, Value: condition}})
+		return bson.D{{Key: f.Column, Value: condition}}, nil
 	}
-	if len(conditions) > 0 {
-		s.Filter = bson.D{{Key: "$and", Value: conditions}}
+	if _, valid := r.EffectiveFilterExpression(); !valid {
+		return s, mongoscript.ErrInvalid
 	}
+	if r.FilterExpression != nil {
+		var compile func(protocol.CatalogFilterExpression) (bson.D, error)
+		compile = func(expression protocol.CatalogFilterExpression) (bson.D, error) {
+			if expression.Kind == "condition" {
+				return compileCondition(*expression.Condition)
+			}
+			conditions := bson.A{}
+			for _, child := range expression.Children {
+				condition, err := compile(child)
+				if err != nil {
+					return nil, err
+				}
+				conditions = append(conditions, condition)
+			}
+			return bson.D{{Key: "$" + expression.Kind, Value: conditions}}, nil
+		}
+		var err error
+		s.Filter, err = compile(*r.FilterExpression)
+		if err != nil {
+			return s, err
+		}
+	} else {
+		conditions := bson.A{}
+		for _, filter := range r.Filters {
+			condition, err := compileCondition(filter)
+			if err != nil {
+				return s, err
+			}
+			conditions = append(conditions, condition)
+		}
+		if len(conditions) > 0 {
+			s.Filter = bson.D{{Key: "$and", Value: conditions}}
+		}
+	}
+	seenSort := make(map[string]bool)
 	for _, order := range r.Sort {
-		if !validField(order.Column) {
+		if !validField(order.Column) || seenSort[order.Column] {
 			return s, mongoscript.ErrInvalid
 		}
+		seenSort[order.Column] = true
 		direction := int32(1)
 		if order.Direction == "desc" {
 			direction = -1

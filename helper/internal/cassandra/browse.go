@@ -30,6 +30,13 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 	if request.Page != 0 {
 		return s.failure(command, "unsupported", "Cassandra browsing uses sequential cursors rather than page offsets.")
 	}
+	if expression, valid := request.EffectiveFilterExpression(); !valid {
+		return s.failure(command, "validation", "The Cassandra browse filter is invalid.")
+	} else if expression != nil {
+		if _, ok := expression.FlattenAND(); !ok {
+			return s.failure(command, "unsupported", "Cassandra browsing supports AND conditions only. OR groups are unavailable.")
+		}
+	}
 	columns, failure := s.tableColumns(ctx, command, request.Schema, request.Object)
 	if failure != nil {
 		return *failure
@@ -154,6 +161,18 @@ func browseStatement(request protocol.CatalogRequest, columns []tableColumn) (st
 // Render values through the driver's scalar conversion and the lossless CQL
 // formatter, preserving exact decimals, binary keys and temporal values.
 func buildBrowseStatement(request protocol.CatalogRequest, columns []tableColumn, source bool) (string, []any, error) {
+	expression, valid := request.EffectiveFilterExpression()
+	if !valid {
+		return "", nil, errBrowse
+	}
+	if expression != nil {
+		filters, ok := expression.FlattenAND()
+		if !ok {
+			return "", nil, errBrowse
+		}
+		request.Filters = filters
+		request.FilterExpression = nil
+	}
 	byName := map[string]tableColumn{}
 	var partition, clustering []tableColumn
 	for _, column := range columns {

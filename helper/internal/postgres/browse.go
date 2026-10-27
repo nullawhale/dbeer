@@ -99,27 +99,25 @@ func buildBrowsePlan(request protocol.CatalogRequest, metadata []browseColumn) (
 			order = append(order, pgx.Identifier{column.name}.Sanitize()+" ASC")
 		}
 	}
-	var where, sourceWhere []string
 	var values [][]byte
-	operators := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}
-	for _, filter := range request.Filters {
+	compileCondition := func(filter protocol.CatalogFilter) (string, string, error) {
 		column, ok := columns[filter.Column]
 		if !ok {
-			return browsePlan{}, errBrowse
+			return "", "", errBrowse
 		}
 		quoted := pgx.Identifier{filter.Column}.Sanitize()
-		if filter.Operator == "isNull" {
-			where = append(where, quoted+" IS NULL")
-			sourceWhere = append(sourceWhere, quoted+" IS NULL")
-			continue
-		}
-		if filter.Operator == "isNotNull" {
-			where = append(where, quoted+" IS NOT NULL")
-			sourceWhere = append(sourceWhere, quoted+" IS NOT NULL")
-			continue
+		if filter.Operator == "isNull" || filter.Operator == "isNotNull" {
+			if filter.Value != nil {
+				return "", "", errBrowse
+			}
+			predicate := quoted + " IS NULL"
+			if filter.Operator == "isNotNull" {
+				predicate = quoted + " IS NOT NULL"
+			}
+			return predicate, predicate, nil
 		}
 		if filter.Value == nil {
-			return browsePlan{}, errBrowse
+			return "", "", errBrowse
 		}
 		value := *filter.Value
 		cell := protocol.CellValue{Kind: "text", Value: filter.Value}
@@ -127,35 +125,68 @@ func buildBrowsePlan(request protocol.CatalogRequest, metadata []browseColumn) (
 			cell.Kind = "binary"
 			decoded, err := base64.StdEncoding.DecodeString(value)
 			if err != nil {
-				return browsePlan{}, errBrowse
+				return "", "", errBrowse
 			}
 			value = `\x` + hex.EncodeToString(decoded)
 		}
 		literal, err := insertLiteral(cell)
 		if err != nil {
-			return browsePlan{}, errBrowse
+			return "", "", errBrowse
 		}
 		values = append(values, []byte(value))
 		parameter := "$" + strconv.Itoa(len(values))
 		if filter.Operator == "contains" {
 			if column.binary {
-				where = append(where, "position("+parameter+"::bytea IN "+quoted+")>0")
-				sourceWhere = append(sourceWhere, "position("+literal+"::bytea IN "+quoted+")>0")
-			} else {
-				where = append(where, "strpos("+quoted+"::text,"+parameter+"::text)>0")
-				sourceWhere = append(sourceWhere, "strpos("+quoted+"::text,"+literal+"::text)>0")
+				return "position(" + parameter + "::bytea IN " + quoted + ")>0", "position(" + literal + "::bytea IN " + quoted + ")>0", nil
 			}
-		} else if operator, ok := operators[filter.Operator]; ok {
-			// Keep fractional and out-of-range operands exact instead of asking
-			// PostgreSQL to parse them as the column's narrower integer type.
-			if column.numeric {
-				parameter += "::numeric"
-				literal += "::numeric"
+			return "strpos(" + quoted + "::text," + parameter + "::text)>0", "strpos(" + quoted + "::text," + literal + "::text)>0", nil
+		}
+		operator := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}[filter.Operator]
+		if operator == "" {
+			return "", "", errBrowse
+		}
+		// Keep fractional and out-of-range operands exact instead of asking
+		// PostgreSQL to parse them as the column's narrower integer type.
+		if column.numeric {
+			parameter += "::numeric"
+			literal += "::numeric"
+		}
+		return quoted + " " + operator + " " + parameter, quoted + " " + operator + " " + literal, nil
+	}
+	if _, valid := request.EffectiveFilterExpression(); !valid {
+		return browsePlan{}, errBrowse
+	}
+	var where, sourceWhere []string
+	if request.FilterExpression != nil {
+		var compile func(protocol.CatalogFilterExpression) (string, string, error)
+		compile = func(expression protocol.CatalogFilterExpression) (string, string, error) {
+			if expression.Kind == "condition" {
+				return compileCondition(*expression.Condition)
 			}
-			where = append(where, quoted+" "+operator+" "+parameter)
-			sourceWhere = append(sourceWhere, quoted+" "+operator+" "+literal)
-		} else {
-			return browsePlan{}, errBrowse
+			var predicates, sources []string
+			for _, child := range expression.Children {
+				predicate, source, err := compile(child)
+				if err != nil {
+					return "", "", err
+				}
+				predicates = append(predicates, predicate)
+				sources = append(sources, source)
+			}
+			separator := " " + strings.ToUpper(expression.Kind) + " "
+			return "(" + strings.Join(predicates, separator) + ")", "(" + strings.Join(sources, separator) + ")", nil
+		}
+		predicate, source, err := compile(*request.FilterExpression)
+		if err != nil {
+			return browsePlan{}, err
+		}
+		where, sourceWhere = []string{predicate}, []string{source}
+	} else {
+		for _, filter := range request.Filters {
+			predicate, source, err := compileCondition(filter)
+			if err != nil {
+				return browsePlan{}, err
+			}
+			where, sourceWhere = append(where, predicate), append(sourceWhere, source)
 		}
 	}
 	statement := func(predicates []string) string {

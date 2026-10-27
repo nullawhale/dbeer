@@ -35,6 +35,32 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
+## Table views in development for 0.3.0
+
+These changes are in the working source and are not included in the 0.2.1/build 11
+download. Open **Filter** above a loaded table to prepare conditions and sorting
+without reading the database. **Apply** starts one read from the first page;
+**Reset** restores the last applied settings. Header clicks edit the sort draft,
+and multiple sort columns show their priority and direction. Apply or reset a
+draft before changing pages or following a relationship.
+
+PostgreSQL, MySQL and MongoDB support nested **All (AND)** and **Any (OR)** groups,
+up to 32 conditions and four expression levels. Sort columns can be reordered and
+given independent directions. MongoDB values use JSON/Extended JSON; BSON null
+and missing fields retain their existing distinct behavior. Cassandra accepts
+AND only, with the existing scalar key/index filters and one eligible clustering
+sort column; it never adds `ALLOW FILTERING`.
+
+**Saved Views** stores named filter/sort configurations for one connection profile
+and exact table, view or collection. Select a view to fill the draft, then Apply
+explicitly. Save New, Update Selected, Rename and Delete manage local entries;
+missing fields remain visible for correction. Views are private local data under
+`~/Library/Application Support/DBeer/TableViews/`, with no profile transfer or
+cross-connection copying. Applied settings survive workspace restoration in
+format v11; unapplied drafts last until the tab closes and are not restored.
+Restoration never connects or reads data. Rows retained after a failed changed
+view are identified as belonging to the previous read.
+
 ## SQL result source rows and editing
 
 For supported PostgreSQL/MySQL SELECT results, select one row and choose **Open
@@ -1029,6 +1055,14 @@ They use isolated credentials and synthetic documents;
 screenshots are written to `build/mongodb-ui/`. These checks require an interactive
 macOS session and Screen Recording access; run them only when UI verification is
 requested. They are not part of the default helper integration run.
+
+The opt-in `./scripts/test-table-browse-ui.sh` runner checks draft filters,
+AND/OR groups, ordered sorting and saved-view actions against disposable
+PostgreSQL 17, MySQL 8.4, Cassandra 5.0 and MongoDB 8.0 servers in both appearances.
+It verifies explicit Apply, Cassandra restrictions, long nested configurations,
+and SQL-result headers, using private profiles and saved-view storage. Docker and
+an interactive macOS session are required; run it only when UI verification is
+requested. Logs and owned-window captures go to `build/table-browse-ui/`.
 
 The opt-in `./scripts/test-r22-ui.sh` runner checks SQL result source rows and
 editing in native windows against disposable PostgreSQL and MySQL servers. It

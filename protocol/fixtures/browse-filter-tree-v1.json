@@ -1,0 +1,25 @@
+{
+  "version": 5,
+  "capability": "browseFilterTreeV1",
+  "validCatalogRequests": [
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table"},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filters":[{"column":"name","operator":"eq","value":""},{"column":"deleted","operator":"isNull"}]},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"condition","condition":{"column":"amount","operator":"gte","value":"9007199254740993.000000000000000001"}}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"and","children":[{"kind":"condition","condition":{"column":"name","operator":"eq","value":"NULL"}},{"kind":"or","children":[{"kind":"condition","condition":{"column":"payload","operator":"eq","value":"AP+A"}},{"kind":"condition","condition":{"column":"deleted","operator":"isNull"}}]}]},"sort":[{"column":"name","direction":"asc"},{"column":"id","direction":"desc"}]}
+  ],
+  "invalidCatalogRequests": [
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":null},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"and","children":[]}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"or","children":null}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"not","children":[{"kind":"condition","condition":{"column":"id","operator":"eq","value":"1"}}]}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"condition","condition":{"column":"id","operator":"eq"}}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"condition","condition":{"column":"id","operator":"isNull","value":"NULL"}}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"condition","condition":{"column":"id","operator":"eq","value":"1","sql":"hidden"}}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"condition","condition":{"column":"id","operator":"eq","value":"1"},"children":[]}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"condition","condition":{"column":"id","operator":"eq","value":"1"},"children":null}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"and","children":[{"kind":"condition","condition":{"column":"id","operator":"eq","value":"1"}}],"condition":{"column":"id","operator":"eq","value":"2"}}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","filters":[{"column":"id","operator":"eq","value":"1"}],"filterExpression":{"kind":"condition","condition":{"column":"id","operator":"eq","value":"2"}}},
+    {"kind":"columns","schema":"public","object":"records","objectKind":"table","filterExpression":{"kind":"condition","condition":{"column":"id","operator":"eq","value":"1"}}},
+    {"kind":"browse","schema":"public","object":"records","objectKind":"table","sort":[{"column":"id","direction":"asc"},{"column":"id","direction":"desc"}]}
+  ]
+}

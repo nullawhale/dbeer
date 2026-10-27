@@ -49,7 +49,7 @@ type ConnectionError struct {
 func (err *ConnectionError) Error() string { return err.Message }
 
 func Capabilities(engine string) []string {
-	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment"}
+	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.BrowseFilterTreeCapability}
 	switch engine {
 	case "mongodb":
 		return append(common, "localReadOnly", "cursorPagination", "documentModelV1", "canonicalExtendedJSONV1")
