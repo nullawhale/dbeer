@@ -22,3 +22,15 @@ func TestForeignKeyCatalogPairsColumnsByConstraintOrdinal(t *testing.T) {
 		t.Fatal("target read permissions must not hide an otherwise visible foreign key")
 	}
 }
+
+func TestPostgresCompletionLoadsColumnTypesInExistingBatch(t *testing.T) {
+	query, values, notice := catalogSQL(protocol.CatalogRequest{Kind: "completion", Schema: "demo", Page: 2})
+	for _, fragment := range []string{"json_object_agg(a.attname::text,pg_catalog.format_type(a.atttypid,a.atttypmod))", `AS "columnTypes"`, "a.attrelid=page.relation", "NOT a.attisdropped"} {
+		if !strings.Contains(query, fragment) {
+			t.Fatal("completion batch lost exact column type metadata")
+		}
+	}
+	if len(values) != 2 || string(values[0]) != "demo" || string(values[1]) != "2" || notice != "" {
+		t.Fatal("column types changed completion paging/binding")
+	}
+}

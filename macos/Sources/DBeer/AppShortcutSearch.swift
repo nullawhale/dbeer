@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppCommandGroup: String, CaseIterable, Identifiable, Sendable {
-    case connections, sidebar, tabs, panes, files, execution, results, history, other
+    case connections, sidebar, tabs, panes, files, editor, execution, results, history, other
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -10,6 +10,7 @@ enum AppCommandGroup: String, CaseIterable, Identifiable, Sendable {
         case .tabs: "Tabs and Navigation"
         case .panes: "Split Panes"
         case .files: "SQL Files and Folders"
+        case .editor: "Editor"
         case .execution: "Query Execution"
         case .results: "Results and Copying"
         case .history: "SQL History"
@@ -20,7 +21,8 @@ enum AppCommandGroup: String, CaseIterable, Identifiable, Sendable {
 
 extension AppCommandDescriptor {
     var group: AppCommandGroup {
-        switch id {
+        if id.editorTool != nil { return .editor }
+        return switch id {
         case .newConnection, .importConnections, .exportConnections, .findInConnections: .connections
         case .toggleConnectionsPanel, .toggleFilesPanel, .toggleSQLLibraryPanel, .toggleInvestigationsPanel: .sidebar
         case .newSQLTab, .closeTab, .reopenClosedTab, .nextTab, .previousTab: .tabs

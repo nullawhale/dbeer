@@ -2,12 +2,15 @@
 
 A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0.
 
-The current macOS release is **0.2.1, build 11**. Download the signed application
-ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.1)
+The current macOS release is **0.4.0, build 13**. Download the signed application
+ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.4.0)
 and follow [the installation instructions](INSTALL.md). This release includes
 MongoDB, SQL result editing, synchronization SQL plans, snapshots, investigations,
-the expanded workspace, local MCP agent access, and expanded Cassandra CQL language
-assistance. Earlier prerelease archives, including build 8, remain unchanged.
+the expanded workspace, local MCP agent access, expanded Cassandra CQL language
+assistance, grouped table filters, multi-column sorting and saved table views.
+The native editor adds local find/replace, multiple cursors, offline formatting,
+navigation, code folding and information from cached native type metadata.
+Earlier release and prerelease archives remain unchanged.
 Homebrew installation is not available.
 
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
@@ -19,7 +22,8 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
   panels. Click the active section or press its shortcut again to hide it.
   Change or clear each binding in **Settings → Shortcuts → Sidebar Panels**;
   the strip shows icons and names, with current bindings in tooltips. The commands are
-  also in the **View** menu. **⌘F** reveals Connections and focuses its search.
+  also in the **View** menu. With editor focus, **⌘F** opens local Find;
+  **Find in Connections** is a separate menu command with a configurable shortcut.
 - **⌘N** creates a PostgreSQL, MySQL, Cassandra, or MongoDB profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords use macOS Keychain by default; a local CLI can supply dynamic passwords. Settings live in `~/Library/Application Support/DBeer/connections.json`.
 - In **General**, paste a `postgresql://`, `postgres://`, `mysql://` or JDBC-prefixed address into **URL** and choose **Use URL**. Single-host URLs support an explicit database, optional user/password, port, IPv6 and encoded values. PostgreSQL accepts `sslmode` and `sslrootcert`; MySQL accepts `ssl-mode` (or JDBC `sslMode`) and `ssl-ca`. Unsupported options and TLS modes are rejected. Omitted credentials and TLS options keep their current field values. The URL preview excludes passwords; imported passwords move into the Password field and use Keychain on Save. Apply or reset a pending URL before saving or testing.
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
@@ -35,10 +39,9 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
-## Table views in development for 0.3.0
+## Table filters, sorting and saved views
 
-These changes are in the working source and are not included in the 0.2.1/build 11
-download. Open **Filter** above a loaded table to prepare conditions and sorting
+Open **Filter** above a loaded table to prepare conditions and sorting
 without reading the database. **Apply** starts one read from the first page;
 **Reset** restores the last applied settings. Header clicks edit the sort draft,
 and multiple sort columns show their priority and direction. Apply or reset a
@@ -166,10 +169,11 @@ buffers adopt external changes, while changed drafts retain both versions for
 review. Missing or unreadable files keep their editable drafts. Bindings without
 a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage is v10, with exact private backups before migrating
-v0/v1/v2/v3/v4/v5/v6/v7/v8/v9. Formats before v8 start with their tabs in the left
-pane; v8/v9 retain their saved pane layout. V10 also preserves nested horizontal
-and vertical splits and each divider's position.
+Workspace storage is v11, with exact private backups before migrating
+v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10. Formats before v8 start with their tabs in the left
+pane; v8/v9 retain their saved pane layout. Nested horizontal and vertical splits
+and each divider's position are preserved. V11 stores grouped applied filters and
+migrates legacy filters as AND groups; unapplied browsing drafts are not restored.
 Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
@@ -670,7 +674,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v10. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9 files
+History uses versioned workspace storage, currently v11. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values.
 
@@ -850,6 +854,61 @@ Execute, scripts, Run to File, and Apply share one helper policy: destructive an
 Readonly rejects writes and unknown constructs before reaching the adapter and disables grid editing. PostgreSQL/MySQL also enable server-side read-only mode; Cassandra uses local CQL assessment and relies on server role permissions for an enforced write prohibition. The classifier structurally accounts for strings, comments, CTEs, and dialect; unsupported syntax and unknown functions are not classified as reads. Use a separate database user with restricted permissions for a strict write prohibition: server modes have exceptions, including temporary tables, and do not replace access controls. See [PostgreSQL SET TRANSACTION](https://www.postgresql.org/docs/18/sql-set-transaction.html) and [MySQL SET TRANSACTION](https://dev.mysql.com/doc/refman/8.4/en/set-transaction.html).
 
 Assessment follows SQL structure and a limited list of built-in functions for each engine. Production confirmation applies to operations classified as writes or unknown commands. Views, custom overloads of built-in names, casts, and operators can hide side effects; the client does not fully resolve server objects and types. Server-side readonly blocks ordinary writes to permanent tables, but database permissions must restrict server-allowed temporary-table exceptions and function execution.
+
+## Editor tools
+
+The **Editor** menu collects editing, formatting and navigation commands;
+**Settings → Shortcuts** can change or clear their bindings. **Settings → Editor**
+controls the font and size, line wrapping, invisible characters, tabs/spaces,
+indent width, automatic indentation, matching brackets/quotes and formatter
+keyword case. Changes apply to open editors while retaining text and Undo.
+
+With focus in an editor, **⌘F** opens local Find; **⌥⌘F** opens Find and Replace.
+Search supports case sensitivity, whole identifiers, regular expressions and
+selected ranges. **⌘G** and **⇧⌘G** move through matches. Regular-expression
+replacement supports capture references such as `$1`. Replace All is one Undo
+operation. Matching runs in the background with a work limit; an invalid or
+expensive expression leaves the source unchanged. **Find in Connections** remains
+an explicit menu command.
+
+Use **⌥Click** for another cursor, **⌘D** for the next occurrence, **⌃⌘G** for all
+occurrences, and **⌃⇧↑/↓** for cursors above or below. A document supports up to
+4,096 cursors, with a visible notice when that limit is reached. Input and line operations
+apply to all selected ranges. Escape first dismisses assistance, then keeps the
+primary cursor. IME composition uses one cursor. Completion and signature help
+are suspended while multiple cursors are active. Run Current and Run to File
+require one cursor; Run Script retains the ordinary full-document review.
+
+The Editor menu provides line indentation, duplication, deletion and movement,
+SQL/CQL line and block comments, formatting for the selection/current statement/
+whole document, Go to Line, statement navigation, Document Outline, symbol
+information, Go to Definition and collapse/expand commands. MongoDB uses strict
+JSON, so comment commands are unavailable. Its outline follows objects and
+arrays; SQL and CQL outlines follow statements and nested blocks.
+
+Formatting is offline and explicit, with a 2 MiB language-tool limit. SQL/CQL
+formatting requires fewer than 200,000 tokens and preserves literals, quoted
+identifiers and comments; routine/trigger definitions, custom `DELIMITER` scripts
+and incomplete or unsafe fragments return an explanation without edits.
+MongoDB JSON formatting preserves
+field order, duplicate keys, exact numeric spelling and Extended JSON. Formatting
+is applied atomically and is one Undo operation.
+
+Go to Definition resolves local aliases/CTEs or uses the already loaded catalog;
+ambiguous matches offer a choice. Catalog targets appear under **From Editor** in
+Connections without connecting or refreshing. Their ordinary context-menu actions
+remain explicit. Column information retains native PostgreSQL/MySQL type modifiers
+and Cassandra collection/UDT type spellings. MongoDB shows observed BSON type
+unions from its bounded field samples, which are descriptive, not a schema
+guarantee. Information and navigation use cached metadata without fetching data;
+missing catalog metadata requires an explicit Connect/Refresh.
+
+Collapsing code only changes its display: saving, execution, diagnostics and
+search retain the complete source. Fold markers show the hidden line count and
+an indicator for hidden errors. Find, Go to Line and error navigation reveal
+their targets. Editing expands folds before changing the source. Cursor and fold
+state survive tab/theme changes during the current process; reopening the
+application restores a single primary cursor with all code expanded.
 
 ## SQL editor and completion
 
@@ -1242,8 +1301,8 @@ only its own test windows and requires the usual persistent signing identity.
 
 ## Releases
 
-The current release is **0.2.1, build 11**, available with its checksum from
-[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.1).
+The current release is **0.4.0, build 13**, available with its checksum from
+[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.4.0).
 It contains the native macOS SwiftUI/AppKit client and bundled Go helper.
 Windows/Linux GPUI candidates are outside this release. Earlier prereleases,
 including [0.2.0/build 8](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8),
@@ -1259,7 +1318,8 @@ Existing archives are never overwritten and temporary CI signatures are rejected
 The previous **0.1.0** internal release passed installation and update acceptance
 from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived
 that release's required second-Mac check. These historical results do not certify
-the new build 11 archive. Finder/Gatekeeper and installation on a clean second
+the new build 13 archive. No new installed-archive acceptance was run for 0.4.0.
+Finder/Gatekeeper and installation on a clean second
 device have not been verified. An Apple Development signature is not notarization.
 
 Windows/Linux contributions are welcome outside the release roadmap. Public overview sources:

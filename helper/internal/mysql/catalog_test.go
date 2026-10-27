@@ -82,8 +82,24 @@ func TestMySQLCatalogRealObjectsAndStableBrowse(t *testing.T) {
 	response = catalogRequest(t, session, protocol.CatalogRequest{Kind: "completion", Schema: schema})
 	completionRow := catalogRow(response, table)
 	var completionColumns []string
-	if len(completionRow) != 6 || completionRow[3] == nil || json.Unmarshal([]byte(*completionRow[3]), &completionColumns) != nil || len(completionColumns) != 6 {
+	if len(completionRow) != 7 || completionRow[3] == nil || json.Unmarshal([]byte(*completionRow[3]), &completionColumns) != nil || len(completionColumns) != 6 {
 		t.Fatal("completion snapshot lost table columns")
+	}
+	var completionTypes map[string]string
+	if completionRow[6] == nil || json.Unmarshal([]byte(*completionRow[6]), &completionTypes) != nil || len(completionTypes) != len(completionColumns) || completionTypes["id"] != "int" || completionTypes["label"] != "varchar(40)" || completionTypes["doc"] != "json" {
+		t.Fatal("completion snapshot lost exact native types")
+	}
+	for name := range completionTypes {
+		found := false
+		for _, column := range completionColumns {
+			if column == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatal("completion types contain a missing column")
+		}
 	}
 	var keys []struct {
 		Name         string `json:"name"`
@@ -111,7 +127,7 @@ func TestMySQLCatalogRealObjectsAndStableBrowse(t *testing.T) {
 	}
 	functionRow := catalogRow(response, function)
 	var signatures []sqlcomplete.FunctionSignature
-	if len(functionRow) != 6 || functionRow[5] == nil || json.Unmarshal([]byte(*functionRow[5]), &signatures) != nil || len(signatures) != 1 || len(signatures[0].Parameters) != 2 || !strings.Contains(strings.ToLower(signatures[0].ReturnType), "bigint") {
+	if len(functionRow) != 7 || functionRow[5] == nil || json.Unmarshal([]byte(*functionRow[5]), &signatures) != nil || len(signatures) != 1 || len(signatures[0].Parameters) != 2 || !strings.Contains(strings.ToLower(signatures[0].ReturnType), "bigint") {
 		t.Fatal("completion lost the stored function signature")
 	}
 	byPosition := map[int]sqlcomplete.FunctionParameter{}
@@ -319,5 +335,17 @@ func TestMySQLCatalogStreamsBoundedUnicodeIdentitiesBeforeCopyName(t *testing.T)
 				t.Fatal("streamed identity could not be used by Copy Name")
 			}
 		}
+	}
+}
+
+func TestMySQLCompletionLoadsNativeColumnTypesInExistingBatch(t *testing.T) {
+	query, args := catalogQuery(protocol.CatalogRequest{Kind: "completion", Schema: "demo", Page: 2})
+	for _, fragment := range []string{"JSON_OBJECTAGG(c.COLUMN_NAME,c.COLUMN_TYPE)", "AS columnTypes", "page.kind IN ('table','view')"} {
+		if !strings.Contains(query, fragment) {
+			t.Fatal("completion batch lost native column type metadata")
+		}
+	}
+	if len(args) != 4 || args[0] != "demo" || args[3] != 400 {
+		t.Fatal("column types changed completion paging/binding")
 	}
 }

@@ -36,6 +36,7 @@ struct SQLCompletionRelation: Equatable, Sendable {
     var partitionKeys: [String] = []
     var clusteringColumns: [String] = []
     var staticColumns: [String] = []
+    var columnTypes: [String: String] = [:]
 }
 
 struct SQLCompletionContext: Equatable, Sendable {
@@ -311,6 +312,87 @@ final class SQLLanguageService {
         return SQLSignatureHelp(signatures: signatures, activeSignature: active)
     }
 
+    /// The helper never reads a database for editor tools. The same document
+    /// snapshot/version check used by completion also protects their text edits.
+    private func editorRequest(documentID: UUID, method: String,
+                               parameters: [String: SQLLSPJSON]) async -> (SQLLSPJSON, String, Int)? {
+        guard !stopped else { return nil }
+        scheduleFlush()
+        while let flushing { await flushing.value }
+        guard isAvailable, let document = documents[documentID],
+              sentVersions[document.uri] == document.version else { return nil }
+        var params = parameters
+        params["textDocument"] = .object(["uri": .string(document.uri)])
+        let response: SQLLSPJSON
+        do { response = try await transport.request(method: method, params: .object(params)) }
+        catch { await handleRequestFailure(error); return nil }
+        guard !Task.isCancelled, !stopped, let current = documents[documentID],
+              current.uri == document.uri, current.version == document.version,
+              response["version"]?.integer == document.version else { return nil }
+        return (response, document.text, document.version)
+    }
+
+    func editorAnalysis(documentID: UUID, offset: Int = 0) async -> SQLEditorAnalysis? {
+        guard let document = documents[documentID],
+              let position = SQLLSPPosition.position(offset: offset, in: document.text),
+              let (response, text, version) = await editorRequest(documentID: documentID,
+                  method: "dbeer/editorAnalysis", parameters: ["position": position]),
+              // Position was computed before the first suspension.
+              text == document.text else { return nil }
+        guard let symbolValues = response["symbols"]?.array, symbolValues.count <= 2_048,
+              let foldValues = response["folds"]?.array, foldValues.count <= 8_192,
+              let referenceValues = response["references"]?.array, referenceValues.count <= 200_000,
+              let definitionValues = response["definitions"]?.array, definitionValues.count <= 2_049 else { return nil }
+        let positionIndex = SQLEditorPositionIndex(text)
+        let symbols: [SQLEditorSymbol] = symbolValues.compactMap { value in
+            guard let name = value["name"]?.string, let kind = value["kind"]?.string,
+                  let rawRange = value["range"], let rawSelection = value["selectionRange"],
+                  let range = positionIndex.range(rawRange),
+                  let selection = positionIndex.range(rawSelection) else { return nil }
+            return SQLEditorSymbol(name: name, range: range, selectionRange: selection, kind: kind)
+        }
+        let folds = foldValues.compactMap { positionIndex.range($0) }
+        let references = referenceValues.compactMap { positionIndex.range($0) }
+        let definitions: [SQLEditorDefinition] = definitionValues.compactMap { value in
+            guard let name = value["name"]?.string, let kind = value["kind"]?.string else { return nil }
+            let range = value["range"].flatMap { positionIndex.range($0) }
+            if value["range"] != nil && range == nil { return nil }
+            return SQLEditorDefinition(range: range, schema: value["schema"]?.string,
+                name: name, kind: kind, detail: value["detail"]?.string)
+        }
+        guard symbols.count == symbolValues.count, folds.count == foldValues.count,
+              references.count == referenceValues.count, definitions.count == definitionValues.count else { return nil }
+        return SQLEditorAnalysis(version: version, symbols: symbols, folds: folds,
+                                references: references, definitions: definitions)
+    }
+
+    func format(documentID: UUID, range: NSRange? = nil,
+                options: SQLEditorFormatOptions = SQLEditorFormatOptions()) async -> SQLEditorFormatResult? {
+        guard let document = documents[documentID] else { return nil }
+        var parameters: [String: SQLLSPJSON] = ["options": .object([
+            "insertSpaces": .bool(options.insertSpaces), "tabSize": .int(options.tabSize),
+            "keywordCase": .string(options.keywordCase)
+        ])]
+        if let range {
+            guard range.location >= 0, range.length >= 0, range.location <= document.text.utf16.count,
+                  range.length <= document.text.utf16.count - range.location,
+                  let start = SQLLSPPosition.position(offset: range.location, in: document.text),
+                  let end = SQLLSPPosition.position(offset: NSMaxRange(range), in: document.text) else { return nil }
+            parameters["range"] = .object(["start": start, "end": end])
+        }
+        guard let (response, text, version) = await editorRequest(documentID: documentID,
+            method: "dbeer/format", parameters: parameters), text == document.text,
+              let values = response["edits"]?.array, values.count <= 1 else { return nil }
+        let edits: [SQLEditorTextEdit] = values.compactMap { value in
+            guard let rawRange = value["range"], let editRange = SQLLSPPosition.range(rawRange, in: text),
+                  let replacement = value["newText"]?.string else { return nil }
+            if let range, editRange != range { return nil }
+            return SQLEditorTextEdit(range: editRange, text: replacement)
+        }
+        guard edits.count == values.count else { return nil }
+        return SQLEditorFormatResult(version: version, edits: edits, error: response["error"]?.string)
+    }
+
     private func handleRequestFailure(_ error: Error) async {
         guard let failure = error as? SQLLSPError else { return }
         switch failure {
@@ -457,6 +539,15 @@ final class SQLLanguageService {
                 remainingBytes -= columnBytes
                 columns.append(.string(column))
             }
+            var columnTypes: [String: SQLLSPJSON] = [:]
+            for column in columns.compactMap(\.string) {
+                guard let nativeType = relation.columnTypes[column], !nativeType.isEmpty,
+                      nativeType.utf8.count <= 4_096 else { continue }
+                let typeBytes = 16 + 6 * (column.utf8.count + nativeType.utf8.count)
+                guard typeBytes <= remainingBytes else { break }
+                remainingBytes -= typeBytes
+                columnTypes[column] = .string(nativeType)
+            }
             var foreignKeys: [SQLLSPJSON] = []
             for key in relation.foreignKeys.prefix(64) {
                 guard !key.targetTable.isEmpty, !key.columns.isEmpty, key.columns.count <= 32,
@@ -505,7 +596,8 @@ final class SQLLanguageService {
             result.append(.object(["schema": .string(relation.schema), "name": .string(relation.name),
                                    "kind": .string(relation.kind), "columns": .array(columns), "foreignKeys": .array(foreignKeys),
                                    "signatures": .array(signatures), "partitionKeys": partitionKeys,
-                                   "clusteringColumns": clusteringColumns, "staticColumns": staticColumns]))
+                                   "clusteringColumns": clusteringColumns, "staticColumns": staticColumns,
+                                   "columnTypes": .object(columnTypes)]))
         }
         return result
     }

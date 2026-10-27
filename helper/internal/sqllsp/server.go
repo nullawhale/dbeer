@@ -205,6 +205,10 @@ func (s *server) handle(m rpcMessage) (bool, error) {
 				}
 			}
 		}
+	case "dbeer/editorAnalysis", "dbeer/format":
+		if request {
+			return false, s.editorRequest(m)
+		}
 	case "textDocument/completion", "textDocument/signatureHelp":
 		if !request {
 			break
@@ -303,6 +307,19 @@ func boundedConfiguration(c configuration) bool {
 				return false
 			}
 		}
+		if len(entry.ColumnTypes) > len(entry.Columns) {
+			return false
+		}
+		columnNames := make(map[string]bool, len(entry.Columns))
+		for _, name := range entry.Columns {
+			columnNames[name] = true
+		}
+		for name, nativeType := range entry.ColumnTypes {
+			if !columnNames[name] || len(name) > 1024 || nativeType == "" || len(nativeType) > 4096 {
+				return false
+			}
+		}
+
 		if len(entry.ForeignKeys) > 64 {
 			return false
 		}

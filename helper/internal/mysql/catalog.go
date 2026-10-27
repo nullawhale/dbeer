@@ -338,7 +338,9 @@ COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT('returnType',r.DTD_IDENTIFIER,'parame
  COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT('name',COALESCE(p.PARAMETER_NAME,''),'type',p.DTD_IDENTIFIER,'position',p.ORDINAL_POSITION))
  FROM information_schema.PARAMETERS p WHERE p.SPECIFIC_SCHEMA=r.ROUTINE_SCHEMA AND p.SPECIFIC_NAME=r.SPECIFIC_NAME
  AND p.ORDINAL_POSITION>0 AND p.PARAMETER_MODE IN ('IN','INOUT')),JSON_ARRAY())))
- FROM information_schema.ROUTINES r WHERE page.kind='function' AND r.ROUTINE_SCHEMA=page.` + "`schema`" + ` AND r.ROUTINE_NAME=page.name AND r.ROUTINE_TYPE='FUNCTION'),JSON_ARRAY()) AS signatures
+ FROM information_schema.ROUTINES r WHERE page.kind='function' AND r.ROUTINE_SCHEMA=page.` + "`schema`" + ` AND r.ROUTINE_NAME=page.name AND r.ROUTINE_TYPE='FUNCTION'),JSON_ARRAY()) AS signatures,
+COALESCE((SELECT JSON_OBJECTAGG(c.COLUMN_NAME,c.COLUMN_TYPE) FROM information_schema.COLUMNS c
+ WHERE c.TABLE_SCHEMA=page.` + "`schema`" + ` AND c.TABLE_NAME=page.name AND page.kind IN ('table','view')),JSON_OBJECT()) AS columnTypes
 FROM page ORDER BY ` + "`schema`" + `,name,kind`, []any{request.Schema, request.Schema, request.Schema, request.Page * 200}
 	case "search":
 		return `SELECT name,kind,` + "`schema`" + `,name AS identity FROM (

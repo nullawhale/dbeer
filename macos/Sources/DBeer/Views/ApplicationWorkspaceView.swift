@@ -241,6 +241,19 @@ struct ApplicationWorkspaceView: View {
             }
             Divider()
             List {
+                if let target = workspace.editorCatalogTarget {
+                    Section {
+                        CatalogBranchView(node: target, workspace: workspace, showSchema: true)
+                    } header: {
+                        HStack {
+                            Text("From Editor")
+                            Spacer()
+                            Button { workspace.editorCatalogTarget = nil } label: { Image(systemName: "xmark") }
+                                .buttonStyle(.plain).help("Clear editor navigation target")
+                        }
+                    }
+                    .accessibilityIdentifier("editorCatalogTarget")
+                }
                 ForEach(workspace.library.savedConnections) { profile in
                     profileRow(profile)
                 }

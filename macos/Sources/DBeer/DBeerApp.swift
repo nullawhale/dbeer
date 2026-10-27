@@ -30,6 +30,9 @@ struct DBeerApp: App {
             TabView {
                 AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
                     .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                EditorSettingsView()
+                    .applicationTheme(appearance: appDelegate.appearance)
+                    .tabItem { Label("Editor", systemImage: "text.cursor") }
                 if let workspace = appDelegate.workspace {
                     if let agents = appDelegate.agents {
                         AgentAccessSettingsView(coordinator: agents, brokerError: appDelegate.agentBrokerError,
@@ -101,6 +104,11 @@ private struct WorkspaceCommands: Commands {
             commandItem(.toggleFilesPanel)
             commandItem(.toggleSQLLibraryPanel)
             commandItem(.toggleInvestigationsPanel)
+        }
+        CommandMenu("Editor") {
+            ForEach(SQLToolCommand.allCases) { tool in
+                commandItem(tool.commandID)
+            }
         }
         CommandMenu("Query") {
             commandItem(.runCurrent)

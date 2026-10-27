@@ -15,6 +15,13 @@ struct SQLCompletionCatalog {
         return Array(((try? JSONDecoder().decode([String].self, from: Data(text.utf8))) ?? []).prefix(2_000))
     }
 
+    private func columnTypes(_ text: String?, columns: [String]) -> [String: String] {
+        guard let text, let values = try? JSONDecoder().decode([String: String].self, from: Data(text.utf8)) else { return [:] }
+        return columns.prefix(2_000).reduce(into: [:]) { result, name in
+            if let value = values[name], !value.isEmpty, value.utf8.count <= 4_096, name.utf8.count <= 1_024 { result[name] = value }
+        }
+    }
+
     private func orderedKeys(_ records: [[String: String]], key: String) -> [String] {
         records.filter { (Int($0[key] ?? "0") ?? 0) > 0 }
             .sorted { (Int($0[key] ?? "0") ?? 0) < (Int($1[key] ?? "0") ?? 0) }.compactMap { $0["name"] }
@@ -41,7 +48,8 @@ struct SQLCompletionCatalog {
                 return SQLCompletionRelation(schema: schema, name: name, kind: kind, columns: Array(columns.prefix(2_000)),
                     foreignKeys: Array(keys.prefix(64)), signatures: Array(signatures.prefix(32)),
                     partitionKeys: decodeNames(record["partitionKeys"]), clusteringColumns: decodeNames(record["clusteringColumns"]),
-                    staticColumns: decodeNames(record["staticColumns"]))
+                    staticColumns: decodeNames(record["staticColumns"]),
+                    columnTypes: columnTypes(record["columnTypes"], columns: columns))
             }
         case "schemas":
             let names = Set(records.compactMap { $0["name"] })
@@ -67,7 +75,11 @@ struct SQLCompletionCatalog {
                 columns: Array(records.prefix(2_000).compactMap { $0["name"] }),
                 partitionKeys: orderedKeys(records, key: "partitionKeyPosition"),
                 clusteringColumns: orderedKeys(records, key: "clusteringPosition"),
-                staticColumns: records.filter { $0["static"] == "true" }.compactMap { $0["name"] })
+                staticColumns: records.filter { $0["static"] == "true" }.compactMap { $0["name"] },
+                columnTypes: records.prefix(2_000).reduce(into: [:]) { result, record in
+                    if let name = record["name"], let type = record["nativeType"],
+                       !type.isEmpty, name.utf8.count <= 1_024, type.utf8.count <= 4_096 { result[name] = type }
+                })
             if let index = relations.firstIndex(where: { $0.schema == schema && $0.name == name && $0.kind == kind }) {
                 var updated = relation
                 updated.foreignKeys = relations[index].foreignKeys

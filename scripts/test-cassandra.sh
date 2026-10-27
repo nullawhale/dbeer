@@ -216,6 +216,7 @@ required.update({'TestCassandraLiveAcknowledgedWritesSurviveDeliveryAndExportFai
 required.add('TestCassandraLiveClusterNodes')
 required.add('TestCassandraLiveSchemaAndDataComparisonTypes')
 required.add('TestCassandraLiveExpandedNativeLanguageFunctions')
+required.add('TestCassandraLiveEditorColumnTypes')
 if sys.argv[5].startswith('5'):
     for name in ['math','collections','masking','vectors','selectors','snake_case_aliases']:
         required.add('TestCassandraLiveExpandedNativeLanguageFunctions/cassandra5/'+name)

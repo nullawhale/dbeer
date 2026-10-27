@@ -23,6 +23,7 @@ type Relation struct {
 	Name              string              `json:"name"`
 	Kind              string              `json:"kind"`
 	Columns           []string            `json:"columns"`
+	ColumnTypes       map[string]string   `json:"columnTypes,omitempty"`
 	ForeignKeys       []ForeignKey        `json:"foreignKeys,omitempty"`
 	Signatures        []FunctionSignature `json:"signatures,omitempty"`
 }

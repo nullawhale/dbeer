@@ -139,7 +139,9 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 					}
 					sort.Strings(names)
 					encoded, _ := json.Marshal(names)
-					rows = append(rows, cells(name, mapKind(kind), database, string(encoded), "[]", "[]"))
+					columnTypes := sampledColumnTypes(fields)
+					encodedTypes, _ := json.Marshal(columnTypes)
+					rows = append(rows, cells(name, mapKind(kind), database, string(encoded), "[]", "[]", string(encodedTypes)))
 				} else {
 					rows = append(rows, cells(name, mapKind(kind), database, ""))
 					if len(rows) > 1000 {
@@ -159,7 +161,7 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 		}
 		names := []string{"name", "kind", "schema", "identity"}
 		if r.Kind == "completion" {
-			names = []string{"name", "kind", "schema", "columns", "foreignKeys", "signatures"}
+			names = []string{"name", "kind", "schema", "columns", "foreignKeys", "signatures", "columnTypes"}
 		}
 		response := s.metadata(command, names, rows, sink, "MongoDB field suggestions are sampled; collections may contain additional fields and types.")
 		if truncated && r.Kind != "completion" {
@@ -275,4 +277,19 @@ func collectFields(raw bson.Raw, prefix string, fields map[string]map[string]boo
 			collectFields(nested, name+".", fields, depth+1)
 		}
 	}
+}
+
+// Values describe observed BSON types, never a collection schema. The existing
+// sampling read supplies them; editor navigation does not trigger more reads.
+func sampledColumnTypes(fields map[string]map[string]bool) map[string]string {
+	result := map[string]string{}
+	for name, observed := range fields {
+		types := make([]string, 0, len(observed))
+		for kind := range observed {
+			types = append(types, kind)
+		}
+		sort.Strings(types)
+		result[name] = strings.Join(types, " | ")
+	}
+	return result
 }

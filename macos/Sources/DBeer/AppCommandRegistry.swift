@@ -173,6 +173,11 @@ struct AppCommandInvocation {
     private func canPerform(_ command: AppCommandID, resolved: ResolvedContext) -> Bool {
         let context = resolved.context
         guard let descriptor = shortcuts.descriptors.first(where: { $0.id == command }) else { return false }
+        if let tool = command.editorTool {
+            guard context.focus == .sqlEditor, !context.isComposingText,
+                  let editor = workspace.presentationWindow?.firstResponder as? SQLTextView else { return false }
+            return editor.editorTools?.canPerform(tool) == true
+        }
         if descriptor.scope == .workspace {
             guard !context.isComposingText, workspace.canManageWorkspace else { return false }
             switch command {
@@ -212,6 +217,8 @@ struct AppCommandInvocation {
             }
             return gridHandlers[command] != nil
         }
+        if [.runCurrent, .runToJSON, .runToCSV].contains(command),
+           workspace.editorState.hasMultipleSelections(for: document.id) { return false }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true }
         guard !context.isComposingText else { return false }
         guard !document.isSnapshot, !document.isInvestigation else { return false }
@@ -234,6 +241,20 @@ struct AppCommandInvocation {
     }
 
     private func perform(_ command: AppCommandID, resolved: ResolvedContext) -> Task<Void, Never>? {
+        if let tool = command.editorTool,
+           let editor = workspace.presentationWindow?.firstResponder as? SQLTextView {
+            let profileID = resolved.document?.profileID
+            editor.editorTools?.revealCatalogObject = { [weak workspace] definition in
+                guard let workspace, let profileID,
+                      let profile = workspace.library.savedConnections.first(where: { $0.id == profileID }) else { return }
+                workspace.sidebarPanel = .connections
+                workspace.editorCatalogTarget = CatalogNode(profileID: profileID, name: definition.name, kind: .object,
+                    schema: definition.schema ?? "", object: definition.name, objectKind: definition.kind,
+                    detail: definition.detail, engine: profile.engine)
+            }
+            editor.editorTools?.perform(tool)
+            return Task {}
+        }
         WorkspacePaneContainerView.acknowledgeCurrentResponder(in: workspace)
         switch command {
         case .newConnection: workspace.library.isConnectionEditorPresented = true
