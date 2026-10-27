@@ -1,0 +1,23 @@
+{
+  "decisionID": "D01",
+  "decidedOn": "2026-10-19",
+  "status": "decided-pending-tasks-5-7",
+  "newProfile": {
+    "environment": "unspecified",
+    "readOnly": false,
+    "sslMode": "verify-full"
+  },
+  "scope": "New profiles created by the future GPUI product only. Matches frozen SwiftUI ExecutionPolicy. Does not weaken TLS.",
+  "existingAndImported": "Preserve explicit environment and readOnly byte-for-byte in meaning, including current GPUI development/true. No default applied to overwrite stored values. Legacy missing fields use their source-format migration rule.",
+  "prototypeToday": {
+    "environment": "development",
+    "readOnly": true
+  },
+  "acceptance": [
+    "Create a new profile without editing policy and observe unspecified/false.",
+    "Load an existing prototype development/true profile; both remain unchanged before and after save.",
+    "Import each explicit policy combination and verify exact fidelity and disconnected result.",
+    "Missing legacy values follow the versioned importer rule; never rewrite explicit policy."
+  ],
+  "decisionAuthority": "Explicit user confirmation in this chat on 2026-10-19"
+}

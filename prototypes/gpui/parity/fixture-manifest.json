@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "path": "protocol/fixtures/commands.ndjson",
+      "sha256": "93249200f432e6ef74468f834192109eb819a36ccdedc58da6b681646474fbaa"
+    },
+    {
+      "path": "protocol/fixtures/completion-matches.json",
+      "sha256": "8b1a825022fb7df0e1f8da28310ad987e159fe6bcb3790da52920279be44e7e7"
+    },
+    {
+      "path": "protocol/fixtures/export.json",
+      "sha256": "3122d1935faf83bb7f98a17cdbb238825ba7bcd0e7397e862fe203f4cd5bfb90"
+    },
+    {
+      "path": "protocol/fixtures/responses.ndjson",
+      "sha256": "4b6eb9a31b0190f30c8e291b1f8217cec036a9edf47d47c26c75e302d2984f9c"
+    },
+    {
+      "path": "protocol/fixtures/signature-help.json",
+      "sha256": "2a0ed167c0af386a36710181dc60e23c98305035dbf45c846008fc89367863e4"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/failure-cases.json",
+      "sha256": "2988d60c818876bd65ba6482971d23083321e5c7f24a5b9976a677fb860d3eff"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/grid.json",
+      "sha256": "9a1678344f305b62e03bc8e4dd4710655aa16bfe695e0975fae1ca8dd4bf27ef"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/mysql.sql",
+      "sha256": "e2d9ceb3d915e8db1f27677d80a790a51676c2e56eb623eb2ff85953d64da0a1"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/postgresql.sql",
+      "sha256": "189a3b26f5d74474515df963a8ffc8858d3bdb7f2154cc2c4042e444162e0ac0"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/profile-defaults.json",
+      "sha256": "69641bb21e9b4f8128a19f7c8776ae0020d938c0d8a5785748ba93b1656e7884"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/sql.json",
+      "sha256": "ee191f5f8e2261f23ea00efae08df17f62e62bf36adaa81b863ad1681df1d2b6"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/include.jsonc",
+      "sha256": "39f4433becef9dfb4c6dcea7495759224e50d90c623e223cc2cd06881f5d046f"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/jetbrains.icls",
+      "sha256": "b28af91e9f846d2726ff20a10041ebff28ddeee5b98a696afc6793b8b1a7f0db"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/night.json",
+      "sha256": "e9454c7725ec94d0b4580093212fe62cee6acefbf11d3aa74551a75b4bfba003"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/paper.json",
+      "sha256": "2fe393d14c8194c203bfec36c44ecaba412b5400489364912b726124edc97a8a"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/textmate.tmTheme",
+      "sha256": "d25223eec0a166cda332a6937c0d5444bcbe63f1014e1d6956ad06eeb1832146"
+    }
+  ]
+}

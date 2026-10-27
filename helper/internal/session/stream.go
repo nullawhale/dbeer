@@ -173,11 +173,33 @@ func (sink *streamSink) End(index int, summary protocol.ResultSet) error {
 	set.summary = summary
 	set.summary.Columns, set.summary.Rows = set.columns, nil
 	set.summary.DisplayedRowCount = set.sent
-	set.summary.Truncated = set.dropped || int64(set.sent) < set.seen
+	if len(summary.StorageTokens) >= set.sent {
+		set.summary.StorageTokens = append([]string(nil), summary.StorageTokens[:set.sent]...)
+		encoded, _ := json.Marshal(set.summary.StorageTokens)
+		if sink.bytes+len(encoded) <= displayBytes {
+			sink.bytes += len(encoded)
+		} else {
+			// Rows already acknowledged by the client cannot be retracted.
+			// Omit evidence rather than exceeding the frame/display budget;
+			// Apply retains its safe refusal when required evidence is absent.
+			set.summary.StorageTokens = nil
+		}
+	} else {
+		set.summary.StorageTokens = nil
+	}
+	if set.summary.Source != nil {
+		encoded, _ := json.Marshal(set.summary.Source)
+		if len(set.columns) != len(summary.Columns) || sink.bytes+len(encoded) > displayBytes {
+			set.summary.Source = nil
+		} else {
+			sink.bytes += len(encoded)
+		}
+	}
+	set.summary.Truncated = summary.Truncated && strings.Contains(summary.DisplayNotice, "Cassandra") || set.dropped || int64(set.sent) < set.seen
 	if summary.Truncated && !set.summary.Truncated {
 		set.summary.DisplayNotice = strings.TrimSpace(strings.ReplaceAll(set.summary.DisplayNotice, "Result display is limited to 1000 rows and 8 MiB. The command completed in full.", ""))
 	}
-	if set.summary.Truncated {
+	if set.summary.Truncated && !strings.Contains(set.summary.DisplayNotice, "Cassandra") {
 		set.summary.DisplayNotice = "Result display is limited to 1000 rows and 8 MiB. The command completed in full."
 	}
 	return err
@@ -199,8 +221,17 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 			if notice != "" && !strings.Contains(set.summary.DisplayNotice, notice) {
 				set.summary.DisplayNotice = strings.TrimSpace(set.summary.DisplayNotice + " " + notice)
 			}
-			response.DisplayedRowCount, response.Truncated = set.summary.DisplayedRowCount, set.summary.Truncated
+			response.DisplayedRowCount = set.summary.DisplayedRowCount
+			if response.TransactionStatus == "unsupported" {
+				response.Truncated = response.Truncated || set.summary.Truncated
+			} else {
+				response.Truncated = set.summary.Truncated
+			}
 			response.DisplayNotice = set.summary.DisplayNotice
+			response.NextCursor = set.summary.NextCursor
+			response.AffectedRowCountKnown = set.summary.AffectedRowCountKnown
+			response.StorageTokens = set.summary.StorageTokens
+			response.Source = set.summary.Source
 			first = false
 		}
 		response.ResultSets = append(response.ResultSets, set.summary)
@@ -212,25 +243,86 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 type fanoutSink []adapter.ResultSink
 
 func (sinks fanoutSink) Begin(index int, columns []protocol.Column) error {
+	var first error
 	for _, sink := range sinks {
-		_ = sink.Begin(index, columns)
+		if err := sink.Begin(index, columns); err != nil && first == nil {
+			first = err
+		}
 	}
-	return nil
+	return first
 }
 func (sinks fanoutSink) Row(index int, row []*string) error {
+	var first error
 	for _, sink := range sinks {
-		_ = sink.Row(index, row)
+		if err := sink.Row(index, row); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+func (sinks fanoutSink) End(index int, summary protocol.ResultSet) error {
+	var first error
+	for _, sink := range sinks {
+		if err := sink.End(index, summary); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// Full export progress has no display budget and grants no stream credit or completion.
+// The bounded manager event queue provides backpressure; counts contain no SQL or values.
+type exportProgressSink struct {
+	ctx    context.Context
+	credit *creditState
+	rows   int64
+}
+
+func (sink *exportProgressSink) send(index int) error {
+	sink.credit.mu.Lock()
+	sink.credit.sequence++
+	sequence := sink.credit.sequence
+	sink.credit.expected = sequence
+	sink.credit.mu.Unlock()
+	response := protocol.Response{Sequence: sequence, Type: "query.progress", RequestID: sink.credit.command.RequestID, SessionID: sink.credit.command.SessionID, QueryID: sink.credit.command.QueryID, ResultIndex: index, RowCount: sink.rows}
+	select {
+	case sink.credit.owner.manager.events <- event{sessionID: sink.credit.owner.id, response: response}:
+	case <-sink.ctx.Done():
+		return sink.ctx.Err()
+	case <-sink.credit.owner.manager.stop:
+		return context.Canceled
+	}
+	select {
+	case <-sink.credit.credit:
+		return nil
+	case <-sink.ctx.Done():
+		return sink.ctx.Err()
+	case <-sink.credit.owner.manager.stop:
+		return context.Canceled
+	}
+}
+func (sink *exportProgressSink) Begin(index int, columns []protocol.Column) error { return nil }
+func (sink *exportProgressSink) Row(index int, row []*string) error {
+	sink.rows++
+	if sink.rows%4096 == 0 {
+		return sink.send(index)
 	}
 	return nil
 }
-func (sinks fanoutSink) End(index int, summary protocol.ResultSet) error {
-	for _, sink := range sinks {
-		_ = sink.End(index, summary)
-	}
-	return nil
+func (sink *exportProgressSink) End(index int, summary protocol.ResultSet) error {
+	return sink.send(index)
 }
 
 func runExecution(ctx context.Context, physical adapter.Session, command protocol.Command, credit *creditState) protocol.Response {
+	if ctx.Err() != nil {
+		category, message := "cancelled", "Execution was cancelled before it started."
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			category, message = "timeout", "Execution timed out before it started."
+		}
+		failure := rejectedCommand(command, category, message)
+		failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
+		return failure
+	}
 	if !command.Stream && command.Export == nil {
 		return physical.Execute(ctx, command)
 	}
@@ -241,6 +333,7 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 		}
 		failure := protocol.ErrorResponse(command, "export", "This database adapter cannot export complete executions.")
 		failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
+		failure.SQLNotExecuted, failure.ExportPublication = true, "notPublished"
 		return failure
 	}
 	var sinks fanoutSink
@@ -256,18 +349,23 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 		if err != nil {
 			failure := protocol.ErrorResponse(command, "export", "The export file could not be created. SQL was not executed.")
 			failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
+			failure.SQLNotExecuted, failure.ExportPublication = true, "notPublished"
 			return failure
 		}
 		defer file.Abort()
 		stopCleanup := file.CancelOn(ctx)
 		defer stopCleanup()
 		sinks = append(sinks, file)
+		if command.Stream {
+			sinks = append(sinks, &exportProgressSink{ctx: ctx, credit: credit})
+		}
 	}
 	response := streaming.ExecuteWithSink(ctx, command, sinks)
 	if file != nil && response.Type == "query.result" {
 		if ctx.Err() != nil {
 			failure := protocol.ErrorResponse(command, "cancelled", "Export was cancelled; no final file was saved. SQL completion was confirmed.")
 			failure.Connected, failure.TransactionStatus = true, response.TransactionStatus
+			failure.SQLCompleted, failure.ExportPublication = true, "notPublished"
 			response = failure
 		} else if err := file.CommitContext(ctx); err != nil {
 			failure := protocol.ErrorResponse(command, "export", "SQL completed, but export failed. No final file was saved. "+err.Error())
@@ -275,6 +373,11 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 				failure.Category, failure.Message = "cancelled", "Export was cancelled; no final file was saved. SQL completion was confirmed."
 			}
 			failure.Connected, failure.TransactionStatus = true, response.TransactionStatus
+			failure.SQLCompleted, failure.ExportPublication = true, "notPublished"
+			if errors.Is(err, exportfile.ErrPublicationUnknown) {
+				failure.ExportPublication = "unknown"
+				failure.Message = "SQL completed, but file publication could not be verified. Inspect the destination. Do not rerun SQL to recover the save."
+			}
 			failure.ResultSets = response.ResultSets
 			response = failure
 		} else {

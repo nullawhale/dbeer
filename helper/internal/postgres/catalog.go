@@ -2,8 +2,9 @@ package postgres
 
 import (
 	"context"
-	"dbeer/helper/internal/adapter"
+	"fmt"
 
+	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
 	"github.com/jackc/pgx/v5"
 )
@@ -21,18 +22,25 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 		return response
 	}
 	request := *command.Catalog
+	if request.Kind == "typeDetails" || request.Kind == "enumValues" || request.Kind == "typeDependencies" || request.Kind == "typeDDL" ||
+		(request.ObjectKind == "enum" || request.ObjectKind == "type") && request.Kind != "objects" {
+		return typeCatalog(ctx, conn, command, sink)
+	}
 	if failure := catalogAccess(ctx, conn, command, request); failure != nil {
 		return *failure
 	}
 	sql, values, notice := catalogSQL(request)
+	var sourceSQL string
+	storageProjection := false
 	if request.Kind == "browse" {
-		var failure *protocol.Response
-		sql, values, notice, failure = browseSQL(ctx, conn, command)
+		plan, failure := browseSQL(ctx, conn, command)
+		sql, values, notice, sourceSQL = plan.statement, plan.values, plan.notice, plan.sourceSQL
+		storageProjection = plan.storageProjection
 		if failure != nil {
 			return *failure
 		}
 	}
-	response := executeParamsSink(ctx, conn, command, sql, values, sink)
+	response := executeParamsSinkWithStorage(ctx, conn, command, sql, values, sink, storageProjection)
 	if response.Type == "error" && response.Category == "sql" {
 		response.Message = "Catalog information is unavailable or access was denied."
 		response.ErrorPosition = 0
@@ -44,11 +52,11 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 			response.DisplayNotice = "No catalog information is available for this object."
 		}
 	}
-	return response
+	return response.WithReadSQL(sourceSQL)
 }
 
 func catalogAccess(ctx context.Context, conn *pgx.Conn, command protocol.Command, request protocol.CatalogRequest) *protocol.Response {
-	if request.Kind == "schemas" || request.Kind == "search" {
+	if request.Kind == "schemas" || request.Kind == "search" || request.Kind == "completion" {
 		return nil
 	}
 	checks := []struct {
@@ -103,23 +111,70 @@ func catalogSQL(request protocol.CatalogRequest) (string, [][]byte, string) {
 	}
 	objectParams := params(request.Schema, request.Object)
 	switch request.Kind {
+	case "completion":
+		// Load names in batches, without inspecting table data or generating
+		// one metadata request per relation. System schemas remain available
+		// through explicit catalog browsing or a schema-scoped request.
+		return `WITH objects AS (
+SELECT c.relname::text AS name, CASE WHEN c.relkind IN ('v','m') THEN 'view' ELSE 'table' END AS kind,
+ n.nspname::text AS schema, c.oid AS relation
+FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+WHERE c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + `
+UNION ALL
+SELECT DISTINCT p.proname::text, 'function', n.nspname::text, 0::oid
+FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+WHERE p.prokind IN ('f','a','w') AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
+), page AS (
+SELECT * FROM objects WHERE ($1::text<>'' AND schema=$1::text) OR ($1::text='' AND schema NOT IN ('pg_catalog','information_schema')
+ AND schema NOT LIKE 'pg_toast%' AND schema NOT LIKE 'pg_temp_%')
+ORDER BY schema,name,kind LIMIT 200 OFFSET ($2::int * 200)
+)
+SELECT name,kind,schema,COALESCE((SELECT json_agg(a.attname::text ORDER BY a.attnum)
+ FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'[]'::json)::text AS columns,
+COALESCE((SELECT json_agg(json_build_object('name',k.conname::text,'targetSchema',n.nspname::text,'targetTable',c.relname::text,
+ 'columns',(SELECT json_agg(json_build_object('source',sa.attname::text,'target',ta.attname::text) ORDER BY pair.ordinality)
+ FROM unnest(k.conkey,k.confkey) WITH ORDINALITY pair(source,target,ordinality)
+ JOIN pg_catalog.pg_attribute sa ON sa.attrelid=k.conrelid AND sa.attnum=pair.source
+ JOIN pg_catalog.pg_attribute ta ON ta.attrelid=k.confrelid AND ta.attnum=pair.target)) ORDER BY k.conname)
+ FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.confrelid
+ JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+ WHERE k.contype='f' AND k.conrelid=page.relation AND ` + relationAccess + `),'[]'::json)::text AS "foreignKeys",
+COALESCE((SELECT json_agg(overloads.signature ORDER BY overloads.oid) FROM (
+ SELECT p.oid,json_build_object('returnType',pg_catalog.pg_get_function_result(p.oid),'parameters',
+ COALESCE((SELECT json_agg(json_build_object('name',COALESCE(args.name,''),'type',pg_catalog.format_type(args.type,NULL),
+ 'position',args.position,'optional',args.position>p.pronargs-p.pronargdefaults,'variadic',args.mode='v') ORDER BY args.position)
+ FROM (SELECT arg.type,p.proargnames[arg.ordinality] AS name,COALESCE(p.proargmodes[arg.ordinality]::text,'i') AS mode,
+ row_number() OVER (ORDER BY arg.ordinality) AS position
+ FROM unnest(COALESCE(p.proallargtypes,p.proargtypes::oid[])) WITH ORDINALITY arg(type,ordinality)
+ WHERE COALESCE(p.proargmodes[arg.ordinality]::text,'i') IN ('i','b','v')) args),'[]'::json)) AS signature
+ FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+ WHERE page.kind='function' AND p.proname::text=page.name AND n.nspname::text=page.schema AND p.prokind IN ('f','a','w')
+ AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
+ ORDER BY p.oid LIMIT 32) overloads),'[]'::json)::text AS signatures
+FROM page ORDER BY schema,name,kind`, params(request.Schema, fmt.Sprint(request.Page)), ""
 	case "schemas":
 		return `SELECT nspname::text AS name, 'schema'::text AS kind FROM pg_catalog.pg_namespace
 WHERE nspname NOT LIKE 'pg_toast%' AND nspname NOT LIKE 'pg_temp_%' AND has_schema_privilege(oid, 'USAGE') ORDER BY name`, nil, ""
 	case "search":
 		// Catalog names retain C collation after ::text; fold both operands
 		// with the database collation so non-ASCII case handling agrees.
-		return `SELECT name,kind,schema,identity FROM (` + searchableObjects + `) objects
+		return `SELECT name,kind,schema,identity,"typeKind" FROM (` + searchableObjects + `) objects
 WHERE strpos(lower(name COLLATE pg_catalog."default"),lower($1::text COLLATE pg_catalog."default"))>0 AND ($2::text='' OR schema=$2::text)
 ORDER BY schema,name,kind,identity`, params(request.Search, request.Schema), ""
 	case "objects":
 		switch request.ObjectKind {
+		case "enum", "type":
+			return `SELECT t.typname::text AS name, CASE WHEN t.typtype='e' THEN 'enum' ELSE 'type' END::text AS kind,
+n.nspname::text AS schema,t.oid::text AS identity,` + typeKindSQL + ` AS "typeKind"
+FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
+WHERE n.nspname::text=$1::text AND ` + visibleTypeSQL + `
+AND CASE WHEN $2::text='enum' THEN t.typtype='e' ELSE t.typtype<>'e' END ORDER BY name,identity`, params(request.Schema, request.ObjectKind), ""
 		case "table", "view":
 			kinds := "('r','p','f')"
 			if request.ObjectKind == "view" {
 				kinds = "('v','m')"
 			}
-			return `SELECT c.relname::text AS name, $2::text AS kind, n.nspname::text AS schema, c.oid::text AS identity
+			return `SELECT c.relname::text AS name, $2::text AS kind, n.nspname::text AS schema, c.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname::text=$1::text AND c.relkind IN ` + kinds + ` AND ` + relationAccess + ` ORDER BY name,identity`, params(request.Schema, request.ObjectKind), ""
 		case "function", "procedure":
@@ -127,11 +182,11 @@ WHERE n.nspname::text=$1::text AND c.relkind IN ` + kinds + ` AND ` + relationAc
 			if request.ObjectKind == "procedure" {
 				kind = "('p')"
 			}
-			return `SELECT p.proname::text AS name, $2::text AS kind, n.nspname::text AS schema, p.oid::text AS identity
+			return `SELECT p.proname::text AS name, $2::text AS kind, n.nspname::text AS schema, p.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
 WHERE n.nspname::text=$1::text AND p.prokind IN ` + kind + ` AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE') ORDER BY name,identity`, params(request.Schema, request.ObjectKind), ""
 		case "trigger":
-			return `SELECT t.tgname::text AS name, 'trigger'::text AS kind, n.nspname::text AS schema, t.oid::text AS identity
+			return `SELECT t.tgname::text AS name, 'trigger'::text AS kind, n.nspname::text AS schema, t.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE n.nspname::text=$1::text AND NOT t.tgisinternal AND ` + relationAccess + ` ORDER BY name,identity`, params(request.Schema), ""
 		}
@@ -144,19 +199,26 @@ CASE WHEN a.attgenerated<>'' THEN pg_catalog.pg_get_expr(d.adbin,d.adrelid)
 COALESCE((SELECT key.ordinality FROM pg_catalog.pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality)
  WHERE i.indrelid=c.oid AND i.indisprimary AND key.ordinality<=i.indnkeyatts AND key.attnum=a.attnum),0)::text AS "primaryKey",
 CASE WHEN c.relkind IN ('r','p') AND a.attgenerated='' AND a.attidentity<>'a' AND has_column_privilege(c.oid,a.attnum,'UPDATE')
- AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute unsupported WHERE unsupported.attrelid=c.oid AND unsupported.attnum>0
- AND NOT unsupported.attisdropped AND unsupported.atttypid NOT IN (` + editablePostgresTypeOIDs + `))
  AND EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=c.oid AND i.indisprimary) THEN 'true' ELSE 'false' END AS editable,
 CASE WHEN c.relkind NOT IN ('r','p') THEN 'Only base tables support data editing.'
  WHEN NOT EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=c.oid AND i.indisprimary) THEN 'The table has no primary key.'
- WHEN EXISTS(SELECT 1 FROM pg_catalog.pg_attribute unsupported WHERE unsupported.attrelid=c.oid AND unsupported.attnum>0
- AND NOT unsupported.attisdropped AND unsupported.atttypid NOT IN (` + editablePostgresTypeOIDs + `)) THEN 'This table contains an unsupported type.'
  WHEN a.attgenerated<>'' OR a.attidentity='a' THEN 'The server generates this value.'
  WHEN NOT has_column_privilege(c.oid,a.attnum,'UPDATE') THEN 'UPDATE privilege is unavailable.' ELSE '' END AS "editReason"
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
 WHERE n.nspname::text=$1::text AND c.relname::text=$2::text AND c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + ` ORDER BY a.attnum`, objectParams, ""
+	case "foreignKeys":
+		return `SELECT k.conname::text AS name, tn.nspname::text AS "targetSchema", tc.relname::text AS "targetTable",
+sa.attname::text AS "sourceColumn", ta.attname::text AS "targetColumn", pair.ordinality::text AS position
+FROM pg_catalog.pg_constraint k
+JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+JOIN pg_catalog.pg_class tc ON tc.oid=k.confrelid JOIN pg_catalog.pg_namespace tn ON tn.oid=tc.relnamespace
+CROSS JOIN LATERAL unnest(k.conkey,k.confkey) WITH ORDINALITY pair(source,target,ordinality)
+JOIN pg_catalog.pg_attribute sa ON sa.attrelid=k.conrelid AND sa.attnum=pair.source AND NOT sa.attisdropped
+JOIN pg_catalog.pg_attribute ta ON ta.attrelid=k.confrelid AND ta.attnum=pair.target AND NOT ta.attisdropped
+WHERE n.nspname::text=$1::text AND c.relname::text=$2::text AND k.contype='f' AND ` + relationAccess + `
+ORDER BY k.conname,pair.ordinality`, objectParams, ""
 	case "keys", "constraints":
 		filter := ""
 		if request.Kind == "keys" {
@@ -230,14 +292,17 @@ WHERE n.nspname::text=$1::text AND t.tgname::text=$2::text AND ($3::text='' OR t
 }
 
 const searchableObjects = `SELECT c.relname::text AS name,CASE WHEN c.relkind IN ('v','m') THEN 'view' ELSE 'table' END::text AS kind,
-n.nspname::text AS schema,c.oid::text AS identity
+n.nspname::text AS schema,c.oid::text AS identity,NULL::text AS "typeKind"
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 WHERE c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + `
 UNION ALL
-SELECT p.proname::text,CASE WHEN p.prokind='p' THEN 'procedure' ELSE 'function' END::text,n.nspname::text,p.oid::text
+SELECT p.proname::text,CASE WHEN p.prokind='p' THEN 'procedure' ELSE 'function' END::text,n.nspname::text,p.oid::text,NULL::text
 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
 WHERE p.prokind IN ('f','w','p') AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
 UNION ALL
-SELECT t.tgname::text,'trigger'::text,n.nspname::text,t.oid::text
+SELECT t.tgname::text,'trigger'::text,n.nspname::text,t.oid::text,NULL::text
 FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
-WHERE NOT t.tgisinternal AND ` + relationAccess
+WHERE NOT t.tgisinternal AND ` + relationAccess + `
+UNION ALL
+SELECT t.typname::text,CASE WHEN t.typtype='e' THEN 'enum' ELSE 'type' END::text,n.nspname::text,t.oid::text,` + typeKindSQL + `
+FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE ` + visibleTypeSQL

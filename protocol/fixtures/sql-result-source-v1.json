@@ -1,0 +1,134 @@
+{
+  "version": 1,
+  "responses": [
+    {
+      "type": "query.result",
+      "requestId": "source-editable",
+      "sessionId": "source-session",
+      "queryId": "source-query",
+      "durationMs": 1,
+      "columns": [
+        {
+          "index": 0,
+          "name": "shown",
+          "engine": "postgresql",
+          "nativeType": "text"
+        },
+        {
+          "index": 1,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "int8"
+        }
+      ],
+      "rows": [
+        [
+          "",
+          "9223372036854775807"
+        ],
+        [
+          null,
+          "2"
+        ]
+      ],
+      "commandTag": "SELECT 2",
+      "rowCount": 2,
+      "displayedRowCount": 2,
+      "truncated": false,
+      "transactionStatus": "idle",
+      "source": {
+        "schema": "demo",
+        "table": "items",
+        "columns": [
+          {
+            "name": "label",
+            "nativeType": "text",
+            "tableIndex": 1,
+            "primaryKey": 0,
+            "editable": true,
+            "generated": false
+          },
+          {
+            "name": "id",
+            "nativeType": "bigint",
+            "tableIndex": 0,
+            "primaryKey": 1,
+            "editable": true,
+            "generated": false
+          }
+        ]
+      }
+    },
+    {
+      "type": "query.result",
+      "requestId": "source-projection",
+      "durationMs": 1,
+      "columns": [
+        {
+          "index": 0,
+          "name": "key",
+          "engine": "mysql",
+          "nativeType": "bigint"
+        }
+      ],
+      "rows": [
+        [
+          "18446744073709551615"
+        ]
+      ],
+      "commandTag": "SELECT",
+      "rowCount": 1,
+      "displayedRowCount": 1,
+      "truncated": false,
+      "transactionStatus": "idle",
+      "source": {
+        "schema": "demo",
+        "table": "items",
+        "columns": [
+          {
+            "name": "id",
+            "nativeType": "bigint unsigned",
+            "tableIndex": 0,
+            "primaryKey": 1,
+            "editable": true,
+            "generated": false
+          }
+        ],
+        "readOnlyReason": "Open the source row to edit a projection that omits table columns."
+      },
+      "sessionId": "source-session-1",
+      "queryId": "source-query-1"
+    },
+    {
+      "type": "query.result",
+      "requestId": "source-readonly",
+      "durationMs": 1,
+      "columns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "int4"
+        }
+      ],
+      "rows": [
+        [
+          "1"
+        ]
+      ],
+      "commandTag": "SELECT 1",
+      "rowCount": 1,
+      "displayedRowCount": 1,
+      "truncated": false,
+      "transactionStatus": "idle",
+      "source": {
+        "schema": "",
+        "table": "",
+        "columns": [],
+        "readOnlyReason": "Computed columns and ambiguous results are read only."
+      },
+      "sessionId": "source-session-2",
+      "queryId": "source-query-2"
+    }
+  ]
+}

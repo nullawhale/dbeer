@@ -4,7 +4,7 @@ import Foundation
 /// Local command rejection before a request is registered or written to stdin.
 /// Keep this distinct from a malformed or oversized reply from the helper.
 enum BackendRequestError: LocalizedError, Sendable, Equatable {
-    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed
+    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand
 
     var errorDescription: String? {
         let explanation: String
@@ -13,6 +13,8 @@ enum BackendRequestError: LocalizedError, Sendable, Equatable {
         case .duplicateRequest: explanation = "A command identifier was reused."
         case .frameTooLarge: explanation = "The command exceeds the 16 MiB transport limit."
         case .encodingFailed: explanation = "The command could not be encoded."
+        case .unsupportedSSHConfiguration: explanation = "This helper does not support OpenSSH configuration. Rebuild the matching app and helper."
+        case .unsupportedPasswordCommand: explanation = "This helper does not support password commands. Rebuild the matching app and helper."
         }
         return explanation + " The command was not sent."
     }
@@ -66,6 +68,7 @@ actor BackendClient {
 
     private let executableURL: URL
     private let arguments: [String]
+    private let environment: [String: String]
     private var process: Process?
     private var writer: PipeWriter?
     private var outputReader: Task<Void, Never>?
@@ -77,13 +80,23 @@ actor BackendClient {
     private var exit: Exit?
     private var exitWaiters: [CheckedContinuation<Exit, Never>] = []
     private var ready = false
+    private var capturedExportSupported = false
+    private var sshTunnelsSupported = false
+    private var sshConfigurationSupported = false
+    private var passwordCommandSupported = false
+    private var insertFormattingSupported = false
+    private var resultComparisonSupported = false
+    private var schemaComparisonSupported = false
+    private var dataComparisonSupported = false
+    private var synchronizationPlanSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
 
-    init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = []) {
+    init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = [], environment: [String: String] = [:]) {
         self.executableURL = executableURL
         self.arguments = arguments
+        self.environment = environment
     }
 
     nonisolated static func bundledExecutableURL(bundleURL: URL = Bundle.main.bundleURL) -> URL {
@@ -102,6 +115,9 @@ actor BackendClient {
         let stderr = Pipe()
         child.executableURL = executableURL
         child.arguments = arguments
+        if !environment.isEmpty {
+            child.environment = ProcessInfo.processInfo.environment.merging(environment) { _, replacement in replacement }
+        }
         child.standardInput = stdin
         child.standardOutput = stdout
         child.standardError = stderr
@@ -171,9 +187,64 @@ actor BackendClient {
 
     /// Returns the terminal reply. `query.started` is delivered separately;
     /// cancelling a SQL query uses an explicit cancel command, not Task.cancel.
+    func supportsCapturedExport() -> Bool { capturedExportSupported }
+    func supportsInsertFormatting() -> Bool { insertFormattingSupported }
+    func supportsResultComparison() -> Bool { resultComparisonSupported }
+
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
-        try await send(command, onEvent: onEvent)
+        if command.type == "data.plan" || command.type == "schema.plan" {
+            guard synchronizationPlanSupported else { throw BackendRequestError.invalidCommand }
+        }
+        if command.type.hasPrefix("data.") {
+            guard dataComparisonSupported, command.dataComparison?.valid(for: command.type) == true,
+                  command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
+                  command.protocolVersion == nil, command.stream == nil, command.export == nil, command.changes == nil,
+                  command.operations == nil, command.authorization == nil, command.sequence == nil, command.sshTrust == nil,
+                  command.insert == nil, command.comparison == nil, command.schemaComparison == nil else { throw BackendRequestError.invalidCommand }
+            for settings in [command.dataComparison?.source?.connection, command.dataComparison?.target?.connection].compactMap({ $0 }) {
+                if settings.passwordCommand != nil, !passwordCommandSupported { throw BackendRequestError.unsupportedPasswordCommand }
+                if settings.ssh?.authMethod == .openSSH, !sshConfigurationSupported { throw BackendRequestError.unsupportedSSHConfiguration }
+            }
+        } else if command.dataComparison != nil { throw BackendRequestError.invalidCommand }
+        if command.type.hasPrefix("schema.") {
+            guard schemaComparisonSupported, command.schemaComparison?.valid(for: command.type) == true,
+                  command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
+                  command.protocolVersion == nil, command.stream == nil, command.export == nil, command.changes == nil,
+                  command.operations == nil, command.authorization == nil, command.sequence == nil, command.sshTrust == nil,
+                  command.insert == nil, command.comparison == nil else { throw BackendRequestError.invalidCommand }
+            for settings in [command.schemaComparison?.source?.connection, command.schemaComparison?.target?.connection].compactMap({ $0 }) {
+                if settings.passwordCommand != nil, !passwordCommandSupported { throw BackendRequestError.unsupportedPasswordCommand }
+                if settings.ssh?.authMethod == .openSSH, !sshConfigurationSupported { throw BackendRequestError.unsupportedSSHConfiguration }
+            }
+        } else if command.schemaComparison != nil { throw BackendRequestError.invalidCommand }
+        if command.type.hasPrefix("compare.") {
+            guard resultComparisonSupported else { throw BackendTransportError(.unsupportedResultComparison) }
+            guard command.comparison?.valid(for: command.type) == true,
+                  command.sessionId == nil, command.queryId == nil, command.connection == nil,
+                  command.sql == nil, command.catalog == nil, command.protocolVersion == nil,
+                  command.stream == nil, command.export == nil, command.changes == nil,
+                  command.operations == nil, command.authorization == nil, command.sequence == nil,
+                  command.sshTrust == nil, command.insert == nil else { throw BackendRequestError.invalidCommand }
+        } else if command.comparison != nil { throw BackendRequestError.invalidCommand }
+        if command.connection?.passwordCommand != nil, !passwordCommandSupported {
+            throw BackendRequestError.unsupportedPasswordCommand
+        }
+        if command.connection?.ssh?.authMethod == .openSSH, !sshConfigurationSupported {
+            throw BackendRequestError.unsupportedSSHConfiguration
+        }
+        if command.export?.destination != nil, !capturedExportSupported { throw BackendTransportError(.unsupportedCapturedExport) }
+        if command.type == "formatInserts" {
+            guard insertFormattingSupported else { throw BackendTransportError(.unsupportedInsertFormatting) }
+            guard command.insert?.valid == true, command.sessionId == nil, command.queryId == nil,
+                  command.connection == nil, command.sql == nil, command.catalog == nil,
+                  command.protocolVersion == nil, command.stream == nil, command.export == nil,
+                  command.changes == nil, command.operations == nil, command.authorization == nil,
+                  command.sequence == nil, command.sshTrust == nil else {
+                throw BackendRequestError.invalidCommand
+            }
+        }
+        return try await send(command, onEvent: onEvent)
     }
 
     func waitForFailure() async -> BackendTransportError {
@@ -206,8 +277,9 @@ actor BackendClient {
         // helper does not retain its process client and suspended observer.
         for waiter in failureWaiters { waiter.resume(returning: BackendTransportError(.notReady)) }
         failureWaiters.removeAll()
+        let shutdownGrace: Duration = sshTunnelsSupported ? .seconds(6) : .seconds(2)
         let deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            do { try await Task.sleep(for: shutdownGrace) } catch { return }
             await self?.forceExitIfNeeded()
         }
         var acknowledged = false
@@ -273,6 +345,14 @@ actor BackendClient {
             request.onEvent?(reply)
             return
         }
+        if reply.type == "query.progress" {
+            guard command.export != nil, request.started, let sequence = reply.sequence, sequence == request.streamSequence + 1 else { fail(BackendTransportError(.invalidMessage)); return }
+            request.streamSequence = sequence
+            pending[reply.requestId] = request
+            do { try acknowledgeChunk(reply) } catch { fail(BackendTransportError(.invalidMessage)); return }
+            request.onEvent?(reply)
+            return
+        }
         if reply.type == "query.chunk" {
             do {
                 guard command.stream == true, request.started else { throw BackendTransportError(.invalidMessage) }
@@ -286,18 +366,92 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
+        // The original frame has already validated optional product metadata.
+        // Native SwiftUI helpers remain compatible without GPUI product pairing.
+        if reply.type == "hello.ack" {
+            capturedExportSupported = reply.capabilities?.contains("capturedExportV1") == true
+            sshTunnelsSupported = reply.capabilities?.contains("sshTunnelsV1") == true
+            sshConfigurationSupported = reply.capabilities?.contains("sshConfigV1") == true
+            passwordCommandSupported = reply.capabilities?.contains("passwordCommandV1") == true
+            insertFormattingSupported = reply.capabilities?.contains("formatInsertsV1") == true
+            resultComparisonSupported = reply.capabilities?.contains("resultComparisonV1") == true
+            schemaComparisonSupported = reply.capabilities?.contains("schemaComparisonV1") == true
+            dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
+            synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
+        }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
             return
         }
         let terminal: BackendMessage
-        do { terminal = try hydrate(reply, request: request) }
+        do {
+            try validateDataComparison(reply, command: command)
+            try validateSchemaComparison(reply, command: command)
+            try validateComparison(reply, command: command)
+            terminal = try hydrate(reply, request: request)
+        }
         catch { fail(BackendTransportError(.invalidMessage)); return }
         pending.removeValue(forKey: reply.requestId)
         if terminal.type == "error" {
             request.continuation.resume(throwing: BackendRemoteError(reply: terminal))
         } else {
             request.continuation.resume(returning: terminal)
+        }
+    }
+
+    private func validateDataComparison(_ reply: BackendMessage, command: BackendCommand) throws {
+        guard command.type.hasPrefix("data."), reply.type != "error" else { return }
+        guard let request = command.dataComparison, let response = reply.dataComparison,
+              request.jobId == nil || request.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let plan = response.plan {
+            guard plan.modelDigest == request.modelDigest else { throw BackendTransportError(.invalidMessage) }
+        }
+        if response.diff != nil {
+            guard response.offset == (request.offset ?? 0), response.cellOffset == (request.cellOffset ?? 0) else { throw BackendTransportError(.invalidMessage) }
+        }
+        if let page = response.page {
+            guard page.offset == (request.offset ?? 0), page.rows.count <= (request.limit ?? 100),
+                  page.rows.allSatisfy({ $0.cellOffset == (request.cellOffset ?? 0) }),
+                  try JSONEncoder().encode(page).count <= (request.maxBytes ?? 262_144) else { throw BackendTransportError(.invalidMessage) }
+        }
+        if let value = response.value {
+            guard value.valueRef == request.valueRef, value.offset == (request.offset ?? 0),
+                  (value.data?.count ?? Int.max) <= (request.maxBytes ?? 65_536) else { throw BackendTransportError(.invalidMessage) }
+        }
+    }
+
+    private func validateSchemaComparison(_ reply: BackendMessage, command: BackendCommand) throws {
+        guard command.type.hasPrefix("schema."), reply.type != "error" else { return }
+        guard let requested = command.schemaComparison, let response = reply.schemaComparison,
+              requested.jobId == nil || requested.jobId == response.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let plan = response.plan {
+            guard plan.modelDigest == requested.modelDigest else { throw BackendTransportError(.invalidMessage) }
+        }
+        if response.diff != nil {
+            guard response.offset == (requested.offset ?? 0) else { throw BackendTransportError(.invalidMessage) }
+        }
+        if let page = response.page {
+            guard page.collection == requested.collection, page.offset == (requested.offset ?? 0),
+                  page.count <= (requested.limit ?? 100), try JSONEncoder().encode(page).count <= (requested.maxBytes ?? 262_144) else { throw BackendTransportError(.invalidMessage) }
+        }
+        for chunk in [response.value, response.export].compactMap({ $0 }) {
+            guard chunk.offset == (requested.offset ?? 0), (chunk.data?.count ?? Int.max) <= (requested.maxBytes ?? 65_536),
+                  response.value == nil || chunk.valueRef == requested.valueRef else { throw BackendTransportError(.invalidMessage) }
+        }
+    }
+
+    private func validateComparison(_ reply: BackendMessage, command: BackendCommand) throws {
+        guard command.type.hasPrefix("compare."), reply.type != "error" else { return }
+        guard let requested = command.comparison, let response = reply.comparison,
+              requested.jobId == nil || response.jobId == requested.jobId else { throw BackendTransportError(.invalidMessage) }
+        if let page = response.page {
+            guard page.offset == (requested.offset ?? 0), page.rows.count <= (requested.limit ?? 100),
+                  page.rows.allSatisfy({ $0.cellOffset == (requested.cellOffset ?? 0) }),
+                  try JSONEncoder().encode(page).count <= (requested.maxBytes ?? 262_144) else { throw BackendTransportError(.invalidMessage) }
+        }
+        if let value = response.value {
+            guard value.valueRef == requested.valueRef, value.offset == (requested.offset ?? 0),
+                  (value.data?.count ?? Int.max) <= (requested.maxBytes ?? 65_536) else { throw BackendTransportError(.invalidMessage) }
         }
     }
 
@@ -351,6 +505,10 @@ actor BackendClient {
                 throw BackendTransportError(.invalidMessage)
             }
             sets[index].rows = request.streamSets[index].rows
+            // Terminal notices can be added after the last streaming summary,
+            // including an explanation that SQL source exceeded a size limit.
+            // Retain them when presenting any selected result set.
+            sets[index].displayNotice = Self.mergingNotice(sets[index].displayNotice, reply.displayNotice)
         }
         var result = reply
         result.streamed = nil
@@ -361,13 +519,26 @@ actor BackendClient {
                 result.commandTag = first.commandTag; result.rowCount = first.rowCount
                 result.displayedRowCount = first.displayedRowCount
                 result.truncated = first.truncated; result.displayNotice = first.displayNotice
+                result.affectedRowCountKnown = first.affectedRowCountKnown; result.nextCursor = first.nextCursor
+                result.storageTokens = first.storageTokens
+                result.source = first.source
             } else {
                 result.columns = []; result.rows = []; result.displayedRowCount = 0
+                result.storageTokens = nil
+                result.source = nil
             }
         }
         try result.validate()
         try validateAggregate(result)
         return result
+    }
+
+    private static func mergingNotice(_ local: String?, _ terminal: String?) -> String? {
+        guard let terminal, !terminal.isEmpty else { return local }
+        guard let local, !local.isEmpty else { return terminal }
+        if local.contains(terminal) { return local }
+        if terminal.contains(local) { return terminal }
+        return local + "\n" + terminal
     }
 
     private func validateAggregate(_ reply: BackendMessage) throws {
@@ -377,7 +548,7 @@ actor BackendClient {
             sets = [QueryResultSet(columns: reply.columns ?? [], rows: reply.rows ?? [],
                 commandTag: reply.commandTag ?? "", rowCount: reply.rowCount ?? 0,
                 displayedRowCount: reply.displayedRowCount ?? 0, truncated: reply.truncated ?? false,
-                displayNotice: reply.displayNotice)]
+                displayNotice: reply.displayNotice, storageTokens: reply.storageTokens, source: reply.source)]
         } else { return }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]

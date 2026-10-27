@@ -1,0 +1,8 @@
+[
+  {"application":"system","editor":"automatic","system":"light","resolvedEditor":"native-light"},
+  {"application":"system","editor":"automatic","system":"dark","resolvedEditor":"native-dark"},
+  {"application":"light","editor":"native-dark","system":"dark","resolvedEditor":"native-dark"},
+  {"application":"dark","editor":"native-light","system":"light","resolvedEditor":"native-light"},
+  {"application":"solarized-light","editor":"automatic","system":"dark","resolvedEditor":"solarized-light"},
+  {"application":"vscode-dark-plus","editor":"jetbrains-light","system":"light","resolvedEditor":"jetbrains-light"}
+]

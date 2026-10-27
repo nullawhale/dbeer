@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "disposableMarker": "owned-dbeer-parity-only-v1",
+  "state": "prepared-not-run",
+  "portablePeer": {
+    "manifest": "prototypes/gpui/verification/fault-helper/Cargo.toml",
+    "environment": "DBEER_GPUI_FAULT_HELPER_PATH",
+    "frameLimitBytes": 16777216,
+    "root": "New private UUID directory containing copied native executable; no production settings",
+    "markerFile": "disposable.marker",
+    "flavorFile": "fixture-kind",
+    "flavors": [
+      "preview",
+      "run-to-file"
+    ],
+    "configFile": "mode",
+    "journal": "fault-peer-started.json",
+    "logFields": [
+      "command type only"
+    ],
+    "previewModes": [
+      "preview-error",
+      "apply-lost-ack",
+      "apply-hold-success",
+      "apply-hold-rollback",
+      "apply-known-rollback"
+    ],
+    "runToFileModes": [
+      "success",
+      "hold",
+      "helper-loss",
+      "publication-failure",
+      "mutated-target",
+      "legacy-helper"
+    ],
+    "cleanupFailureTrigger": "Owned disconnect-once marker; first disconnect fails, later explicit retry may ACK",
+    "releaseHeldTerminal": "Matching cancel command, never a timing sleep",
+    "integration": "Thirteen existing assertions now use the native executable on every target; runner requires every exact qualified name, peer hash and current-user private root. Native runtime proof remains not-run.",
+    "requiredTests": [
+      "preview::tests::fault_helper::standalone_cannot_approve_and_every_preview_has_another_idle_session",
+      "preview::tests::fault_helper::approval_is_exact_preparation_session_and_invalidated_by_stop_or_teardown",
+      "preview::tests::fault_helper::cancel_before_submit_and_original_client_cleanup_do_not_touch_other_sessions",
+      "preview::tests::fault_helper::new_preview_invalidates_previous_grant_even_on_same_session",
+      "preview::tests::fault_helper::stop_after_preview_submission_skips_assessment_and_dml_then_drains",
+      "preview::tests::fault_helper::preview_failure_retries_with_unchanged_request_and_cleanup_failure_requires_retry",
+      "preview::tests::fault_helper::apply_is_exact_one_shot_and_consumes_every_approval_before_enqueue",
+      "preview::tests::fault_helper::sticky_stop_during_review_prevents_enqueue_on_the_original_session",
+      "preview::tests::fault_helper::stop_after_enqueue_drains_authoritative_commit_or_entire_batch_rollback",
+      "preview::tests::fault_helper::lost_terminal_after_submission_remains_unknown_after_disconnect_and_never_retries",
+      "preview::tests::fault_helper::known_conflict_preserves_exact_request_and_cleanup_retry_does_not_reapply",
+      "run_to_file::tests::fake_helper_progress_past_display_budget_exact_authorization_one_submission_late_stop_and_loss",
+      "run_to_file::tests::older_helper_without_capability_refuses_captured_export_before_sql"
+    ],
+    "hashEnvironment": "DBEER_GPUI_FAULT_HELPER_SHA256",
+    "privateRootEnvironment": "DBEER_GPUI_TEST_ROOT"
+  },
+  "caseIds": [
+    "TRANSPORT-LOSS",
+    "CANCEL-TERMINAL-GAP",
+    "CLOSE-ORIGINS",
+    "ORIGINAL-HELPER",
+    "CREDENTIAL-ROLLBACK",
+    "PERSIST-CORRUPT-FUTURE",
+    "LOCKED-FILE",
+    "PREVIEW-GRANT",
+    "APPLY-CANCEL-LATE-ACK",
+    "APPLY-LOST-COMMIT-ACK",
+    "CLEANUP-RETRY",
+    "STALE-PROFILE-TAB",
+    "EXPORT-FAULTS",
+    "REAL-HELPER-DEATH-BARRIER",
+    "SHORTCUT-RETAINED-SETTINGS",
+    "ACCESSIBILITY-ORIGINAL-OWNER",
+    "GNOME-PRIVATE-PROTOCOL",
+    "WINDOWS-OWNED-HWND",
+    "DEPENDENCY-NATIVE-GUARDS"
+  ],
+  "nativePhysicalRequirements": [
+    "Observe exact physical query/session from a separate owned observer before cancellation",
+    "Wait for authoritative query terminal and exact disconnect acknowledgment; cancel ACK alone is insufficient",
+    "Drop submitted COMMIT acknowledgment, verify actual rows independently, retain unknown UI outcome and forbid retry",
+    "Cancel during connect, preview, apply and full export with late ACK and stale profile/tab/source callbacks",
+    "Observe real Credential Manager/Secret Service errors without production accounts",
+    "Lock exact owned destination and verify previous bytes plus bounded cleanup on Windows",
+    "Close-origin/native logout/workspace latest finalizer behavior on each actual desktop"
+  ],
+  "forbidden": [
+    "production profile or credential access",
+    "SQL/results/passwords/DSNs in diagnostics",
+    "pkill/killall/taskkill or foreign PID kills",
+    "container pruning or foreign container deletion",
+    "fixed sleep as proof of physical cancellation",
+    "headless or emulated-container results accepting native cells"
+  ],
+  "proofBoundaries": {
+    "portablePeer": "Thirteen exact unmarked native fake-peer tests in each root mode; orchestration/grant/unknown-state proof, no server commit proof.",
+    "originalRealHelper": "Two db-live tests retain original private executable/native identity/SHA, observe physical sleep, retire retained original child, observe original session loss and still-live observer; no reconnect.",
+    "adapterAckLoss": "Ten required Go DB stage rows include real adapter injected COMMIT-ACK/type/readonly/cancel/deadlock; actual completed Go packages under original owned pair.",
+    "installedPhysicalAckLoss": "Task32 original TLS/public-certificate receipts, opaque SQL COMMIT and two-lease Apply relay, independent physical effects, genuine artifact/native UI receipts; remains runtime/native not-run."
+  }
+}

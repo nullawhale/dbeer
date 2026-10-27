@@ -1,0 +1,5 @@
+[
+  {"returnType":"integer","parameters":[{"name":"value","type":"integer","position":1}]},
+  {"returnType":"numeric","parameters":[{"name":"scale","type":"integer","position":2,"optional":true},{"name":"value","type":"numeric","position":1}]},
+  {"returnType":"text","parameters":[{"name":"values","type":"text[]","position":1,"variadic":true}]}
+]

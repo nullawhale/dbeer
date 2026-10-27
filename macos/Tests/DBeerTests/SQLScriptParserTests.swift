@@ -104,6 +104,34 @@ struct SQLScriptParserTests {
         }
     }
 
+    @Test(arguments: [DatabaseEngine.postgresql, .mysql])
+    func cursorImmediatelyAfterSemicolonStaysWithThePrecedingStatement(engine: DatabaseEngine) {
+        let sql = "SELECT '😀';\n\nSELECT 'people';"
+        let parsed = SQLScriptParser.parse(sql, engine: engine)
+        let terminator = (sql as NSString).range(of: ";").location
+        for location in [0, terminator, terminator + 1] {
+            #expect(parsed.statement(atUTF16: location) == parsed.statements[0])
+            #expect(SQLExecutionFragment.resolve(text: sql, selection: NSRange(location: location, length: 0),
+                engine: engine)?.sourceSQL == "SELECT '😀'")
+        }
+        let second = (sql as NSString).range(of: "SELECT 'people'")
+        #expect(parsed.statement(atUTF16: second.location) == parsed.statements[1])
+        // With adjacent commands, the start of the next command takes priority.
+        let adjacent = SQLScriptParser.parse("SELECT 1;SELECT 2;", engine: engine)
+        #expect(adjacent.statement(atUTF16: 9) == adjacent.statements[1])
+    }
+
+    @Test func cursorInsideAndAfterMySQLDelimiterStaysWithTheRoutine() {
+        let sql = "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\nDELIMITER ;\nSELECT 2;"
+        let parsed = SQLScriptParser.parse(sql, engine: .mysql)
+        let terminator = (sql as NSString).range(of: "END//").location + 3
+        for location in terminator...(terminator + 2) {
+            #expect(parsed.statement(atUTF16: location) == parsed.statements[0])
+        }
+        #expect(parsed.statements[0].sql == "CREATE PROCEDURE p() BEGIN SELECT 1; END")
+        #expect(parsed.statements[1].sql == "SELECT 2")
+    }
+
     @Test func clientCommandsAndStreamingImportsAreRejectedWithoutRejectingQuotedText() {
         for sql in [#"\d example"#, "SOURCE example.sql;", "COPY example FROM STDIN;", "COPY (SELECT 1) TO STDOUT;",
                     "LOAD DATA LOCAL INFILE 'example.csv' INTO TABLE example;",

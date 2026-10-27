@@ -31,7 +31,7 @@ func fakeResult(command protocol.Command) protocol.Response {
 
 func blockingSession() *testSession {
 	return &testSession{closed: make(chan struct{}), run: func(ctx context.Context, command protocol.Command) protocol.Response {
-		if command.SQL == "fast" {
+		if command.SQL == "SELECT 'fast'" {
 			return fakeResult(command)
 		}
 		<-ctx.Done()
@@ -87,13 +87,13 @@ func TestConcurrentSessionsConnectExecuteAndStopIndependently(t *testing.T) {
 	manager := New(func(context.Context, protocol.Connection) (adapter.Session, error) { return blockingSession(), nil })
 	defer manager.Close()
 	a := openTestSession(t, manager, "a")
-	qa := startTestQuery(t, manager, a, "slow-a", "slow")
+	qa := startTestQuery(t, manager, a, "slow-a", "SELECT 'slow'")
 	b := openTestSession(t, manager, "b") // Connecting must not wait for a's SQL.
-	qb := startTestQuery(t, manager, b, "fast-b", "fast")
+	qb := startTestQuery(t, manager, b, "fast-b", "SELECT 'fast'")
 	if response := receive(t, manager); response.Type != "query.result" || response.RequestID != qb.RequestID {
 		t.Fatal("one slow session blocked another session")
 	}
-	qb = startTestQuery(t, manager, b, "slow-b", "slow")
+	qb = startTestQuery(t, manager, b, "slow-b", "SELECT 'slow'")
 	submit(t, manager, protocol.Command{Type: "cancel", RequestID: "wrong-stop", SessionID: a, QueryID: qb.QueryID})
 	if response := receive(t, manager); response.Type != "cancel.ack" || response.Status != "alreadyFinished" {
 		t.Fatal("cancellation did not require the matching session and query")
@@ -119,7 +119,7 @@ func TestConcurrentSessionsConnectExecuteAndStopIndependently(t *testing.T) {
 	if response := receive(t, manager); response.Status != "alreadyFinished" {
 		t.Fatal("late Stop was accepted")
 	}
-	startTestQuery(t, manager, a, "after-stop", "fast")
+	startTestQuery(t, manager, a, "after-stop", "SELECT 'fast'")
 	if response := receive(t, manager); response.Type != "query.result" {
 		t.Fatal("session was not reusable after Stop")
 	}
@@ -129,7 +129,7 @@ func TestConcurrentSessionsConnectExecuteAndStopIndependently(t *testing.T) {
 	if terminal.RequestID != qb.RequestID || terminal.Type != "error" || ack.Type != "disconnect.ack" || ack.SessionID != b {
 		t.Fatal("disconnect did not cancel its query before closing its session")
 	}
-	startTestQuery(t, manager, a, "after-other-close", "fast")
+	startTestQuery(t, manager, a, "after-other-close", "SELECT 'fast'")
 	if response := receive(t, manager); response.Type != "query.result" {
 		t.Fatal("disconnect affected another session")
 	}
@@ -159,21 +159,21 @@ func TestCancellationKeepsSessionBusyUntilRecoveryFinishes(t *testing.T) {
 	defer manager.Close()
 	defer release()
 	id := openTestSession(t, manager, "a")
-	query := startTestQuery(t, manager, id, "recovering", "slow")
+	query := startTestQuery(t, manager, id, "recovering", "SELECT 'slow'")
 	<-started
 	submit(t, manager, protocol.Command{Type: "cancel", RequestID: "stop", SessionID: id, QueryID: query.QueryID})
 	if receive(t, manager).Status != "accepted" {
 		t.Fatal("Stop was not accepted")
 	}
-	submit(t, manager, protocol.Command{Type: "execute", RequestID: "too-early", SessionID: id, QueryID: "too-early", SQL: "fast"})
-	if response := receive(t, manager); response.Category != "busy" || executions.Load() != 1 {
+	submit(t, manager, protocol.Command{Type: "execute", RequestID: "too-early", SessionID: id, QueryID: "too-early", SQL: "SELECT 'fast'"})
+	if response := receive(t, manager); response.Category != "busy" || !response.SQLNotExecuted || executions.Load() != 1 {
 		t.Fatal("another query ran before transaction recovery completed")
 	}
 	release()
 	if response := receive(t, manager); response.RequestID != query.RequestID || response.Category != "cancelled" {
 		t.Fatal("recovering query did not finish")
 	}
-	startTestQuery(t, manager, id, "after-recovery", "fast")
+	startTestQuery(t, manager, id, "after-recovery", "SELECT 'fast'")
 	if receive(t, manager).Type != "query.result" {
 		t.Fatal("recovered session was not reusable")
 	}
@@ -191,7 +191,7 @@ func TestCloseAndShutdownReleaseSessionsWithBlockedConsumer(t *testing.T) {
 			defer manager.Close()
 			for index := range 16 {
 				id := openTestSession(t, manager, fmt.Sprint("session-", index))
-				startTestQuery(t, manager, id, fmt.Sprint("slow-", index), "slow")
+				startTestQuery(t, manager, id, fmt.Sprint("slow-", index), "SELECT 'slow'")
 			}
 			if graceful {
 				submit(t, manager, protocol.Command{Type: "shutdown", RequestID: "shutdown"})

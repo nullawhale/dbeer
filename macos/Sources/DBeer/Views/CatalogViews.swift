@@ -5,34 +5,30 @@ struct ProfileCatalogRow: View {
     let profile: SavedConnection
     @ObservedObject var workspace: ApplicationWorkspace
     let edit: () -> Void
+    let duplicate: () -> Void
     let delete: () -> Void
     private var expanded = SwiftUI.State(initialValue: false)
     private var isExpanding = SwiftUI.State(initialValue: false)
-    private var expansionError = SwiftUI.State<String?>(initialValue: nil)
 
-    init(profile: SavedConnection, workspace: ApplicationWorkspace, edit: @escaping () -> Void, delete: @escaping () -> Void) {
+    init(profile: SavedConnection, workspace: ApplicationWorkspace, edit: @escaping () -> Void,
+         duplicate: @escaping () -> Void, delete: @escaping () -> Void) {
         self.profile = profile
         self.workspace = workspace
         self.edit = edit
+        self.duplicate = duplicate
         self.delete = delete
     }
 
     private var isConnected: Bool { workspace.services[profile.id]?.connectionState == .connected }
 
     var body: some View {
-        DisclosureGroup(isExpanded: Binding(get: { expanded.wrappedValue }, set: setExpanded)) {
+        DisclosureGroup(isExpanded: Binding(get: { expanded.wrappedValue }, set: { setExpanded($0) })) {
             catalog
         } label: {
             row.padding(.leading, 8)
         }
         .onChange(of: isConnected) { _, value in
             if !value { expanded.wrappedValue = false }
-        }
-        .alert("Connection Failed", isPresented: Binding(get: { expansionError.wrappedValue != nil },
-            set: { if !$0 { expansionError.wrappedValue = nil } })) {
-            Button("OK", role: .cancel) { expansionError.wrappedValue = nil }
-        } message: {
-            Text(expansionError.wrappedValue ?? "The connection could not be opened.")
         }
         .accessibilityIdentifier("profile-\(profile.id.uuidString)")
     }
@@ -44,10 +40,7 @@ struct ProfileCatalogRow: View {
         Task { @MainActor in
             defer { isExpanding.wrappedValue = false }
             await workspace.connectProfile(profile.id)
-            guard isConnected else {
-                expansionError.wrappedValue = workspace.error ?? "The connection could not be opened."
-                return
-            }
+            guard isConnected else { return }
             expanded.wrappedValue = true
             await workspace.loadSchemas(profile.id)
         }
@@ -55,11 +48,19 @@ struct ProfileCatalogRow: View {
 
     private var catalog: some View {
         Group {
+            if profile.engine == .cassandra && isConnected {
+                Button { Task { await workspace.showClusterNodes(profile.id) } } label: {
+                    Label("Cluster Nodes", systemImage: "server.rack")
+                }
+                .buttonStyle(.plain).controlHover()
+                .help("Show discovered Cassandra nodes and driver status")
+                .accessibilityIdentifier("showClusterNodes-\(profile.id.uuidString)")
+            }
             if !workspace.catalogSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 if workspace.services[profile.id]?.connectionState != .connected {
-                    Text("Connect to search this profile.").font(.caption).foregroundStyle(.secondary)
+                    Text("Connect to search this profile.").font(.caption).appSecondaryText()
                 } else if let results = workspace.catalogSearchResults[profile.id] {
-                    if results.isEmpty { Text("No matching objects").font(.caption).foregroundStyle(.secondary) }
+                    if results.isEmpty { Text("No matching objects").font(.caption).appSecondaryText() }
                     ForEach(results) { node in CatalogBranchView(node: node, workspace: workspace, showSchema: true) }
                 } else { ProgressView().controlSize(.small) }
             } else if let roots = workspace.catalogRoots[profile.id] {
@@ -75,32 +76,58 @@ struct ProfileCatalogRow: View {
     private var row: some View {
         HStack(spacing: 8) {
             DatabaseEngineIcon(engine: profile.engine)
-            Text(profile.name).lineLimit(1)
-            Spacer(minLength: 0)
-            if isConnected {
-                Circle().fill(.green).frame(width: 6, height: 6)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(profile.name).lineLimit(1)
+                if profile.policy.environment != .unspecified {
+                    Text(profile.policy.environment.label)
+                        .font(.caption2.weight(.regular))
+                        .foregroundStyle(.tertiary)
+                        .fixedSize()
+                }
             }
-            if isExpanding.wrappedValue { ProgressView().controlSize(.mini) }
+            Spacer(minLength: 0)
+            ZStack {
+                if isConnected {
+                    Circle().fill(.green).frame(width: 6, height: 6)
+                } else if isExpanding.wrappedValue {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .frame(width: 16, height: 16)
         }
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) { setExpanded(true) }
+        .onTapGesture(count: 2) { setExpanded(!expanded.wrappedValue) }
         .onTapGesture { Task { await workspace.library.selectConnection(profile.id) } }
         .catalogRowHover()
-        .contextMenu {
-            if isConnected {
-                Button("Disconnect") { Task { await workspace.disconnectProfile(profile.id) } }
-            } else {
-                Button("Connect") { Task { await workspace.connectProfile(profile.id) } }
-                    .disabled(workspace.services[profile.id]?.connectionState == .connecting)
+        .catalogRowContextMenu { contextMenu }
+        .help(workspace.services[profile.id]?.connectionProgress ?? "\(profile.user)@\(profile.host):\(profile.port)/\(profile.database)")
+    }
+
+    private var contextMenu: NSMenu {
+        let menu = NSMenu()
+        if isConnected {
+            menu.addCatalogAction("Disconnect") { Task { await workspace.disconnectProfile(profile.id) } }
+        } else if workspace.services[profile.id]?.isConnecting == true {
+            menu.addCatalogAction("Cancel Connection") { workspace.services[profile.id]?.cancelConnection() }
+        } else {
+            menu.addCatalogAction("Connect", enabled: workspace.services[profile.id]?.isConnecting != true) {
+                Task { await workspace.connectProfile(profile.id) }
             }
-            Button("New SQL Tab") { workspace.newDocument(profileID: profile.id) }
-            Button("Refresh") { Task { await workspace.loadSchemas(profile.id, refresh: true) } }
-            Divider()
-            Button("Export Connection…") { workspace.exportProfiles([profile]) }
-            Button("Edit Connection…", action: edit)
-            Button("Delete Connection…", role: .destructive, action: delete)
         }
-        .help("\(profile.user)@\(profile.host):\(profile.port)/\(profile.database)")
+        menu.addCatalogAction(profile.engine == .mongodb ? "New JSON Script" : "New SQL Tab") { workspace.newDocument(profileID: profile.id) }
+        if profile.engine == .cassandra {
+            menu.addCatalogAction("Cluster Nodes…", enabled: isConnected) {
+                Task { await workspace.showClusterNodes(profile.id) }
+            }
+        }
+        menu.addCatalogAction("Refresh") { Task { await workspace.loadSchemas(profile.id, refresh: true) } }
+        menu.addItem(.separator())
+        menu.addCatalogAction("Export Connection…") { workspace.exportProfiles([profile]) }
+        menu.addCatalogAction("Edit Connection…") { edit() }
+        menu.addCatalogAction("Duplicate Connection…", enabled: !workspace.library.isSavingConnection,
+            identifier: "duplicateConnection") { duplicate() }
+        menu.addCatalogAction("Delete Connection…") { delete() }
+        return menu
     }
 }
 
@@ -122,7 +149,7 @@ struct CatalogBranchView: View {
                         ForEach(children) { child in
                             AnyView(CatalogBranchView(node: child, workspace: workspace))
                         }
-                        if children.isEmpty { Text("No objects").font(.caption).foregroundStyle(.secondary) }
+                        if children.isEmpty { Text("No objects").font(.caption).appSecondaryText() }
                     }
                 } label: { row }
                 .onChange(of: node.isExpanded) { _, value in
@@ -130,42 +157,63 @@ struct CatalogBranchView: View {
                 }
             } else { row }
         }
-        .contextMenu {
-            if node.kind == .object {
-                Button("Structure and Definition…") { Task { await workspace.inspect(node) } }
-                if ["table", "view"].contains(node.objectKind) {
-                    Button("Open Data") { Task { await workspace.openData(node) } }
-                    Button("Generate SELECT") {
-                        Task {
-                            if let sql = await workspace.generatedSelect(node) {
-                                workspace.newDocument(profileID: node.profileID, text: sql)
-                            }
-                        }
-                    }
-                }
-                Button("Copy Name") { Task { await workspace.copyName(node) } }
+    }
+
+    private var contextMenu: NSMenu {
+        let menu = NSMenu()
+        if node.kind == .object {
+            menu.addCatalogAction(node.isPostgresType ? "Inspect Type…" : "Structure and Definition…") {
+                Task { await workspace.inspect(node) }
             }
-            if node.isExpandable { Button("Refresh") { Task { await workspace.expand(node, refresh: true) } } }
+            if ["table", "view"].contains(node.objectKind) {
+                menu.addCatalogAction("Open Data") { Task { await workspace.openData(node) } }
+                menu.addCatalogAction("Open in New Tab") { Task { await workspace.openData(node, inNewTab: true) } }
+                menu.addCatalogAction(node.engine == .mongodb ? "Generate Find Request" : "Generate SELECT") {
+                    Task { await workspace.openGeneratedSelect(node) }
+                }
+            }
+            menu.addCatalogAction("Copy Name") { Task { await workspace.copyName(node) } }
+            if node.isPostgresType {
+                menu.addCatalogAction("Refresh") { Task { await workspace.inspect(node) } }
+            }
         }
+        if node.isExpandable {
+            menu.addCatalogAction("Refresh") { Task { await workspace.expand(node, refresh: true) } }
+        }
+        return menu
     }
 
     private var row: some View {
+        Group {
+            if node.isPostgresType {
+                Button { Task { await workspace.inspect(node) } } label: { rowLabel }
+                    .buttonStyle(.plain)
+                    .focusable()
+                    .accessibilityLabel("Inspect \(node.objectKind == "enum" ? "enum" : "type") \(node.schema).\(node.name)")
+                    .accessibilityIdentifier("catalogObject-\(node.id.uuidString)")
+            } else {
+                rowLabel
+                    .onTapGesture(count: 2) {
+                        if node.isExpandable { node.isExpanded.toggle() }
+                        else if node.kind == .object { Task { await workspace.inspect(node) } }
+                    }
+            }
+        }
+        .catalogRowHover()
+        .catalogRowContextMenu { contextMenu }
+        .help(node.detail ?? node.name)
+    }
+
+    private var rowLabel: some View {
         HStack(spacing: 6) {
-            Image(systemName: node.symbol).foregroundStyle(.secondary)
+            Image(systemName: node.symbol).appSecondaryText()
             Text(node.name).lineLimit(1)
-            if showSchema { Text(node.schema).font(.caption2).foregroundStyle(.secondary) }
+            if showSchema { Text(node.schema).font(.caption2).appSecondaryText() }
         }
         .font(.callout)
         .padding(.leading, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .catalogRowHover()
-        .help(node.detail ?? node.name)
-        .onTapGesture(count: 2) {
-            if node.kind == .object {
-                if ["table", "view"].contains(node.objectKind) { Task { await workspace.openData(node) } }
-                else { Task { await workspace.inspect(node) } }
-            }
-        }
     }
 }
 

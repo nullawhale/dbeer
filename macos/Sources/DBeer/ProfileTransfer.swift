@@ -8,11 +8,13 @@ struct ImportedProfile: Identifiable, Equatable, Sendable {
 
     /// Recomputed before importing too, so a CA removed after preview does not
     /// silently switch the connection to the system trust store.
+    var requiresSSHKeySelection: Bool {
+        profile.ssh?.authMethod == .privateKey && (profile.ssh?.identityFile.map(ProfileTransfer.isLocalReadableCA) != true)
+    }
+
     var requiresCASelection: Bool {
         guard let path = profile.sslRootCert else { return false }
-        var directory: ObjCBool = false
-        return !FileManager.default.fileExists(atPath: path, isDirectory: &directory) ||
-            directory.boolValue || !FileManager.default.isReadableFile(atPath: path)
+        return !ProfileTransfer.isLocalReadableCA(path)
     }
 }
 
@@ -31,13 +33,22 @@ enum ProfileTransferError: LocalizedError {
 /// Portable metadata only. UUIDs and password/private-key fields have no place
 /// in this format; decoding a preview never reads or writes Keychain.
 enum ProfileTransfer {
-    static let currentVersion = 1
+    static let currentVersion = 3
     static let maxFileBytes = 2 * 1_024 * 1_024
     static let maxProfiles = 1_000
 
     private struct Envelope: Codable {
         let version: Int
         let profiles: [Profile]
+    }
+
+    private struct PortableSSH: Codable {
+        var host: String
+        var port: Int
+        var user: String
+        var authMethod: SSHConfiguration.Authentication
+        init(_ value: SSHConfiguration) { host = value.host; port = value.port; user = value.user; authMethod = value.authMethod }
+        var configuration: SSHConfiguration { SSHConfiguration(host: host, port: port, user: user, authMethod: authMethod) }
     }
 
     private struct Profile: Codable {
@@ -49,8 +60,16 @@ enum ProfileTransfer {
         let user: String
         let sslMode: String
         let sslRootCert: String?
+        var policy: ExecutionPolicy?
+        var contactPoints: [String]?
+        var localDatacenter: String?
+        var consistency: String?
+        var ssh: PortableSSH?
+        var mongodb: MongoDBSettings?
 
         init(_ saved: SavedConnection) {
+            ssh = saved.ssh.map(PortableSSH.init)
+            mongodb = saved.mongodb
             name = saved.name
             engine = saved.engine
             host = saved.host
@@ -59,12 +78,17 @@ enum ProfileTransfer {
             user = saved.user
             sslMode = saved.sslMode
             sslRootCert = saved.sslRootCert
+            policy = saved.policy
+            contactPoints = saved.contactPoints
+            localDatacenter = saved.localDatacenter
+            consistency = saved.consistency
         }
 
         func imported() -> ImportedProfile {
             ImportedProfile(profile: SavedConnection(id: UUID(), name: name, settings: ConnectionSettings(
                 host: host, port: port, database: database, user: user, password: "", sslMode: sslMode,
-                sslRootCert: sslRootCert, engine: engine)))
+                sslRootCert: sslRootCert, engine: engine, policy: policy ?? ExecutionPolicy(), contactPoints: contactPoints,
+                localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.configuration.runtime(profileId: UUID()), mongodb: mongodb)))
         }
     }
 
@@ -87,13 +111,31 @@ enum ProfileTransfer {
             }
             var uniqueKeys = UniqueJSONKeys(data)
             try uniqueKeys.validate()
-            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert"]
-            let required = permitted.subtracting(["sslRootCert"])
+            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb"]
+            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb"])
             guard raw.allSatisfy({ Set($0.keys).isSubset(of: permitted) && required.isSubset(of: Set($0.keys)) }) else {
                 throw ProfileTransferError.invalid
             }
+            guard raw.allSatisfy({ record in
+                guard let value = record["mongodb"], !(value is NSNull) else { return true }
+                guard let fields = value as? [String: Any] else { return false }
+                return Set(fields.keys).isSubset(of: ["authSource", "authMechanism", "replicaSet", "directConnection"])
+            }) else { throw ProfileTransferError.invalid }
+            guard raw.allSatisfy({ record in
+                guard let value = record["ssh"], !(value is NSNull) else { return true }
+                guard let fields = value as? [String: Any] else { return false }
+                return Set(fields.keys) == ["host", "port", "user", "authMethod"]
+            }) else { throw ProfileTransferError.invalid }
+            guard raw.allSatisfy({ record in
+                // Legacy v1 treats null like omission. Version 2 still requires
+                // a decoded policy below, and present objects remain strict.
+                guard let policy = record["policy"], !(policy is NSNull) else { return true }
+                guard let fields = policy as? [String: Any] else { return false }
+                return Set(fields.keys) == ["environment", "readOnly"]
+            }) else { throw ProfileTransferError.invalid }
             let envelope = try JSONDecoder().decode(Envelope.self, from: data)
-            guard envelope.version == currentVersion else { throw ProfileTransferError.unsupportedVersion }
+            guard (1...currentVersion).contains(envelope.version) else { throw ProfileTransferError.unsupportedVersion }
+            if envelope.version >= 2, envelope.profiles.contains(where: { $0.policy == nil }) { throw ProfileTransferError.invalid }
             try validate(envelope.profiles)
             return envelope.profiles.map { $0.imported() }
         } catch let error as ProfileTransferError { throw error }
@@ -113,12 +155,41 @@ enum ProfileTransfer {
     private static func validate(_ profiles: [Profile]) throws {
         guard !profiles.isEmpty, profiles.count <= maxProfiles,
               profiles.allSatisfy({ profile in
-                  let fields = [profile.name, profile.host, profile.database, profile.user]
+                  var native = profile.imported().profile.settings(password: "")
+                  if native.ssh?.authMethod == .privateKey { native.ssh?.identityFile = "/requires-local-selection" }
+                  let fields = [profile.name, profile.host] + ([.cassandra, .mongodb].contains(profile.engine) ? [] : [profile.database, profile.user])
                   return fields.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                       !$0.contains("\0") && $0.utf8.count <= 1_024 } && profile.name.count <= 128 &&
-                      (1...65_535).contains(profile.port) && profile.engine.sslModes.contains(profile.sslMode) &&
-                      (profile.sslRootCert.map { $0.hasPrefix("/") && !$0.contains("\0") && $0.utf8.count <= 4_096 } ?? true)
+                      native.hasValidNativeFields &&
+                      (profile.sslRootCert.map { validCAHint($0) } ?? true)
               }) else { throw ProfileTransferError.invalid }
+    }
+
+    /// Portable absolute hints carry no authority on another OS. Only a POSIX
+    /// path can be local on this Mac; Windows drive/UNC hints require the user
+    /// to choose a local CA before import. Never probe foreign/network hints.
+    static func validCAHint(_ path: String) -> Bool {
+        guard !path.isEmpty, !path.contains("\0"), path.utf8.count <= 4_096 else { return false }
+        if path.hasPrefix("/") { return true }
+        let bytes = Array(path.utf8)
+        if bytes.count >= 3, ((65...90).contains(bytes[0]) || (97...122).contains(bytes[0])),
+           bytes[1] == 58, bytes[2] == 92 || bytes[2] == 47 { return true }
+        if path.hasPrefix("\\\\") {
+            let parts = path.dropFirst(2).split(separator: "\\", omittingEmptySubsequences: false)
+            guard parts.count >= 2, !parts[0].isEmpty, !parts[1].isEmpty,
+                  !["?", "."].contains(String(parts[0])),
+                  !parts[0].contains(where: { $0 == "/" || $0 == ":" }),
+                  !parts[1].contains(where: { $0 == "/" || $0 == ":" }) else { return false }
+            return true
+        }
+        return false
+    }
+
+    static func isLocalReadableCA(_ path: String) -> Bool {
+        guard validCAHint(path), path.hasPrefix("/") else { return false }
+        var directory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &directory) &&
+            !directory.boolValue && FileManager.default.isReadableFile(atPath: path)
     }
 
     /// JSONDecoder accepts repeated keys. Reject them, including escaped

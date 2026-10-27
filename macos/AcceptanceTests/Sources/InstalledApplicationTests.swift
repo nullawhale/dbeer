@@ -13,6 +13,8 @@ final class InstalledApplicationTests: XCTestCase {
         let installAppPath: String
         let bundleIdentifier: String
         let expectedBuild: String
+        let expectedVersion: String?
+        let artifactRole: String?
         let phase: String
         let launchPolicy: String
         let ownedPID: Int32
@@ -20,6 +22,8 @@ final class InstalledApplicationTests: XCTestCase {
         let smokeProfileEngine: String?
         let portableProfilesPath: String?
         let importProfileNames: [String]?
+        let restoredDraftIDs: [UUID]?
+        let restoredDraftTexts: [String]?
         let inputSourceOriginalID: String
         let inputSourceASCIIID: String
         let resultFile: String
@@ -43,6 +47,8 @@ final class InstalledApplicationTests: XCTestCase {
         var appAliveAfterCancel = false
         var longQueryObserved = false
         var stoppedAndClosed = false
+        var restoredDisconnected = false
+        var restoredDraftsVerified = false
     }
 
     private enum Rejection: Error {
@@ -56,7 +62,7 @@ final class InstalledApplicationTests: XCTestCase {
         let configuration = try loadConfiguration()
         let appURL = URL(fileURLWithPath: configuration.installAppPath, isDirectory: true).resolvingSymlinksInPath()
         guard let bundle = Bundle(url: appURL), bundle.bundleIdentifier == configuration.bundleIdentifier,
-              bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == "0.1.0",
+              bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String == (configuration.expectedVersion ?? "0.1.0"),
               bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String == configuration.expectedBuild else {
             throw Rejection.wrongApplication
         }
@@ -78,10 +84,15 @@ final class InstalledApplicationTests: XCTestCase {
 
         var evidence = Evidence(phase: configuration.phase, appPath: appURL.path, expectedBuild: configuration.expectedBuild,
             pid: configuration.ownedPID, profileID: configuration.smokeProfileID, engine: configuration.smokeProfileEngine)
-        if configuration.phase == "build5-import" {
+        if ["build5-import", "baseline-import"].contains(configuration.phase) {
             try importProfiles(app: app, configuration: configuration, appURL: appURL)
             evidence.importPreviewSeen = true
             evidence.importedProfilesConfirmed = true
+            try quitNormally(app: app, configuration: configuration, appURL: appURL)
+        } else if configuration.phase == "candidate-disconnected" {
+            try verifyDisconnectedRestoration(app: app, configuration: configuration, appURL: appURL)
+            evidence.restoredDisconnected = true
+            evidence.restoredDraftsVerified = true
             try quitNormally(app: app, configuration: configuration, appURL: appURL)
         } else {
             try queryFixture(app: app, configuration: configuration, appURL: appURL)
@@ -110,6 +121,29 @@ final class InstalledApplicationTests: XCTestCase {
         let record = "DBEER_ACCEPTANCE_EVIDENCE " + String(decoding: encoded, as: UTF8.self) + "\n"
         FileHandle.standardOutput.write(Data(record.utf8))
         phaseCompleted = true
+    }
+
+    private func verifyDisconnectedRestoration(app: XCUIApplication, configuration: Configuration, appURL: URL) throws {
+        guard let identifiers = configuration.restoredDraftIDs, let texts = configuration.restoredDraftTexts,
+              identifiers.count == 2, texts.count == identifiers.count,
+              app.secureTextFields.count == 0 else { throw Rejection.unsafeConfiguration }
+        let window = app.windows.firstMatch
+        for (identifier, text) in zip(identifiers, texts) {
+            let tab = window.descendants(matching: .any).matching(identifier: "selectDocument-" + identifier.uuidString).firstMatch
+            guard tab.waitForExistence(timeout: 10), tab.isHittable else { throw Rejection.missingControl }
+            try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
+            tab.click()
+            let editor = window.textViews["sqlEditor"]
+            guard editor.waitForExistence(timeout: 5), editor.value as? String == text else { throw Rejection.queryFailed }
+            let stop = window.buttons["Stop"]
+            guard !window.tables["Query results"].exists,
+                  !stop.exists || !stop.isEnabled else { throw Rejection.queryFailed }
+        }
+        // The independent fixture observer must also see zero physical sessions
+        // throughout this phase, including after every restored tab is selected.
+        Thread.sleep(forTimeInterval: 2)
+        try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
+        captureWindow(app, name: configuration.phase + "-restored-drafts")
     }
 
     private func queryFixture(app: XCUIApplication, configuration: Configuration, appURL: URL) throws {
@@ -232,17 +266,26 @@ final class InstalledApplicationTests: XCTestCase {
             }
         }
         captureWindow(app, name: configuration.phase + "-preview")
-        let confirm = preview.buttons["Import"]
-        guard confirm.isEnabled else { throw Rejection.missingControl }
+        let currentConfirm = preview.buttons["importSelectedProfiles"]
+        let confirm: XCUIElement
+        if currentConfirm.waitForExistence(timeout: 2) {
+            confirm = currentConfirm
+        } else if configuration.artifactRole == nil || configuration.expectedVersion == "0.1.0" {
+            // The older accepted archives predate the stable import identifier.
+            confirm = preview.buttons["Import"]
+        } else {
+            throw Rejection.missingControl
+        }
+        guard confirm.waitForExistence(timeout: 5), confirm.isEnabled else { throw Rejection.missingControl }
         try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
         confirm.click()
         guard preview.waitForNonExistence(timeout: 10) else { throw Rejection.missingControl }
-        // The actual outline row combines name and engine in one AX label.
-        // Its stable profile identifier belongs to the imported UUID, rather
-        // than to a separate name-only StaticText.
+        // The accepted archives expose both name-first and engine-first AX
+        // labels. Require one exact pair and the newly imported profile UUID.
         for (name, engine) in zip(names, ["PostgreSQL", "MySQL"]) {
             let row = app.windows.firstMatch.descendants(matching: .any).matching(NSPredicate(
-                format: "identifier BEGINSWITH %@ AND label == %@", "profile-", name + ", " + engine)).firstMatch
+                format: "identifier BEGINSWITH %@ AND (label == %@ OR label == %@)",
+                "profile-", name + ", " + engine, engine + ", " + name)).firstMatch
             guard row.waitForExistence(timeout: 5),
                   UUID(uuidString: String(row.identifier.dropFirst("profile-".count))) != nil else {
                 throw Rejection.missingControl
@@ -472,20 +515,35 @@ final class InstalledApplicationTests: XCTestCase {
                                      configuration: Configuration, appURL: URL) throws {
         try assertOwnedApplication(configuration, at: appURL, requireForeground: true)
         profile.rightClick()
-        // The archived app exposes the profile context menu inside its Sidebar
-        // outline. File's hidden New SQL Tab menu item must never participate.
-        let sidebar = app.windows.firstMatch.outlines["Sidebar"]
+        // AppKit can expose a context menu as an application sibling rather
+        // than an outline descendant. Only the one visible, hittable menu in
+        // this owned process may match; closed menu-bar alternatives are excluded.
         let deadline = Date().addingTimeInterval(5)
         var visibleMenus: [XCUIElement] = []
         repeat {
-            visibleMenus = sidebar.menus.matching(identifier: "server.rack").allElementsBoundByIndex.filter { menu in
+            visibleMenus = app.menus.allElementsBoundByIndex.filter { menu in
                 let frame = menu.frame
-                return frame.width > 0 && frame.height > 0 && !frame.isInfinite && !frame.isNull
+                let items = menu.menuItems.matching(identifier: title)
+                guard frame.width > 0 && frame.height > 0 && !frame.isInfinite && !frame.isNull,
+                      items.count == 1 else { return false }
+                let item = items.firstMatch
+                let target = item.frame
+                return item.isHittable && target.width > 0 && target.height > 0 && !target.isInfinite && !target.isNull &&
+                    frame.contains(CGPoint(x: target.midX, y: target.midY))
             }
             if !visibleMenus.isEmpty { break }
             Thread.sleep(forTimeInterval: 0.1)
         } while Date() < deadline
-        guard visibleMenus.count == 1, let menu = visibleMenus.first else { throw Rejection.missingControl }
+        guard visibleMenus.count == 1, let menu = visibleMenus.first else {
+            if ownershipSnapshot(configuration, at: appURL, requireForeground: true).failure == nil,
+               app.secureTextFields.count == 0 {
+                let diagnostic = XCTAttachment(string: app.debugDescription)
+                diagnostic.name = configuration.phase + "-profile-menu-ax.txt"
+                diagnostic.lifetime = .keepAlways
+                add(diagnostic)
+            }
+            throw Rejection.missingControl
+        }
         let matches = menu.menuItems.matching(identifier: title)
         guard matches.count == 1 else { throw Rejection.missingControl }
         let item = matches.firstMatch
@@ -508,17 +566,37 @@ final class InstalledApplicationTests: XCTestCase {
         }
         let configuration = try JSONDecoder().decode(Configuration.self, from: Data(contentsOf: URL(fileURLWithPath: path)))
         guard configuration.installAppPath.hasPrefix("/"), configuration.installAppPath.hasSuffix(".app"),
-              configuration.bundleIdentifier == "dev.dbeer.app", ["5", "6"].contains(configuration.expectedBuild),
+              configuration.bundleIdentifier == "dev.dbeer.app",
+              !configuration.expectedBuild.isEmpty, configuration.expectedBuild.allSatisfy(\.isNumber),
               configuration.launchPolicy == "attach", configuration.ownedPID > 1,
               !configuration.inputSourceOriginalID.isEmpty, !configuration.inputSourceASCIIID.isEmpty,
               !configuration.phase.isEmpty, configuration.resultFile.hasPrefix("/") else {
             throw Rejection.unsafeConfiguration
         }
-        if configuration.phase == "build5-import" {
+        if let role = configuration.artifactRole {
+            guard ["baseline", "candidate"].contains(role), let version = configuration.expectedVersion,
+                  !version.isEmpty, version.allSatisfy({ $0.isNumber || $0 == "." }) else {
+                throw Rejection.unsafeConfiguration
+            }
+            if configuration.phase == "baseline-import" {
+                guard role == "baseline", ["6", "8"].contains(configuration.expectedBuild),
+                      configuration.portableProfilesPath?.hasPrefix("/") == true,
+                      configuration.importProfileNames?.count == 2 else { throw Rejection.unsafeConfiguration }
+            } else if configuration.phase == "candidate-disconnected" {
+                guard role == "candidate", configuration.smokeProfileID == nil,
+                      configuration.restoredDraftIDs?.count == 2, configuration.restoredDraftTexts?.count == 2 else {
+                    throw Rejection.unsafeConfiguration
+                }
+            } else {
+                guard configuration.smokeProfileID != nil,
+                      let engine = configuration.smokeProfileEngine, ["postgresql", "mysql"].contains(engine),
+                      configuration.phase == role + "-" + engine else { throw Rejection.unsafeConfiguration }
+            }
+        } else if configuration.phase == "build5-import" {
             guard configuration.expectedBuild == "5", configuration.portableProfilesPath?.hasPrefix("/") == true,
                   configuration.importProfileNames?.count == 2 else { throw Rejection.unsafeConfiguration }
         } else {
-            guard configuration.smokeProfileID != nil,
+            guard ["5", "6"].contains(configuration.expectedBuild), configuration.smokeProfileID != nil,
                   let engine = configuration.smokeProfileEngine, ["postgresql", "mysql"].contains(engine),
                   configuration.phase == "build" + configuration.expectedBuild + "-" + engine else {
                 throw Rejection.unsafeConfiguration

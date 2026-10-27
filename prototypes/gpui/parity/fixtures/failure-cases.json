@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "data": "synthetic only",
+  "cases": [
+    {"id":"FAULT-first-script","engine":"both","sql":["SELECT missing_parity_column", "SELECT 2"],"expect":"First statement fails; second is skipped; original source offset retained."},
+    {"id":"FAULT-middle-script","engine":"both","sql":["SELECT 1", "SELECT missing_parity_column", "SELECT 3"],"expect":"First result retained; middle error mapped; final statement skipped."},
+    {"id":"FAULT-two-sessions","engine":"both","steps":["Open two physical SQL tab sessions.","Create a temporary table and BEGIN in A.","Query the temporary name in B; observe missing table; change B SET state.","Roll back A and close B."],"expect":"Independent transaction, SET and temporary state; service session remains separate."},
+    {"id":"FAULT-commit-ack","engine":"both","steps":["Stage a synthetic update and Apply through a fresh session.","Fault injector drops transport after COMMIT is sent but before ACK.","Verify using a separate observer before explicit reload/discard."],"expect":"Unknown outcome blocks automatic retry, reapply and unsafe close."},
+    {"id":"FAULT-cancel-phases","engine":"both","steps":["Cancel connect, preview, apply, script and full export independently.","Deliver a late response after tab/profile generation changes."],"expect":"Only captured context changes; terminal response delivered; stale completion ignored."},
+    {"id":"FAULT-persistence","engine":"none","steps":["Inject credential write/delete failure, metadata replacement failure and credential rollback failure.","Open corrupt/future-version files and a locked destination."],"expect":"Previous exact bytes and credentials retained where rollback succeeds; recovery error surfaced if rollback fails; no invented success."}
+  ],
+  "tls": {"runner":"scripts/test-tls.sh","cases":["verified chain and hostname","verify-ca hostname behavior","hostname mismatch","unknown CA","missing and unreadable CA","CA path remap"],"certificates":"Only runner-generated disposable certificates; never store signing material here."}
+}

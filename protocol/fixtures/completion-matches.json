@@ -1,0 +1,17 @@
+[
+  {"query":"oi","label":"order_items","ranges":[[0,1],[6,7]]},
+  {"query":"ordit","label":"OrderItems","ranges":[[0,3],[5,7]]},
+  {"query":"items","label":"order_items","ranges":[[6,11]]},
+  {"query":"hs","label":"HTTPServer","ranges":[[0,1],[4,5]]},
+  {"query":"ordes","label":"orders","ranges":[[0,4],[5,6]]},
+  {"query":"ordres","label":"orders","ranges":[[0,6]]},
+  {"query":"ordxrs","label":"orders","ranges":[[0,3],[4,6]]},
+  {"query":"ooorders","label":"orders","ranges":[[0,6]]},
+  {"query":"dn","label":"😀Display_Name","ranges":[[2,3],[10,11]]},
+  {"query":"😀o","label":"😀orders","ranges":[[0,3]]},
+  {"query":"𝕌i","label":"𝕌ser_ID","ranges":[[0,2],[6,7]]},
+  {"query":"é","label":"éclair","ranges":[[0,1]]},
+  {"query":"e","label":"éclair","ranges":[[0,1]]},
+  {"query":"on","label":"order\"number","ranges":[[0,1],[6,7]]},
+  {"query":"","label":"orders","ranges":[]}
+]

@@ -1,0 +1,330 @@
+{
+  "formatVersion": 1,
+  "commands": [
+    {
+      "type": "schema.diff",
+      "requestId": "schema-diff",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "offset": 0
+      }
+    },
+    {
+      "type": "data.diff",
+      "requestId": "data-diff",
+      "dataComparison": {
+        "jobId": "data-job",
+        "offset": 0,
+        "cellOffset": 1
+      }
+    },
+    {
+      "type": "schema.diff",
+      "requestId": "schema-diff-default",
+      "schemaComparison": {
+        "jobId": "schema-job"
+      }
+    },
+    {
+      "type": "data.diff",
+      "requestId": "data-diff-default",
+      "dataComparison": {
+        "jobId": "data-job"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "type": "schema.diff.result",
+      "requestId": "schema-diff",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "offset": 0,
+        "diff": {
+          "formatVersion": 1,
+          "status": "complete",
+          "source": {
+            "kind": "text",
+            "totalBytes": 34
+          },
+          "target": {
+            "kind": "text",
+            "totalBytes": 59
+          },
+          "lines": [
+            {
+              "kind": "changed",
+              "source": {
+                "number": 1,
+                "text": "SELECT café, name",
+                "highlights": [
+                  {
+                    "start": 14,
+                    "end": 18
+                  }
+                ]
+              },
+              "target": {
+                "number": 1,
+                "text": "SELECT café, full_name",
+                "highlights": [
+                  {
+                    "start": 14,
+                    "end": 23
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "changed",
+              "source": {
+                "number": 2,
+                "text": "FROM old_table",
+                "highlights": [
+                  {
+                    "start": 5,
+                    "end": 14
+                  }
+                ]
+              },
+              "target": {
+                "number": 2,
+                "text": "FROM new_table",
+                "highlights": [
+                  {
+                    "start": 5,
+                    "end": 14
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "targetOnly",
+              "target": {
+                "number": 3,
+                "text": "WHERE active = true",
+                "highlights": [
+                  {
+                    "start": 0,
+                    "end": 19
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "equal",
+              "source": {
+                "number": 3,
+                "text": "",
+                "highlights": []
+              },
+              "target": {
+                "number": 4,
+                "text": "",
+                "highlights": []
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "data.diff.result",
+      "requestId": "data-diff",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "completed",
+        "offset": 0,
+        "cellOffset": 1,
+        "diff": {
+          "formatVersion": 1,
+          "status": "complete",
+          "source": {
+            "kind": "text",
+            "totalBytes": 34
+          },
+          "target": {
+            "kind": "text",
+            "totalBytes": 59
+          },
+          "lines": [
+            {
+              "kind": "changed",
+              "source": {
+                "number": 1,
+                "text": "SELECT café, name",
+                "highlights": [
+                  {
+                    "start": 14,
+                    "end": 18
+                  }
+                ]
+              },
+              "target": {
+                "number": 1,
+                "text": "SELECT café, full_name",
+                "highlights": [
+                  {
+                    "start": 14,
+                    "end": 23
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "changed",
+              "source": {
+                "number": 2,
+                "text": "FROM old_table",
+                "highlights": [
+                  {
+                    "start": 5,
+                    "end": 14
+                  }
+                ]
+              },
+              "target": {
+                "number": 2,
+                "text": "FROM new_table",
+                "highlights": [
+                  {
+                    "start": 5,
+                    "end": 14
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "targetOnly",
+              "target": {
+                "number": 3,
+                "text": "WHERE active = true",
+                "highlights": [
+                  {
+                    "start": 0,
+                    "end": 19
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "equal",
+              "source": {
+                "number": 3,
+                "text": "",
+                "highlights": []
+              },
+              "target": {
+                "number": 4,
+                "text": "",
+                "highlights": []
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "unicode SQL with added line",
+      "source": {
+        "kind": "text",
+        "text": "SELECT café, name\nFROM old_table\n",
+        "totalBytes": 34
+      },
+      "target": {
+        "kind": "text",
+        "text": "SELECT café, full_name\nFROM new_table\nWHERE active = true\n",
+        "totalBytes": 59
+      },
+      "expected": {
+        "formatVersion": 1,
+        "status": "complete",
+        "source": {
+          "kind": "text",
+          "totalBytes": 34
+        },
+        "target": {
+          "kind": "text",
+          "totalBytes": 59
+        },
+        "lines": [
+          {
+            "kind": "changed",
+            "source": {
+              "number": 1,
+              "text": "SELECT café, name",
+              "highlights": [
+                {
+                  "start": 14,
+                  "end": 18
+                }
+              ]
+            },
+            "target": {
+              "number": 1,
+              "text": "SELECT café, full_name",
+              "highlights": [
+                {
+                  "start": 14,
+                  "end": 23
+                }
+              ]
+            }
+          },
+          {
+            "kind": "changed",
+            "source": {
+              "number": 2,
+              "text": "FROM old_table",
+              "highlights": [
+                {
+                  "start": 5,
+                  "end": 14
+                }
+              ]
+            },
+            "target": {
+              "number": 2,
+              "text": "FROM new_table",
+              "highlights": [
+                {
+                  "start": 5,
+                  "end": 14
+                }
+              ]
+            }
+          },
+          {
+            "kind": "targetOnly",
+            "target": {
+              "number": 3,
+              "text": "WHERE active = true",
+              "highlights": [
+                {
+                  "start": 0,
+                  "end": 19
+                }
+              ]
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 3,
+              "text": "",
+              "highlights": []
+            },
+            "target": {
+              "number": 4,
+              "text": "",
+              "highlights": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

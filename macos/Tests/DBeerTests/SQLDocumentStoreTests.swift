@@ -13,7 +13,7 @@ struct SQLDocumentStoreTests {
         let store = FileSQLDocumentStore(fileURL: url)
         try await store.save(snapshot)
         let restored = try await FileSQLDocumentStore(fileURL: url).load()
-        #expect(restored.version == 1)
+        #expect(restored.version == SQLWorkspaceSnapshot.currentVersion)
         #expect(restored.documents == [document])
         #expect(restored.selectedDocumentID == document.id)
         #expect(restored.history.map(\.sql) == ["SELECT 1"])
@@ -81,10 +81,59 @@ struct SQLDocumentStoreTests {
         """.utf8)
         try data.write(to: url)
         let snapshot = try await FileSQLDocumentStore(fileURL: url).load()
-        #expect(snapshot.version == 1)
+        #expect(snapshot.version == SQLWorkspaceSnapshot.currentVersion)
         #expect(snapshot.documents.first?.id == id)
         #expect(snapshot.documents.first?.profileID == profile)
         #expect(snapshot.history.isEmpty && snapshot.historyEnabled)
+        #expect(snapshot.historySettings == .default)
         #expect(try Data(contentsOf: url.appendingPathExtension("v0.backup")) == data)
+    }
+
+    @Test(arguments: ["Completed", "succeeded", "failed", "unknown"])
+    func v1HistoryMigrationPreservesBytesAndDoesNotInventExecutionDetails(outcome: String) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("workspace.json")
+        let id = UUID()
+        let profile = UUID()
+        let now = Date.now.timeIntervalSince1970 * 1_000
+        let data = Data("""
+        {"version":1,"documents":[],"historyEnabled":false,"history":[
+          {"id":"\(id)","date":\(now),"profileID":"\(profile)","sql":"SELECT '😀'","outcome":"\(outcome)"}]}
+        """.utf8)
+        try data.write(to: url)
+        let store = FileSQLDocumentStore(fileURL: url)
+        let migrated = try await store.load()
+        #expect(migrated.version == SQLWorkspaceSnapshot.currentVersion && !migrated.historyEnabled)
+        let entry = try #require(migrated.history.first)
+        #expect(entry.id == id && entry.profileID == profile && entry.sql == "SELECT '😀'")
+        #expect(entry.outcome == .unknown && entry.legacyOutcome == outcome)
+        #expect(entry.startedAt == nil && entry.finishedAt == nil && entry.durationMs == nil)
+        #expect(entry.loadedRowCount == nil && entry.affectedRowCount == nil && entry.truncated == nil)
+        #expect(entry.profile == nil && entry.sqlCompleted == nil)
+        #expect(!entry.isFavorite && migrated.historySettings == .default)
+        let backup = url.appendingPathExtension("v1.backup")
+        #expect(try Data(contentsOf: backup) == data)
+        #expect((try FileManager.default.attributesOfItem(atPath: backup.path)[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+        #expect(try await store.load() == migrated)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
+    }
+
+    @Test func invalidHistoryMetadataIsPreservedInsteadOfBeingOverwritten() async throws {
+        for metadata in ["\"durationMs\":-1", "\"loadedRowCount\":-1", "\"affectedRowCount\":-1", "\"exportedRowCount\":-1"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent("workspace.json")
+            let data = Data("""
+            {"version":2,"documents":[],"history":[{"id":"\(UUID())","date":0,"sql":"SELECT 1","outcome":"succeeded",\(metadata)}]}
+            """.utf8)
+            try data.write(to: url)
+            let store = FileSQLDocumentStore(fileURL: url)
+            await #expect(throws: SQLDocumentStoreError.self) { _ = try await store.load() }
+            await #expect(throws: SQLDocumentStoreError.self) { try await store.save(SQLWorkspaceSnapshot()) }
+            #expect(try Data(contentsOf: url) == data)
+        }
     }
 }

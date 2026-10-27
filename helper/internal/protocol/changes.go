@@ -23,9 +23,10 @@ type SnapshotColumn struct {
 }
 
 type RowChange struct {
-	Kind     string             `json:"kind"`
-	Original []CellValue        `json:"original,omitempty"`
-	Values   []ColumnAssignment `json:"values,omitempty"`
+	StorageToken string             `json:"storageToken,omitempty"`
+	Kind         string             `json:"kind"`
+	Original     []CellValue        `json:"original,omitempty"`
+	Values       []ColumnAssignment `json:"values,omitempty"`
 }
 
 type ColumnAssignment struct {
@@ -67,12 +68,16 @@ func (request ChangesRequest) Valid() bool {
 	}
 	columns := map[string]bool{}
 	for _, column := range request.Columns {
-		if !changeNameValid(column.Name) || columns[column.Name] || (column.Engine != "postgresql" && column.Engine != "mysql") || !changeNameValid(column.NativeType) {
+		if !changeNameValid(column.Name) || columns[column.Name] || (column.Engine != "postgresql" && column.Engine != "mysql" && column.Engine != "cassandra") ||
+			column.NativeType == "" || len(column.NativeType) > 65536 || !utf8.ValidString(column.NativeType) || strings.ContainsRune(column.NativeType, 0) {
 			return false
 		}
 		columns[column.Name] = true
 	}
 	for _, change := range request.Changes {
+		if len(change.StorageToken) > 4096 || !utf8.ValidString(change.StorageToken) || strings.ContainsAny(change.StorageToken, "\x00\r\n") || change.Kind == "insert" && change.StorageToken != "" {
+			return false
+		}
 		switch change.Kind {
 		case "insert":
 			if len(change.Original) != 0 {
@@ -156,9 +161,15 @@ func exactChangesKeys(raw json.RawMessage) bool {
 		}
 	}
 	for _, change := range changes {
-		fields, ok := changesObject(change, "kind|original|values", "kind")
+		fields, ok := changesObject(change, "kind|original|values|storageToken", "kind")
 		if !ok {
 			return false
+		}
+		if raw, exists := fields["storageToken"]; exists {
+			var token string
+			if !required(fields, "storageToken") || json.Unmarshal(raw, &token) != nil || token == "" {
+				return false
+			}
 		}
 		var original, values []json.RawMessage
 		if raw, exists := fields["original"]; exists && json.Unmarshal(raw, &original) != nil {

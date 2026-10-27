@@ -36,14 +36,14 @@ enum WorkspaceCloseConfirmation {
             alert.addButton(withTitle: "Cancel")
         case .changes(let title, let count):
             alert.messageText = "\(count) Pending Changes in “\(title)”"
-            alert.informativeText = "Apply the table changes or discard them before closing."
+            alert.informativeText = "Apply the table changes or discard them before continuing."
             alert.addButton(withTitle: "Apply")
             alert.addButton(withTitle: "Discard")
             alert.addButton(withTitle: "Cancel")
             decisions = [.apply, .discard, .cancel]
         case .unknownApply(let title):
             alert.messageText = "Unconfirmed Changes in “\(title)”"
-            alert.informativeText = "The commit outcome is unknown. Check the database before applying these changes again. Discard the local changes to close this tab."
+            alert.informativeText = "The commit outcome is unknown. Check the database before applying these changes again. Discard the local changes to continue."
             alert.addButton(withTitle: "Discard Local Changes")
             alert.addButton(withTitle: "Cancel")
             decisions = [.discard, .cancel]

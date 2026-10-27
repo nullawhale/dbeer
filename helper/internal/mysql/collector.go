@@ -16,20 +16,23 @@ const MaxResultRows = 1000
 const MaxResultBytes = 8 * 1024 * 1024
 
 type collector struct {
-	response         protocol.Response
-	bytes            int
-	count            int64
-	stopped          bool
-	maxRows          int
-	maxBytes         int
-	resultSets       []protocol.ResultSet
-	needsStatusProbe bool
-	omittedResults   bool
-	delivery         *sinkDelivery
-	resultIndex      int
-	began            bool
-	ended            bool
-	valueColumns     []protocol.Column
+	response            protocol.Response
+	bytes               int
+	count               int64
+	stopped             bool
+	maxRows             int
+	maxBytes            int
+	resultSets          []protocol.ResultSet
+	needsStatusProbe    bool
+	omittedResults      bool
+	delivery            *sinkDelivery
+	resultIndex         int
+	began               bool
+	ended               bool
+	valueColumns        []protocol.Column
+	hiddenStorageFields int
+	originFields        []*wire.Field
+	sourceReadCompleted bool
 }
 
 type sinkDelivery struct {
@@ -49,12 +52,21 @@ func newCollector(command protocol.Command) *collector {
 }
 
 func (collector *collector) columns(result *wire.Result) error {
-	if len(result.Fields) > maxResultColumns {
+	if len(result.Fields) > maxResultColumns || collector.hiddenStorageFields < 0 || collector.hiddenStorageFields > len(result.Fields) {
 		return wire.ErrMalformPacket
 	}
-	collector.response.Columns = make([]protocol.Column, len(result.Fields))
-	for index, field := range result.Fields {
-		column := protocol.Column{Index: index, Name: string(field.Name), Engine: "mysql", NativeType: nativeType(field)}
+	fields := result.Fields[:len(result.Fields)-collector.hiddenStorageFields]
+	collector.originFields = make([]*wire.Field, len(fields))
+	for index, field := range fields {
+		copy := *field
+		copy.Schema = append([]byte(nil), field.Schema...)
+		copy.OrgTable = append([]byte(nil), field.OrgTable...)
+		copy.OrgName = append([]byte(nil), field.OrgName...)
+		collector.originFields[index] = &copy
+	}
+	collector.response.Columns = make([]protocol.Column, len(fields))
+	for index, field := range fields {
+		column := protocol.Column{Index: index, Name: string(field.Name), Engine: "mysql", NativeType: nativeType(field), TypeIdentity: mysqlWireTypeIdentity(field)}
 		if binaryColumn(field) {
 			column.Encoding = "base64"
 		}
@@ -83,8 +95,20 @@ func (collector *collector) row(values []wire.FieldValue) error {
 			return nil
 		}
 	}
+	storageToken := ""
+	if collector.hiddenStorageFields > 0 {
+		if len(values) < collector.hiddenStorageFields {
+			return wire.ErrMalformPacket
+		}
+		var err error
+		storageToken, err = mysqlStorageToken(values[len(values)-collector.hiddenStorageFields:])
+		if err != nil {
+			return err
+		}
+		values = values[:len(values)-collector.hiddenStorageFields]
+	}
 	row := make([]*string, len(values))
-	estimated := 2
+	estimated := 2 + len(storageToken)
 	for index, value := range values {
 		if value.Type == wire.FieldValueTypeNull {
 			estimated += 5
@@ -124,12 +148,15 @@ func (collector *collector) row(values []wire.FieldValue) error {
 		return nil
 	}
 	encoded, _ := json.Marshal(row)
-	if collector.bytes+len(encoded)+1024 > collector.maxBytes {
+	if collector.bytes+len(encoded)+len(storageToken)+1024 > collector.maxBytes {
 		collector.response.Truncated, collector.stopped = true, true
 		return nil
 	}
 	collector.response.Rows = append(collector.response.Rows, row)
-	collector.bytes += len(encoded) + 1
+	if storageToken != "" {
+		collector.response.StorageTokens = append(collector.response.StorageTokens, storageToken)
+	}
+	collector.bytes += len(encoded) + len(storageToken) + 1
 	return nil
 }
 
@@ -163,7 +190,7 @@ func (collector *collector) finishSingle(result *wire.Result, elapsed time.Durat
 		if !collector.began {
 			collector.deliver(func(sink adapter.ResultSink) error { return sink.Begin(collector.resultIndex, []protocol.Column{}) })
 		}
-		summary := protocol.ResultSet{Columns: collector.valueColumns, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice}
+		summary := protocol.ResultSet{Columns: collector.valueColumns, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice, StorageTokens: response.StorageTokens, Source: response.Source}
 		collector.deliver(func(sink adapter.ResultSink) error { return sink.End(collector.resultIndex, summary) })
 	}
 	return response
@@ -180,6 +207,8 @@ func boundResultSets(response protocol.Response) protocol.Response {
 	refresh := func() {
 		set := response.ResultSets[primary]
 		response.Columns, response.Rows, response.CommandTag, response.RowCount = set.Columns, set.Rows, set.CommandTag, set.RowCount
+		response.StorageTokens = set.StorageTokens
+		response.Source = set.Source
 		response.DisplayedRowCount, response.Truncated = set.DisplayedRowCount, set.Truncated
 		if response.DisplayNotice == "" {
 			response.DisplayNotice = set.DisplayNotice
@@ -204,6 +233,9 @@ func boundResultSets(response protocol.Response) protocol.Response {
 				}
 				excess -= multiplier * (len(row) + 1)
 				set.Rows = set.Rows[:last]
+				if len(set.StorageTokens) > last {
+					set.StorageTokens = set.StorageTokens[:last]
+				}
 				set.DisplayedRowCount = len(set.Rows)
 				set.Truncated = true
 				set.DisplayNotice = "Result display is limited to 1000 rows and 8 MiB across all result sets. The command completed in full."
@@ -216,6 +248,7 @@ func boundResultSets(response protocol.Response) protocol.Response {
 			for index := range response.ResultSets {
 				if len(response.ResultSets[index].Columns) > 0 {
 					response.ResultSets[index].Columns = []protocol.Column{}
+					response.ResultSets[index].Source = nil
 					response.ResultSets[index].Truncated = true
 					changed = true
 				}
@@ -230,6 +263,25 @@ func boundResultSets(response protocol.Response) protocol.Response {
 }
 
 func (collector *collector) attachResults(response protocol.Response) protocol.Response {
+	if collector.sourceReadCompleted && response.Type == "error" {
+		// A failed supplemental metadata read cannot make the already drained
+		// SELECT uncertain or discard its original values.
+		if response.OutcomeUnknown {
+			response.Message = "The SELECT completed, but the connection was lost while reading its source metadata."
+		}
+		response.SQLCompleted, response.OutcomeUnknown = true, false
+		if len(collector.resultSets) == 0 {
+			collector.response.Source = mysqlReadOnlySource(mysqlSourceUnavailable)
+			result := wire.NewResult(nil)
+			completed := collector.finishSingle(result, 0, response.TransactionStatus)
+			result.Close()
+			collector.resultSets = []protocol.ResultSet{{Columns: completed.Columns, Rows: completed.Rows,
+				CommandTag: completed.CommandTag, RowCount: completed.RowCount,
+				DisplayedRowCount: completed.DisplayedRowCount, Truncated: completed.Truncated,
+				DisplayNotice: completed.DisplayNotice, StorageTokens: completed.StorageTokens,
+				Source: completed.Source}}
+		}
+	}
 	if len(collector.resultSets) > 0 {
 		response.ResultSets = collector.resultSets
 		return boundResultSets(response)
@@ -263,8 +315,54 @@ func nativeType(field *wire.Field) string {
 	if !ok {
 		name = fmt.Sprintf("MYSQL_TYPE_%d", field.Type)
 	}
+	if field.Flag&wire.ENUM_FLAG != 0 {
+		name = "ENUM"
+	}
+	if field.Flag&wire.SET_FLAG != 0 {
+		name = "SET"
+	}
 	if field.Flag&wire.UNSIGNED_FLAG != 0 {
 		name += " UNSIGNED"
 	}
 	return name
+}
+
+func mysqlWireTypeIdentity(field *wire.Field) string {
+	identity, _ := json.Marshal(struct {
+		Engine   string `json:"engine"`
+		Type     byte   `json:"type"`
+		Charset  uint16 `json:"charset"`
+		Length   uint32 `json:"length"`
+		Decimals byte   `json:"decimals"`
+		Flags    uint16 `json:"flags"`
+	}{"mysql", field.Type, field.Charset, field.ColumnLength, field.Decimal, field.Flag & (wire.UNSIGNED_FLAG | wire.ZEROFILL_FLAG | wire.BINARY_FLAG | wire.ENUM_FLAG | wire.SET_FLAG)})
+	unresolved := field.Type == wire.MYSQL_TYPE_ENUM || field.Type == wire.MYSQL_TYPE_SET || field.Type == wire.MYSQL_TYPE_GEOMETRY || field.Type == wire.MYSQL_TYPE_VECTOR || field.Flag&(wire.ENUM_FLAG|wire.SET_FLAG) != 0
+	// FLOAT's text formatter can collapse adjacent float32 values. TIMESTAMP
+	// is rendered in the session time zone, which may change during a query.
+	unresolved = unresolved || field.Type == wire.MYSQL_TYPE_FLOAT || field.Type == wire.MYSQL_TYPE_TIMESTAMP || field.Type == wire.MYSQL_TYPE_TIMESTAMP2 || field.Type == wire.MYSQL_TYPE_DOUBLE && field.Decimal < 31
+	switch field.Type {
+	case wire.MYSQL_TYPE_VARCHAR, wire.MYSQL_TYPE_VAR_STRING, wire.MYSQL_TYPE_STRING, wire.MYSQL_TYPE_BLOB, wire.MYSQL_TYPE_TINY_BLOB, wire.MYSQL_TYPE_MEDIUM_BLOB, wire.MYSQL_TYPE_LONG_BLOB, wire.MYSQL_TYPE_JSON:
+		// Protocol_classic caches its result charset at start_result_metadata;
+		// its UTF8mb4 conversion therefore stays lossless even if a routine
+		// changes the session setting while producing subsequent rows.
+		unresolved = unresolved || field.Charset != 63 && !mysqlUTF8MB4Collation(field.Charset)
+	}
+	if unresolved {
+		return "unresolved:" + string(identity)
+	}
+	return string(identity)
+}
+
+func mysqlUTF8MB4Collation(id uint16) bool {
+	if id == 45 || id == 46 || id >= 224 && id <= 247 {
+		return true
+	}
+	if id >= 255 && id <= 309 {
+		switch id {
+		case 272, 276, 295, 299, 301, 302:
+			return false
+		}
+		return true
+	}
+	return false
 }

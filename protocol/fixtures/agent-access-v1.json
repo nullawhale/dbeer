@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "requests": [
+    {
+      "id": "request-hello",
+      "method": "hello",
+      "clientName": "Fixture client"
+    },
+    {
+      "id": "request-list",
+      "method": "connections"
+    },
+    {
+      "id": "request-catalog",
+      "method": "catalog",
+      "profileId": "11111111-1111-4111-8111-111111111111",
+      "queryId": "22222222-2222-4222-8222-222222222222",
+      "kind": "columns",
+      "schema": "public",
+      "object": "fixture"
+    },
+    {
+      "id": "request-query",
+      "method": "query",
+      "profileId": "11111111-1111-4111-8111-111111111111",
+      "queryId": "33333333-3333-4333-8333-333333333333",
+      "sql": "SELECT NULL, '', 'NULL', 12345678901234567890.123456789",
+      "maxRows": 100,
+      "timeoutSeconds": 30
+    },
+    {
+      "id": "request-cancel",
+      "method": "cancel",
+      "queryId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "id": "request-keyspaces",
+      "method": "catalog",
+      "profileId": "33333333-3333-4333-8333-333333333333",
+      "queryId": "55555555-5555-4555-8555-555555555555",
+      "kind": "keyspaces"
+    },
+    {
+      "id": "request-databases",
+      "method": "catalog",
+      "profileId": "44444444-4444-4444-8444-444444444444",
+      "queryId": "66666666-6666-4666-8666-666666666666",
+      "kind": "databases"
+    },
+    {
+      "id": "request-collections",
+      "method": "catalog",
+      "profileId": "44444444-4444-4444-8444-444444444444",
+      "queryId": "77777777-7777-4777-8777-777777777777",
+      "kind": "collections",
+      "schema": "fixture_db"
+    },
+    {
+      "id": "request-fields",
+      "method": "catalog",
+      "profileId": "44444444-4444-4444-8444-444444444444",
+      "queryId": "88888888-8888-4888-8888-888888888888",
+      "kind": "fields",
+      "schema": "fixture_db",
+      "object": "items"
+    },
+    {
+      "id": "request-cql",
+      "method": "query",
+      "profileId": "33333333-3333-4333-8333-333333333333",
+      "queryId": "99999999-9999-4999-8999-999999999999",
+      "sql": "SELECT id, value FROM fixture.items WHERE tenant = 'team'",
+      "maxRows": 100,
+      "timeoutSeconds": 30
+    },
+    {
+      "id": "request-mongodb-json",
+      "method": "query",
+      "profileId": "44444444-4444-4444-8444-444444444444",
+      "queryId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "sql": "{\"database\":\"fixture_db\",\"collection\":\"items\",\"find\":{\"n\":{\"$numberLong\":\"9007199254740993\"}},\"sort\":{\"label\":1,\"n\":-1},\"limit\":100}",
+      "maxRows": 100,
+      "timeoutSeconds": 30
+    }
+  ],
+  "responses": [
+    {
+      "id": "request-list",
+      "ok": true,
+      "connections": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "name": "Fixture",
+          "engine": "postgresql",
+          "readOnly": true
+        }
+      ]
+    },
+    {
+      "id": "request-query",
+      "ok": true,
+      "queryId": "33333333-3333-4333-8333-333333333333",
+      "results": [
+        {
+          "columns": [
+            {
+              "name": "null",
+              "type": "text"
+            },
+            {
+              "name": "empty",
+              "type": "text"
+            },
+            {
+              "name": "literal",
+              "type": "text"
+            },
+            {
+              "name": "exact",
+              "type": "numeric"
+            },
+            {
+              "name": "bytes",
+              "type": "bytea",
+              "encoding": "base64"
+            }
+          ],
+          "rows": [
+            [
+              null,
+              "",
+              "NULL",
+              "12345678901234567890.123456789",
+              "AP8="
+            ]
+          ],
+          "commandTag": "SELECT 1",
+          "rowCount": 1,
+          "truncated": false
+        }
+      ]
+    },
+    {
+      "id": "request-cancel",
+      "ok": true,
+      "queryId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "id": "request-denied",
+      "ok": false,
+      "error": "This connection is not available to this agent."
+    },
+    {
+      "id": "request-list-engines",
+      "ok": true,
+      "connections": [
+        {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "name": "SQL readonly fixture",
+          "engine": "postgresql",
+          "readOnly": true,
+          "queryLanguage": "sql",
+          "readOnlyEnforcement": "localAndServer"
+        },
+        {
+          "id": "22222222-2222-4222-8222-222222222222",
+          "name": "SQL writer fixture",
+          "engine": "mysql",
+          "readOnly": false,
+          "queryLanguage": "sql",
+          "readOnlyEnforcement": "off"
+        },
+        {
+          "id": "33333333-3333-4333-8333-333333333333",
+          "name": "CQL readonly fixture",
+          "engine": "cassandra",
+          "readOnly": true,
+          "queryLanguage": "cql",
+          "readOnlyEnforcement": "local"
+        },
+        {
+          "id": "44444444-4444-4444-8444-444444444444",
+          "name": "Document readonly fixture",
+          "engine": "mongodb",
+          "readOnly": true,
+          "queryLanguage": "mongodb-json",
+          "readOnlyEnforcement": "local"
+        }
+      ]
+    },
+    {
+      "id": "request-mongodb-fields",
+      "ok": true,
+      "results": [
+        {
+          "columns": [
+            {
+              "name": "name",
+              "type": "string"
+            },
+            {
+              "name": "nativeType",
+              "type": "string"
+            },
+            {
+              "name": "evidence",
+              "type": "string"
+            }
+          ],
+          "rows": [
+            [
+              "n",
+              "64-bit integer",
+              "sampled"
+            ]
+          ],
+          "commandTag": "CATALOG",
+          "rowCount": 1,
+          "truncated": false,
+          "displayNotice": "Types observed in at most 32 documents; this is not a schema or a required-field declaration.",
+          "affectedRowCountKnown": false
+        }
+      ]
+    },
+    {
+      "id": "request-mongodb-documents",
+      "ok": true,
+      "results": [
+        {
+          "columns": [
+            {
+              "name": "document",
+              "type": "BSON document"
+            }
+          ],
+          "rows": [
+            [
+              "{\"n\":{\"$numberLong\":\"9007199254740993\"},\"amount\":{\"$numberDecimal\":\"12345678901234567890.123456789\"},\"payload\":{\"$binary\":{\"base64\":\"AP8=\",\"subType\":\"00\"}},\"empty\":\"\",\"literal\":\"NULL\",\"absent\":null}"
+            ]
+          ],
+          "commandTag": "FIND",
+          "rowCount": 1,
+          "truncated": false,
+          "affectedRowCountKnown": false
+        }
+      ]
+    },
+    {
+      "id": "request-cql-write",
+      "ok": true,
+      "results": [
+        {
+          "columns": [],
+          "rows": [],
+          "commandTag": "CQL",
+          "rowCount": 0,
+          "truncated": false,
+          "affectedRowCountKnown": false
+        }
+      ]
+    }
+  ]
+}

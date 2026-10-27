@@ -5,12 +5,17 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"dbeer/helper/internal/protocol"
+	sc "dbeer/helper/internal/schemacompare"
+	wire "github.com/go-mysql-org/go-mysql/mysql"
 )
+
+var typedOriginalStorageTokens sync.Map
 
 func typedText(value string) protocol.CellValue {
 	return protocol.CellValue{Kind: "text", Value: text(value)}
@@ -35,7 +40,31 @@ func editingRequest(t *testing.T, session *Session, table string) protocol.Chang
 
 func originalRow(t *testing.T, session *Session, table, where string) []protocol.CellValue {
 	t.Helper()
-	response := run(t, session, "SELECT * FROM "+QuoteIdentifier(table)+" WHERE "+where)
+	response := session.executeWith(context.Background(), protocol.Command{}, func(c *collector, result *wire.Result) error {
+		r := mysqlSchemaCapture{s: session, spec: sc.CaptureSpec{Limits: sc.DefaultLimits()}}
+		rows, err := r.rows("SELECT COLUMN_NAME,DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION", integrationSettings(t).Database, table)
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return session.executeResults("SELECT * FROM "+QuoteIdentifier(table)+" WHERE "+where, c, result)
+		}
+		kinds := map[string]string{}
+		projection := []string{}
+		for _, row := range rows {
+			name, kind := myText(row, 0), myText(row, 1)
+			kinds[name] = kind
+			expression := mysqlStableProjection(name, kind)
+			if expression != QuoteIdentifier(name) {
+				expression += " AS " + QuoteIdentifier(name)
+			}
+			projection = append(projection, expression)
+		}
+		storageColumns := mysqlBrowseStorageColumns(kinds)
+		c.hiddenStorageFields = len(storageColumns)
+		projection = append(projection, mysqlStorageProjections(storageColumns, kinds)...)
+		return session.executeResults("SELECT "+strings.Join(projection, ",")+" FROM "+QuoteIdentifier(table)+" WHERE "+where, c, result)
+	})
 	if len(response.Rows) != 1 {
 		t.Fatal("snapshot row missing")
 	}
@@ -50,10 +79,21 @@ func originalRow(t *testing.T, session *Session, table, where string) []protocol
 			values[index] = typedText(*value)
 		}
 	}
+	if len(values) > 0 && len(response.StorageTokens) == 1 {
+		typedOriginalStorageTokens.Store(&values[0], response.StorageTokens[0])
+	}
 	return values
 }
 
 func executeChanges(session *Session, request protocol.ChangesRequest, preview bool) protocol.Response {
+	request.Changes = append([]protocol.RowChange(nil), request.Changes...)
+	for i, change := range request.Changes {
+		if change.StorageToken == "" && len(change.Original) > 0 {
+			if token, ok := typedOriginalStorageTokens.Load(&change.Original[0]); ok {
+				request.Changes[i].StorageToken = token.(string)
+			}
+		}
+	}
 	kind := "changes.apply"
 	if preview {
 		kind = "changes.preview"
@@ -99,8 +139,8 @@ func TestMySQLChangesCompositeDefaultsGeneratedAndTypedSnapshot(t *testing.T) {
 		t.Fatal("generated assignment was accepted")
 	}
 	request.Changes[0].Values = []protocol.ColumnAssignment{assign("document", typedText("{}"))}
-	if response := executeChanges(writer, request, false); response.Category != "validation" {
-		t.Fatal("unsupported type was editable")
+	if response := executeChanges(writer, request, false); response.Type != "query.result" {
+		t.Fatal("JSON assignment was rejected")
 	}
 }
 

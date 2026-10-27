@@ -1,0 +1,1 @@
+{"include":"./base.json", "tokenColors":"tokens.tmTheme", "name":"Shared Includes", "type":"light", "colors":{"editor.background":"#fff", "editor.selectionBackground":"#1234"}}

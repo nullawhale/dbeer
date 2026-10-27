@@ -1,8 +1,497 @@
 # Changelog
 
-## Next release — unreleased
+## Unreleased
+
+## 0.2.0 — build 10 — 2026-10-27
+
+- Extend local MCP to PostgreSQL, MySQL, Cassandra and MongoDB. Query tools accept
+  the profile's SQL, CQL or MongoDB JSON find/aggregation format. Catalog aliases
+  expose Cassandra keyspaces and MongoDB databases, collections and sampled fields.
+  Connection metadata identifies the query language and readonly enforcement;
+  result metadata preserves sampling warnings and unknown affected-row counts.
+- Keep readonly local for Cassandra/MongoDB and preserve database-role boundaries,
+  the saved consistency/topology settings and explicit write confirmation. MongoDB
+  supports aggregation output stages through its existing policy; arbitrary CRUD,
+  JavaScript and administrative commands remain unavailable. Cancellation stops
+  client work and closes owned sessions without promising server-side rollback.
+- Include the native workspace, MongoDB, comparison, editing and MCP features
+  described in the build 9 candidate below. Build 9 was not published; its archive
+  and tag remain unchanged. Build 10 is the published 0.2.0 release.
+
+## 0.2.0 release candidate — build 9 — 2026-10-27
+
+This unpublished candidate targets the native macOS client and bundled Go helper
+and provides PostgreSQL/MySQL MCP. It is superseded by build 10. Earlier
+0.2.0 prerelease tags and archives remain unchanged; Windows/Linux GPUI candidates
+are outside this release.
+
+- Add padding and a Select All checkbox to agent profile approval. Bulk selection
+  selects profiles without enabling write permissions.
+
+- Keep the Agents settings tab available from application initialization, without
+  waiting for asynchronous workspace or helper startup.
+
+- Add local MCP agent access to approved PostgreSQL/MySQL profiles through the
+  official Go SDK and stdio. Approve each client in DBeer for its current session,
+  with reading as the default and separate write permission. Agent operations
+  use independent bounded sessions and existing readonly/production/confirmation
+  policies. Settings supports access revocation and a bounded session activity
+  journal containing identifiers and outcomes without SQL, results or secrets.
+  Cancellation and revocation remain available under result backpressure.
+  Permission dialogs distinguish duplicate profile names by server, database,
+  account, environment and profile identifier, keep long lists scrollable, and
+  refuse concurrent nested prompts. Native keyboard cancellation and accessible
+  per-client revocation are covered by PostgreSQL/MySQL UI acceptance.
+
+- Show a clear execution rejection when SQL or its connection changes during
+  initial connection setup, marking the captured statements as not executed.
+- Prepare the 0.2.0/build 9 candidate documentation and preserve the earlier build 8
+  prerelease as a separate immutable archive. User interviews are optional
+  research and do not block native macOS development or acceptance.
+- Add an opt-in archive-to-current-app update acceptance mode with immutable
+  archive checks, signed candidate identity, migration backups, disconnected
+  restoration and existing Keychain credential checks, without packaging a new ZIP.
+
+- Generate selective PostgreSQL/MySQL synchronization SQL from completed schema
+  and table-data comparisons. Review source → target, dependencies, manual steps
+  and SQL before saving a private `.sql` file or opening a new target-bound SQL
+  tab. Object paths and row keys identify selectable operations; destructive
+  changes start unselected. Explicit column renames and exclusions retain strict
+  mapped-type checks. Data updates and deletes check all
+  captured target originals; incomplete captures and ambiguous keys require
+  manual work. Planning performs no server writes or fresh reads, and execution
+  uses the ordinary editor and execution policy. Unsupported structural changes
+  remain explicit manual steps; DDL has no portable global rollback. Empty/manual
+  plans explain their state, long warnings remain scrollable, and a changed Save
+  selection requires review. Command observers detach when their workspace closes.
+
+- Supported PostgreSQL/MySQL SELECT results can open an exact source row in an
+  independent table tab using server-verified origins and the complete primary
+  key. Full, unambiguous single-table results support cell updates through the
+  existing Preview/Apply workflow, preserving aliases, column order and exact
+  original values. Apply never replays SELECT; successful results become stale,
+  and conflicts or unknown commits retain drafts while blocking repeated Apply.
+  Unsupported shapes and representations explain why they remain read-only. MySQL
+  source discovery and Apply retain owned copies of driver metadata so reused
+  network buffers cannot invalidate column names or native types. Result grids
+  reveal the complete first column beside row numbers on initial display while
+  preserving later horizontal scrolling and pane resizing.
+
+- Add native MongoDB connections with verified TLS, SCRAM authentication, seed
+  hosts and replica-set options. Browse databases and collections with filters,
+  sorting and sequential cursors; execute JSON find and aggregation requests.
+  BSON results retain all scalar and nested types as Canonical Extended JSON.
+  Script completion includes collections, sampled fields, operators and BSON
+  wrappers. Output pipelines pass execution policy; readonly remains local.
+  JavaScript, SQL transactions and document grid editing are unsupported.
+  Completion skips internal collections and retains authorized collection names
+  when field sampling is denied. Document columns fill the available grid width;
+  browsing hides SQL foreign-key actions, and the filter panel retains its sort.
+
+- Compare PostgreSQL range/multirange, array, composite, domain and extension
+  type definitions, including their modifiers and dependencies. MySQL captures
+  ENUM/SET labels, binary labels, spatial reference IDs and exact type modifiers.
+  Cassandra schema and table-data comparison includes nested collections, tuples,
+  UDTs and vectors. Cassandra data reads disclose their non-snapshot consistency
+  and cannot claim full equality. Saved results retain structural type identities;
+  unresolved definitions never establish equality. PostgreSQL complex values and
+  additional MySQL types use the existing Preview/Apply and conflict checks.
+  Detect hidden ENUM/SET, floating-point and timestamp changes before Apply;
+  caller-controlled or lossy SQL output cannot establish snapshot equality.
+
+- Show SQL definition diffs for schema comparisons, with SQL syntax highlighting
+  and changed fragments. Definitions come from the frozen captures, with mapped
+  names aligned for comparison; unsupported facts are marked as incomplete.
+  Raw property JSON and metadata paths remain available under Technical details.
+
+- Review schema and table-data differences in native side-by-side text panes,
+  with aligned lines, line numbers and highlighted changed fragments computed
+  by the Go helper. Schema changes are grouped by object; table rows show their
+  matching keys and changed cells. Setup separates table selection from key
+  mapping, with filters, row limits and capture details under additional options.
+  Large values use an explicitly limited diff; exact value inspection remains
+  available. SQL NULL, empty text, absent values and binary data stay distinct.
+
+- Compare PostgreSQL or MySQL table data from Connections → Compare Table Data
+  in two dedicated read-only sessions. Explicitly read metadata, map columns,
+  select keys and configure independent filters and row limits. Exact typed
+  comparison preserves numeric strings, SQL NULL and binary values, reports
+  duplicate keys as ambiguous and never treats limited captures as full equality.
+  Inspect paged differences, wide rows and exact value chunks with source → target
+  context. Private temporary captures and comparison files share a 256 MiB budget
+  and are removed on close or Stop, including forced helper shutdown. Comparison
+  performs no database writes; synchronization SQL is a separate explicit action.
+
+- Open Connections, Files, SQL Library and Investigations from a narrow vertical
+  strip on the left. Each section has its own resizable panel; clicking the
+  active section or repeating its shortcut hides the panel. Command-1 through
+  Command-4 are configurable in Settings → Shortcuts → Sidebar Panels and
+  available in the View menu. Strip labels show only icons and names; shortcuts
+  appear in tooltips. The strip stays below the window title bar with a small
+  top inset. Find in Connections reveals its panel before
+  focusing search. Investigations no longer occupy a permanent top row or open
+  as a library sheet.
+
+- Compare mapped PostgreSQL or MySQL table structure from Connections → Compare
+  Schema Structure in two dedicated read-only sessions. Inspect paged property
+  differences, exact value chunks, capture intervals and metadata limitations;
+  export a private, versioned JSON report with both typed captures and a digest.
+  Schema/table/member/type correspondence is explicit, local OIDs never identify
+  objects across servers, and incomplete or unsupported facts cannot establish
+  equality. SQL planning is a separate explicit action; comparison never applies it.
+
+- Inspect PostgreSQL enums and user-defined types directly from the catalog or
+  search, including definitions, ordered enum values, dependencies and operation
+  limitations. Generate DDL previews for supported type renames and enum value
+  additions/renames, then explicitly open the SQL on the captured connection for
+  normal execution-policy review.
+
+- Keep local investigation documents with ordered Markdown, SQL and snapshot
+  blocks, a table of contents and durable library storage. Each SQL block has an
+  explicit profile and an independent working session; Run Block addresses only
+  the selected block. Save and close preserve complete document content, while
+  reopening restores disconnected blocks. Snapshot explanations survive missing
+  artifacts, and deletion checks references in closed and unsaved investigations.
+
+- Start with one working pane. Split Left/Right/Up/Down in a tab's context menu
+  or the Window menu creates nested resizable panes with independent selection.
+  Each split opens and focuses a fresh disconnected SQL tab with the source
+  tab's profile, keeping the source tab in place.
+  Closing a pane's last tab removes that pane automatically; the final workspace
+  pane stays available when all tabs are closed.
+  Unsplit Current merges only that pane into a sibling; Unsplit All returns all
+  tabs to one pane. All six commands have configurable shortcuts. Moving tabs
+  preserves sessions, transactions, results and editor state; Run, Stop, Copy
+  and Save follow their owning pane. Workspace v10 saves nested pane placement,
+  selections and divider positions with private migration backups; restored
+  tabs remain disconnected.
+- Settings → Shortcuts groups commands by purpose and searches command/group
+  names and current bindings. Search accepts modifier symbols or names such as
+  Cmd+Shift+Backslash and reflects custom and cleared assignments.
+
+- Compare saved result snapshots by an explicit key or saved row order, with
+  column mapping and exclusions. The shared Go comparison engine preserves
+  exact types and values, reports duplicate keys as ambiguous and distinguishes
+  incomplete inputs and unresolved types from full equality. Differences and
+  wide rows are paged; bounded previews link to exact value chunks. Comparison
+  reads managed local artifacts without connecting to a database and supports
+  cancellation with temporary-file cleanup.
+
+- Pin Result saves a completed result set with its original SQL, capture time,
+  connection and environment context, outcome and partial-data markers. Pinned
+  results open as paged offline tabs and survive tab closure and restart through
+  local artifact references. Opening a snapshot never runs its SQL; opening the
+  captured SQL creates a separate draft that requires choosing a connection.
+
+- Result snapshot storage uses private, versioned artifacts with exact typed
+  values and atomic publication. Query → Result Snapshots lists saved artifacts
+  and their sizes, manages deletion and configures the default 1 GiB quota.
+  Storage never captures results or evicts snapshots automatically; interrupted
+  temporary writes are cleaned without removing published artifacts. Deleting a
+  snapshot referenced by an investigation requires explicit confirmation.
+
+- Workspace errors show bottom-right notification banners alongside the footer
+  counter update. Up to five messages stack with the newest at the bottom, each
+  visible for five seconds. A sixth message hides the oldest banner; automatic
+  hiding or closing banners keeps all messages in notification history.
+  Hovering over a banner pauses its timer; moving away resumes the remaining time.
+  A thin strip along the bottom shows the remaining time and pauses on hover.
+  Clear All empties the history immediately and closes the notification list
+  after half a second without changing its size or position during that delay.
+
+- Connection profiles can obtain database passwords from a local CLI executable
+  with literal arguments instead of Keychain. Each new physical connection,
+  including service, Preview/Apply and MySQL Stop connections, resolves a fresh
+  value. Commands have a 15-second timeout and a 64 KiB stdout limit; cancellation
+  terminates their process group. Output is never logged or saved, and provider
+  failures stop connection attempts without replaying SQL. Command configuration
+  stays local and is excluded from profile transfer. Connection-library v5 keeps
+  legacy profiles on Keychain and preserves migration backups.
+
+- Native SSH profiles can use local OpenSSH configuration for Host aliases,
+  Include, ProxyJump, ProxyCommand and multiple jumps. The configuration supplies
+  host, user, port and keys; authentication uses noninteractive local keys or an
+  agent. DBeer reviews each managed hop and final server key, preserves database
+  TLS identity and supervises proxy children through cancellation and helper loss.
+  Configuration files are evaluated only on explicit connect/test; profile
+  transfer excludes their paths and contents. Requires helper `sshConfigV1`.
+- SQL results and table grids have a permanent, resizable Value Inspector that
+  follows cell selection and arrow-key navigation. It offers read-only source
+  text, line wrapping, search, JSON/XML highlighting and lossless formatted JSON.
+  NULL, DEFAULT, empty strings and Base64 binary stay distinct. Cancellable
+  background previews preserve exact numbers, duplicate keys and original text;
+  XML external entities and DTDs are never loaded. Inspection leaves sessions,
+  grid edits and the existing Preview/Apply workflow unchanged.
+- General connection settings can import single-host PostgreSQL and MySQL URLs,
+  including JDBC-prefixed addresses, IPv6, encoded credentials and supported TLS
+  options. Use URL fills the existing fields; omitted credentials and TLS options
+  stay unchanged. URL previews exclude passwords, and saved credentials continue
+  to use Keychain. Unsupported or ambiguous URL options are rejected explicitly.
+- Settings → Shortcuts now includes connection creation, search and profile
+  import/export, SQL tab closing and navigation, SQL file/folder actions and SQL
+  history. Existing New/Open/Save bindings are configurable; Shift-Command-[ and
+  Shift-Command-] switch tabs with wrapping. Close Tab follows the existing
+  transaction and pending-edit review. Restore Defaults has spacing above it.
+- Double-clicking a connection, expandable catalog node or SQL folder toggles
+  its disclosure. Tables and views expand their metadata; Open Data remains
+  available from their context menu. Expanded connections stay connected when
+  collapsed, and nested catalog and folder contents continue to load lazily.
+- The native connection editor uses a wider dialog with General, SSH, TLS and
+  Options tabs. Test Connection checks unsaved settings in a disposable helper,
+  closes the test session and reports the result without saving a profile or
+  changing workspace sessions. Tests can be stopped or cancelled by closing
+  the dialog. Trusted CA files can be selected from the TLS tab.
+- Editing a saved connection keeps its database engine fixed. Duplicate
+  Connection opens the New Connection dialog with copied fields and saved
+  credentials, a fresh profile identity and an editable engine choice. The copy
+  is created only on Save; the original profile and its sessions are unchanged.
+- Shared SQL Library indexes real `.sql` files with local tags, logical folders
+  and connection, named group or global scope. Search and metadata filters find
+  entries; groups retain opaque profile references without copying SQL or
+  connection secrets. Removing metadata leaves files untouched.
+- Shared SQL opens in a fresh file view with an explicit connection choice and
+  visible environment/readonly context. Views share text and retain independent
+  sessions and transactions. Scope changes during connection, confirmation or
+  scripts stop pending execution; missing groups/profiles remain unavailable.
+- Workspace v6 persists the SQL index, named groups and per-view library
+  bindings with exact private v5 migration backups. Observed file renames update
+  index references; Save As to another file detaches only the current view.
+- Workspace and connection-library errors appear in a notification list opened
+  from the right side of the footer, with unread indicators, timestamps and
+  individual dismissal or Clear All. Connection-specific messages show the
+  affected profile's name; clicking it opens that profile's settings through
+  the usual session and pending-edit review. Deleted profiles retain their
+  name in history with an inactive link. The last 100 messages stay in memory
+  for the current workspace, including when all tabs are closed.
+- SQL folder, file and search-result rows match connection row spacing and use
+  the same full-row hover highlight, including folder disclosure arrows.
+- SQL Files attaches existing folders with a lazy `.sql` tree and background
+  name/content search. Symlinks, Git metadata and build/dependency directories
+  are excluded; incomplete scans are reported. Folder attachments persist.
+- Multiple views of one SQL file share exact UTF-8 text while retaining
+  independent selections, connection bindings, sessions and transactions.
+  Existing BOM and line endings are preserved. Save As rebinds only its view.
+- File observation handles external edits, rename/delete and atomic checkout.
+  Clean buffers adopt disk changes; dirty buffers retain both versions for
+  comparison, accepting the external version, keeping a local copy or explicitly
+  replacing the reviewed version. Deleted files retain editable drafts.
+- SQL saves check disk identity and contents immediately before publication,
+  refuse stale or newly appeared destinations, and preserve displaced external
+  versions when race recovery cannot restore them. Recovery references remain
+  available across workspace restoration and open as separate drafts.
+- Workspace v5 persists folder attachments and shared file identities, with an
+  exact private v4 migration backup. Legacy differing drafts for one file remain
+  independent Save As recovery copies. Restoration stays disconnected.
+- Table/view tabs have independent view identities and sessions. Open Data
+  selects an existing view without resetting its context; Open in New Tab opens
+  a clean view from the catalog or a table tab's context menu.
+- Related Rows follows a selected row's PostgreSQL/MySQL foreign key in the
+  current view or a new tab, using ordered composite column mappings and exact
+  values. Back/Forward restores table browsing context within each view.
+  Navigation reviews pending edits through Apply/Discard/Cancel. Failed target
+  loads preserve the source view; NULL or unresolved DEFAULT values, incomplete
+  metadata and unavailable or denied targets are reported explicitly. Autosave
+  retains confirmed context while navigation loads and excludes temporary tabs.
+- File → Reopen Closed Tab (Shift-Command-T, configurable in Shortcuts) restores
+  up to 20 successfully closed SQL/table tabs in reverse closing order, including
+  from an empty workspace. Text, connection/file bindings and table browsing
+  context return at the former position with a new document identity; sessions,
+  transactions, results, cursors and pending edits remain closed. Cancelled or
+  rejected closes are excluded. The list exists only in memory until application
+  exit or a successful Clear Drafts action.
+- Workspace restores mixed SQL and table/view tabs, their order and selection,
+  SQL text, connection bindings, table references, pages, server filters, sorting
+  and SQL file bindings. Recovered tables show saved context with explicit Load
+  Data; restoration does not connect, execute SQL or resume database edits.
+  PostgreSQL/MySQL retain their saved page; Cassandra loads from its first page.
+- Recovered file bindings retain the last accepted content fingerprint. Unknown
+  fingerprints require Save As. Drafts and bindings survive cancelled or failed
+  saves. Exact private
+  v0/v1/v2/v3 workspace backups precede migration; history favorites and retention
+  settings are preserved, and malformed or future workspace files stay unchanged.
+- Native result selections copy as TSV, CSV, JSON, Markdown or SQL INSERT through
+  one typed serializer. Settings retain the default format and headers; ordinary
+  Copy still defaults to TSV without headers. NULL, empty text, marker text,
+  DEFAULT, exact numbers, binary values and duplicate names stay distinct.
+- Edit offers direct Copy as JSON, Markdown and SQL INSERT commands with
+  configurable grid-only shortcuts, initially Option-Command-J/M/I. INSERT copy
+  captures the selection and requires an explicit PostgreSQL/MySQL destination
+  and column mapping; adapters format SQL offline without connecting or executing
+  it. Delayed copies preserve newer clipboard contents.
+- SQL history supports favorites that are exempt from automatic age and count
+  limits, configurable retention settings, individual deletion and clearing the
+  current matches. Clear confirmations preserve favorites unless explicitly
+  included and capture their target entries before confirmation. Versioned
+  workspace storage persists favorites and settings with exact migration backups.
+- SQL history searches the complete SQL text and combines connection, date and
+  outcome filters. Searches run in the background and cancel obsolete requests.
+  Opening an entry creates a disconnected SQL tab; entries whose original
+  connection was deleted require choosing a connection before execution.
+- Native SQL history records start and finish times, duration, typed execution
+  outcomes, separate loaded/affected/exported row counts, truncation and partial
+  counts, SQLSTATE and safe error descriptions. Each executed script statement
+  gets one terminal entry; skipped and locally rejected commands are excluded.
+- History preserves the profile context captured when execution starts, excluding
+  credentials, SSH settings, certificate paths and result values. History storage
+  retains exact backups before migration; missing legacy
+  execution details remain unavailable rather than being inferred.
+- Native macOS connection profiles can use an SSH bastion through supervised
+  system OpenSSH, with agent, private-key or password authentication. SSH
+  passwords and key passphrases use separate Keychain entries; profile exports
+  exclude credentials, private keys and trust decisions.
+- SSH host keys require explicit fingerprint review before first use. Database
+  TLS continues verifying the original database identity. PostgreSQL/MySQL
+  cancellation and Cassandra node connections use the same SSH transport;
+  Cassandra SSH contact points currently require numeric IP addresses.
+- Native profile storage uses v5, portable profiles v3, workspace storage v10
+  and native app/helper protocol v5. Existing profiles migrate with SSH disabled.
+  Windows/Linux GPUI compatibility remains deferred.
+
+## 0.2.0 prerelease — build 8 — 2026-10-20
+
+This prerelease targets the native macOS client and bundled Go helper.
+The full local Go race and native Swift runners completed successfully for this
+build; native database integration cases without configured fixtures were skipped.
+Earlier intermittent editor completion and signature-help failures remain tracked.
+Installed-archive acceptance for 0.2.0 remains pending.
+
+- Connected Cassandra profiles expose a Cluster Nodes snapshot with node addresses, driver status, datacenters, racks and host IDs. Refresh reads the driver's current observations; statuses describe this connection's view rather than cluster-wide health.
+- Plain Cassandra fault-injection tests now intercept connections to discovered peers as well as contact points, preserving real node addresses and requiring exactly one lost write acknowledgement without retrying the write.
+
+## 0.2.0 prerelease — build 7 — 2026-10-20
+
+This local prerelease targets the native macOS client and bundled Go helper.
+Windows/Linux GPUI candidates and their pending acceptance are outside this release.
+The full native UI suite is not green: editor completion and signature-help checks
+have intermittent failures. Installed-archive acceptance for this version is pending.
 
 - DBeer is now licensed under GNU GPL version 3 only (GPL-3.0-only). The license text is included in macOS application bundles and release ZIP archives.
+
+- Cassandra table grids show pinned, color-coded partition labels with key tooltips. Clicking a label selects every loaded row in that partition, including nonadjacent and offscreen rows. The status beside Apply counts partitions in pending edits, and atomic Apply is disabled when edits span partitions or a partition key is unavailable. Labels are local to the loaded page and stay out of copied/exported data.
+
+- Connection environments now appear beside the profile name in the macOS sidebar, retaining their muted gray styling.
+
+- Added native macOS Apache Cassandra support: contact points, keyspace/datacenter and consistency settings, verified TLS, CQL scripts and batches, schema catalog, cursor browsing, and streamed CSV/JSON exports. Each tab retains an independent keyspace and driver session. Cassandra reports unsupported transactions, local read-only enforcement and unknown write outcomes honestly. Windows/Linux work is deferred.
+- Cassandra grid cells in scalar tables can be edited through Preview/Apply, with multiple rows saved atomically in one conditional batch within a single partition. A conflict rejects every row and retains all pending edits. Cross-partition requests are rejected before writing. Uncertain batch outcomes block further edits and are not retried. Keys and static fields remain read only, and the UI explains TTL behavior. Inserts, deletes, all-NULL regular rows and tables with complex/counter/duration types require explicit CQL.
+- Cassandra preserves acknowledged write completion when result delivery or export fails, bounds wide empty-result metadata, and labels generated schema definitions as partial. Conservative UDF assessment and native function completion preserve CQL selector syntax.
+
+- Fixed PostgreSQL numeric table filters rejecting fractional operands for integer columns. Native macOS filter and shortcut settings views also build with Swift 6.1.
+
+- macOS app packaging materializes database logo resources before signing, including SwiftPM 6.1 bundles that preserve source symlinks.
+
+- Improved segmented-control keyboard focus and kept inline grid editors fully visible after opening row details on older macOS versions.
+
+- Catalog menus avoid the native blue row outline on older AppKit versions. Return and Escape cancel SQL review even when the preview has focus, and timed-out completion requests return before helper process cleanup.
+
+- GPUI keyboard commands preserve native editing and composition, including Return/Shift+Return, shortcut recorder Tab navigation and exact Run shortcut modifiers.
+
+- Offline completion keeps its current request during harmless refreshes; source changes, replacement and close cancel only the original owned request.
+
+- Fixed GPUI popup rendering and retained grid mouse/focus updates. Disabled buttons now expose their disabled accessibility state.
+
+- Legacy profile migration now retains its validated primary file and parent across backup work, refuses intervening external edits or replacements, and keeps the exact old private backup for recovery. Full runtime and native acceptance remain pending.
+
+- Theme import, removal and explicit recovery now share captured private publication with atomic no-replace handling for absent files. Exact corrupt-library copies and foreign destinations/staging are preserved; unknown Windows publication requires inspection and Reload before close. Full runtime and native acceptance remain pending.
+
+- Workspace/profile migration and shortcut recovery backups now become private before writing on Windows and Unix, preserve exact original bytes and foreign files after failures, and abort primary replacement when required backup publication is unconfirmed. Full runtime and native acceptance remain pending.
+
+- SQL Save and Save As now capture the native chooser destination and parent ownership before background work, refusing newly appeared or externally changed files while retaining original-binding conflict checks. Full runtime and Windows/Linux native acceptance remain pending.
+
+- New SQL Tab can create independent disconnected local drafts before a profile is saved. Shortcut saves and explicit recovery now verify staged ownership and exact content through the shared publisher before acknowledging a saved mapping or normal close, preserving exact recovery backups and foreign replacements. Full runtime and Windows/Linux native acceptance remain pending.
+
+- Hardened experimental GPUI candidate publication against changed source and legal inputs. Completed parity proofs must match the exact candidate-reviewed source inventory; unavailable Mac database coverage stays explicit and still requires separate real database/TLS proof. Required export-test cleanup preserves foreign files and fails its proof on refusal. Package, installed and Windows/Linux native acceptance remain pending.
+
+- Corrected GPUI local-file and persistence recovery: fresh unbound and missing-profile SQL can Open/Save/Save As without a saved connection, Open works from inspection tabs, and accepted large sources/history persist without the former 8 MiB/64 MiB cutoffs. Windows private staging now installs its protected descriptor at CREATE_NEW before content. Profile exports and connection/workspace/appearance stores share captured destination and retained temporary identity/content checks, preserving external replacements. Completion and signature help resume after connection/import Cancel or success while failed-save recovery and stale-owner guards remain active. Windows UNC parent normalization is corrected. Full runtime and Windows/Linux native acceptance remain pending.
+
+- Prepared the isolated GPUI parity/fault runner and exact installed-artifact acceptance contracts, including physical helper/session loss and controlled real database acknowledgement-loss evidence. The complete matrix and Windows/Wayland/X11 installed acceptance remain pending.
+
+- Windows/Linux DBeer now has stable app identity, empty disconnected startup without demo profiles or sample SQL, and exact paired GUI/helper build metadata including the offline language helper. Native wrappers prepare unsigned portable Windows ZIP / Ubuntu tar candidates with original icons, one Windows host manifest, full source/dependency/runtime notices, installation/update instructions and SHA256 without replacing previous archives. Original GPUI data, UUIDs, credential service and kernel ownership lock remain unchanged; macOS still uses the independent SwiftUI/AppKit build/sign/release route. Runtime, native packaging and installed Windows 11 / Ubuntu Wayland/X11 acceptance remain pending.
+
+- GPUI now connects native accessibility to retained SQL/review editors, typed virtual result grids, row inspectors, named dialogs and Settings. Guarded actions preserve original focus, editing and Preview/Apply ownership; keyboard context menus, F2 and staged Delete share existing controls. Linux startup owns a GNOME session-manager registration whose noninteractive replies depend only on completed common close review. Runtime, screen-reader, native input/scaling and Windows/Linux session-end acceptance remain pending.
+
+- GPUI Settings now records, rebinds, clears and restores Run, Run Script, Stop and Run to JSON/CSV File shortcuts. Private mappings preserve explicit unbinding and conflict/protected-key rules, with deliberate corrupt recovery and reload. Exact native input safety and common command gates keep keyboard, menu and toolbar behavior synchronized; normal close drains the latest accepted save. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI Appearance now imports VS Code JSON/JSONC, TextMate XML/binary and JetBrains schemes through native selection and explicit normalized review. Eight bundled schemes and original notices ship independently of Mac builds; safe local includes, private normalized persistence, removal and deliberate corrupt-library recovery preserve existing bytes and selections. Late callbacks cannot overwrite newer choices, and normal close drains original theme work plus required appearance saves. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI appearance settings now offer persisted System/Lager/Porter and named application schemes, independent editor schemes and Follow App Appearance, with retained live previews. OS changes reapply the selected palette without changing SQL/editor/grid/session state; normal close awaits the latest reserved appearance save. Fixed errors, retry and explicit reload preserve unreadable originals. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI SQL editors now show Go function signatures with names, parameter and return types, the active argument and overload navigation. Source/caret changes and manual completion refresh the non-focusing popup; Escape suppresses pending help, and completion acceptance retains native Undo. Built-ins work offline and connected functions use explicit metadata refreshes. Runtime verification and Windows/Linux native acceptance remain pending.
+
+- GPUI SQL editors now show contextual Go completion with fuzzy match highlights, automatic typing and protected Ctrl+Space invocation, native popup navigation, Tab/Return insertion and Escape dismissal. Source/context/caret/focus/IME checks reject stale work; insertion uses one Atomic Undo step and retains the original editor. Version-correct syntax diagnostics have a separate source decoration path from execution feedback. Runtime verification and Windows/Linux native acceptance remain pending.
+
+- GPUI SQL editors now synchronize with a separate offline language helper through a bounded background worker. Explicit Connect and Refresh load completion metadata on the original catalog service; typing and restoring remain disconnected. Assistance supports safe Retry, version/context invalidation and awaited close teardown without changing editor Undo or SQL-session ownership. Runtime verification and Windows/Linux native acceptance remain pending.
+
+- GPUI close decisions now compose scripts, full/loaded exports, native SQL file work, inline edits and fresh-session Apply with captured Stop/transaction/Discard/Cancel decisions. Physical SQL sessions retain their original helper across later commands and teardown; explicit unknown-outcome close acknowledgment keeps reapply recovery blocked. Final removal awaits original operation outcomes, live-session disconnect acknowledgments, owned window-helper teardown and the latest local draft flush. Runtime and Windows/Linux native acceptance are pending.
+
+- GPUI Run to JSON/CSV File now captures one exact statement and destination before credentials, assesses and executes once on the original SQL-tab session, and streams full results with progress and Stop. Private publication checks destination identity and output bytes, uses explicit Windows replacement, and separates successful SQL from failed or unverified file publication without rerunning SQL. Shared Swift/Go/Rust contract consumers are updated; runtime and Windows/Linux native acceptance are pending.
+
+- GPUI loaded JSON/CSV export now captures the original physical result rows, discloses loaded/reported counts and truncation, and uses native Save dialogs without reconnecting or running SQL. Exact values and duplicate columns are retained, CSV requires a collision-free NULL marker, and pending table edits, Apply, browse and recovery block export. Captured atomic publication preserves SQL file state and refuses stale destinations. Runtime and Windows/Linux native acceptance are pending.
+
+- GPUI Apply now re-previews and assesses the exact frozen typed batch on a fresh idle session, requires explicit review and retains authoritative completion through Stop and original-session cleanup. A known commit reloads through the captured table service; failed reload blocks reapply. Lost COMMIT confirmation preserves local changes and requires successful inspection followed by explicit Discard and Reload; disconnect does not prove rollback. Runtime and Windows/Linux native acceptance are pending.
+
+- GPUI standalone Preview SQL now shows exact helper-generated SQL and separate typed parameters for a frozen changes batch, with original profile/policy context and helper assessment. Each attempt owns a fresh idle session, supports Stop/Cancel, revokes unused grants and awaits original-session cleanup; stale context keeps local drafts. Fresh-session Apply and recovery are described above. Runtime and Windows/Linux native acceptance are pending.
+
+- GPUI table grids now stage typed updates, inserts and deletes locally, with immutable original values, pending markers/counts, inline and expanded editors, Columns metadata and explicit NULL/DEFAULT/empty/binary values. Adapter capabilities and visible reasons preserve read-only tables/columns; drafts lock snapshot replacement. Discard/Cancel guards protect tab/window/profile changes and retain drafts on later cancellation or failed profile publication. Standalone Preview and fresh-session Apply are described above. Runtime and Windows/Linux native acceptance are pending.
+
+- GPUI result grids now retain each result's widths, viewport and selection, with rectangular/sparse/full-row input, native typed JSON plus TSV selection copy and synchronized read-only row details. Refresh reconciles original row identities safely; new pages, schemas and operations cannot move selection onto different rows. Windows/Linux native compilation and external clipboard/input acceptance remain pending; full runtime verification remains pending.
+
+- GPUI table/view documents now retain independent 200-row server navigation, typed explicit filters and server sorting, separate from local loaded-view controls. Refresh publishes validated metadata and rows together; failure preserves the previous complete page. No automatic count is requested, and no-PK paging warns about unstable ordering. Shared helper MySQL numeric filters preserve exact decimal/integer comparisons without rounding, and missing browse objects remain known failures. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI catalog now lazily loads tables, views, functions, procedures, triggers and relation detail groups, with connected-profile server search, captured object actions and explicit retry/Refresh. Adapter-generated names and overload identities remain authoritative. Structure/definition inspection and the first real read-only table browse snapshot use isolated service sessions; generated SELECT opens disconnected. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI SQL drafts and history now retain document UUIDs, source, titles, opaque connection bindings, order and selection with debounced private storage and a fallible final close flush. Versioned migration preserves exact backups and refuses corrupt/future files. Managed history supports recording preferences, statement outcomes, retention, clear and disconnected reopen; clearing drafts uses close guards and keeps saved SQL files. Missing connections preserve SQL for explicit recovery. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI SQL files: native UTF-8 Open, Save and Save As now retain the original tab, source and destination across picker callbacks. Files open disconnected; Unicode/CRLF text and file titles are preserved, atomic saves refuse stale targets, and saving older captured text leaves newer edits unsaved. Cancel/errors retain the original binding. Windows/Linux runtime, permissions and native chooser acceptance remain pending.
+
+- GPUI basic close now retains one captured review through Stop, Commit/Roll Back and acknowledged disconnects. Cancel preserves running work; repeated close/Quit cannot replace a chosen resolution, and helper loss or unacknowledged teardown cannot silently remove a document. An owned-window Windows session-end bridge queues cancellable review; native Windows validation remains pending; the Ubuntu session-manager adapter is integrated as described above. Runtime and native acceptance are deferred.
+
+- GPUI Run Script now reviews the entire captured source and helper classification before ordered execution on its original tab session, including helper-allowed read scripts. Each statement retains its outcome and multiple result sets; first failure or Stop skips later work, unknown outcomes block retry, and one cumulative display budget bounds retained results. Original-source error navigation, active highlighting, elapsed/row/truncation feedback and success gutter marks preserve Unicode ranges and clear on edits/profile changes/new runs. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI SQL Run now captures the selection or current statement from unchanged source and rejects malformed/client-command/multiple-statement fragments before helper startup. The execution splitter follows the Swift dialect scanner and preserves original Unicode/newline/delimiter spans with explicit byte, UTF-16, LSP and adapter error mappings. Reviewed scripts now use whole-source policy review and ordered execution as described below; runtime/native acceptance remains pending.
+
+- Portable profile transfer: GPUI now previews and imports Swift-compatible v2/legacy-v1 connection files with individual/all selection, explicit CA remapping, fresh identities and one atomic disconnected import without credential changes. Export captures settings before the native chooser and replaces files atomically. Swift accepts Windows drive/UNC CA hints while requiring local remapping and preserving TLS/policy. Runtime and Windows/Linux native acceptance remain pending.
+
+- GPUI connection lifecycle: guarded profile edits/deletion, context actions, native CA selection, Save versus Save & Connect, and a bounded one-shot --connect-stdin channel. Session decisions precede profile/password changes; restored profiles remain disconnected and startup never executes SQL. Windows/Linux runtime and TLS acceptance remain pending.
+
+- GPUI profile persistence: versioned metadata restores selection by stable ID and migrates the former GPUI library with an exact-byte backup. Serialized profile/password updates and deletion restore credentials after a failed metadata replacement and report rollback failures. New profiles use an unspecified environment with readonly disabled; existing policy values and legacy defaults are preserved. Windows/Linux runtime acceptance remains pending.
+
+- Windows/Linux GPUI development builds: native CI archives with the Go helper, platform credential stores and settings paths, Ctrl shortcuts, and executable-relative helper discovery. The macOS product and CI remain SwiftUI/AppKit; the separate GPUI Mac app remains available for development.
+- Experimental GPUI client: real PostgreSQL/MySQL connections through the existing bundled Go helper, separate profiles and Keychain passwords, independent SQL sessions, catalog browsing, streamed results, cancellation, transaction state, and helper policy confirmations. The Swift application and protocol remain unchanged.
+- GPUI workspace foundation: stable document/profile identity and captured session contexts keep delayed results, cancellation and helper-death outcomes with their original tab. SQL editors retain selection, scroll and Undo across tab/theme changes and accept exact plain-text input. Repeated normal launches sharing a profile directory now refuse safely while the existing process owns its OS lock; ownership is released on exit/crash. Windows/Ubuntu native acceptance remains pending.
+
+- GPUI prototype: Dock Quit now offers Commit, Roll Back, and Cancel for open transactions, waits for helper cleanup before exiting, and keeps repeated Quit requests in the same dialog.
+
+- Renamed the native application appearance choices Light and Dark to Lager and Porter.
+- Fixed missing menu text and white Settings icons in light themes by preserving native menu materials and template toolbar icons when switching themes.
+- SQL completion highlights matching parts of each name, such as the `o` and `i` in `order_items` for `oi`. Highlighting supports abbreviations, typos, and Unicode, uses bold text and editor theme colors, and persists when the selected row or theme changes.
+- Completion search supports word-part abbreviations (`oi` → `order_items`), snake_case and camelCase names, minor typos, and adjacent letter transpositions. Columns in the current query and CTEs take priority among candidates of comparable match quality; exact names rank above typo corrections. Candidates are ranked before the completion count limit is applied.
+- Function signature help shows argument names and types, return types, and highlights the current argument while typing or moving the caret. It follows nested calls, overloads, named/default/variadic arguments, and SUBSTRING FROM/FOR syntax. Common built-ins work offline; PostgreSQL/MySQL stored-function signatures load through the connected profile's metadata service. The non-focusing panel supports editor themes, Escape, and native Undo.
+- SQL completion uses a separate offline helper module with clause-aware candidates, CTE and subquery scopes, projected columns, correlated/LATERAL visibility, and qualified ambiguous columns. Foreign keys from PostgreSQL/MySQL provide ready-to-insert JOIN/ON suggestions, including reverse, composite, and self joins. Contextual results replace the temporary keyword list, and completion also opens after clause whitespace.
+- Result tables have a fixed row-number gutter: click to select a whole row, drag or Shift-click for a range, and Command-click for individual rows. Row numbers are excluded from copied data and stay below the column header while scrolling.
+- Query results show displayed and total row counts on the right, such as `13 from 13 rows shown`, without a separate SELECT command heading.
+- Fixed clipped hover feedback on the application theme and editor color scheme pickers in Settings.
+- Table browsing: double-click a cell to open row details and edit its value, or choose Row Details from the cell context menu; Space also toggles the inspector. The separate inspector toolbar button is removed. Sorting is available through column headers, and filters sit beside the connection picker above the table. Selection, export, and applying changes share the bar directly below the table; pagination, Columns, and row actions sit beneath it. Preview SQL appears only when a preview is available.
+- Fixed freezes during mouse and keyboard multiple selection: selection changes no longer reload data, and noncontiguous selected rows are preserved. Editors respect column types and distinguish empty strings, NULL, and DEFAULT.
+- All data tables and the SQL completion table use a style without outer horizontal padding or rounded rows.
+- Removed the persistent cell-editing hints above the data grid and SQL query results.
+- A green checkmark beside the first line number confirms successful SQL fragment execution. Scripts mark each completed statement; errors, cancellation, and unknown outcomes receive no mark. Editing text, changing connections, or starting another run clears previous marks.
+- Settings → Appearance: independent application and SQL editor color schemes, live previews, and changes without restarting. The application supports System/Lager/Porter and the shared scheme library: DBeer Light/Dark, VS Code Light+/Dark+, Solarized Light/Dark, JetBrains Light, Darcula, and imported themes. The application palette applies to panels, tabs, controls, and tables; the editor inherits it in Follow App Appearance mode or uses a separate scheme. Import standard VS Code JSON/JSONC, TextMate `.tmTheme`, and JetBrains `.icls` files, persist imports and selections locally, and remove custom schemes. Switching schemes preserves text, cursor position, scrolling, and Undo; the background, syntax, selection, cursor, line numbers, and completion popup use the selected palette.
+- Refreshed SQL editor layout: the background fills the panel to its edges without an outer padding border, while retaining internal text padding, line spacing, the current line and its number, adaptive light/dark colors, Undo, selection, and execution highlighting.
+- Bundled local SQL language server over LSP: contextual PostgreSQL/MySQL completion while typing and with ⌃Space, loaded catalog tables and columns, functions and aliases, keyboard navigation, and undoable insertion with identifier quoting. Diagnostics for unclosed strings, comments, and parentheses are tied to the document version. Switching profiles or dialects discards stale responses; completion never opens database connections or executes SQL, and an unavailable LSP does not block the editor.
+- After connecting, user tables, views, functions, and columns load in the background for completion without manually expanding tree branches. Profile Refresh updates completion metadata; batches use a separate service session without executing SQL in tabs or connecting restored drafts.
+- Catalog feedback follows native rows during tree expansion and collapse without a duplicate border during animation. The green connection indicator stays in place when the loading indicator appears or disappears.
+- Aligned the Connections header and search dividers with the SQL tab bar and execution toolbar.
+- Shared execution registry for the Query menu, buttons, and keyboard, respecting the active tab, focus, and modal windows. The default ⌘Return and ⇧⌘Return shortcuts are preserved; the SQL fragment to execute is highlighted inside the editor instead of a separate block. Highlighting and execution follow the cursor, including immediately after `;`.
+- Configurable Run, Run Script, Stop, and Run to File shortcuts: recording, persistence, conflict detection, protected system editing shortcuts, clearing, and restoring defaults.
+- Individual shortcut clear/reset actions use icons without button borders.
+- Profile environments: unset, dev, stag, and prod, with text and color context in profiles and confirmations.
+- Hidden the unset environment label in the connection list and removed environment labels from SQL tabs and the connection picker. The Readonly indicator now appears only beside the connection picker as RO, with a full tooltip and VoiceOver description.
+- Environment labels and the RO indicator use the same small, muted gray text to keep status information unobtrusive.
+- Shared helper policy for Execute, scripts, Run to File, and Apply. Destructive and unknown SQL requires confirmation; production confirms every write. Multi-statement runs show the entire batch before execution; Cancel sends no user SQL.
+- A separate readonly setting rejects writes and unknown operations in the helper, disables grid editing, and enables server-side read-only mode. Changing profile policy uses the existing session and transaction shutdown workflow.
+- Added small horizontal padding inside the Readonly toggle in the connection editor.
+- Protocol v3 binds approval to the exact operation, statement order, and session; cancellation, errors, reconnection, and content changes invalidate it.
+- Profile formats v1/v2 migrate to v3 while preserving UUIDs and backing up the original bytes. Profile transfer v2 retains environment and readonly settings, and legacy v1 imports remain supported; secrets are still excluded.
 
 ## 0.1.0
 

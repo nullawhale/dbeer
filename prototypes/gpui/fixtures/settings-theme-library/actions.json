@@ -1,0 +1,5 @@
+[
+  { "access": "writable", "requestImport": true, "requestRecovery": false, "removeImported": true },
+  { "access": "recoverable", "requestImport": false, "requestRecovery": true, "removeImported": false },
+  { "access": "unreadable", "requestImport": false, "requestRecovery": false, "removeImported": false }
+]

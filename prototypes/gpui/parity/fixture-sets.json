@@ -1,0 +1,120 @@
+{
+  "profiles": [
+    "fixtures/profile-defaults.json"
+  ],
+  "workspace": [
+    "fixtures/sql.json",
+    "fixtures/grid.json"
+  ],
+  "sessions": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "transport": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "close": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "editor": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "../../../protocol/fixtures/completion-matches.json",
+    "../../../protocol/fixtures/signature-help.json"
+  ],
+  "policy": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "execution": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "documents": [
+    "fixtures/sql.json",
+    "fixtures/grid.json"
+  ],
+  "catalog": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "browse": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "results": [
+    "fixtures/sql.json",
+    "fixtures/grid.json"
+  ],
+  "grid": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "export": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ],
+  "language": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "../../../protocol/fixtures/completion-matches.json",
+    "../../../protocol/fixtures/signature-help.json"
+  ],
+  "commands": [
+    "fixtures/sql.json",
+    "fixtures/grid.json"
+  ],
+  "theme": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/themes/paper.json",
+    "fixtures/themes/night.json",
+    "fixtures/themes/include.jsonc",
+    "fixtures/themes/textmate.tmTheme",
+    "fixtures/themes/jetbrains.icls"
+  ],
+  "platform": [
+    "fixtures/sql.json",
+    "fixtures/grid.json"
+  ],
+  "delivery": [
+    "fixtures/sql.json",
+    "fixtures/grid.json"
+  ],
+  "verification": [
+    "fixtures/sql.json",
+    "fixtures/grid.json",
+    "fixtures/postgresql.sql",
+    "fixtures/mysql.sql",
+    "fixtures/failure-cases.json"
+  ]
+}

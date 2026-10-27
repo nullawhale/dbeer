@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "kind": "fixed-source-input-corpus",
+  "runtimeObserved": false,
+  "editorUnicodeCRLF": "-- Synthetic 😀 é\r\nSELECT 'straight \"quotes\" -- dash';\r\nSELECT 2;",
+  "editorUnicodeCRLFSha256": "6506dfd0d32bd4569e717d080de353f93fba31b8bc1698c98ab4e2651cd4b45a",
+  "nullMarker": "<DBEER-SQL-NULL>",
+  "typedAssignments": [
+    {
+      "kind": "null",
+      "expectedLabel": null,
+      "expectedComputedLength": null
+    },
+    {
+      "kind": "text",
+      "value": "",
+      "expectedLabel": "",
+      "expectedComputedLength": "0"
+    },
+    {
+      "kind": "text",
+      "value": "NULL",
+      "expectedLabel": "NULL",
+      "expectedComputedLength": "4"
+    },
+    {
+      "kind": "default",
+      "expectedLabel": "fixture default",
+      "expectedComputedLength": "15"
+    },
+    {
+      "kind": "text",
+      "value": "9007199254740993.123456789000000000"
+    },
+    {
+      "kind": "binary",
+      "valueBase64": "AP8=",
+      "expectedByteCount": 2
+    }
+  ],
+  "queries": {
+    "postgresql": {
+      "duplicateValuesCanonical": "SELECT label AS x,exact_value AS x,payload FROM dbeer_parity_v1.values_grid ORDER BY CASE WHEN id<=5 THEN id ELSE exact_value+6 END",
+      "head": "SELECT id,label,exact_value,payload,computed_length FROM dbeer_parity_v1.values_grid WHERE id<=5 ORDER BY id",
+      "compositeOnce": "UPDATE dbeer_parity_v1.composite_key SET label=label || '!' WHERE a=2 AND b=1",
+      "transactionA": "BEGIN; CREATE TEMPORARY TABLE acceptance_tab_a(marker integer); INSERT INTO acceptance_tab_a VALUES(731); SET LOCAL application_name='acceptance-tab-a';",
+      "transactionBProbe": "SELECT marker FROM acceptance_tab_a",
+      "lostSqlCommit": "BEGIN; UPDATE dbeer_parity_v1.acceptance_effects SET commits=commits+1 WHERE case_id='sql-commit'; COMMIT;",
+      "beginTransaction": "BEGIN;",
+      "prepareLostSqlCommit": "UPDATE dbeer_parity_v1.acceptance_effects SET commits=commits+1 WHERE case_id='sql-commit';",
+      "commitStatement": "COMMIT;",
+      "fullExportOnce": "SELECT label AS x,exact_value AS x,payload FROM dbeer_parity_v1.acceptance_export_once() ORDER BY sort_key",
+      "scriptSuccess": "INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-success',1,11); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-success',2,22); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-success',3,33);",
+      "scriptFirstError": "INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-first-error',0,99); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-first-error',1,11);",
+      "scriptMiddleError": "INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-middle-error',1,11); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-middle-error',0,99); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-middle-error',3,33);",
+      "wideGrid": "SELECT label AS c00,exact_value AS c01,payload AS c02,label AS c03,exact_value AS c04,payload AS c05,label AS c06,exact_value AS c07,payload AS c08,label AS c09,exact_value AS c10,payload AS c11,label AS c12,exact_value AS c13,payload AS c14,label AS c15,exact_value AS c16,payload AS c17,label AS c18,exact_value AS c19,payload AS c20,label AS c21,exact_value AS c22,payload AS c23,label AS c24,exact_value AS c25,payload AS c26,label AS c27,exact_value AS c28,payload AS c29,label AS c30,exact_value AS c31 FROM dbeer_parity_v1.values_grid ORDER BY CASE WHEN id<=5 THEN id ELSE exact_value+6 END LIMIT 1000",
+      "largeInspector": "SELECT REPEAT('x',1048576) AS value",
+      "overByteBound": "SELECT REPEAT('x',1048576) AS value FROM dbeer_parity_v1.values_grid ORDER BY id LIMIT 9"
+    },
+    "mysql": {
+      "duplicateValuesCanonical": "SELECT label AS x,exact_value AS x,payload FROM dbeer_parity_v1.values_grid ORDER BY CASE WHEN id<=5 THEN id ELSE exact_value+6 END",
+      "head": "SELECT id,label,exact_value,payload,computed_length FROM dbeer_parity_v1.values_grid WHERE id<=5 ORDER BY id",
+      "compositeOnce": "UPDATE dbeer_parity_v1.composite_key SET label=CONCAT(label,'!') WHERE a=2 AND b=1",
+      "transactionA": "BEGIN; CREATE TEMPORARY TABLE acceptance_tab_a(marker integer); INSERT INTO acceptance_tab_a VALUES(731); SET @acceptance_tab_a=731;",
+      "transactionBProbe": "SELECT marker FROM acceptance_tab_a",
+      "lostSqlCommit": "BEGIN; UPDATE dbeer_parity_v1.acceptance_effects SET commits=commits+1 WHERE case_id='sql-commit'; COMMIT;",
+      "beginTransaction": "BEGIN;",
+      "prepareLostSqlCommit": "UPDATE dbeer_parity_v1.acceptance_effects SET commits=commits+1 WHERE case_id='sql-commit';",
+      "commitStatement": "COMMIT;",
+      "fullExportOnce": "CALL dbeer_parity_v1.acceptance_export_once();",
+      "scriptSuccess": "INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-success',1,11); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-success',2,22); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-success',3,33);",
+      "scriptFirstError": "INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-first-error',0,99); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-first-error',1,11);",
+      "scriptMiddleError": "INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-middle-error',1,11); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-middle-error',0,99); INSERT INTO dbeer_parity_v1.acceptance_receipts VALUES('script-middle-error',3,33);",
+      "wideGrid": "SELECT label AS c00,exact_value AS c01,payload AS c02,label AS c03,exact_value AS c04,payload AS c05,label AS c06,exact_value AS c07,payload AS c08,label AS c09,exact_value AS c10,payload AS c11,label AS c12,exact_value AS c13,payload AS c14,label AS c15,exact_value AS c16,payload AS c17,label AS c18,exact_value AS c19,payload AS c20,label AS c21,exact_value AS c22,payload AS c23,label AS c24,exact_value AS c25,payload AS c26,label AS c27,exact_value AS c28,payload AS c29,label AS c30,exact_value AS c31 FROM dbeer_parity_v1.values_grid ORDER BY CASE WHEN id<=5 THEN id ELSE exact_value+6 END LIMIT 1000",
+      "largeInspector": "SELECT REPEAT('x',1048576) AS value",
+      "overByteBound": "SELECT REPEAT('x',1048576) AS value FROM dbeer_parity_v1.values_grid ORDER BY id LIMIT 9"
+    }
+  },
+  "settingsExpected": {
+    "independentChoices": {
+      "version": 1,
+      "appearanceTheme": "light",
+      "applicationColorTheme": "native",
+      "editorColorTheme": "native-dark"
+    },
+    "systemFollowing": {
+      "version": 1,
+      "appearanceTheme": "system",
+      "applicationColorTheme": "native",
+      "editorColorTheme": "automatic"
+    },
+    "explicitUnbind": {
+      "version": 1,
+      "overrides": [
+        {
+          "command": "query.runCurrent",
+          "binding": {
+            "state": "unbound"
+          }
+        }
+      ]
+    },
+    "importPreviewColors": {
+      "editor.background": "#18232D",
+      "editor.foreground": "#FAF1DC",
+      "editor.selectionBackground": "#DDAA6633"
+    },
+    "importSelectedOnlyAfterCommit": "editorColorTheme uses discovered committed imported ID; application choice stays unchanged",
+    "removeResetOnlyAfterCommit": "Reset only selections referencing removed ID against CURRENT latest preferences after ordered committed removal",
+    "ownerCases": [
+      "close/reopen before chooser callback",
+      "reload before parse reply",
+      "new editor choice before import commit",
+      "new preference reservation while close awaits flush",
+      "external byte conflict then explicit reload",
+      "corrupt/future explicit backup recovery",
+      "remove publication after newer unrelated choice"
+    ]
+  },
+  "fixtureReferences": [
+    "protocol/fixtures/sql-execution/v1.json",
+    "protocol/fixtures/completion-matches.json",
+    "protocol/fixtures/signature-help.json",
+    "protocol/fixtures/gpui-theme-parity/cases.json",
+    "protocol/fixtures/profile-transfer/legacy-v1.json",
+    "protocol/fixtures/profile-transfer/mac-export-v2.json",
+    "protocol/fixtures/profile-transfer/invalid",
+    "prototypes/gpui/fixtures/settings-theme-library/import.jsonc",
+    "prototypes/gpui/fixtures/shortcut-settings/capture-safety.json"
+  ],
+  "policyImports": [
+    {
+      "environment": "unspecified",
+      "readOnly": false
+    },
+    {
+      "environment": "unspecified",
+      "readOnly": true
+    },
+    {
+      "environment": "development",
+      "readOnly": false
+    },
+    {
+      "environment": "development",
+      "readOnly": true
+    },
+    {
+      "environment": "staging",
+      "readOnly": false
+    },
+    {
+      "environment": "staging",
+      "readOnly": true
+    },
+    {
+      "environment": "production",
+      "readOnly": false
+    },
+    {
+      "environment": "production",
+      "readOnly": true
+    }
+  ],
+  "stagingRule": "Only enumerated source fixtures copied to fresh owned 0700/0600 or current-user-DACL paths; no arbitrary request SQL/paths.",
+  "applyCommittedLabel": "applied"
+}

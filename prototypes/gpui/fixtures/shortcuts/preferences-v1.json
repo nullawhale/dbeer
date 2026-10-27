@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "overrides": [
+    { "command": "query.runCurrent", "binding": { "state": "unbound" } },
+    { "command": "query.stop", "binding": { "state": "bound", "shortcut": {
+      "basis": "nativeKey", "key": "f8", "modifiers": { "control": true, "alt": false, "shift": false, "platform": false }
+    } } },
+    { "command": "query.runToJSON", "binding": { "state": "bound", "shortcut": {
+      "basis": "nativeKey", "key": "α", "modifiers": { "control": true, "alt": false, "shift": true, "platform": false }
+    } } }
+  ]
+}

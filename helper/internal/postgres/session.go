@@ -12,7 +12,10 @@ import (
 // concurrent session workers. Open never mutates the process environment.
 func PrepareEnvironment() { clearPostgresEnvironment() }
 
-type Session struct{ conn *pgx.Conn }
+type Session struct {
+	adapter.TransportBinding
+	conn *pgx.Conn
+}
 
 func Open(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
 	conn, err := connect(ctx, connection)
@@ -20,7 +23,7 @@ func Open(ctx context.Context, connection protocol.Connection) (adapter.Session,
 		response := connectionError(protocol.Command{}, err)
 		return nil, &adapter.ConnectionError{Category: response.Category, Message: response.Message, SQLState: response.SQLState}
 	}
-	return &Session{conn: conn}, nil
+	return &Session{conn: conn, TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
 }
 
 func (session *Session) Execute(ctx context.Context, command protocol.Command) protocol.Response {
@@ -46,6 +49,9 @@ func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Co
 	return executeParamsSink(ctx, session.conn, command, command.SQL, nil, sink)
 }
 
-func (session *Session) Close() { closeConnection(session.conn) }
+func (session *Session) Close() {
+	closeConnection(session.conn)
+	session.CloseTransport()
+}
 
 func (session *Session) TransactionStatus() string { return transactionStatus(session.conn) }

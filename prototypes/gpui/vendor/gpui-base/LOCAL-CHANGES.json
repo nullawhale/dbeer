@@ -1,0 +1,61 @@
+{
+  "upstream_package": "gpui-base",
+  "version": "0.7.3",
+  "archive_sha256": "2e9955b6f4b048fd50ca15fc8e225d80bb00ba9ebc8fecdddde5ad26dbef9270",
+  "upstream_revision": "67265a36e260ffe03c5aaebdcd8d654dbf892eab",
+  "omitted": [
+    ".cargo-ok (Cargo cache bookkeeping)"
+  ],
+  "changes": [
+    {
+      "path": "Cargo.lock",
+      "upstream_sha256": "12e5fe9b9c7115653fa0e9c330b163a3e6305200a83b939b53c3aa6663d02983",
+      "local_sha256": "5cce300924afc2d0ea9544238dfe858141132eaa77ad379382d533a3d32d0014"
+    },
+    {
+      "path": "src/alert_dialog.rs",
+      "upstream_sha256": "ad1becbd68ec0fc05c718de6181135d3b09a7d91f4cf00a833a6f88f9cf660a5",
+      "local_sha256": "b4204e979af23c895477080446016436d7b92f3dca65c5b601123c7183fbe112"
+    },
+    {
+      "path": "src/dialog.rs",
+      "upstream_sha256": "f56cc07dda43678903e2907b8c8c6028ae5fa80f0a637b8f065054a4c55b391d",
+      "local_sha256": "119028ecc280de403752e305870b3de0fe1fa6cb3fc0d4048127ffc6083030ae"
+    },
+    {
+      "path": "src/focus_trap.rs",
+      "upstream_sha256": "5a110237efd10a3d7b2478b8d0d3588e82ab1950984bdc71a47333b1d59e8be6",
+      "local_sha256": "879e2022093c4785dae890ab8100251d101099522bdad8b3e5417b0aed3d3ac1"
+    },
+    {
+      "path": "src/input/base/cursor.rs",
+      "upstream_sha256": "05cca82894ddef125cfaaa24d92d72af62529a2255da26aaffc9b134bbc79413",
+      "local_sha256": "bfc5e96ef15aba9a0a9a93c622f478024aed540131620b2a470ad4ab25836f59"
+    },
+    {
+      "path": "src/input/base/element.rs",
+      "upstream_sha256": "cdb211ebe96ecfd1625e1b7aa29c8d6eee3f28e012bf9be2edd9b50ed6f7527d",
+      "local_sha256": "0fad18921e573996299dfd012959cb3dbe2580ec3d14979a9654f473a43ffe46"
+    },
+    {
+      "path": "src/input/base/state.rs",
+      "upstream_sha256": "a9641aaf0c107351af892e89bf7af06b5a3c3d52290346769b7983fe6353f539",
+      "local_sha256": "3d4965ac654f85e461cfd17bdede36b96f9cf6fd0782ea7ffee7bfbc30e707b6"
+    },
+    {
+      "path": "src/select.rs",
+      "upstream_sha256": "d7c9bc2a8c5e3b74fbd37ea3a9afadf276f317403bb4a2938ea4eb2b69cedb69",
+      "local_sha256": "258ff993649a83ec6af832212d06ffe5d9224ad83c0e8a99ea9215fda51631bd"
+    },
+    {
+      "path": "src/text/selection.rs",
+      "upstream_sha256": "5a4923a2128cd6a3eea9f91b70dd9e7bd4369b020d1da4b209292c29e6ea870f",
+      "local_sha256": "833a87dd912110102e99b55e80e66afc13bcb043eb3b2283e4edd3e6d227925a"
+    },
+    {
+      "path": "src/button.rs",
+      "upstream_sha256": "ff3026d04f12afe3e6aeb3cc3d95b25c5ea6eb65884258fea1b973ad6d08255e",
+      "local_sha256": "91def7cdc3a1e337b41d7340c19de42a44696f8a2373d2fd6ac3deb4afe65b87"
+    }
+  ]
+}

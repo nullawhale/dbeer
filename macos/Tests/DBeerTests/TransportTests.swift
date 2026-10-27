@@ -35,6 +35,34 @@ struct ProtocolFixtureTests {
         #expect(result.rows?[1][1] == "κόσμος 🌍\nline")
     }
 
+    @Test func sharedForeignKeyCatalogPreservesCompositeColumnOrder() throws {
+        let commands = try fixture("commands").split(separator: 0x0A).map {
+            try JSONDecoder().decode(BackendCommand.self, from: Data($0))
+        }
+        let command = try #require(commands.first { $0.catalog?.kind == "foreignKeys" })
+        let request = try #require(command.catalog)
+        #expect(request.objectKind == "table" && request.page == nil && request.filters == nil)
+        let replies = try fixture("responses").split(separator: 0x0A).map { try NDJSONFramer.decode(Data($0)) }
+        let reply = try #require(replies.first { $0.requestId == command.requestId })
+        #expect(reply.sessionId == command.sessionId && reply.queryId == command.queryId)
+        #expect(reply.truncated == false)
+        let records = reply.catalogRecords
+        #expect(records.count == 2)
+        #expect(records.map { $0["position"] } == ["1", "2"])
+        #expect(Set(records.compactMap { $0["name"] }).count == 1)
+        #expect(records.allSatisfy { $0["targetSchema"] != nil && $0["targetTable"] != nil &&
+            $0["sourceColumn"] != nil && $0["targetColumn"] != nil })
+        #expect(records[0]["sourceColumn"] != records[1]["sourceColumn"])
+        #expect(records[0]["targetColumn"] != records[1]["targetColumn"])
+        let key = try #require(TableForeignKey.parse(reply).first)
+        #expect(key.name == "order_customer_fk")
+        #expect(key.target == TableReference(schema: "odd\"schema", name: "Customers", kind: "table"))
+        #expect(key.columns == [TableForeignKeyColumn(source: "tenant_id", target: "tenant", position: 1),
+            TableForeignKeyColumn(source: "customer_id", target: "id", position: 2)])
+        #expect(try JSONDecoder().decode(BackendCommand.self, from: JSONEncoder().encode(command)) == command)
+        #expect(try NDJSONFramer.decode(JSONEncoder().encode(reply)) == reply)
+    }
+
     @Test func partialAndCoalescedReadsIncludingSplitUTF8Scalars() throws {
         let data = try fixture("responses")
         let expected: [Data] = data.split(separator: 0x0A)
@@ -86,7 +114,7 @@ struct BackendClientTests {
             print(json.dumps(message, ensure_ascii=False), flush=True)
         def hello():
             command = read()
-            send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':2})
+            send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
         \(body)
         """])
     }
@@ -156,7 +184,7 @@ struct BackendClientTests {
     @Test func wrongRequestIdentifierInvalidatesTransport() async throws {
         let client = fake("""
         read()
-        send({'type':'hello.ack','requestId':'unrelated-request','protocolVersion':2})
+        send({'type':'hello.ack','requestId':'unrelated-request','protocolVersion':5})
         """)
         await #expect(throws: BackendTransportError(.invalidMessage)) { try await client.start() }
         _ = await client.shutdown()
@@ -166,7 +194,7 @@ struct BackendClientTests {
         let client = fake("""
         command = read()
         os.close(0)
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':2})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
         time.sleep(10)
         """)
         try await client.start()

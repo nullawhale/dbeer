@@ -1,0 +1,95 @@
+{
+  "repository": "SSheldon/rust-objc-foundation",
+  "revision": "0c157a59b7931430ed5ac7839381470b0c516d3c",
+  "archiveUrl": "https://codeload.github.com/SSheldon/rust-objc-foundation/tar.gz/0c157a59b7931430ed5ac7839381470b0c516d3c",
+  "archiveSha256": "e8dcb8550d94b6c9dab6c229c01703df1d39288023899e893f7f447efe6d8481",
+  "legalPaths": [],
+  "packageReviews": [
+    {
+      "name": "objc-foundation",
+      "version": "0.1.1",
+      "manifestPath": "Cargo.toml",
+      "manifestSha256": "27c851b122617cfbf263603bcf05d637aaddbc87c12c2e78f8f91675739928a8",
+      "manifestPackage": {
+        "name": "objc-foundation",
+        "version": "0.1.1",
+        "authors": [
+          "Steven Sheldon"
+        ],
+        "description": "Rust wrapper for Objective-C's Foundation framework.",
+        "keywords": [
+          "objective-c",
+          "osx",
+          "ios",
+          "cocoa",
+          "uikit"
+        ],
+        "repository": "http://github.com/SSheldon/rust-objc-foundation",
+        "documentation": "http://ssheldon.github.io/rust-objc/objc_foundation/",
+        "license": "MIT",
+        "exclude": [
+          ".gitignore"
+        ]
+      },
+      "comparedFiles": [
+        {
+          "path": "examples/custom_class.rs",
+          "sha256": "44fab02b2eb974cbfd35e649872044457fa50c61148a13b02a71395fe6e44f3f",
+          "upstreamSha256": "44fab02b2eb974cbfd35e649872044457fa50c61148a13b02a71395fe6e44f3f"
+        },
+        {
+          "path": "examples/example.rs",
+          "sha256": "1f05e488809d0356b3658ac2bce12def26ac9518f4774dc599a216ddc719cd65",
+          "upstreamSha256": "1f05e488809d0356b3658ac2bce12def26ac9518f4774dc599a216ddc719cd65"
+        },
+        {
+          "path": "src/array.rs",
+          "sha256": "c3b7038821a5ecb10b043152cfc1ab0520ef5f923ea77b1e6a1c54ddf4586d96",
+          "upstreamSha256": "c3b7038821a5ecb10b043152cfc1ab0520ef5f923ea77b1e6a1c54ddf4586d96"
+        },
+        {
+          "path": "src/data.rs",
+          "sha256": "9ae4e7fe1bd92a40edd700f364ce60a18467387d360459e04e6933e6b6d20cfc",
+          "upstreamSha256": "9ae4e7fe1bd92a40edd700f364ce60a18467387d360459e04e6933e6b6d20cfc"
+        },
+        {
+          "path": "src/dictionary.rs",
+          "sha256": "b42dcb6f280211ef674f9018559eb768138f4a6a382410706278f2bcff3164b9",
+          "upstreamSha256": "b42dcb6f280211ef674f9018559eb768138f4a6a382410706278f2bcff3164b9"
+        },
+        {
+          "path": "src/enumerator.rs",
+          "sha256": "62f77fb4ccc7b9306c0d6564589d25234368d88b63d319e813622846fe0e5f47",
+          "upstreamSha256": "62f77fb4ccc7b9306c0d6564589d25234368d88b63d319e813622846fe0e5f47"
+        },
+        {
+          "path": "src/lib.rs",
+          "sha256": "f6dd421ba10b1a0e57fa10609ce2819ae491f63c08ee4b78a6884dcc5e742389",
+          "upstreamSha256": "f6dd421ba10b1a0e57fa10609ce2819ae491f63c08ee4b78a6884dcc5e742389"
+        },
+        {
+          "path": "src/macros.rs",
+          "sha256": "7c03375b7efa17b2a58f9c9821a61581b4b6eaa1e0185f2468e6d5ded57aef59",
+          "upstreamSha256": "7c03375b7efa17b2a58f9c9821a61581b4b6eaa1e0185f2468e6d5ded57aef59"
+        },
+        {
+          "path": "src/object.rs",
+          "sha256": "c6deba06b351936ed2264cdb56755685cdf0b92e37fcf4f6ba56e6021cd00384",
+          "upstreamSha256": "c6deba06b351936ed2264cdb56755685cdf0b92e37fcf4f6ba56e6021cd00384"
+        },
+        {
+          "path": "src/string.rs",
+          "sha256": "aeffa50feb90c50e11979780a67ced5c7458f8d164d668d271c0aaafe64d8025",
+          "upstreamSha256": "aeffa50feb90c50e11979780a67ced5c7458f8d164d668d271c0aaafe64d8025"
+        },
+        {
+          "path": "src/value.rs",
+          "sha256": "ee8168e2b45a3094b08a604e84e2d80c38454bb8ffbb859a24baf04725894be1",
+          "upstreamSha256": "ee8168e2b45a3094b08a604e84e2d80c38454bb8ffbb859a24baf04725894be1"
+        }
+      ],
+      "mismatches": [],
+      "unavailableFiles": []
+    }
+  ]
+}

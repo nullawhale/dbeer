@@ -28,7 +28,7 @@ struct GridIntegrationTests {
         let decision = CloseDecision()
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
             credentialStore: MemoryConnectionCredentialStore(), closeDecision: { _ in decision.value },
-            helperFactory: { BackendClient(executableURL: executable) })
+            executionDecision: { _ in true }, helperFactory: { BackendClient(executableURL: executable) })
         await workspace.start()
         let settings = try settings(engine)
         try #require(await workspace.library.saveConnection(name: engine.rawValue, settings: settings))

@@ -25,3 +25,5 @@ fi
 cd "$repo_root/helper"
 # Integration packages share one database; never run them concurrently or cached.
 go test -race -count=1 -p 1 ./...
+# Nested replacement modules are outside ./...; verify the driver boundary too.
+go -C third_party/cassandra-gocql-driver test -race -count=1 -run CustomWire .

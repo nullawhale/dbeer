@@ -16,6 +16,7 @@ import (
 )
 
 type Session struct {
+	adapter.TransportBinding
 	mu             sync.Mutex
 	work           *connection
 	serverUUID     string
@@ -35,9 +36,10 @@ func Open(ctx context.Context, settings protocol.Connection) (adapter.Session, e
 	if err != nil {
 		return nil, safeConnectionError(err)
 	}
-	session := &Session{work: work, connectionID: work.client.GetConnectionID()}
+	tunnel := adapter.TransportFromContext(ctx)
+	session := &Session{work: work, connectionID: work.client.GetConnectionID(), TransportBinding: adapter.TransportBinding{Transport: tunnel}}
 	session.transaction.Store("idle")
-	session.openControl = func(ctx context.Context) (*connection, error) { return dial(ctx, settings) }
+	session.openControl = func(ctx context.Context) (*connection, error) { return dialWithTransport(ctx, settings, tunnel) }
 	uuid, err := serverIdentity(work)
 	if err != nil || uuid == "" || session.connectionID == 0 {
 		session.Close()
@@ -85,6 +87,7 @@ func (session *Session) Close() {
 	if session.closed.CompareAndSwap(false, true) {
 		session.transaction.Store("unknown")
 		_ = session.work.transport.Close()
+		session.CloseTransport()
 	}
 }
 
@@ -120,10 +123,16 @@ func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Co
 	if unsupportedStatement(command.SQL) {
 		response := protocol.ErrorResponse(command, "validation", "MySQL client commands, COPY and LOAD DATA LOCAL are not supported. Submit SQL statements directly.")
 		response.Connected, response.TransactionStatus = !session.closed.Load(), session.TransactionStatus()
+		response.SQLNotExecuted = command.Type == "execute"
 		return response
 	}
 	return session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
-		return session.executeResults(command.SQL, collector, result)
+		if err := session.executeResults(command.SQL, collector, result); err != nil {
+			return err
+		}
+		// The user statement has been drained before metadata is read. Never
+		// re-execute it to reconstruct an original row or infer its source.
+		return session.attachResultSource(ctx, command.SQL, collector)
 	}, sink)
 }
 
@@ -131,12 +140,16 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	if session.closed.Load() {
-		return session.unknown(command)
+		response := protocol.ErrorResponse(command, "connection", "The MySQL session is closed. SQL was not executed.")
+		response.SQLNotExecuted = command.Type == "execute"
+		return response
 	}
 	ctx, cancel := context.WithTimeout(ctx, ExecuteTimeout)
 	defer cancel()
 	if ctx.Err() != nil {
-		return session.queryError(command, ctx, ctx.Err())
+		response := session.queryError(command, ctx, ctx.Err())
+		response.SQLNotExecuted = command.Type == "execute"
+		return response
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = session.work.transport.SetDeadline(deadline.Add(RecoveryTimeout))
@@ -251,7 +264,7 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 			response.ResultSets = collector.resultSets
 			response = boundResultSets(response)
 		}
-		return response
+		return collector.attachResults(response)
 	}
 	response := collector.finish(result, time.Since(started), session.TransactionStatus())
 	if cancelled.attempted {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
 )
 
@@ -105,6 +106,14 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 	manager.controlMu.Unlock()
 }
 
+// Routing rejections happen before the adapter receives the submitted SQL.
+// Keep them distinct from terminal failures of dispatched database commands.
+func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
+	response := protocol.ErrorResponse(command, category, message)
+	response.SQLNotExecuted = command.Type == "execute"
+	return response
+}
+
 // Close is an out-of-band abort used by EOF or transport failure. It also
 // unblocks full response queues, then waits until all physical sessions close.
 func (manager *Manager) Close() {
@@ -161,6 +170,12 @@ func (manager *Manager) run() {
 				return
 			}
 		case command := <-commands:
+			if command.Type == "formatInserts" {
+				if !emit(formatInserts(command)) {
+					return
+				}
+				continue
+			}
 			if command.Type == "shutdown" {
 				beginShutdown(command)
 				continue
@@ -205,14 +220,14 @@ func (manager *Manager) run() {
 			owner := owners[command.SessionID]
 			if owner == nil {
 				manager.forgetPending(command)
-				if !emit(protocol.ErrorResponse(command, "connection", "Session identifier is not active.")) {
+				if !emit(rejectedCommand(command, "connection", "Session identifier is not active.")) {
 					return
 				}
 				continue
 			}
 			if category := owner.route(command); category != "" {
 				manager.forgetPending(command)
-				response := protocol.ErrorResponse(command, category, "Session is closing or its command queue is full.")
+				response := rejectedCommand(command, category, "Session is closing or its command queue is full.")
 				response.Connected = category == "busy"
 				if !emit(response) {
 					return
@@ -243,12 +258,22 @@ type owner struct {
 	stopOnce           sync.Once
 	externalDisconnect *protocol.Command
 	stopRequested      bool
+	authMu             sync.Mutex
+	grant              *operationGrant
 }
 
 // Control is deliberately separate from ordinary routing and result queues.
 // The input reader validates handshake/IDs before calling it. Its effects never
 // wait for stdout or for an outstanding stream credit.
 func (manager *Manager) Control(command protocol.Command) *protocol.Response {
+	if command.Type == "cancel" || command.Type == "disconnect" {
+		manager.controlMu.RLock()
+		owner := manager.owners[command.SessionID]
+		manager.controlMu.RUnlock()
+		if owner != nil {
+			owner.invalidateGrant()
+		}
+	}
 	if command.Type == "shutdown" {
 		manager.shutdownOnce.Do(func() {
 			manager.controlMu.Lock()
@@ -352,7 +377,7 @@ func (owner *owner) closeRouting() []protocol.Response {
 		select {
 		case command := <-owner.commands:
 			owner.manager.forgetPending(command)
-			rejected = append(rejected, protocol.ErrorResponse(command, "connection", "Session is closing."))
+			rejected = append(rejected, rejectedCommand(command, "connection", "Session is closing."))
 		default:
 			return rejected
 		}
@@ -372,9 +397,20 @@ func (owner *owner) run(connectCommand protocol.Command) {
 	}()
 	connection := *connectCommand.Connection
 	engine := connection.DatabaseEngine()
+	policy := protocol.ExecutionPolicy{Environment: "unspecified"}
+	if connection.Policy != nil {
+		policy = *connection.Policy
+	}
 	pending := connectCommand
 	result := make(chan operation, 1)
-	ctx, cancel := context.WithTimeout(context.Background(), ConnectTimeout)
+	connectTimeout := ConnectTimeout
+	if connection.SSH != nil {
+		connectTimeout = 30 * time.Second
+	}
+	if connection.PasswordCommand != nil {
+		connectTimeout += credential.Timeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 	defer func() { cancel() }()
 	go func() {
 		physical, err := owner.manager.opener(ctx, connection)
@@ -383,6 +419,14 @@ func (owner *owner) run(connectCommand protocol.Command) {
 		}
 		tx := ""
 		if physical != nil && err == nil {
+			if policy.ReadOnly && engine != "cassandra" && engine != "mongodb" {
+				readOnly, ok := physical.(adapter.ReadOnlySession)
+				if !ok {
+					err = errors.New("adapter has no readonly mode")
+				} else {
+					err = readOnly.SetReadOnly(ctx, true)
+				}
+			}
 			tx = physical.TransactionStatus()
 		}
 		result <- operation{session: physical, txStatus: tx, err: err}
@@ -394,6 +438,8 @@ func (owner *owner) run(connectCommand protocol.Command) {
 	txStatus := ""
 	stopping, aborting, closed, routingClosed := false, false, false, false
 	stop, shutdown := owner.manager.stop, owner.shutdown
+	var transportDone <-chan struct{}
+	transportFailed := false
 	for {
 		if stopping && !routingClosed {
 			outgoing = append(outgoing, owner.closeRouting()...)
@@ -426,6 +472,12 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			next = event{sessionID: owner.id, response: outgoing[0]}
 		}
 		select {
+		case <-transportDone:
+			transportDone = nil
+			transportFailed = true
+			owner.invalidateGrant()
+			stopping = true
+			cancel()
 		case <-stop:
 			stop = nil
 			stopping, aborting = true, true
@@ -452,18 +504,45 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			owner.activeQuery, owner.activeCancel, owner.credit = "", nil, nil
 			owner.controlMu.Unlock()
 			if pending.Type == "connect" {
+				// SSH authentication is complete. Keep runtime control settings
+				// without retaining the one-use authentication material in routing.
+				if pending.Connection != nil && pending.Connection.SSH != nil {
+					pending.Connection.SSH.Password, pending.Connection.SSH.Passphrase = "", ""
+				}
 				physical, txStatus = completed.session, completed.txStatus
+				if monitored, ok := physical.(interface{ TransportDone() <-chan struct{} }); ok {
+					transportDone = monitored.TransportDone()
+					select {
+					case <-transportDone:
+						transportDone = nil
+						transportFailed = true
+						if completed.err == nil {
+							completed.err = &adapter.ConnectionError{Category: "ssh", Message: "The SSH tunnel disconnected."}
+						}
+					default:
+					}
+				}
 				if completed.err != nil {
 					outgoing = append(outgoing, connectError(pending, completed.err))
 					stopping = true
 				} else if stopping {
 					outgoing = append(outgoing, protocol.ErrorResponse(pending, "cancelled", "Connection attempt was cancelled."))
 				} else {
-					outgoing = append(outgoing, protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id,
-						Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus})
+					response := protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id, Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus}
+					if current, ok := physical.(interface{ CurrentKeyspace() string }); ok {
+						keyspace := current.CurrentKeyspace()
+						response.CurrentKeyspace = &keyspace
+					}
+					outgoing = append(outgoing, response)
 				}
 			} else {
 				response := completed.response
+				if transportFailed && response.Type == "error" {
+					response.Connected = false
+				}
+				if response.Type == "error" {
+					owner.invalidateGrant()
+				}
 				// Correlation belongs to the owner rather than a driver. A driver
 				// cannot accidentally finish another execution or another session.
 				response.RequestID, response.SessionID, response.QueryID = pending.RequestID, owner.id, pending.QueryID
@@ -474,12 +553,33 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			}
 		case command := <-commands:
+			select {
+			case <-transportDone:
+				transportDone = nil
+				transportFailed = true
+				owner.invalidateGrant()
+				owner.manager.forgetPending(command)
+				outgoing = append(outgoing, rejectedCommand(command, "connection", "The SSH tunnel disconnected."))
+				stopping = true
+				cancel()
+				continue
+			default:
+			}
 			var response protocol.Response
 			switch command.Type {
+			case "operation.assess":
+				if active != nil || len(outgoing) != 0 {
+					response = protocol.ErrorResponse(command, "busy", "Another operation is in progress in this session.")
+				} else {
+					response = owner.assess(command, engine, policy)
+				}
 			case "execute", "catalog", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
-					response = protocol.ErrorResponse(command, "busy", "Another operation is in progress in this session.")
+					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
+				} else if !owner.authorize(command, engine, policy) {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
 				} else {
 					ctx, cancel = context.WithTimeout(context.Background(), owner.manager.timeout)
 					pending = command
@@ -492,7 +592,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						owner.controlMu.Unlock()
 						owner.manager.controlMu.Unlock()
 						cancel()
-						response = protocol.ErrorResponse(command, "cancelled", "Execution was cancelled before it started.")
+						response = rejectedCommand(command, "cancelled", "Execution was cancelled before it started.")
 						response.Connected, response.TransactionStatus = true, txStatus
 						outgoing = append(outgoing, response)
 						continue

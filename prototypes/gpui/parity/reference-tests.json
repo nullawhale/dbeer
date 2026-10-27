@@ -1,0 +1,975 @@
+{
+  "schemaVersion": 1,
+  "checks": {
+    "SWIFT-ConnectionLibraryTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ConnectionLibraryTests",
+      "path": "macos/Tests/DBeerTests/ConnectionLibraryTests.swift",
+      "test_ids": [
+        "ConnectionLibraryTests/metadataRoundTripHasNoPassword",
+        "ConnectionLibraryTests/corruptMetadataStaysUntouchedAndCannotBeOverwritten",
+        "ConnectionLibraryTests/profilesReloadWithoutReadingCredentialsOrConnecting",
+        "ConnectionLibraryTests/selectionDoesNotReadCredentialsAndEachSavedConnectReadsOnce",
+        "ConnectionLibraryTests/failedMetadataSaveRollsBackCredentialChange",
+        "ConnectionLibraryTests/failedCredentialSaveDoesNotCreateProfile",
+        "ConnectionLibraryTests/failedPasswordReadIsDistinctFromEmptyAndRetryPreservesPassword",
+        "ConnectionLibraryTests/nativeKeychainSupportsCreateReadUpdateAndDelete",
+        "ConnectionLibraryTests/credentialFailureKeepsSuccessfulSQLSessionConnected",
+        "ConnectionLibraryTests/selectionAndEditingPreserveLiveConnectionParameters",
+        "ConnectionLibraryTests/deletingProfileRemovesStoredCredential",
+        "ConnectionLibraryTests/stdinImportReusesProfileAndRefreshesKeychainPassword"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ConnectionLibraryTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-WorkspaceConnectionTests": {
+      "kind": "swift-reference-suite",
+      "suite": "WorkspaceConnectionTests",
+      "path": "macos/Tests/DBeerTests/WorkspaceConnectionTests.swift",
+      "test_ids": [
+        "WorkspaceConnectionTests/connectionOwnsSessionAndDisconnectReleasesForm",
+        "WorkspaceConnectionTests/connectionErrorKeepsHelperReadyAndDisplaysSQLState",
+        "WorkspaceConnectionTests/helperFailureRequiresNewProcessAndExplicitConnect",
+        "WorkspaceConnectionTests/invalidPortDoesNotSendConnectionCommand",
+        "WorkspaceConnectionTests/processExitInvalidatesAJustConnectedSession"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "WorkspaceConnectionTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ConnectionsSidebarIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ConnectionsSidebarIntegrationTests",
+      "path": "macos/Tests/DBeerTests/ConnectionsSidebarIntegrationTests.swift",
+      "test_ids": [
+        "ConnectionsSidebarIntegrationTests/headerEngineMenuSelectsMySQLAndSavesItsDefaults",
+        "ConnectionsSidebarIntegrationTests/workspaceDisclosureWaitsForConnectionAndKeepsFailedProfilesCollapsed",
+        "ConnectionsSidebarIntegrationTests/connectedStatusStaysInPlaceWhileDisclosureLoadsSchemas",
+        "ConnectionsSidebarIntegrationTests/workspaceContextMenuFollowsConnectionStateAndImportSheetHonorsCheckboxes",
+        "ConnectionsSidebarIntegrationTests/nativeCreateEditSelectConnectDeleteAndReload",
+        "ConnectionsSidebarIntegrationTests/nativeSaveFailureKeepsDraftForRetryOrCancel",
+        "ConnectionsSidebarIntegrationTests/nativeEditCannotOverwritePasswordAfterFailedKeychainRead"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ConnectionsSidebarIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLDocumentStoreTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLDocumentStoreTests",
+      "path": "macos/Tests/DBeerTests/SQLDocumentStoreTests.swift",
+      "test_ids": [
+        "SQLDocumentStoreTests/draftAndHistoryRoundTripContainsNoRuntimeStateAndClearsPersistently",
+        "SQLDocumentStoreTests/historyKeepsOnlyLastThousandWithinThirtyDaysAndHonorsDisabledRecording",
+        "SQLDocumentStoreTests/corruptUnknownVersionAndDuplicateDocumentsAreNeverOverwritten",
+        "SQLDocumentStoreTests/legacyDraftMigrationBacksUpExactBytesAndPreservesProfileBinding"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLDocumentStoreTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ApplicationWorkspaceTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ApplicationWorkspaceTests",
+      "path": "macos/Tests/DBeerTests/ApplicationWorkspaceTests.swift",
+      "test_ids": [
+        "ApplicationWorkspaceTests/documentsKeepIndependentTextAndProfileBindings",
+        "ApplicationWorkspaceTests/nativeWorkspaceUsesIndependentSessionsAndProfileDisconnect",
+        "ApplicationWorkspaceTests/postgresAndMySQLRunInTheSameHelper",
+        "ApplicationWorkspaceTests/objectTreeStructureQuotedSelectAndSeparateDataSession",
+        "ApplicationWorkspaceTests/scriptStopsAtFirstErrorAndDraftRestoreNeverReconnects"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ApplicationWorkspaceTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ExecutionPolicyTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ExecutionPolicyTests",
+      "path": "macos/Tests/DBeerTests/ExecutionPolicyTests.swift",
+      "test_ids": [
+        "ExecutionPolicyTests/cancelReviewsWholeScriptOnceAndSendsNoUserCommand",
+        "ExecutionPolicyTests/nativeReturnAndEscapeCancelWholeWorkspaceScriptWithoutSendingSQL",
+        "ExecutionPolicyTests/changedSQLOrProfileAfterAwaitingConfirmationCannotExecute",
+        "ExecutionPolicyTests/helperDenyNeverPresentsConfirmationOrSendsSQL",
+        "ExecutionPolicyTests/editDuringInitialConnectionInvalidatesTheOriginalScript",
+        "ExecutionPolicyTests/executeSelectionWithMultipleStatementsUsesWholeBatchPreview",
+        "ExecutionPolicyTests/changedSessionAfterAwaitingConfirmationCannotExecute",
+        "ExecutionPolicyTests/policyEditDisconnectWorkflowKeepsOpenTransactionUntilExplicitRollback",
+        "ExecutionPolicyTests/applyShowsGeneratedSQLAndRejectsChangedSnapshotAfterConfirmation",
+        "ExecutionPolicyTests/scriptUsesOneBatchGrantAndStopsAtFirstError",
+        "ExecutionPolicyTests/nativeConfirmationShowsExactSQLContextAndUsesCancelAsReturnDefault",
+        "ExecutionPolicyTests/profilePolicySurvivesTransferAndReadonlyDisablesGridMutation",
+        "ExecutionPolicyTests/nativePolicyControlsAndFullSQLConfirmationRemainAccessibleAndFocusableInBothThemes"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ExecutionPolicyTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ConnectionMigrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ConnectionMigrationTests",
+      "path": "macos/Tests/DBeerTests/ConnectionMigrationTests.swift",
+      "test_ids": [
+        "ConnectionMigrationTests/unversionedProfilesMigrateAtomicallyWithExactBackupAndOriginalUUID",
+        "ConnectionMigrationTests/existingBackupIsNeverReplacedByAnotherLegacyMigration",
+        "ConnectionMigrationTests/unknownVersionCorruptionAndMissingV2EngineCannotBeOverwritten",
+        "ConnectionMigrationTests/engineIdentitySurvivesRoundTripAndDistinguishesOtherwiseIdenticalProfiles",
+        "ConnectionMigrationTests/versionTwoProfilesKeepUUIDAndExactBytesWhileAddingDefaultPolicy",
+        "ConnectionMigrationTests/invalidVersionThreePolicyCannotBeLoadedOrOverwritten",
+        "ConnectionMigrationTests/enginePickerUpdatesOnlyUntouchedDefaultsAndUsesSupportedTLSModes"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ConnectionMigrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ProfileTransferTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ProfileTransferTests",
+      "path": "macos/Tests/DBeerTests/ProfileTransferTests.swift",
+      "test_ids": [
+        "ProfileTransferTests/portableProfilesContainNoSecretsOrUUIDsAndEveryPreviewGetsNewIdentity",
+        "ProfileTransferTests/absentOrUnreadableCARequiresReplacementWhileTLSModeStaysIntact",
+        "ProfileTransferTests/strictPreviewRejectsCorruptionSecretsUnknownFieldsVersionsAndDuplicateKeys",
+        "ProfileTransferTests/profileFileReplacementIsAtomicPrivateAndLeavesNoTemporaryFiles",
+        "ProfileTransferTests/workspaceImportsOnlySelectedProfilesAndIgnoresUnselectedMissingCA",
+        "ProfileTransferTests/emptySelectionNeverWritesAndSelectedMissingCAStillBlocksImport",
+        "ProfileTransferTests/importingThroughTheLibraryNeverOverwritesAnExistingProfileOrCredential"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ProfileTransferTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ProfileImportIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ProfileImportIntegrationTests",
+      "path": "macos/Tests/DBeerTests/ProfileImportIntegrationTests.swift",
+      "test_ids": [
+        "ProfileImportIntegrationTests/importsPreviewWithNewIdentitiesAndOwnCredentialsThenConnectsBothEngines"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ProfileImportIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ProfileExportPresentationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ProfileExportPresentationTests",
+      "path": "macos/Tests/DBeerTests/ProfileExportPresentationTests.swift",
+      "test_ids": [
+        "ProfileExportPresentationTests/exportAttachesToWorkspaceAndCanBeCancelledAndOpenedAgain"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ProfileExportPresentationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-StartupConnectionTests": {
+      "kind": "swift-reference-suite",
+      "suite": "StartupConnectionTests",
+      "path": "macos/Tests/DBeerTests/StartupConnectionTests.swift",
+      "test_ids": [
+        "StartupConnectionTests/normalLaunchDoesNotReadInput",
+        "StartupConnectionTests/explicitLaunchDecodesConnectionSettings",
+        "StartupConnectionTests/legacyStartupDefaultsToPostgreSQLAndMySQLValidatesItsTLSModes",
+        "StartupConnectionTests/invalidInputUsesOneGenericError",
+        "StartupConnectionTests/pipeReadCompletesAtEOFAndClosesDescriptor",
+        "StartupConnectionTests/stalledPipeTimesOut",
+        "StartupConnectionTests/bootstrapConnectsOnceWithoutExecutingSQL",
+        "StartupConnectionTests/failedHelperRetainsFormForManualRetry",
+        "StartupConnectionTests/invalidBootstrapDisplaysGenericErrorWithoutConnecting"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "StartupConnectionTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-WorkspaceQueryTests": {
+      "kind": "swift-reference-suite",
+      "suite": "WorkspaceQueryTests",
+      "path": "macos/Tests/DBeerTests/WorkspaceQueryTests.swift",
+      "test_ids": [
+        "WorkspaceQueryTests/eachRunClearsPreviousResultAndReplacesSchemaWithoutChangingSQL",
+        "WorkspaceQueryTests/sqlErrorKeepsFailedTransactionUntilExplicitRollback",
+        "WorkspaceQueryTests/stopAcknowledgementKeepsQueryLockedUntilExecuteTerminal",
+        "WorkspaceQueryTests/successfulExecuteCanWinStopRace",
+        "WorkspaceQueryTests/transportObserverCannotEraseUnknownSQLOutcomeOrReplayQuery",
+        "WorkspaceQueryTests/terminalResultRemainsAuthoritativeWhenHelperImmediatelyExits"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "WorkspaceQueryTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-BackendMultiplexingTests": {
+      "kind": "swift-reference-suite",
+      "suite": "BackendMultiplexingTests",
+      "path": "macos/Tests/DBeerTests/BackendMultiplexingTests.swift",
+      "test_ids": [
+        "BackendMultiplexingTests/concurrentSessionsKeepEventsAndTerminalsCorrelatedWhenRepliesInterleave",
+        "BackendMultiplexingTests/helperDeathFailsEveryPendingExecutionWithUnknownOutcome",
+        "BackendMultiplexingTests/wrongSessionIdentifierInvalidatesTheEntireTransport",
+        "BackendMultiplexingTests/connectionReplyRequiresV2AdapterMetadataAndBinaryColumnsCarryEncoding",
+        "BackendMultiplexingTests/connectionReplyCannotChangeTheRequestedEngine"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "BackendMultiplexingTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLCompletionCatalogTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLCompletionCatalogTests",
+      "path": "macos/Tests/DBeerTests/SQLCompletionCatalogTests.swift",
+      "test_ids": [
+        "SQLCompletionCatalogTests/snapshotsDecodeOverloadsAndReplaceStaleSignatures",
+        "SQLCompletionCatalogTests/foreignKeysSurviveColumnRefreshAndAreReplacedBySnapshots",
+        "SQLCompletionCatalogTests/connectedSnapshotIncludesColumnsAndReplacesStaleObjects",
+        "SQLCompletionCatalogTests/onlyRequestedMetadataIsSharedAndProfilesStaySeparate",
+        "SQLCompletionCatalogTests/refreshDropsRemovedObjectsAndReplacesColumnsWithoutMixingSchemas",
+        "SQLCompletionCatalogTests/requestingEditorContextDoesNotCreateDatabaseSessions"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLCompletionCatalogTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-GridLifecycleTests": {
+      "kind": "swift-reference-suite",
+      "suite": "GridLifecycleTests",
+      "path": "macos/Tests/DBeerTests/GridLifecycleTests.swift",
+      "test_ids": [
+        "GridLifecycleTests/delayedBrowseLocksTheOldSnapshotUntilReplacement",
+        "GridLifecycleTests/refreshReplacesExactNativeTypesAndGeneratedFlagsWithCurrentMetadata",
+        "GridLifecycleTests/failedMetadataRefreshKeepsThePreviousSnapshotAndShowsTheError",
+        "GridLifecycleTests/documentCloseKeepsTheSnapshotLockedUntilDisconnectAcknowledgement",
+        "GridLifecycleTests/profileDisconnectRejectsNewOperationsUntilAllSessionsAreClosed",
+        "GridLifecycleTests/changedProfileEndpointCannotApplyAnOldTablesSnapshotToANewServer",
+        "GridLifecycleTests/profileChangeWhileApplyConnectsIsRecheckedBeforeSubmittingChanges",
+        "GridLifecycleTests/stopWhileApplyConnectsNeverSubmitsTheChangesAfterConnectionReturns",
+        "GridLifecycleTests/stopDuringApplyPreviewCancelsItsActualQueryAndNeverConfirmsOrApplies"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "GridLifecycleTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-StreamingTransportTests": {
+      "kind": "swift-reference-suite",
+      "suite": "StreamingTransportTests",
+      "path": "macos/Tests/DBeerTests/StreamingTransportTests.swift",
+      "test_ids": [
+        "StreamingTransportTests/chunksAreAcknowledgedAndHydratedWithoutLosingExactValues",
+        "StreamingTransportTests/reorderedChunksInvalidateTheTransport"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "StreamingTransportTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-StreamingIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "StreamingIntegrationTests",
+      "path": "macos/Tests/DBeerTests/StreamingIntegrationTests.swift",
+      "test_ids": [
+        "StreamingIntegrationTests/loadedExportMatchesTheFullExportWireFixture",
+        "StreamingIntegrationTests/postgresHydratesBoundedResultsExportsOnceAndCancelsAtomically",
+        "StreamingIntegrationTests/mysqlHydratesBoundedResultsExportsOnceAndCancelsAtomically",
+        "StreamingIntegrationTests/mysqlCallHydratesEveryOrderedResultSet"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "StreamingIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-HelperProcessTests": {
+      "kind": "swift-reference-suite",
+      "suite": "HelperProcessTests",
+      "path": "macos/Tests/DBeerTests/HelperProcessTests.swift",
+      "test_ids": [
+        "HelperProcessTests/helperPathIsRelativeToBundle",
+        "HelperProcessTests/bundledHelperAcknowledgesShutdownAndExits"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "HelperProcessTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-WorkspaceCloseTests": {
+      "kind": "swift-reference-suite",
+      "suite": "WorkspaceCloseTests",
+      "path": "macos/Tests/DBeerTests/WorkspaceCloseTests.swift",
+      "test_ids": [
+        "WorkspaceCloseTests/nativeWindowCloseCanCancelThenRollbackAndPreservesOriginalDelegateCallbacks",
+        "WorkspaceCloseTests/applicationTerminationCancelLeavesSessionAliveAndRetryCommitsBeforeReplying",
+        "WorkspaceCloseTests/nativeWindowCancelThenStopAndRollbackUsesRealPostgresAndReapsItsBackend"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "WorkspaceCloseTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-AppTerminationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "AppTerminationTests",
+      "path": "macos/Tests/DBeerTests/AppTerminationTests.swift",
+      "test_ids": [
+        "AppTerminationTests/terminationWaitsForActiveQueryAndHelperExitBeforeReplyingOnce"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "AppTerminationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLEditorTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLEditorTests",
+      "path": "macos/Tests/DBeerTests/SQLEditorTests.swift",
+      "test_ids": [
+        "SQLEditorTests/changingEditorSchemeRestylesOpenCompletionWithoutChangingDocumentOrUndo",
+        "SQLEditorTests/completionMatchHighlightsFollowSelectionThemesAndComposedCharacters",
+        "SQLEditorTests/cachedTabsReceiveLatestSchemeAndRetainIndependentNativeState",
+        "SQLEditorTests/importedSchemesColorAllSQLRolesDiagnosticsAndMixedAppearanceChrome",
+        "SQLEditorTests/sparseSchemesInheritTheirForegroundAndClearPreviousTokenStyles",
+        "SQLEditorTests/nativeEditorDisablesSQLAlteringTextServices",
+        "SQLEditorTests/typingKeepsASCIIQuotesDashesAndSQLBindingUnchanged",
+        "SQLEditorTests/bindingEchoPreservesSelectionAndExecutionKeepsTextSelectable",
+        "SQLEditorTests/switchingDocumentsRestoresNativeSelectionAndKeepsUndoIndependent",
+        "SQLEditorTests/nativeCommandReturnUsesSelectionAndEditorProvidesGutterHighlightAndCompletions",
+        "SQLEditorTests/catalogCompletionQuotesIdentifiersForTheSelectedDialect",
+        "SQLEditorTests/executionHighlightFollowsNativeCursorSelectionTypingAndUndo",
+        "SQLEditorTests/executionUsesTheNativeCursorAndCachedEditorsCannotRetargetAnotherTab",
+        "SQLEditorTests/completionKeyboardReplacesUTF16PrefixAndUndoesAsOneNativeEdit",
+        "SQLEditorTests/bundledServerCompletesTablesAndAliasColumnsInTheNativeEditor",
+        "SQLEditorTests/bundledServerSearchesAbbreviationsTyposAndPreservesColumnRanking",
+        "SQLEditorTests/bundledServerInsertsScopedColumnsAndForeignKeyJoinsWithUndo",
+        "SQLEditorTests/functionSignaturesFollowTypingCursorEscapeAndNativeUndo",
+        "SQLEditorTests/signaturePanelHighlightsParametersAndSupportsBothEditorThemes",
+        "SQLEditorTests/programmaticCaretScrollPreservesCompletionsUntilCaretLeavesViewport",
+        "SQLEditorTests/automaticCompletionEscapeSelectionAndDocumentChangesDiscardPendingSuggestions",
+        "SQLEditorTests/completionSuppressesCommentsAndLiteralBodiesAndFallsBackWithoutLanguageServer",
+        "SQLEditorTests/detachingEditorDismissesItsPanelAndPendingCompletion",
+        "SQLEditorTests/editorAndCompletionAppearanceInBothThemesAndVisibleGutterOnLongScripts"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLEditorTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLScriptParserTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLScriptParserTests",
+      "path": "macos/Tests/DBeerTests/SQLScriptParserTests.swift",
+      "test_ids": [
+        "SQLScriptParserTests/postgresProceduresDollarQuotesNestedCommentsAndEscapedValuesStayWhole",
+        "SQLScriptParserTests/mysqlDelimiterProceduresTriggersAndQuotedDelimitersSplitIntoServerCommands",
+        "SQLScriptParserTests/postgresSQLStandardAtomicRoutineBodyKeepsInternalStatementsAndCaseTogether",
+        "SQLScriptParserTests/dialectSpecificEscapesAndCommentsDoNotHideStatementBoundaries",
+        "SQLScriptParserTests/rangesAndSelectionUseUTF16OffsetsAfterUnicodeAndDirectiveLines",
+        "SQLScriptParserTests/unterminatedLexemesProvideRangesForEditorDiagnostics",
+        "SQLScriptParserTests/cursorImmediatelyAfterSemicolonStaysWithThePrecedingStatement",
+        "SQLScriptParserTests/cursorInsideAndAfterMySQLDelimiterStaysWithTheRoutine",
+        "SQLScriptParserTests/clientCommandsAndStreamingImportsAreRejectedWithoutRejectingQuotedText"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLScriptParserTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-WorkspaceCommandTests": {
+      "kind": "swift-reference-suite",
+      "suite": "WorkspaceCommandTests",
+      "path": "macos/Tests/DBeerTests/WorkspaceCommandTests.swift",
+      "test_ids": [
+        "WorkspaceCommandTests/fragmentResolverUsesTheExactUTF16SelectionAndWholeScriptRanges",
+        "WorkspaceCommandTests/dispatcherCapturesTheDocumentAndSelectionBeforeItsTaskStarts",
+        "WorkspaceCommandTests/nativeRemappingUsesSelectedDocumentAndLeavesTextEditingIntact",
+        "WorkspaceCommandTests/actualFocusForeignWindowsSheetsAndFutureGridCommandsAreScoped",
+        "WorkspaceCommandTests/actualWorkspaceAndShortcutSettingsRenderInBothAppearances",
+        "WorkspaceCommandTests/nativeButtonMenuDispatcherAndRemappedKeyboardExecuteTheSameFragmentOnPostgres"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "WorkspaceCommandTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLExecutionSuccessTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLExecutionSuccessTests",
+      "path": "macos/Tests/DBeerTests/SQLExecutionSuccessTests.swift",
+      "test_ids": [
+        "SQLExecutionSuccessTests/marksBelongToTheExecutedSourceAndResetOnEditsContextAndNewRuns",
+        "SQLExecutionSuccessTests/nativeRulerDrawsSuccessBesideTheCorrectUTF16LinesAndKeepsTabsAndUndoIndependent"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLExecutionSuccessTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLRoutineParserIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLRoutineParserIntegrationTests",
+      "path": "macos/Tests/DBeerTests/SQLRoutineParserIntegrationTests.swift",
+      "test_ids": [
+        "SQLRoutineParserIntegrationTests/postgresDollarQuotedAndAtomicFunctionsExecuteThroughTheParser",
+        "SQLRoutineParserIntegrationTests/mysqlDelimiterProcedureExecutesWithoutSendingClientDirectives"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLRoutineParserIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ExecutionPolicyIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ExecutionPolicyIntegrationTests",
+      "path": "macos/Tests/DBeerTests/ExecutionPolicyIntegrationTests.swift",
+      "test_ids": [
+        "ExecutionPolicyIntegrationTests/postgresNativeAndHelperEnforcePolicyAndExactGrants",
+        "ExecutionPolicyIntegrationTests/mysqlNativeAndHelperEnforcePolicyAndExactGrants"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ExecutionPolicyIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLLSPCodecTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLLSPCodecTests",
+      "path": "macos/Tests/DBeerTests/SQLLanguageServiceTests.swift",
+      "test_ids": [
+        "SQLLSPCodecTests/contentLengthFramesHandleSplitHeadersUnicodeAndCoalescedMessages",
+        "SQLLSPCodecTests/invalidDuplicateOversizedAndIncompleteFramesAreRejected",
+        "SQLLSPCodecTests/maximumBodyAllowsNextFrameInTheSamePipeRead",
+        "SQLLSPCodecTests/utf16PositionsRoundTripAcrossUnicodeCRLFAndEmptyLastLine"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLLSPCodecTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-CatalogContextMenuTests": {
+      "kind": "swift-reference-suite",
+      "suite": "CatalogContextMenuTests",
+      "path": "macos/Tests/DBeerTests/CatalogContextMenuTests.swift",
+      "test_ids": [
+        "CatalogContextMenuTests/catalogMenuKeepsItsActionsWithoutDrawingTheNativeBlueOutline",
+        "CatalogContextMenuTests/connectionsSidebarMenusKeepEditAndSelectionWithoutDrawingTheNativeBlueOutline"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "CatalogContextMenuTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-CatalogCopyNameIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "CatalogCopyNameIntegrationTests",
+      "path": "macos/Tests/DBeerTests/CatalogCopyNameIntegrationTests.swift",
+      "test_ids": [
+        "CatalogCopyNameIntegrationTests/postgresCopyNameCallbackQuotesEveryObjectKindAndUsesUnqualifiedTriggerNames",
+        "CatalogCopyNameIntegrationTests/mysqlCopyNameCallbackQuotesEveryObjectKindIncludingQualifiedTriggers"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "CatalogCopyNameIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-TableBrowseNavigationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "TableBrowseNavigationTests",
+      "path": "macos/Tests/DBeerTests/TableBrowseNavigationTests.swift",
+      "test_ids": [
+        "TableBrowseNavigationTests/headerSortCyclesAscendingDescendingAndPrimaryKeyOrder",
+        "TableBrowseNavigationTests/choosingAnotherColumnStartsAscendingOnTheFirstPage",
+        "TableBrowseNavigationTests/blockedDraftCannotChangeSortOrPage",
+        "TableBrowseNavigationTests/closingAnotherDocumentStillPreventsNavigationWorkspaceWide",
+        "TableBrowseNavigationTests/readonlyTablesCanStillBeSorted"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "TableBrowseNavigationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-GridIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "GridIntegrationTests",
+      "path": "macos/Tests/DBeerTests/GridIntegrationTests.swift",
+      "test_ids": [
+        "GridIntegrationTests/postgresNativeGridAppliesTypedChangesAndKeepsConflictsLocal",
+        "GridIntegrationTests/mysqlNativeGridAppliesTypedChangesAndKeepsConflictsLocal"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "GridIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ProtocolFixtureTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ProtocolFixtureTests",
+      "path": "macos/Tests/DBeerTests/TransportTests.swift",
+      "test_ids": [
+        "ProtocolFixtureTests/sharedCommandsRoundTripWithoutChangingShape",
+        "ProtocolFixtureTests/sharedRepliesRoundTripAndPreserveNULLAndPrecision",
+        "ProtocolFixtureTests/partialAndCoalescedReadsIncludingSplitUTF8Scalars",
+        "ProtocolFixtureTests/frameLimitExcludesNewlineAndBoundsUnterminatedInput",
+        "ProtocolFixtureTests/incompleteInvalidUTF8AndInvalidJSONAreTransportErrors"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ProtocolFixtureTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-BackendClientTests": {
+      "kind": "swift-reference-suite",
+      "suite": "BackendClientTests",
+      "path": "macos/Tests/DBeerTests/TransportTests.swift",
+      "test_ids": [
+        "BackendClientTests/independentlyDrainsStderrBeforeHandshakeAndAcknowledgesShutdown",
+        "BackendClientTests/incompatibleVersionFailsHandshake",
+        "BackendClientTests/EOFWithPartialFrameFailsWithoutWaitingForProcessExit",
+        "BackendClientTests/processDeathFailsActiveSQLWithUnknownOutcome",
+        "BackendClientTests/wrongRequestIdentifierInvalidatesTransport",
+        "BackendClientTests/closedCommandPipeThrowsInsteadOfSignallingTheApplication",
+        "BackendClientTests/remoteErrorsStayStructuredAndDoNotKillTransport",
+        "BackendClientTests/shutdownKillsAnUnresponsiveHelperAfterTwoSeconds",
+        "BackendClientTests/handshakeHasAFiveSecondDeadline"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "BackendClientTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ResultTableTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ResultTableTests",
+      "path": "macos/Tests/DBeerTests/ResultTableTests.swift",
+      "test_ids": [
+        "ResultTableTests/duplicateHeadersHaveDistinctNativeIdentifiersAndKeepTheirValues",
+        "ResultTableTests/nativeTableIsReadOnlyResizableAndAllowsHorizontalOverflow",
+        "ResultTableTests/nullEmptyAndLiteralNULLHaveDistinctNativePresentationAndAccessibility",
+        "ResultTableTests/sameSchemaReplacesRowsAndPreservesUserWidths",
+        "ResultTableTests/changesToColumnNameTypeOrIndexRebuildNativeSchema",
+        "ResultTableTests/mysqlHeaderUsesNativeTypeAndBinaryEncodingWithoutPostgreSQLOID"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ResultTableTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ResultGridCopyTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ResultGridCopyTests",
+      "path": "macos/Tests/DBeerTests/ResultGridCopyTests.swift",
+      "test_ids": [
+        "ResultGridCopyTests/shiftMouseRectangleAndCommandCopyPreserveNullEmptyDuplicatesAndTSVQuoting",
+        "ResultGridCopyTests/keyboardShiftSelectionAndNativeContextActionsCopyCellRowsAndBinary",
+        "ResultGridCopyTests/mouseDragAndSelectAllUseTheSameRangeWhileLegacyPostgresBytesNormalizeToBase64"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ResultGridCopyTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ResultGridRowNumberTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ResultGridRowNumberTests",
+      "path": "macos/Tests/DBeerTests/ResultGridRowNumberTests.swift",
+      "test_ids": [
+        "ResultGridRowNumberTests/gutterSelectsRangesAndSparseRowsWithoutReloadingOrCopyingNumbers",
+        "ResultGridRowNumberTests/gutterStaysFixedDuringScrollingAndDragAndKeyboardKeepWholeRows",
+        "ResultGridRowNumberTests/numberingResizesWithLoadedRowsAndRendersInLightAndDark",
+        "ResultGridRowNumberTests/scrolledRowNumbersDoNotDrawOrSelectBehindTheColumnHeader"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ResultGridRowNumberTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ResultGridFocusTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ResultGridFocusTests",
+      "path": "macos/Tests/DBeerTests/ResultGridFocusTests.swift",
+      "test_ids": [
+        "ResultGridFocusTests/cellEditorKeepsTypingSelectionAndStagingWithAmberFocus",
+        "ResultGridFocusTests/resultSelectionAndContextMenusKeepAmberBordersInBothAppearances"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ResultGridFocusTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-GridPresentationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "GridPresentationTests",
+      "path": "macos/Tests/DBeerTests/GridPresentationTests.swift",
+      "test_ids": [
+        "GridPresentationTests/selectionAndOperationStateReuseTableContent",
+        "GridPresentationTests/stagingCreatesNewContentAndPreservesThePreviousSnapshot",
+        "GridPresentationTests/deletionAndInsertedRowsRefreshDecorationsAndIndicesTogether"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "GridPresentationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-GridPresentationIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "GridPresentationIntegrationTests",
+      "path": "macos/Tests/DBeerTests/GridPresentationIntegrationTests.swift",
+      "test_ids": [
+        "GridPresentationIntegrationTests/filterLivesBesideConnectionAboveTheGridAndRowActionsStayBelow",
+        "GridPresentationIntegrationTests/queryResultsShowDisplayedAndTotalCountsWithoutTheSelectHeading",
+        "GridPresentationIntegrationTests/previewIsPresentOnlyWhileChangesCanBePreviewed",
+        "GridPresentationIntegrationTests/minimumWidthKeepsAllFooterActionsAndInspectorInsideTheWindow",
+        "GridPresentationIntegrationTests/dirtyInlineDraftIsStagedBeforeACancellableClose",
+        "GridPresentationIntegrationTests/nativeDoubleClickOpensDetailsAndKeepsTheCellEditorReadyToType",
+        "GridPresentationIntegrationTests/contextMenuShowsTheClickedRowDetailsEvenWhenReadOnlyOrMultipleRowsAreSelected",
+        "GridPresentationIntegrationTests/spaceTogglesRowInspectorAndSelectionUpdatesItWithoutOpeningASheet"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "GridPresentationIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-GridColumnEditingTests": {
+      "kind": "swift-reference-suite",
+      "suite": "GridColumnEditingTests",
+      "path": "macos/Tests/DBeerTests/GridPresentationTests.swift",
+      "test_ids": [
+        "GridColumnEditingTests/explicitNullabilityAndEditabilityControlSpecialValues",
+        "GridColumnEditingTests/emptyStringIsOfferedOnlyForStringColumns",
+        "GridColumnEditingTests/largeStructuredAndBinaryValuesUseTheExpandedEditor"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "GridColumnEditingTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-GridDraftTests": {
+      "kind": "swift-reference-suite",
+      "suite": "GridDraftTests",
+      "path": "macos/Tests/DBeerTests/GridDraftTests.swift",
+      "test_ids": [
+        "GridDraftTests/stagingKeepsFullTypedOriginalAndNeverInterpolatesSQL",
+        "GridDraftTests/insertDefaultsNullEmptyAndGeneratedCellsStayDistinct",
+        "GridDraftTests/unknownCommitKeepsApplyDisabledUntilAFreshSnapshot",
+        "GridDraftTests/viewsAndTablesWithoutPrimaryKeysExplainTheirRestriction"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "GridDraftTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ResultExportTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ResultExportTests",
+      "path": "macos/Tests/DBeerTests/ResultExportTests.swift",
+      "test_ids": [
+        "ResultExportTests/jsonKeepsOrderDuplicatesPrecisionNullAndBinaryWithoutHidingTruncation",
+        "ResultExportTests/csvUsesUTF8QuotedFieldsAndAnExplicitCollisionFreeNullMarker",
+        "ResultExportTests/atomicWriteReplacesOnlyOnSuccessAndRemovesTemporaryFiles"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ResultExportTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ParityBaselineTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ParityBaselineTests",
+      "path": "macos/Tests/DBeerTests/ParityBaselineTests.swift",
+      "test_ids": [
+        "ParityBaselineTests/sharedSQLCorpusPreservesSourceRangesAndDialectBoundaries",
+        "ParityBaselineTests/sharedGridAndThemeCorpusUsesProductionEncodersAndImporters",
+        "ParityBaselineTests/sharedSignatureCorpusPassesThroughBundledLSPAndSwiftUTF16Decoder",
+        "ParityBaselineTests/measureFrozenReferenceWorkloads"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ParityBaselineTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-SQLLanguageServiceTests": {
+      "kind": "swift-reference-suite",
+      "suite": "SQLLanguageServiceTests",
+      "path": "macos/Tests/DBeerTests/SQLLanguageServiceTests.swift",
+      "test_ids": [
+        "SQLLanguageServiceTests/replacementRangeUsesUTF16AndCatalogIsNotResentForTyping",
+        "SQLLanguageServiceTests/languageServerDoesNotInheritApplicationCredentials",
+        "SQLLanguageServiceTests/bundledCompletionMatchRangesUseSharedUTF16Fixtures",
+        "SQLLanguageServiceTests/malformedMatchRangesLeaveValidCompletionsUsable",
+        "SQLLanguageServiceTests/profileOrCatalogChangeDiscardsInflightCompletionAndOldDiagnostics",
+        "SQLLanguageServiceTests/unavailableOrUnresponsiveServiceReturnsWithoutBlockingEditor",
+        "SQLLanguageServiceTests/loadedCatalogIsBoundedBeforeSerialization",
+        "SQLLanguageServiceTests/signatureHelpUsesUTF16ParameterRangesAndRejectsStaleResponses",
+        "SQLLanguageServiceTests/signatureHelpRejectsInvalidUTF16RangesAndUnavailableServer",
+        "SQLLanguageServiceTests/realBundledLanguageServerSupportsSignatureHelpAndMetadata",
+        "SQLLanguageServiceTests/realBundledLanguageServerSupportsLoadedCatalogAndDiagnostics"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "SQLLanguageServiceTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-AppShortcutTests": {
+      "kind": "swift-reference-suite",
+      "suite": "AppShortcutTests",
+      "path": "macos/Tests/DBeerTests/AppShortcutTests.swift",
+      "test_ids": [
+        "AppShortcutTests/defaultsPersistOverridesAndExplicitUnbindingAndReset",
+        "AppShortcutTests/persistedSwapsAreValidatedAsACompleteAssignment",
+        "AppShortcutTests/invalidUnknownAndConflictingPersistedEntriesAreIgnored",
+        "AppShortcutTests/editsAndRegisteredResetPreserveUnknownValuesAndFutureEnvelopes",
+        "AppShortcutTests/invalidKnownEntriesAreQuarantinedBeforeAnAcceptedEdit",
+        "AppShortcutTests/acceptedShortcutSurvivesReloadAfterConflictingEntriesAreQuarantined",
+        "AppShortcutTests/corruptAndIncompatibleBlobsAreBackedUpExactlyBeforeUpdateOrReset",
+        "AppShortcutTests/rejectsNativeEditingNavigationAndMissingModifiersButAllowsSafeAlternatives",
+        "AppShortcutTests/conflictsFollowContextOverlapAndDocumentCommandsOverlapEveryContext",
+        "AppShortcutTests/futureGridExportDefaultsCanBeUpdatedRestoredAndPersisted",
+        "AppShortcutTests/eventMatchingNormalizesCaseFlagsAndReturnVariants",
+        "AppShortcutTests/commandEquivalentsOnNonLatinLayoutsPreserveNativeEditingAndCustomKeys",
+        "AppShortcutTests/nativeRecorderCapturesFocusedEventsValidatesAndPreservesTabAndEscape",
+        "AppShortcutTests/settingsExposeNativeRecordersAndFeedbackInBothAppearances"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "AppShortcutTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-AppAppearanceTests": {
+      "kind": "swift-reference-suite",
+      "suite": "AppAppearanceTests",
+      "path": "macos/Tests/DBeerTests/AppAppearanceTests.swift",
+      "test_ids": [
+        "AppAppearanceTests/themeIsPersistedAndUnknownValuesFollowSystem",
+        "AppAppearanceTests/iconFollowsResolvedTheme",
+        "AppAppearanceTests/nativeAccentIsBundledAndMatchesTheAppPaletteInBothThemes",
+        "AppAppearanceTests/changingThemeUpdatesNativeAppearanceAndDockIcon"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "AppAppearanceTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-AppearanceThemeSettingsTests": {
+      "kind": "swift-reference-suite",
+      "suite": "AppearanceThemeSettingsTests",
+      "path": "macos/Tests/DBeerTests/AppearanceThemeSettingsTests.swift",
+      "test_ids": [
+        "AppearanceThemeSettingsTests/settingsExposeIndependentLiveSchemesAndNativePreviewInAllAppearanceCombinations",
+        "AppearanceThemeSettingsTests/nativeSchemePickerAndRemoveActionUpdateThePersistedLibrary"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "AppearanceThemeSettingsTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ApplicationColorThemeTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ApplicationColorThemeTests",
+      "path": "macos/Tests/DBeerTests/ApplicationColorThemeTests.swift",
+      "test_ids": [
+        "ApplicationColorThemeTests/applicationSelectionPersistsIndependentlyFromEditorAndNativeAppearance",
+        "ApplicationColorThemeTests/missingSavedSchemeFallsBackWithoutRewritingMetadataOrGlobalAppearance",
+        "ApplicationColorThemeTests/removingApplicationSchemePreservesDifferentExplicitEditorChoice",
+        "ApplicationColorThemeTests/workbenchColorsAreMappedAndTransparentSurfacesAreComposited",
+        "ApplicationColorThemeTests/sparseTransparentThemesProduceReadableOpaqueFallbackColors",
+        "ApplicationColorThemeTests/everyBundledSchemeSuppliesApplicationSurfacesWithoutModifyingItsEditorColors"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ApplicationColorThemeTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-EditorThemeTests": {
+      "kind": "swift-reference-suite",
+      "suite": "EditorThemeTests",
+      "path": "macos/Tests/DBeerTests/EditorThemeTests.swift",
+      "test_ids": [
+        "EditorThemeTests/hexadecimalColorsFollowVSCodeAlphaOrdering",
+        "EditorThemeTests/jsoncPreservesCommentDelimitersAndTrailingCommasInStrings",
+        "EditorThemeTests/scopePrecedenceCascadesIndividualPropertiesAndHonorsSQLParents",
+        "EditorThemeTests/malformedAndUnrelatedFilesAreRejected",
+        "EditorThemeTests/parserLimitsMatchPersistedLibraryValidation",
+        "EditorThemeTests/textMatePlistMapsGlobalEditorColorsAndTokenStyles",
+        "EditorThemeTests/localIncludesAndReferencedTextMateFilesAreResolvedBeforeImport",
+        "EditorThemeTests/includeCyclesEscapesSymlinksRemotePathsAndOversizedFilesAreRejected"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "EditorThemeTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-JetBrainsEditorThemeTests": {
+      "kind": "swift-reference-suite",
+      "suite": "JetBrainsEditorThemeTests",
+      "path": "macos/Tests/DBeerTests/JetBrainsEditorThemeTests.swift",
+      "test_ids": [
+        "JetBrainsEditorThemeTests/officialDefaultAndDarculaParentsProvideActualEditorColors",
+        "JetBrainsEditorThemeTests/exportedSQLAttributesOverrideLanguageDefaultsAndKeepRGBAndFontSemantics",
+        "JetBrainsEditorThemeTests/selfContainedSchemesAndClearedInheritedFontStylesImportWithoutAnIDE",
+        "JetBrainsEditorThemeTests/unknownParentsMalformedColorsAndAttributeCyclesAreRejected",
+        "JetBrainsEditorThemeTests/xmlDoesNotResolveLocalExternalOrExpandingEntities",
+        "JetBrainsEditorThemeTests/jetBrainsSchemesAreBundledSelectableAndCustomImportsSurviveSourceRemoval"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "JetBrainsEditorThemeTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ApplicationThemeIntegrationTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ApplicationThemeIntegrationTests",
+      "path": "macos/Tests/DBeerTests/ApplicationThemeIntegrationTests.swift",
+      "test_ids": [
+        "ApplicationThemeIntegrationTests/actualSettingsMenuOffersAllSharedSchemesAndKeepsEditorSelectionIndependent",
+        "ApplicationThemeIntegrationTests/removingImportedApplicationSchemeRestoresNativeThemeWithoutChangingEditor",
+        "ApplicationThemeIntegrationTests/schemesReachRealWorkspaceAndNativeGridWhileEditorRetainsFocusSelectionAndUndo"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ApplicationThemeIntegrationTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-NativeThemeContrastTests": {
+      "kind": "swift-reference-suite",
+      "suite": "NativeThemeContrastTests",
+      "path": "macos/Tests/DBeerTests/NativeThemeContrastTests.swift",
+      "test_ids": [
+        "NativeThemeContrastTests/globalControlPolicyPreservesRenderedLightNativeMenu",
+        "NativeThemeContrastTests/nativeLightSelectionMaterialPreservesHighlightedTextAndTemplateSymbol",
+        "NativeThemeContrastTests/nativeSettingsToolbarRendersAcrossDarkToLightTransitions"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "NativeThemeContrastTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    },
+    "SWIFT-ApplicationFocusAuditTests": {
+      "kind": "swift-reference-suite",
+      "suite": "ApplicationFocusAuditTests",
+      "path": "macos/Tests/DBeerTests/ApplicationFocusAuditTests.swift",
+      "test_ids": [
+        "ApplicationFocusAuditTests/actualScreensReplaceNativeRingsAndRetainVisibleKeyboardFocusInBothThemes"
+      ],
+      "command": [
+        "./scripts/test.sh",
+        "--filter",
+        "ApplicationFocusAuditTests"
+      ],
+      "coverage": "Existing reference assertions only; additional scenario steps remain required."
+    }
+  }
+}

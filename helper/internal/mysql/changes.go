@@ -143,7 +143,7 @@ func (session *Session) ExecuteChanges(ctx context.Context, command protocol.Com
 	}
 	// Strict conversion makes type/length violations fail the entire batch even
 	// if the server's default sql_mode permits lossy coercions.
-	result, err := execution.query("SET SESSION sql_mode=CONCAT_WS(',',@@SESSION.sql_mode,'STRICT_ALL_TABLES')")
+	result, err := execution.query("SET SESSION sql_mode=CONCAT_WS(',',@@SESSION.sql_mode,'STRICT_ALL_TABLES'), explicit_defaults_for_timestamp=ON, time_zone='+00:00'")
 	if result != nil {
 		result.Close()
 	}
@@ -186,7 +186,7 @@ func (session *Session) ExecuteChanges(ctx context.Context, command protocol.Com
 				result, err = execution.query(plan.lockSQL, args...)
 			}
 			if err == nil {
-				if result.RowNumber() != 1 || !sameSnapshot(metadata, result, plan.original) {
+				if result.RowNumber() != 1 || !sameSnapshot(metadata, result, plan.original, plan.storageToken) {
 					err = editFailure("conflict", "The row changed or disappeared. Reload data and review the local edits.")
 				}
 				result.Close()
@@ -201,6 +201,9 @@ func (session *Session) ExecuteChanges(ctx context.Context, command protocol.Com
 			if err == nil {
 				result, err = execution.query(plan.sql, args...)
 				if result != nil {
+					if err == nil && result.Warnings != 0 {
+						err = editFailure("validation", "The server reported a value conversion warning. Review the values before applying them.")
+					}
 					result.Close()
 				}
 			}
@@ -274,11 +277,18 @@ func (session *Session) changeError(command protocol.Command, ctx context.Contex
 	return session.unknown(command)
 }
 
-func sameSnapshot(metadata editMetadata, result *wire.Result, original []protocol.CellValue) bool {
-	if result.RowNumber() != 1 || len(result.Fields) != len(original) || len(result.Values[0]) != len(original) {
+func sameSnapshot(metadata editMetadata, result *wire.Result, original []protocol.CellValue, storageToken string) bool {
+	storageFields := len(mysqlStorageColumns(metadata))
+	if result.RowNumber() != 1 || len(result.Fields)-storageFields != len(original) || len(result.Values[0])-storageFields != len(original) {
 		return false
 	}
-	for index, value := range result.Values[0] {
+	if storageToken != "" {
+		actual, err := mysqlStorageToken(result.Values[0][len(original):])
+		if err != nil || actual != storageToken {
+			return false
+		}
+	}
+	for index, value := range result.Values[0][:len(original)] {
 		expected := original[index]
 		if value.Type == wire.FieldValueTypeNull {
 			if expected.Kind != "null" {
@@ -287,6 +297,21 @@ func sameSnapshot(metadata editMetadata, result *wire.Result, original []protoco
 			continue
 		}
 		if expected.Value == nil {
+			return false
+		}
+		kind := metadata.columns[index].dataType
+		if storageToken != "" && (kind == "float" || kind == "double" || kind == "timestamp") {
+			continue
+		}
+		if storageToken == "" && (kind == "float" || kind == "timestamp" || kind == "double" && strings.Contains(metadata.columns[index].nativeType, "(")) {
+			return false
+		}
+		if storageToken == "" && (metadata.columns[index].ambiguousEmptyEnum && *expected.Value == "" || metadata.columns[index].ambiguousEnum || metadata.columns[index].ambiguousSet) {
+			// The displayed empty string cannot prove whether the original was
+			// member '' or the legacy error member 0. Never overwrite that row
+			// using an original snapshot that does not contain the ordinal/mask.
+			// SET drops an empty member's bit even in nonempty display strings.
+			// Duplicate members and commas in SET labels also hide storage bits.
 			return false
 		}
 		if binaryColumn(result.Fields[index]) {
@@ -313,7 +338,6 @@ func sameSnapshot(metadata editMetadata, result *wire.Result, original []protoco
 		case wire.FieldValueTypeFloat:
 			actual = strconv.FormatFloat(value.AsFloat64(), 'g', -1, 64)
 		}
-		kind := metadata.columns[index].dataType
 		if kind == "float" || kind == "double" {
 			bits := 64
 			if kind == "float" {

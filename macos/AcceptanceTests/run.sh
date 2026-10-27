@@ -5,6 +5,8 @@ runner_root="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$runner_root/../.." && pwd)"
 output="$repo_root/build/AcceptanceTests"
 developer_directory="/Applications/Xcode.app/Contents/Developer"
+acceptance_kind="installed"
+test_identifier="DBeerAcceptanceUITests/InstalledApplicationTests/testInstalledAppQueryAndQuit"
 mkdir -p "$output"
 chmod 700 "$output"
 if [[ "${1:-}" == --build-only && "$#" == 1 ]]; then
@@ -13,6 +15,10 @@ if [[ "${1:-}" == --build-only && "$#" == 1 ]]; then
         -target arm64-apple-macosx14.0 -sdk "$sdk_path" \
         -module-cache-path "$output/input-source-cache" \
         "$runner_root/Support/InputSourceGuard.swift" -o "$output/input-source-guard"
+    DEVELOPER_DIR="$developer_directory" /usr/bin/xcrun --sdk macosx swiftc \
+        -parse-as-library -target arm64-apple-macosx14.0 -sdk "$sdk_path" \
+        -module-cache-path "$output/input-source-cache" \
+        "$runner_root/Support/SSHApplicationLauncher.swift" -o "$output/ssh-application-launcher"
     DEVELOPER_DIR="$developer_directory" "$developer_directory/usr/bin/xcodebuild" \
         build-for-testing -project "$runner_root/DBeerAcceptanceTests.xcodeproj" \
         -scheme DBeerAcceptanceUITests -configuration Debug -destination 'platform=macOS,arch=arm64' \
@@ -21,8 +27,13 @@ if [[ "${1:-}" == --build-only && "$#" == 1 ]]; then
         SWIFT_MODULE_CACHE_PATH="$output/swift-cache"
     exit
 fi
+if [[ "${1:-}" == --ssh ]]; then
+    acceptance_kind="ssh"
+    test_identifier="DBeerAcceptanceUITests/SSHApplicationTests/testSSHConnectionLifecycle"
+    shift
+fi
 if [[ "$#" != 1 || "$1" != /* || ! -f "$1" ]]; then
-    printf 'Usage: %s --build-only | /absolute/private-config.json\n' "$0" >&2
+    printf 'Usage: %s --build-only | [--ssh] /absolute/private-config.json\n' "$0" >&2
     exit 2
 fi
 configuration="$1"
@@ -69,19 +80,24 @@ DEVELOPER_DIR="$developer_directory" "$developer_directory/usr/bin/xcodebuild" \
     -destination 'platform=macOS,arch=arm64' -resultBundlePath "$phase_run/Acceptance.xcresult" \
     -collect-test-diagnostics never \
     -parallel-testing-enabled NO \
-    -only-testing:DBeerAcceptanceUITests/InstalledApplicationTests/testInstalledAppQueryAndQuit \
+    "-only-testing:$test_identifier" \
     2>&1 | tee "$phase_run/xcodebuild.log"
 test_status=${PIPESTATUS[0]}
 set -e
 if [[ "$test_status" != 0 ]]; then
-    printf 'Installed-app UI test failed; private artifacts: %s\n' "$phase_run" >&2
+    if [[ -d "$phase_run/Acceptance.xcresult" ]]; then
+        "$developer_directory/usr/bin/xcresulttool" export attachments \
+            --path "$phase_run/Acceptance.xcresult" --output-path "$phase_run/attachments" || true
+    fi
+    printf 'Application UI test failed; private artifacts: %s\n' "$phase_run" >&2
     exit "$test_status"
 fi
 "$developer_directory/usr/bin/xcresulttool" export attachments \
     --path "$phase_run/Acceptance.xcresult" --output-path "$phase_run/attachments"
-python3 - "$configuration" "$phase_run/xcodebuild.log" "$phase_run/attachments" <<'PY'
+python3 - "$configuration" "$phase_run/xcodebuild.log" "$phase_run/attachments" "$acceptance_kind" <<'PY'
 import json, os, pathlib, sys
-config, log, attachments = map(pathlib.Path, sys.argv[1:])
+config, log, attachments = map(pathlib.Path, sys.argv[1:4])
+kind = sys.argv[4]
 settings = json.loads(config.read_text())
 prefix = 'DBEER_ACCEPTANCE_EVIDENCE '
 records = [json.loads(line.split(prefix, 1)[1]) for line in log.read_text().splitlines() if prefix in line]
@@ -98,10 +114,19 @@ if not records:
 if len(records) != 1:
     raise SystemExit('XCTest did not publish exactly one acceptance evidence record.')
 record = records[0]
-if (record.get('passed') is not True or record.get('normalQuit') is not True or
+ssh_crash = kind == 'ssh' and settings['phase'] == 'ssh-crash'
+expected_normal_quit = not ssh_crash
+if (record.get('passed') is not True or record.get('normalQuit') is not expected_normal_quit or
     record.get('phase') != settings['phase'] or record.get('pid') != settings['ownedPID'] or
     record.get('expectedBuild') != settings['expectedBuild']):
     raise SystemExit('Acceptance evidence does not match the owned fixture phase.')
+if kind == 'ssh':
+    required = ('firstConnect', 'encryptedKey', 'readyForForcedTermination') if ssh_crash else (
+                'firstConnect', 'hostKeyReview', 'hostKeyCancelled', 'encryptedKey',
+                'twoTabs', 'independentSessions', 'stoppedQuery', 'otherTabUnaffected',
+                'profileDisconnected')
+    if not all(record.get(key) is True for key in required):
+        raise SystemExit('SSH UI acceptance did not prove every requested lifecycle scenario.')
 record['xcresultPath'] = str(log.parent / 'Acceptance.xcresult')
 record['screenshotPaths'] = [str(path) for path in sorted(attachments.glob('*.png'))]
 if not record['screenshotPaths']:

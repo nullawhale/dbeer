@@ -12,8 +12,12 @@ actor KeychainConnectionCredentialStore: ConnectionCredentialStore {
         self.keychainURL = keychainURL
     }
 
-    func password(for id: UUID) throws -> String? {
-        var query = try itemQuery(id)
+    func password(for id: UUID) async throws -> String? {
+        try await secret(for: id, purpose: .databasePassword)
+    }
+
+    func secret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws -> String? {
+        var query = try itemQuery(id, purpose: purpose)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -26,13 +30,17 @@ actor KeychainConnectionCredentialStore: ConnectionCredentialStore {
         return password
     }
 
-    func savePassword(_ password: String, for id: UUID) throws {
-        let query = try itemQuery(id)
+    func savePassword(_ password: String, for id: UUID) async throws {
+        try await saveSecret(password, for: id, purpose: .databasePassword)
+    }
+
+    func saveSecret(_ password: String, for id: UUID, purpose: ConnectionCredentialPurpose) async throws {
+        let query = try itemQuery(id, purpose: purpose)
         let data = Data(password.utf8)
         let status = SecItemUpdate(query as CFDictionary,
             [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
-            var item = try itemQuery(id, adding: true)
+            var item = try itemQuery(id, purpose: purpose, adding: true)
             item[kSecValueData as String] = data
             item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             guard SecItemAdd(item as CFDictionary, nil) == errSecSuccess else {
@@ -41,17 +49,21 @@ actor KeychainConnectionCredentialStore: ConnectionCredentialStore {
         } else if status != errSecSuccess { throw ConnectionLibraryError.credentialWrite }
     }
 
-    func deletePassword(for id: UUID) throws {
-        let status = SecItemDelete(try itemQuery(id) as CFDictionary)
+    func deletePassword(for id: UUID) async throws {
+        try await deleteSecret(for: id, purpose: .databasePassword)
+    }
+
+    func deleteSecret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws {
+        let status = SecItemDelete(try itemQuery(id, purpose: purpose) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw ConnectionLibraryError.credentialDelete
         }
     }
 
-    private func itemQuery(_ id: UUID, adding: Bool = false) throws -> [String: Any] {
+    private func itemQuery(_ id: UUID, purpose: ConnectionCredentialPurpose = .databasePassword, adding: Bool = false) throws -> [String: Any] {
         var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: id.uuidString]
+            kSecAttrAccount as String: purpose == .databasePassword ? id.uuidString : id.uuidString + ":" + purpose.rawValue]
         if let keychainURL {
             var keychain: SecKeychain?
             guard SecKeychainOpen(keychainURL.path, &keychain) == errSecSuccess, let keychain else {

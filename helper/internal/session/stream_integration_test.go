@@ -13,6 +13,7 @@ import (
 func (h *pgHarness) stream(id, sql string) (protocol.Response, []protocol.ResultSet) {
 	h.t.Helper()
 	command := protocol.Command{Type: "execute", RequestID: h.id(), SessionID: id, QueryID: h.id(), SQL: sql, Stream: true}
+	command = h.authorized(command)
 	h.send(command)
 	var sets []protocol.ResultSet
 	sequence := 0
@@ -126,6 +127,7 @@ func TestPostgresRunToFileExecutesOnceAndPublishesOnlyConfirmedSuccess(t *testin
 	executeExport := func(sql string, request protocol.ExportRequest) protocol.Response {
 		t.Helper()
 		command := protocol.Command{Type: "execute", RequestID: h.id(), SessionID: id, QueryID: h.id(), SQL: sql, Export: &request}
+		command = h.authorized(command)
 		h.send(command)
 		if h.receive().Type != "query.started" {
 			t.Fatal("export did not start")
@@ -172,6 +174,7 @@ func TestPostgresRunToFileExecutesOnceAndPublishesOnlyConfirmedSuccess(t *testin
 	pid := h.pid(id)
 	request := protocol.ExportRequest{Path: preserve, Format: "json"}
 	command := protocol.Command{Type: "execute", RequestID: h.id(), SessionID: id, QueryID: h.id(), SQL: "SELECT n,pg_sleep(0.01) FROM generate_series(1,10000)n", Export: &request}
+	command = h.authorized(command)
 	h.send(command)
 	if h.receive().Type != "query.started" {
 		t.Fatal("cancelled export did not start")

@@ -1,0 +1,2202 @@
+{
+  "formatVersion": 1,
+  "cases": [
+    {
+      "name": "postgresql table definition",
+      "engine": "postgresql",
+      "sourceCapture": {
+        "context": {
+          "engine": "postgresql",
+          "version": "17",
+          "database": "fixture",
+          "startedAt": "2026-10-23T00:00:00Z",
+          "finishedAt": "2026-10-23T00:00:01Z",
+          "consistency": "repeatableRead",
+          "visibility": "complete",
+          "engineContext": {
+            "state": "known",
+            "value": []
+          }
+        },
+        "inventories": [
+          {
+            "schema": "app",
+            "existence": "present",
+            "tables": {
+              "items": [
+                {
+                  "kind": "table",
+                  "schema": "app",
+                  "name": "accounts"
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "types": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "tables": [
+          {
+            "ref": {
+              "kind": "table",
+              "schema": "app",
+              "name": "accounts"
+            },
+            "kind": {
+              "state": "known",
+              "value": "r"
+            },
+            "storage": {
+              "state": "known",
+              "value": "p"
+            },
+            "charset": {
+              "state": "known",
+              "value": null
+            },
+            "collation": {
+              "state": "known",
+              "value": null
+            },
+            "options": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            },
+            "columns": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "id",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 0
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "pg_catalog",
+                        "name": "int8"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": null,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": ""
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                },
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "name",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 1
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "pg_catalog",
+                        "name": "varchar"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": 80,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "literal",
+                      "type": {
+                        "ref": {
+                          "kind": "type",
+                          "schema": "pg_catalog",
+                          "name": "varchar"
+                        },
+                        "kind": "builtin",
+                        "modifiers": {
+                          "state": "known",
+                          "value": {
+                            "length": 80,
+                            "precision": null,
+                            "scale": null,
+                            "datetimePrecision": null,
+                            "interval": null,
+                            "arrayDimensions": 0,
+                            "unsigned": false,
+                            "zerofill": false
+                          }
+                        },
+                        "labels": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      },
+                      "encoding": "text",
+                      "value": "guest"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": ""
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "constraints": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "constraint",
+                    "schema": "app",
+                    "name": "accounts_pkey",
+                    "table": "accounts"
+                  },
+                  "kind": {
+                    "state": "known",
+                    "value": "p"
+                  },
+                  "columns": {
+                    "items": [
+                      {
+                        "kind": "column",
+                        "schema": "app",
+                        "name": "id",
+                        "table": "accounts"
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "backingIndex": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "foreignKeys": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "target": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "update": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "delete": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "match": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "setColumns": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "check": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "deferrable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "initiallyDeferred": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "validated": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "enforced": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "local": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "inherited": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "noInherit": {
+                    "state": "known",
+                    "value": false
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "indexes": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "index",
+                    "schema": "app",
+                    "name": "accounts_name_idx",
+                    "table": "accounts"
+                  },
+                  "method": {
+                    "state": "known",
+                    "value": "btree"
+                  },
+                  "unique": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "keys": {
+                    "items": [
+                      {
+                        "column": {
+                          "state": "known",
+                          "value": {
+                            "kind": "column",
+                            "schema": "app",
+                            "name": "name",
+                            "table": "accounts"
+                          }
+                        },
+                        "expression": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "opclass": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "collation": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "descending": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "nullsFirst": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "prefixLength": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "options": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "includes": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "predicate": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "options": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "valid": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "ready": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "constraint": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "dependencies": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "types": [],
+        "sequences": [],
+        "issues": []
+      },
+      "targetCapture": {
+        "context": {
+          "engine": "postgresql",
+          "version": "17",
+          "database": "fixture",
+          "startedAt": "2026-10-23T00:00:00Z",
+          "finishedAt": "2026-10-23T00:00:01Z",
+          "consistency": "repeatableRead",
+          "visibility": "complete",
+          "engineContext": {
+            "state": "known",
+            "value": []
+          }
+        },
+        "inventories": [
+          {
+            "schema": "app",
+            "existence": "present",
+            "tables": {
+              "items": [
+                {
+                  "kind": "table",
+                  "schema": "app",
+                  "name": "accounts"
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "types": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "tables": [
+          {
+            "ref": {
+              "kind": "table",
+              "schema": "app",
+              "name": "accounts"
+            },
+            "kind": {
+              "state": "known",
+              "value": "r"
+            },
+            "storage": {
+              "state": "known",
+              "value": "p"
+            },
+            "charset": {
+              "state": "known",
+              "value": null
+            },
+            "collation": {
+              "state": "known",
+              "value": null
+            },
+            "options": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            },
+            "columns": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "id",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 0
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "pg_catalog",
+                        "name": "int8"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": null,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": ""
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                },
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "name",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 1
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "pg_catalog",
+                        "name": "varchar"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": 160,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "literal",
+                      "type": {
+                        "ref": {
+                          "kind": "type",
+                          "schema": "pg_catalog",
+                          "name": "varchar"
+                        },
+                        "kind": "builtin",
+                        "modifiers": {
+                          "state": "known",
+                          "value": {
+                            "length": 160,
+                            "precision": null,
+                            "scale": null,
+                            "datetimePrecision": null,
+                            "interval": null,
+                            "arrayDimensions": 0,
+                            "unsigned": false,
+                            "zerofill": false
+                          }
+                        },
+                        "labels": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      },
+                      "encoding": "text",
+                      "value": "guest"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": "Display name"
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "constraints": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "constraint",
+                    "schema": "app",
+                    "name": "accounts_pkey",
+                    "table": "accounts"
+                  },
+                  "kind": {
+                    "state": "known",
+                    "value": "p"
+                  },
+                  "columns": {
+                    "items": [
+                      {
+                        "kind": "column",
+                        "schema": "app",
+                        "name": "id",
+                        "table": "accounts"
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "backingIndex": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "foreignKeys": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "target": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "update": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "delete": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "match": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "setColumns": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "check": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "deferrable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "initiallyDeferred": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "validated": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "enforced": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "local": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "inherited": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "noInherit": {
+                    "state": "known",
+                    "value": false
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "indexes": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "index",
+                    "schema": "app",
+                    "name": "accounts_name_idx",
+                    "table": "accounts"
+                  },
+                  "method": {
+                    "state": "known",
+                    "value": "btree"
+                  },
+                  "unique": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "keys": {
+                    "items": [
+                      {
+                        "column": {
+                          "state": "known",
+                          "value": {
+                            "kind": "column",
+                            "schema": "app",
+                            "name": "name",
+                            "table": "accounts"
+                          }
+                        },
+                        "expression": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "opclass": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "collation": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "descending": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "nullsFirst": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "prefixLength": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "options": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "includes": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "predicate": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "options": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "valid": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "ready": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "constraint": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "dependencies": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "types": [],
+        "sequences": [],
+        "issues": []
+      },
+      "mappings": {
+        "schemas": [
+          {
+            "source": "app",
+            "target": "app"
+          }
+        ],
+        "tables": [],
+        "types": []
+      },
+      "sourceSQL": "CREATE TABLE \"app\".\"accounts\" (\n    \"id\" bigint NOT NULL,\n    \"name\" character varying(80) NOT NULL DEFAULT E'guest',\n    CONSTRAINT \"accounts_pkey\" PRIMARY KEY (\"id\")\n);\nCREATE INDEX \"accounts_name_idx\" ON \"app\".\"accounts\" USING \"btree\" (\"name\" ASC NULLS LAST);\n",
+      "targetSQL": "CREATE TABLE \"app\".\"accounts\" (\n    \"id\" bigint NOT NULL,\n    \"name\" character varying(160) DEFAULT E'guest',\n    CONSTRAINT \"accounts_pkey\" PRIMARY KEY (\"id\")\n);\nCREATE INDEX \"accounts_name_idx\" ON \"app\".\"accounts\" USING \"btree\" (\"name\" ASC NULLS LAST);\nCOMMENT ON COLUMN \"app\".\"accounts\".\"name\" IS E'Display name';\n",
+      "expected": {
+        "formatVersion": 1,
+        "status": "complete",
+        "source": {
+          "kind": "text",
+          "totalBytes": 263
+        },
+        "target": {
+          "kind": "text",
+          "totalBytes": 317
+        },
+        "lines": [
+          {
+            "kind": "equal",
+            "source": {
+              "number": 1,
+              "text": "CREATE TABLE \"app\".\"accounts\" (",
+              "highlights": []
+            },
+            "target": {
+              "number": 1,
+              "text": "CREATE TABLE \"app\".\"accounts\" (",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 2,
+              "text": "    \"id\" bigint NOT NULL,",
+              "highlights": []
+            },
+            "target": {
+              "number": 2,
+              "text": "    \"id\" bigint NOT NULL,",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "changed",
+            "source": {
+              "number": 3,
+              "text": "    \"name\" character varying(80) NOT NULL DEFAULT E'guest',",
+              "highlights": [
+                {
+                  "start": 29,
+                  "end": 31
+                },
+                {
+                  "start": 32,
+                  "end": 41
+                }
+              ]
+            },
+            "target": {
+              "number": 3,
+              "text": "    \"name\" character varying(160) DEFAULT E'guest',",
+              "highlights": [
+                {
+                  "start": 29,
+                  "end": 32
+                }
+              ]
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 4,
+              "text": "    CONSTRAINT \"accounts_pkey\" PRIMARY KEY (\"id\")",
+              "highlights": []
+            },
+            "target": {
+              "number": 4,
+              "text": "    CONSTRAINT \"accounts_pkey\" PRIMARY KEY (\"id\")",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 5,
+              "text": ");",
+              "highlights": []
+            },
+            "target": {
+              "number": 5,
+              "text": ");",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 6,
+              "text": "CREATE INDEX \"accounts_name_idx\" ON \"app\".\"accounts\" USING \"btree\" (\"name\" ASC NULLS LAST);",
+              "highlights": []
+            },
+            "target": {
+              "number": 6,
+              "text": "CREATE INDEX \"accounts_name_idx\" ON \"app\".\"accounts\" USING \"btree\" (\"name\" ASC NULLS LAST);",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "targetOnly",
+            "target": {
+              "number": 7,
+              "text": "COMMENT ON COLUMN \"app\".\"accounts\".\"name\" IS E'Display name';",
+              "highlights": [
+                {
+                  "start": 0,
+                  "end": 61
+                }
+              ]
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 7,
+              "text": "",
+              "highlights": []
+            },
+            "target": {
+              "number": 8,
+              "text": "",
+              "highlights": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "mysql table definition",
+      "engine": "mysql",
+      "sourceCapture": {
+        "context": {
+          "engine": "mysql",
+          "version": "8.4",
+          "database": "fixture",
+          "startedAt": "2026-10-23T00:00:00Z",
+          "finishedAt": "2026-10-23T00:00:01Z",
+          "consistency": "bestEffort",
+          "visibility": "complete",
+          "engineContext": {
+            "state": "known",
+            "value": [
+              {
+                "name": "sqlMode",
+                "value": "NO_BACKSLASH_ESCAPES"
+              }
+            ]
+          }
+        },
+        "inventories": [
+          {
+            "schema": "app",
+            "existence": "present",
+            "tables": {
+              "items": [
+                {
+                  "kind": "table",
+                  "schema": "app",
+                  "name": "accounts"
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "types": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "tables": [
+          {
+            "ref": {
+              "kind": "table",
+              "schema": "app",
+              "name": "accounts"
+            },
+            "kind": {
+              "state": "known",
+              "value": "table"
+            },
+            "storage": {
+              "state": "known",
+              "value": "InnoDB"
+            },
+            "charset": {
+              "state": "known",
+              "value": "utf8mb4"
+            },
+            "collation": {
+              "state": "known",
+              "value": {
+                "kind": "collation",
+                "schema": "",
+                "name": "utf8mb4_unicode_ci"
+              }
+            },
+            "options": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            },
+            "columns": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "id",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 0
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "",
+                        "name": "bigint"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": null,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": ""
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                },
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "name",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 1
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "",
+                        "name": "varchar"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": 80,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "literal",
+                      "type": {
+                        "ref": {
+                          "kind": "type",
+                          "schema": "",
+                          "name": "varchar"
+                        },
+                        "kind": "builtin",
+                        "modifiers": {
+                          "state": "known",
+                          "value": {
+                            "length": 80,
+                            "precision": null,
+                            "scale": null,
+                            "datetimePrecision": null,
+                            "interval": null,
+                            "arrayDimensions": 0,
+                            "unsigned": false,
+                            "zerofill": false
+                          }
+                        },
+                        "labels": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      },
+                      "encoding": "text",
+                      "value": "guest"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": ""
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "constraints": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "constraint",
+                    "schema": "app",
+                    "name": "accounts_pkey",
+                    "table": "accounts"
+                  },
+                  "kind": {
+                    "state": "known",
+                    "value": "p"
+                  },
+                  "columns": {
+                    "items": [
+                      {
+                        "kind": "column",
+                        "schema": "app",
+                        "name": "id",
+                        "table": "accounts"
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "backingIndex": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "foreignKeys": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "target": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "update": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "delete": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "match": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "setColumns": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "check": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "deferrable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "initiallyDeferred": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "validated": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "enforced": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "local": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "inherited": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "noInherit": {
+                    "state": "known",
+                    "value": false
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "indexes": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "index",
+                    "schema": "app",
+                    "name": "accounts_name_idx",
+                    "table": "accounts"
+                  },
+                  "method": {
+                    "state": "known",
+                    "value": "BTREE"
+                  },
+                  "unique": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "keys": {
+                    "items": [
+                      {
+                        "column": {
+                          "state": "known",
+                          "value": {
+                            "kind": "column",
+                            "schema": "app",
+                            "name": "name",
+                            "table": "accounts"
+                          }
+                        },
+                        "expression": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "opclass": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "collation": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "descending": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "nullsFirst": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "prefixLength": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "options": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "includes": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "predicate": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "options": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "valid": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "ready": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "constraint": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "dependencies": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "types": [],
+        "sequences": [],
+        "issues": []
+      },
+      "targetCapture": {
+        "context": {
+          "engine": "mysql",
+          "version": "8.4",
+          "database": "fixture",
+          "startedAt": "2026-10-23T00:00:00Z",
+          "finishedAt": "2026-10-23T00:00:01Z",
+          "consistency": "bestEffort",
+          "visibility": "complete",
+          "engineContext": {
+            "state": "known",
+            "value": [
+              {
+                "name": "sqlMode",
+                "value": "NO_BACKSLASH_ESCAPES"
+              }
+            ]
+          }
+        },
+        "inventories": [
+          {
+            "schema": "app",
+            "existence": "present",
+            "tables": {
+              "items": [
+                {
+                  "kind": "table",
+                  "schema": "app",
+                  "name": "accounts"
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "types": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "tables": [
+          {
+            "ref": {
+              "kind": "table",
+              "schema": "app",
+              "name": "accounts"
+            },
+            "kind": {
+              "state": "known",
+              "value": "table"
+            },
+            "storage": {
+              "state": "known",
+              "value": "InnoDB"
+            },
+            "charset": {
+              "state": "known",
+              "value": "utf8mb4"
+            },
+            "collation": {
+              "state": "known",
+              "value": {
+                "kind": "collation",
+                "schema": "",
+                "name": "utf8mb4_unicode_ci"
+              }
+            },
+            "options": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            },
+            "columns": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "id",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 0
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "",
+                        "name": "bigint"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": null,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": ""
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                },
+                {
+                  "ref": {
+                    "kind": "column",
+                    "schema": "app",
+                    "name": "name",
+                    "table": "accounts"
+                  },
+                  "ordinal": {
+                    "state": "known",
+                    "value": 1
+                  },
+                  "type": {
+                    "state": "known",
+                    "value": {
+                      "ref": {
+                        "kind": "type",
+                        "schema": "",
+                        "name": "varchar"
+                      },
+                      "kind": "builtin",
+                      "modifiers": {
+                        "state": "known",
+                        "value": {
+                          "length": 160,
+                          "precision": null,
+                          "scale": null,
+                          "datetimePrecision": null,
+                          "interval": null,
+                          "arrayDimensions": 0,
+                          "unsigned": false,
+                          "zerofill": false
+                        }
+                      },
+                      "labels": {
+                        "items": [],
+                        "complete": true,
+                        "state": "known"
+                      }
+                    }
+                  },
+                  "nullable": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "default": {
+                    "state": "known",
+                    "value": {
+                      "kind": "literal",
+                      "type": {
+                        "ref": {
+                          "kind": "type",
+                          "schema": "",
+                          "name": "varchar"
+                        },
+                        "kind": "builtin",
+                        "modifiers": {
+                          "state": "known",
+                          "value": {
+                            "length": 160,
+                            "precision": null,
+                            "scale": null,
+                            "datetimePrecision": null,
+                            "interval": null,
+                            "arrayDimensions": 0,
+                            "unsigned": false,
+                            "zerofill": false
+                          }
+                        },
+                        "labels": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      },
+                      "encoding": "text",
+                      "value": "guest"
+                    }
+                  },
+                  "generated": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "identity": {
+                    "state": "known",
+                    "value": {
+                      "kind": "none"
+                    }
+                  },
+                  "charset": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "collation": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "comment": {
+                    "state": "known",
+                    "value": "Display name"
+                  },
+                  "onUpdate": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "constraints": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "constraint",
+                    "schema": "app",
+                    "name": "accounts_pkey",
+                    "table": "accounts"
+                  },
+                  "kind": {
+                    "state": "known",
+                    "value": "p"
+                  },
+                  "columns": {
+                    "items": [
+                      {
+                        "kind": "column",
+                        "schema": "app",
+                        "name": "id",
+                        "table": "accounts"
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "backingIndex": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "foreignKeys": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "target": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "update": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "delete": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "match": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "setColumns": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "check": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "deferrable": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "initiallyDeferred": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "validated": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "enforced": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "local": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "inherited": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "noInherit": {
+                    "state": "known",
+                    "value": false
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "indexes": {
+              "items": [
+                {
+                  "ref": {
+                    "kind": "index",
+                    "schema": "app",
+                    "name": "accounts_name_idx",
+                    "table": "accounts"
+                  },
+                  "method": {
+                    "state": "known",
+                    "value": "BTREE"
+                  },
+                  "unique": {
+                    "state": "known",
+                    "value": false
+                  },
+                  "nullsDistinct": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "keys": {
+                    "items": [
+                      {
+                        "column": {
+                          "state": "known",
+                          "value": {
+                            "kind": "column",
+                            "schema": "app",
+                            "name": "name",
+                            "table": "accounts"
+                          }
+                        },
+                        "expression": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "opclass": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "collation": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "descending": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "nullsFirst": {
+                          "state": "known",
+                          "value": false
+                        },
+                        "prefixLength": {
+                          "state": "known",
+                          "value": null
+                        },
+                        "options": {
+                          "items": [],
+                          "complete": true,
+                          "state": "known"
+                        }
+                      }
+                    ],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "includes": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "predicate": {
+                    "state": "known",
+                    "value": null
+                  },
+                  "options": {
+                    "items": [],
+                    "complete": true,
+                    "state": "known"
+                  },
+                  "visible": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "valid": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "ready": {
+                    "state": "known",
+                    "value": true
+                  },
+                  "constraint": {
+                    "state": "known",
+                    "value": null
+                  }
+                }
+              ],
+              "complete": true,
+              "state": "known"
+            },
+            "dependencies": {
+              "items": [],
+              "complete": true,
+              "state": "known"
+            }
+          }
+        ],
+        "types": [],
+        "sequences": [],
+        "issues": []
+      },
+      "mappings": {
+        "schemas": [
+          {
+            "source": "app",
+            "target": "app"
+          }
+        ],
+        "tables": [],
+        "types": []
+      },
+      "sourceSQL": "CREATE TABLE `app`.`accounts` (\n    `id` BIGINT NOT NULL,\n    `name` VARCHAR(80) NOT NULL DEFAULT 'guest',\n    CONSTRAINT `accounts_pkey` PRIMARY KEY (`id`),\n    KEY `accounts_name_idx` (`name` ASC) USING BTREE\n) ENGINE = `InnoDB` DEFAULT CHARACTER SET = `utf8mb4` COLLATE = `utf8mb4_unicode_ci`;\n",
+      "targetSQL": "CREATE TABLE `app`.`accounts` (\n    `id` BIGINT NOT NULL,\n    `name` VARCHAR(160) NULL DEFAULT 'guest' COMMENT 'Display name',\n    CONSTRAINT `accounts_pkey` PRIMARY KEY (`id`),\n    KEY `accounts_name_idx` (`name` ASC) USING BTREE\n) ENGINE = `InnoDB` DEFAULT CHARACTER SET = `utf8mb4` COLLATE = `utf8mb4_unicode_ci`;\n",
+      "expected": {
+        "formatVersion": 1,
+        "status": "complete",
+        "source": {
+          "kind": "text",
+          "totalBytes": 297
+        },
+        "target": {
+          "kind": "text",
+          "totalBytes": 317
+        },
+        "lines": [
+          {
+            "kind": "equal",
+            "source": {
+              "number": 1,
+              "text": "CREATE TABLE `app`.`accounts` (",
+              "highlights": []
+            },
+            "target": {
+              "number": 1,
+              "text": "CREATE TABLE `app`.`accounts` (",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 2,
+              "text": "    `id` BIGINT NOT NULL,",
+              "highlights": []
+            },
+            "target": {
+              "number": 2,
+              "text": "    `id` BIGINT NOT NULL,",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "changed",
+            "source": {
+              "number": 3,
+              "text": "    `name` VARCHAR(80) NOT NULL DEFAULT 'guest',",
+              "highlights": [
+                {
+                  "start": 19,
+                  "end": 21
+                },
+                {
+                  "start": 22,
+                  "end": 26
+                }
+              ]
+            },
+            "target": {
+              "number": 3,
+              "text": "    `name` VARCHAR(160) NULL DEFAULT 'guest' COMMENT 'Display name',",
+              "highlights": [
+                {
+                  "start": 19,
+                  "end": 22
+                },
+                {
+                  "start": 43,
+                  "end": 66
+                }
+              ]
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 4,
+              "text": "    CONSTRAINT `accounts_pkey` PRIMARY KEY (`id`),",
+              "highlights": []
+            },
+            "target": {
+              "number": 4,
+              "text": "    CONSTRAINT `accounts_pkey` PRIMARY KEY (`id`),",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 5,
+              "text": "    KEY `accounts_name_idx` (`name` ASC) USING BTREE",
+              "highlights": []
+            },
+            "target": {
+              "number": 5,
+              "text": "    KEY `accounts_name_idx` (`name` ASC) USING BTREE",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 6,
+              "text": ") ENGINE = `InnoDB` DEFAULT CHARACTER SET = `utf8mb4` COLLATE = `utf8mb4_unicode_ci`;",
+              "highlights": []
+            },
+            "target": {
+              "number": 6,
+              "text": ") ENGINE = `InnoDB` DEFAULT CHARACTER SET = `utf8mb4` COLLATE = `utf8mb4_unicode_ci`;",
+              "highlights": []
+            }
+          },
+          {
+            "kind": "equal",
+            "source": {
+              "number": 7,
+              "text": "",
+              "highlights": []
+            },
+            "target": {
+              "number": 7,
+              "text": "",
+              "highlights": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

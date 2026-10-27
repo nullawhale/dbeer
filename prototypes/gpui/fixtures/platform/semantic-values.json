@@ -1,0 +1,8 @@
+{
+  "sqlNull": {"kind": "null", "nativeValue": "NULL", "description": "SQL NULL"},
+  "empty": {"kind": "text", "nativeValue": "", "description": "Empty string"},
+  "literalNull": {"kind": "text", "nativeValue": "NULL", "description": "Text value"},
+  "exactNumeric": {"kind": "text", "nativeValue": "9007199254740993.0001", "description": "Text value"},
+  "binary": {"kind": "binary", "nativeValue": "AAE=", "byteCount": 2, "description": "Binary value; 2 bytes; Base64"},
+  "default": {"kind": "default", "nativeValue": "DEFAULT", "description": "Database DEFAULT assignment"}
+}

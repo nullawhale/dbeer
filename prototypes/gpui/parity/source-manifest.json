@@ -1,0 +1,2166 @@
+{
+  "schemaVersion": 1,
+  "baselineID": "swiftui-working-tree-v1",
+  "createdUTC": "2026-10-19T14:06:57.660905+00:00",
+  "head": "2d4643ccb6db434f03e08bd3507266a060c44cce",
+  "scope": "All nonignored Swift/macOS, helper, shared protocol fixtures, assets, build/test scripts, CI, existing GPUI source and root product documentation; excludes .git, ignored docs/build/private state and this parity registry metadata to avoid recursive self-hashing; deterministic parity/fixtures resources required by the tests are included. New Task 1 Swift/Go fixture tests and signature fixture are included.",
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "kind": "file",
+      "sha256": "f4938cce63b5eaf91fe7313a5f99a7f280d7b2c2fa236145814a5d87d8c7c0d4",
+      "bytes": 7332,
+      "mode": "0o644"
+    },
+    {
+      "path": ".gitignore",
+      "kind": "file",
+      "sha256": "b9d0f973946cd4a234297c5d25ec65dcd068fefa4462cdb87ec719a5ce9da39d",
+      "bytes": 470,
+      "mode": "0o644"
+    },
+    {
+      "path": "AGENTS.md",
+      "kind": "file",
+      "sha256": "61345353d9a1280f9719db472314ab0fc0fb5dc83962743048b6b0c529d59e10",
+      "bytes": 5854,
+      "mode": "0o644"
+    },
+    {
+      "path": "BUILD_NUMBER",
+      "kind": "file",
+      "sha256": "06e9d52c1720fca412803e3b07c4b228ff113e303f4c7ab94665319d832bbfb7",
+      "bytes": 2,
+      "mode": "0o644"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "kind": "file",
+      "sha256": "154b6604536d390241a3ce85878bb3afe81b3e0011801e28a32e3aedfe65b3ca",
+      "bytes": 9813,
+      "mode": "0o644"
+    },
+    {
+      "path": "INSTALL.md",
+      "kind": "file",
+      "sha256": "ef4e3c27bd0eb867dd61a2400a0ddffbae33a1d0b622ab265d90dc7613e6624f",
+      "bytes": 4034,
+      "mode": "0o644"
+    },
+    {
+      "path": "README.md",
+      "kind": "file",
+      "sha256": "c93ff192eb13aafc2631643d832fe5ceed17deb492a78127c0b2a11931a1556b",
+      "bytes": 19214,
+      "mode": "0o644"
+    },
+    {
+      "path": "VERSION",
+      "kind": "file",
+      "sha256": "e9dd8507f4bf0c6f42458e41aea833ad0bd3f6127272335eee9bf4d58541ed67",
+      "bytes": 6,
+      "mode": "0o644"
+    },
+    {
+      "path": "assets/cassandra-logo.svg",
+      "kind": "file",
+      "sha256": "a38ac4b899da5553d6a40cd962109e5fd71c9bcff53db8977e62276a527f648c",
+      "bytes": 26573,
+      "mode": "0o644"
+    },
+    {
+      "path": "assets/mongo-logo.svg",
+      "kind": "file",
+      "sha256": "b03aea34ed55f513f44e7f5034d24c24978bafd6816472d59823a894cb1a9846",
+      "bytes": 2070,
+      "mode": "0o644"
+    },
+    {
+      "path": "assets/mysql-logo.svg",
+      "kind": "file",
+      "sha256": "029b960573612cafab5234cf41d607af7174e42f4b2e8115959866f897d5be4d",
+      "bytes": 4949,
+      "mode": "0o644"
+    },
+    {
+      "path": "assets/postgresql-logo.svg",
+      "kind": "file",
+      "sha256": "1b3206cf6476574cd9cdbe174fe9fd5476f39985a1ba784e955d94612359d14d",
+      "bytes": 6913,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/cmd/dbeer-core/backpressure_integration_test.go",
+      "kind": "file",
+      "sha256": "ac53f95bb7dcfe5653bbd1e0e31bcf81c8ad1eaf57825cc0d070e229722196a9",
+      "bytes": 5210,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/cmd/dbeer-core/backpressure_test.go",
+      "kind": "file",
+      "sha256": "c870b1826e316a46b8a991d771174a9d1209d64fb56409cd23837535fc15011c",
+      "bytes": 4526,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/cmd/dbeer-core/connection_integration_test.go",
+      "kind": "file",
+      "sha256": "fa2e3775a5444e89caff0d29da310b344f01ca18b5847818eabee16d07dc69df",
+      "bytes": 8193,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/cmd/dbeer-core/main.go",
+      "kind": "file",
+      "sha256": "0597aa3b2e488c4afe10a2f19a0780342092edb1f0e6f776b78ef0ab598c364c",
+      "bytes": 7131,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/cmd/dbeer-core/main_test.go",
+      "kind": "file",
+      "sha256": "d034c86f8a9a6fdade0b2a450baf3f81799b261365ee36e3522b0ae59476a9de",
+      "bytes": 5156,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/cmd/dbeer-core/transport_lifecycle_test.go",
+      "kind": "file",
+      "sha256": "681078ba591aef650830428106567e12b71b12dc23d2b0b07deda3c36a9bfc45",
+      "bytes": 2677,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/go.mod",
+      "kind": "file",
+      "sha256": "74d8841f2f4184392760d62204ec184aaf1bc6b93f92410463484a53c024b436",
+      "bytes": 889,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/go.sum",
+      "kind": "file",
+      "sha256": "125b7304c26c83815882ca9ed409c71ee7786f1ed7c8814cc78045e9b9da3705",
+      "bytes": 5356,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/adapter/adapter.go",
+      "kind": "file",
+      "sha256": "f771d99f14a8cccb2e4b617048b2508f7766ea025a2a0f27c0f64e9974434bd3",
+      "bytes": 1904,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/exportfile/export.go",
+      "kind": "file",
+      "sha256": "1a726a97c94deaa0f5f53ebacb25228d5a6889269906e9b92daabe4a41224d22",
+      "bytes": 6109,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/exportfile/export_test.go",
+      "kind": "file",
+      "sha256": "4fbc032c860c796ea514809b9a1b5b18142511cd5c959ac9bf6f6401a015ce71",
+      "bytes": 5017,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/catalog.go",
+      "kind": "file",
+      "sha256": "64e157221e5a39c98e634defbeb09f8c2073384f25365e4aa436ca2f8097cd42",
+      "bytes": 19776,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/catalog_test.go",
+      "kind": "file",
+      "sha256": "9c7a42de45d520be1040ba349c81750c8b93f26a238ef29bba726ea03d6a96e9",
+      "bytes": 16430,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/changes.go",
+      "kind": "file",
+      "sha256": "e81029a13972c110b8baea48d4891c010324c949535edf49aaa61a5d75757ae8",
+      "bytes": 9954,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/changes_plan.go",
+      "kind": "file",
+      "sha256": "7931fc5ab4123593425037a91b7266212016f17b2c491834800efa00b3bcd2cb",
+      "bytes": 8362,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/changes_test.go",
+      "kind": "file",
+      "sha256": "9d3787cf9a9be18e50c9c514fddb317f64bab705f343a9062bb668b10fa03c16",
+      "bytes": 15252,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/collector.go",
+      "kind": "file",
+      "sha256": "0d9e9352789c6b2a82d9087e3fe39620c20dac0de71a4e641c73c9b2e89b2bd2",
+      "bytes": 9737,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/config.go",
+      "kind": "file",
+      "sha256": "12e0d56d8aee3bec12a50a21acce049d19644e38c09a1d43a5e61824cc7649f4",
+      "bytes": 4527,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/integration_test.go",
+      "kind": "file",
+      "sha256": "4114ad8e540ab39f419b266a7dfe014ad545416d66ccb56c6d81338e2d2b62c1",
+      "bytes": 13333,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/mysql_test.go",
+      "kind": "file",
+      "sha256": "654d816970416e0a3268ea6784523afe6c80b55bc4b078c89169aa7fd78cb779",
+      "bytes": 5795,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/paging_test.go",
+      "kind": "file",
+      "sha256": "4fa4da5bb76948e5a04153ba099cbf78f309ca586b2b48af1cc6922ed187df06",
+      "bytes": 3804,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/readonly.go",
+      "kind": "file",
+      "sha256": "075d9d554b5fbb518efafed44665393c00db9b69c5066783a7a7b49aba9ec410",
+      "bytes": 654,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/readonly_integration_test.go",
+      "kind": "file",
+      "sha256": "0160799818829b04bf8e2fdbe6feab4d20b27e10086f987b12cbf3cff084482a",
+      "bytes": 2007,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/results.go",
+      "kind": "file",
+      "sha256": "dafff311da55d9cea570c15a6f8b9d500afc82209e4006ab67f92ad4aca58ce3",
+      "bytes": 5671,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/results_test.go",
+      "kind": "file",
+      "sha256": "125097efa72e1c5d3f23b48aac25d3e9a5aee548521297898b1690719ebfbcfa",
+      "bytes": 5430,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/session.go",
+      "kind": "file",
+      "sha256": "3d8dd44b14f12f1113899125772d805e849ebbff4f3c26192ae9196d7458ecb1",
+      "bytes": 9930,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/streaming_test.go",
+      "kind": "file",
+      "sha256": "5586f25bb858533051f8911231b7286dcf741ed5a797fc1960d3d1c9f14b810d",
+      "bytes": 7591,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/mysql/unsupported.go",
+      "kind": "file",
+      "sha256": "299c429360761d2c4fdcf65dc4e62f93b751fea84304efcad6d7f788a45d9586",
+      "bytes": 1233,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/browse.go",
+      "kind": "file",
+      "sha256": "786cf1c832268c0b6e43b8fdc864ea75d817a1d45a7c16e2ae26c91ac3b063e8",
+      "bytes": 4465,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/catalog.go",
+      "kind": "file",
+      "sha256": "a58b31410178a7e6a6d9c736fe217cc6dbf0428dca70ff818b08236c7bbeaa66",
+      "bytes": 18342,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/changes.go",
+      "kind": "file",
+      "sha256": "586473837d5bd0d8bc3eae663677ecb933bdf8b7d679fbcf43bca2a6ea09441e",
+      "bytes": 17877,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/changes_integration_test.go",
+      "kind": "file",
+      "sha256": "374d19763768d2e1447a75ce37b0f9ea66d1b2dbf23b984817c124ae6ab0912d",
+      "bytes": 24785,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/config.go",
+      "kind": "file",
+      "sha256": "d9ecfdfa86d63ecd625642709918acece79b9f2be179515d2b14a8f85cd28a48",
+      "bytes": 2667,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/execute.go",
+      "kind": "file",
+      "sha256": "c68aeb903e2c9357c3c0c119c532707a2d25ece298b3e2fcd6782ad9a5c2e1c7",
+      "bytes": 11630,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/execute_integration_test.go",
+      "kind": "file",
+      "sha256": "c3c0e169ab1e6e18aed1c9c1997f6fbeec431d146c0eda0e52e1f42aa92dfdee",
+      "bytes": 24793,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/execute_test.go",
+      "kind": "file",
+      "sha256": "794ec4320e7dfcd5884fa1ebc537d13562727b3df89dfcc6e5d385b8e4be20af",
+      "bytes": 4825,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/owner.go",
+      "kind": "file",
+      "sha256": "5f0da8e77e0ad0f804697532afae5006bbac818d0610c50aca5de88bac716594",
+      "bytes": 9103,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/owner_test.go",
+      "kind": "file",
+      "sha256": "f8eb1f9aaaa5a6a07c6befa0fc0b19d0e3e065888e72c641386201fcf0d35a91",
+      "bytes": 6867,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/position_integration_test.go",
+      "kind": "file",
+      "sha256": "5c13c16b1eb20af4dd5f0c1645b15fa6ad3195b9d8e3863f8e37fc6039b1955d",
+      "bytes": 740,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/readonly.go",
+      "kind": "file",
+      "sha256": "2235856208ebcdda062014c2b781b0b8d6f134d1d5b0507f0d3c567e9e9e64ea",
+      "bytes": 925,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/readonly_integration_test.go",
+      "kind": "file",
+      "sha256": "e99fd4679166579bd2e2a19fd6c78f8680af09967a1062f3ce798ff232d4f612",
+      "bytes": 2480,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/readonly_semantics_integration_test.go",
+      "kind": "file",
+      "sha256": "43fd74d12aa2041dc446f085aebcf6d5a78f4daca6661102167efbc3343b7941",
+      "bytes": 3100,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/session.go",
+      "kind": "file",
+      "sha256": "6f52e4b8a1fcb474eeded1afd7685a10d945f0bea04d8a6741ed72e8c1ead3e9",
+      "bytes": 1674,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/postgres/tls_integration_test.go",
+      "kind": "file",
+      "sha256": "ba403de87f51ae14ccce6497002c43d4af4083918f5ab4f1fc5ad4df28a2c37d",
+      "bytes": 3967,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/catalog_test.go",
+      "kind": "file",
+      "sha256": "91521d40bc0fc73a87aaad12f7ce75d2ca6cfed34bc06747aa35e3f37a5c22dc",
+      "bytes": 4482,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/changes.go",
+      "kind": "file",
+      "sha256": "4c19d66bc40c5b68eacf9a6756822300014d50bf78202ed6a44b840bb5b5fa97",
+      "bytes": 5177,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/changes_test.go",
+      "kind": "file",
+      "sha256": "8e30a52f61c88294c9f1a2c24af328e2ff853a58e7ddc54e0d1ac3f62a088f51",
+      "bytes": 1549,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/policy.go",
+      "kind": "file",
+      "sha256": "0b6890ff63446d053f47b4e91c389f2162ccc19ec29de171dda978592ed2cb8b",
+      "bytes": 3086,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/policy_test.go",
+      "kind": "file",
+      "sha256": "c7ded687aba3d41ef6f78133752f401be1a728cbcd599460dbe4ee50148aa280",
+      "bytes": 2449,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/protocol.go",
+      "kind": "file",
+      "sha256": "88502cb59fe3b0af79de5cbf5e4e5148061829e0f28b571528b0c75cfba671bc",
+      "bytes": 20157,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/protocol_test.go",
+      "kind": "file",
+      "sha256": "be29acde410a0b4b6e36842123cbef527247d4a8b10faf93110eff6b666003aa",
+      "bytes": 8546,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/stream_test.go",
+      "kind": "file",
+      "sha256": "9e4c525cab000d14162e72050ff02b7a377526132e8775a50a21bf576db48144",
+      "bytes": 3183,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/protocol/transport.go",
+      "kind": "file",
+      "sha256": "9d053bc2c334320e1799a159848f065d39d82866825c784aad7011e3a7b63b5f",
+      "bytes": 1929,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/safety/sql.go",
+      "kind": "file",
+      "sha256": "01f10ba81dff5c6afb28fcf64e498507147305630f6518369db1a2663f2a6f7e",
+      "bytes": 30079,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/safety/sql_test.go",
+      "kind": "file",
+      "sha256": "22d22d32493a1de3ee5e26cdaf24b55ac97d8c8e82bb5f9d3a829a930017a8f7",
+      "bytes": 19657,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/catalog_integration_test.go",
+      "kind": "file",
+      "sha256": "8a98a756d975c091f50e16f1205350e7917a2bb2d366147c43eb58481804ecd2",
+      "bytes": 13463,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/catalog_name_integration_test.go",
+      "kind": "file",
+      "sha256": "6303b6efb47f7143387cd821d81aa8b24c3fcbe7148ce6e26b81caa9de441bfb",
+      "bytes": 4511,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/manager.go",
+      "kind": "file",
+      "sha256": "3d090febbd9297e8c9d7ffae958f20c9a38710a49ec4e4061822fabafa6ec6fb",
+      "bytes": 18130,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/manager_test.go",
+      "kind": "file",
+      "sha256": "43dfd7da973c561d145584fd7298932baa8f6717b39b5d1b95dcd7c57f57c2c8",
+      "bytes": 9494,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/policy.go",
+      "kind": "file",
+      "sha256": "d19a8afe77f6bc32e3f46fdcaed6b99ffd458d2eda4551ebf3bdaef733ca4a46",
+      "bytes": 4195,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/policy_test.go",
+      "kind": "file",
+      "sha256": "f5d2a8bd9a6ae4d4abfa79f7e4637a4946142e30b3867f978ce21742ac72f046",
+      "bytes": 9574,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/postgres_integration_test.go",
+      "kind": "file",
+      "sha256": "4c27daa2f45daa125136aec08e7a3d5bebed40447688a2bde4b3a64bb3b7d4e9",
+      "bytes": 9935,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/stream.go",
+      "kind": "file",
+      "sha256": "f24e4610ffbe6cd3ba9e3dd660cfe528fa5737170c1053bff9f895f1c95737c1",
+      "bytes": 8517,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/session/stream_integration_test.go",
+      "kind": "file",
+      "sha256": "d310907d444ee9f0ce13b533d4ca499611d5beb32a3f3ce304ef17e5970d299f",
+      "bytes": 8917,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/README.md",
+      "kind": "file",
+      "sha256": "45620e8c52b574d6b0be9127e1ad773d90717ced20a1636263a911881bf64e37",
+      "bytes": 6562,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/builtins.go",
+      "kind": "file",
+      "sha256": "83c44b19e1f59911886a2784dc90757dbc16bf4ab3bcd116681e378df35f2d0d",
+      "bytes": 4778,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/completion.go",
+      "kind": "file",
+      "sha256": "f9862d1449c1a7f9fb2d4eb19f0787e00102d6b1a7d9f47f4833a09653aa35c5",
+      "bytes": 10394,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/completion_test.go",
+      "kind": "file",
+      "sha256": "21dc834a3106222fa3ab9efee75a4873548d9fe35dd70667eb7dafcfa01ad3db",
+      "bytes": 14122,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/dialect.go",
+      "kind": "file",
+      "sha256": "1091d6f2d10ea6fa05cee3e33f37a9e5a9f68d3907e4edfe34b677f2a5c6b904",
+      "bytes": 2359,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/identifiers.go",
+      "kind": "file",
+      "sha256": "204167208cdb319997b9e345d283ad7c37db4eb0373b2e53f81bf8b58a709b7e",
+      "bytes": 643,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/joins.go",
+      "kind": "file",
+      "sha256": "4fdf7d1fc845047b5e61070c277db07c3520908fe340f3c3adc42c5f0a878324",
+      "bytes": 4800,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/lex.go",
+      "kind": "file",
+      "sha256": "2d6326c01b8bd7c8a8e16d4ef19586c4e9b3f4bc6e31184f257912907b346709",
+      "bytes": 4606,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/lex_test.go",
+      "kind": "file",
+      "sha256": "3d2e5f27dd162a33b87e3a6dadeec2731fb09f31a6472410053febfe78fcf3b0",
+      "bytes": 1972,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/matching.go",
+      "kind": "file",
+      "sha256": "79b95c0a4f8739a8f5bc5d2afe2700df5ed5b7d471bc2af71efa59382ef37dd7",
+      "bytes": 8397,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/matching_test.go",
+      "kind": "file",
+      "sha256": "e9b4fcd1d56737a0719c9ccdda7d40b6d0294fd37f3af56e492d48fb151e2873",
+      "bytes": 8594,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/model.go",
+      "kind": "file",
+      "sha256": "a6f9f4f0101b3ddddd4c4374f088c5bd3cf58543070bebfc4810a4f3f4b5edfd",
+      "bytes": 2144,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/scope.go",
+      "kind": "file",
+      "sha256": "868fc68c713054a0b6bb7f33c3c19879eae22f9dcc2e9d8c4a39a968e7e4af5f",
+      "bytes": 11966,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/signature.go",
+      "kind": "file",
+      "sha256": "4bcfa533f08eab8edd177d78c02e9e455ba1717bcba8c8e71949317e93c00a3a",
+      "bytes": 8653,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqlcomplete/signature_test.go",
+      "kind": "file",
+      "sha256": "7575534fe193362cdd692a087c991a01606c0bb5ec96434af0c22bef67d50592",
+      "bytes": 6322,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/completion.go",
+      "kind": "file",
+      "sha256": "5424000334117e6f2159f11a5bc3af3109d44e9a0a7e589efab0689fcf04f458",
+      "bytes": 1524,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/completion_test.go",
+      "kind": "file",
+      "sha256": "14bb655707261fb5fcf6f2f701e8515905b833e843ee5727b0af2a4b699df493",
+      "bytes": 10983,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/server.go",
+      "kind": "file",
+      "sha256": "da9a00b23f932797be2f13a5a48bd339248ec3702449cd15a65c58355063daf6",
+      "bytes": 12287,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/server_test.go",
+      "kind": "file",
+      "sha256": "f9af5df97f211a35eddb3f6f34cf14e938ea5fd2cf1c0680a674450430164d84",
+      "bytes": 8566,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/signature.go",
+      "kind": "file",
+      "sha256": "1630592fe9a0d91308e479b1fa78617cb9408aef111edccc01651d547c9b8175",
+      "bytes": 1565,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/signature_fixture_test.go",
+      "kind": "file",
+      "sha256": "33878d5485620c734f2aea369e1c30174ba7df6d5a9aa9da98cc09ee6b199d8a",
+      "bytes": 2122,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/signature_test.go",
+      "kind": "file",
+      "sha256": "8a59c768fc8fab3967718271b1b08ecf9bec99796051d451afba3aaf7de33ef3",
+      "bytes": 3862,
+      "mode": "0o644"
+    },
+    {
+      "path": "helper/internal/sqllsp/transport.go",
+      "kind": "file",
+      "sha256": "2d3c0f067ef1eef1d0ed82f2b358b5a73678b1aa827dec49b3da1204f69e751a",
+      "bytes": 1924,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/AcceptanceTests/DBeerAcceptanceTests.xcodeproj/project.pbxproj",
+      "kind": "file",
+      "sha256": "ba7c9cf964c0224a3be95d6298cbab0036fe4ff0bb3a6a633a9cbcb4a2810d07",
+      "bytes": 4576,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/AcceptanceTests/DBeerAcceptanceTests.xcodeproj/xcshareddata/xcschemes/DBeerAcceptanceUITests.xcscheme",
+      "kind": "file",
+      "sha256": "563080d22b2804f922ae8c2ff08fab54bf38b43b9f810be5536c03c6844d5a0e",
+      "bytes": 1192,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/AcceptanceTests/README.md",
+      "kind": "file",
+      "sha256": "9262d56ab9f50332177ec0e094ef913ac25d6661a8e8ef4075533dce7cbb0570",
+      "bytes": 3883,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/AcceptanceTests/Sources/InstalledApplicationTests.swift",
+      "kind": "file",
+      "sha256": "12344508a223cf944d468407378a92ed80b92a94a6931313f3b217b1dcb3a775",
+      "bytes": 32692,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/AcceptanceTests/Support/InputSourceGuard.swift",
+      "kind": "file",
+      "sha256": "82af6f0b98230967bce9c7088c773520f384d297f5625fb3ea0eaa80c3e5a496",
+      "bytes": 5282,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/AcceptanceTests/run.sh",
+      "kind": "file",
+      "sha256": "c821706a73177f93b89db42f20a9d7abafadc063c3cdc79977b498ed08d683f2",
+      "bytes": 5920,
+      "mode": "0o755"
+    },
+    {
+      "path": "macos/Package.swift",
+      "kind": "file",
+      "sha256": "d20f8867aa6429580eaad4107329f7637909f6bb9778f1fcbc002955ae93f7de",
+      "bytes": 491,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AccentColors.xcassets/AccentColor.colorset/Contents.json",
+      "kind": "file",
+      "sha256": "cbd5badd23bdbd476c1e72b6fbd94895d86fd103ad35d431390d759a7f1707e2",
+      "bytes": 695,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AccentColors.xcassets/Contents.json",
+      "kind": "file",
+      "sha256": "0fd49ba3c3585c709678e0046a821c3c60685ec7063720d30d3a3448be3a208b",
+      "bytes": 63,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AppIcon.icns",
+      "kind": "file",
+      "sha256": "c11bec3a41df1ac4fe5ac3cabeae068e6628411e196945d1f1c94197c864c996",
+      "bytes": 264874,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AppIcon.png",
+      "kind": "file",
+      "sha256": "536b83ca0b19fdc7de8c0ad9f595111df51c85ece21d470545bc27ce8e84ab40",
+      "bytes": 115349,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AppIcon.svg",
+      "kind": "file",
+      "sha256": "5d17b83260cb2c6206c93deafb45f3998f7b467461ee58b5c7c3245e5c277e14",
+      "bytes": 1112,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AppIconDark.icns",
+      "kind": "file",
+      "sha256": "fc1805650cf89741c20ccef62447191409e6a3bf312480e80d03cefe77334bf6",
+      "bytes": 267233,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AppIconDark.png",
+      "kind": "file",
+      "sha256": "2517e8f4503b033201478855a088472be802972e4ef244cf77e86d6e670ae008",
+      "bytes": 117426,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/AppIconDark.svg",
+      "kind": "file",
+      "sha256": "af389f9625b590ca727cc0da9011e8bf69a8ab5e887c82240ba55525183d6ed4",
+      "bytes": 1117,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/Assets.car",
+      "kind": "file",
+      "sha256": "7f90e8c43b1762fdec81362d5efc5ae53b27a4960bba2747f07bc2ca44dbda72",
+      "bytes": 18504,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/README.md",
+      "kind": "file",
+      "sha256": "86f984228093b9903bd66af110a1c23915b509ea6827c6f8f831e1c39df39c08",
+      "bytes": 472,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/ToolbarIcon.svg",
+      "kind": "file",
+      "sha256": "a3acd17c7180fbec3e0099f82486275147b49e4d5ca326f3225d8917c90a259c",
+      "bytes": 929,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Resources/ToolbarIconDark.svg",
+      "kind": "file",
+      "sha256": "f6f26f2239f5eb216acf1a84a1d023d50dab6ef9889f6cbad22578d5bee92b23",
+      "bytes": 934,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/AppAppearance.swift",
+      "kind": "file",
+      "sha256": "8f6c0f84d1186bde36dec7cc11fe7ea4545fcca06b31fed35bb3be63b3833b08",
+      "bytes": 5151,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/AppColorScheme.swift",
+      "kind": "file",
+      "sha256": "e34949d5208e1260084e06c8b2158935b265cbdaabb43b0eeaa5bf0791b88217",
+      "bytes": 9082,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/AppCommandRegistry.swift",
+      "kind": "file",
+      "sha256": "20d0520a365dc2cddbe68ba10c78d5a05f4c76e347f9e5b1e3b05720a46a8289",
+      "bytes": 7588,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/AppShortcut.swift",
+      "kind": "file",
+      "sha256": "e990caa537315b4ba256a6c29dcb108879b2556aa09a4d745aa0d76b486088f9",
+      "bytes": 18925,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/AppThemeSurface.swift",
+      "kind": "file",
+      "sha256": "5f7528615b8cdd987f1bd73b30817c9ecd86e63c6654df731246c0255fbcf734",
+      "bytes": 13066,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/ApplicationWorkspace+Changes.swift",
+      "kind": "file",
+      "sha256": "b61e2edf9fed75bda5238c1d61218f90744f9cd46eaa2288e82dc95cbe620604",
+      "bytes": 9232,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/ApplicationWorkspace+Policy.swift",
+      "kind": "file",
+      "sha256": "9279e48ab1e95ae5efabf9c9b89e11a786c0411f6a2fcd2b03a0beac91801c0c",
+      "bytes": 1814,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/ApplicationWorkspace.swift",
+      "kind": "file",
+      "sha256": "ded373499eda7d3ca2d9515986f54febce3b3258595902df9056ab48f35eeaee",
+      "bytes": 53375,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Backend/BackendClient.swift",
+      "kind": "file",
+      "sha256": "d4b23f1619357bd7f675f3207417dfcc38a57eb7e27f67f4b971616aa5ac5370",
+      "bytes": 20236,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Backend/Protocol.swift",
+      "kind": "file",
+      "sha256": "2c0916566e3f4f8ec26dc9acb0e5ced90b7dd76361f3c3f3b8d2dac745f0dcc3",
+      "bytes": 16321,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/CatalogModel.swift",
+      "kind": "file",
+      "sha256": "c8b9282b70a20339e6bd40a077709d8f525c943711565bfc95fd485b2b58db83",
+      "bytes": 2466,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/CloseConfirmation.swift",
+      "kind": "file",
+      "sha256": "a0700f1cff828509553af34cc947bb2f8875c7cfd6d3689e7e0dddd70e217e4a",
+      "bytes": 2663,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/DBeerApp.swift",
+      "kind": "file",
+      "sha256": "2c407e6a1903addb95fcd782950be4b275ad83b3eff6adf730b4da297f9cb96f",
+      "bytes": 7591,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/EditorTheme.swift",
+      "kind": "file",
+      "sha256": "293329a46f2ef1424722cbc6c5f0d94ac2e4153bbdba336536d698a99b3d6d7f",
+      "bytes": 21259,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/EditorThemeStore.swift",
+      "kind": "file",
+      "sha256": "0be8af7e5c11c305c0490ff6aaa81d55b421b59fc46b3f6898b41c0718f24089",
+      "bytes": 7005,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/ExecutionPolicy.swift",
+      "kind": "file",
+      "sha256": "1dce1172488a00bd1ef2468ee42132be01f8f5a20072b229aee382f5d6ac2bc2",
+      "bytes": 8373,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/GridChanges.swift",
+      "kind": "file",
+      "sha256": "07286345ac7af023090a03cf088a414b5ad41d67ce0c42a38883f6aff27a5bef",
+      "bytes": 8387,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/GridColumnEditing.swift",
+      "kind": "file",
+      "sha256": "8a50a91f669326b28a6b51f5f05ce0cfbb58b8b62c56c914caf92f045fcda3b2",
+      "bytes": 1760,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/JetBrainsEditorThemeParser.swift",
+      "kind": "file",
+      "sha256": "ba1dc7b41a49f8dd7ee208468b6ae76f100f84fff0b6421b83456e474cde819e",
+      "bytes": 13333,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/KeychainConnectionCredentialStore.swift",
+      "kind": "file",
+      "sha256": "9e464bae33586e47dd96752b25e1ba8c050007ceb3fefe62c1bee6dc375a8e6c",
+      "bytes": 2796,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/NativeButtonFocusPolicy.swift",
+      "kind": "file",
+      "sha256": "96c8af250940d18923ea4cff1a28c4d1fc84dec56fcfe21cef4925cef9841706",
+      "bytes": 10247,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/NativeFieldFocusView.swift",
+      "kind": "file",
+      "sha256": "d9f817df8ddce58be74e58bf02f0de077fdcd0370062e7d01c2f8cec00877458",
+      "bytes": 1621,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/ProfileTransfer.swift",
+      "kind": "file",
+      "sha256": "993a01408fa384b125a867084706cffdef7f8710b9657251477e7f2bee279db8",
+      "bytes": 9746,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/LICENSE-jetbrains.txt",
+      "kind": "file",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/LICENSE-vscode.txt",
+      "kind": "file",
+      "sha256": "9480271317925265e806a9a196aaa33410a962fa9d4d1e248a4a5187bc8c9df9",
+      "bytes": 1088,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/NOTICE-jetbrains.txt",
+      "kind": "file",
+      "sha256": "04efdbb6fc4cfccbf4b099a6be6a115c00f3a8d4e73782850f6aeb6ba06e9a26",
+      "bytes": 500,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/NOTICE.txt",
+      "kind": "file",
+      "sha256": "9d89fd8210d040f850e2f99991598be18cb90a4e838e9a82a99121ab78cdd04e",
+      "bytes": 310,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/dark_plus.json",
+      "kind": "file",
+      "sha256": "409f33088a5cfd6589384900ef80627787c568d367c25b12f31bc7940936e573",
+      "bytes": 4700,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/dark_vs.json",
+      "kind": "file",
+      "sha256": "97517bb4bdcdd6d4642453bf0114000ed74ff28aa1a8ef5d0a83f0440b8108b1",
+      "bytes": 7926,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/dbeer-dark.json",
+      "kind": "file",
+      "sha256": "216dd5c010eec16378f72e912df6201db938c485da6722868f4649a33fad38ee",
+      "bytes": 1491,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/dbeer-light.json",
+      "kind": "file",
+      "sha256": "196e8a2412916731fc1ea39099873968de817c2e07fe16a2bbc711725c60f8d1",
+      "bytes": 1493,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/jetbrains-darcula.icls",
+      "kind": "file",
+      "sha256": "2b93d8a375cf68e23bd17d722db06efe25887eb9a730bb199024e0c9d4248cec",
+      "bytes": 55629,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/jetbrains-default.icls",
+      "kind": "file",
+      "sha256": "2eda18f01b585f88d4008db3f5142123eb1436c0306d9249964922a8684ffaa0",
+      "bytes": 60552,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/light_plus.json",
+      "kind": "file",
+      "sha256": "26fbb053bec8ce2b65706d5fcb993da8c19174cfdbf35a49b465236b5ed26203",
+      "bytes": 4783,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/light_vs.json",
+      "kind": "file",
+      "sha256": "ac299fee01baf722a60b29d177c642b5ab94f87a20bf09015362d7dba890a310",
+      "bytes": 8924,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/solarized-dark-color-theme.json",
+      "kind": "file",
+      "sha256": "d0d54af2fd3fc4a5b01b41f6b99633a398b007f924d4120de710fc88e0334183",
+      "bytes": 12095,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/EditorThemes/solarized-light-color-theme.json",
+      "kind": "file",
+      "sha256": "9df1553f76c3f55f409b8897b7a9c538adb433f8338818e7e0da3765217c855e",
+      "bytes": 12312,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/mysql-logo.svg",
+      "kind": "symlink",
+      "sha256": "d535628dec02850a293df293fdc741c42ddc84774088850412d88e52028e6730",
+      "bytes": 33,
+      "mode": "0o755"
+    },
+    {
+      "path": "macos/Sources/DBeer/Resources/postgresql-logo.svg",
+      "kind": "symlink",
+      "sha256": "7323225f72ff1f169e4c8998b7041860c39828bea97ab2be6eb1b8da7fd9d70a",
+      "bytes": 38,
+      "mode": "0o755"
+    },
+    {
+      "path": "macos/Sources/DBeer/ResultExport.swift",
+      "kind": "file",
+      "sha256": "43bc0a26a0e1cffba7d51cb0b2e266d082d86eba4e9c50d657405d5eddca03c4",
+      "bytes": 4587,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/SQLCompletionCatalog.swift",
+      "kind": "file",
+      "sha256": "c649401f267b842eb35e854158653e2d6b275b07b9ad1dadf43e5343b385cf6e",
+      "bytes": 3832,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/SQLDocumentStore.swift",
+      "kind": "file",
+      "sha256": "3ba93ed452c16ef6ec2aba3f9a145cbf7a8d81fc38ed2ed8b2effe1055c2fe93",
+      "bytes": 8093,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/SQLExecutionFragment.swift",
+      "kind": "file",
+      "sha256": "7eaeed66ed70845d14de52712738ea0092bf1a49328b9e8c23c6e011cf4e7d5f",
+      "bytes": 2557,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/SQLLSPTransport.swift",
+      "kind": "file",
+      "sha256": "48fd4e5eb40b9cc21746237ba6757d276e990ccb42fd0aabf86ed7b8186e5bba",
+      "bytes": 15732,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/SQLLanguageService.swift",
+      "kind": "file",
+      "sha256": "439c15e5fe05c1ff99ca83934e4931f5fdab12cdc21c59e839e24e9886703201",
+      "bytes": 24317,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/SQLScriptParser.swift",
+      "kind": "file",
+      "sha256": "3ecf6cb941879726000954cf51e5005c39809fb1d395442895a34750a0655443",
+      "bytes": 15966,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/SavedConnection.swift",
+      "kind": "file",
+      "sha256": "0e20cf1253c3771e175a88b5cd9cf0fab681c67836eb56a006c00d1b57306042",
+      "bytes": 9900,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/StartupConnection.swift",
+      "kind": "file",
+      "sha256": "e0617515b7749bcab8267f2f522c8810df39f93ec1409b64dababa03c19323f1",
+      "bytes": 2950,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/AppearanceSettingsView.swift",
+      "kind": "file",
+      "sha256": "d54124355cdfa429e0a07fafc5409a23125e23891bb814c3bf9703e3a1fc5d81",
+      "bytes": 6469,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ApplicationWorkspaceView.swift",
+      "kind": "file",
+      "sha256": "3721e50d93a8c87bc74ddf9ebbae4d1baeb8b6c87af3cf23580d9511b0f2e1c7",
+      "bytes": 25824,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/CatalogContextMenu.swift",
+      "kind": "file",
+      "sha256": "c672e0a7b79a2a733583b784771ef4e7153d77a57155432515b749520d7615b1",
+      "bytes": 2481,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/CatalogRowHover.swift",
+      "kind": "file",
+      "sha256": "42fc2a0475d1ae3ccca764c97f87f154aa9c11d9ad48ba20ab7ec2acc7f5073a",
+      "bytes": 4823,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/CatalogViews.swift",
+      "kind": "file",
+      "sha256": "783976f3f67bdb0da8afa27310ff4774d8fd88ff5da31590e91fa20e4233c8b0",
+      "bytes": 9634,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ConnectionButtonFocus.swift",
+      "kind": "file",
+      "sha256": "5e3ba66547ab4a2099a8b2e5ebb93773abd3b7db2f6fc1294b33c959f391c300",
+      "bytes": 429,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ConnectionEditorView.swift",
+      "kind": "file",
+      "sha256": "aedaa6f87078e5c74d09b9388b374b8199995f2c85c7a586443b1dd5d1fc03fc",
+      "bytes": 13580,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ConnectionsSidebar.swift",
+      "kind": "file",
+      "sha256": "18a1116fc7a75264dca22780ae1096ee919d51e4538c5c42ba7c4484e891a536",
+      "bytes": 8048,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ControlHover.swift",
+      "kind": "file",
+      "sha256": "ac8e687c7a8a45fbf947d0fe68e4887c57b7be33a70b45b4cc55c881dea02be0",
+      "bytes": 8405,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ControlIconButton.swift",
+      "kind": "file",
+      "sha256": "6ab831cb809327c9cd66b896fac837cb508af45cd378f59dd3f12aad7482ac0e",
+      "bytes": 492,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ControlSegmentPicker.swift",
+      "kind": "file",
+      "sha256": "09e9bea99631500eafefebc34038d634637e1c502ccc2bbb3fc37038b803fd38",
+      "bytes": 3523,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/DataGridView.swift",
+      "kind": "file",
+      "sha256": "a7e7cfd6f492705b296369f74b08c59104901a2c0510367df4d1580aabb7b5cc",
+      "bytes": 17593,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/DatabaseEngineIcon.swift",
+      "kind": "file",
+      "sha256": "615928c90d7a2c2dc7a4293143f8cd20dfe5ceb43fce75f0801dc2a3a544b5bc",
+      "bytes": 1438,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/GridRowDetailsView.swift",
+      "kind": "file",
+      "sha256": "cb1fe31258e6e25276ed9be8b0e9e713c3e1c56fa01d694b0c6d58be78a7b363",
+      "bytes": 6179,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ProfileImportView.swift",
+      "kind": "file",
+      "sha256": "966cc40c07d98e0a4e690a8e6e63443d663e83e11c187a5a698c3d4386ef51c0",
+      "bytes": 3711,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ResultGridRowNumberRuler.swift",
+      "kind": "file",
+      "sha256": "9375ea15ae28261d9963b155cc0882b5a2cbbfa0217092ffb50abc96ef7ed462",
+      "bytes": 8713,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ResultTableView.swift",
+      "kind": "file",
+      "sha256": "fe0a589e4c40b96c8cdbf333ef56a3110afff8e1dfb1731b25345b046c5e792c",
+      "bytes": 52468,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/SQLCompletionPopup.swift",
+      "kind": "file",
+      "sha256": "804594a1a412d1a1488e4982ed252469de33ae45a8d69a35d0e986cf940011e3",
+      "bytes": 10945,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/SQLEditorView.swift",
+      "kind": "file",
+      "sha256": "93d3f39fd2aa11fa51447db90c0b3b769a0e6b0886910ced6d931186c371b501",
+      "bytes": 54070,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/SQLHistoryView.swift",
+      "kind": "file",
+      "sha256": "deb37077b3c41435c758b9b3791bde7a54eda4da1e7eb4e93b6919dabe780f4a",
+      "bytes": 2665,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/SQLSignaturePopup.swift",
+      "kind": "file",
+      "sha256": "52884fa625fd1ad35735b7802fb2a29fa3071a52759412c09db41fa00251ca72",
+      "bytes": 6600,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/ShortcutSettingsView.swift",
+      "kind": "file",
+      "sha256": "350a3b2a8cf2d9264533ce667091f48446761257c22e23e688ddef5374e4118c",
+      "bytes": 6810,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/TableBrowseControls.swift",
+      "kind": "file",
+      "sha256": "2d4932fb6e4b0289bf6333629f4b13cbf320046d2b24cbfc766f205dfe593501",
+      "bytes": 4573,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/WorkspaceView.swift",
+      "kind": "file",
+      "sha256": "7cb89a5b6957a41385d33438bd2bae102755f5c934d5789b6074330bd7723a66",
+      "bytes": 13046,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/Views/WorkspaceWindowCloseGuard.swift",
+      "kind": "file",
+      "sha256": "91aee539bd6fdd8bfcf31954d3f271ccc1d7135b423d1dde8ae9fc9b656a0b8d",
+      "bytes": 2683,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Sources/DBeer/WorkspaceModel.swift",
+      "kind": "file",
+      "sha256": "60dd17698a1fef4a38fde7d8bf233863728ce4e2651ced5ef33c04a63d5efe01",
+      "bytes": 29132,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/AppAppearanceTests.swift",
+      "kind": "file",
+      "sha256": "94b951762a9d4b2ff3f9332f34bc4fbe454a81f048aad289a726c9eb1d944dd2",
+      "bytes": 8230,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/AppShortcutTests.swift",
+      "kind": "file",
+      "sha256": "e16fcb64093930ec85c8d30db94153d7825473723c411a87effecc0a8d5c9571",
+      "bytes": 22183,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/AppTerminationTests.swift",
+      "kind": "file",
+      "sha256": "29853a3554324ea8ec2ed6f7e72055ee667b05cda97a39a2f295d1b9ba3991af",
+      "bytes": 3161,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/AppearanceThemeSettingsTests.swift",
+      "kind": "file",
+      "sha256": "92500437c1ec6566064e8e13470f52b355aa3a945c940bc2c79a940487762041",
+      "bytes": 10392,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ApplicationColorThemeTests.swift",
+      "kind": "file",
+      "sha256": "e80a8b81d955050236db32b9720d201d9399704febb2c663f2665ffcc3820301",
+      "bytes": 8499,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ApplicationFocusAuditTests.swift",
+      "kind": "file",
+      "sha256": "4d38e253166acfc567e37da817120aed18075c3181259974e919eb34e7636a4d",
+      "bytes": 8891,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ApplicationThemeIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "fe7b8f9e74c3a1592d6e33f3bd061b56d9ad4b321a631723cb589a7b94745be0",
+      "bytes": 18129,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ApplicationThemeSurfaceTests.swift",
+      "kind": "file",
+      "sha256": "47d0140b17491fb85f39dd943064165d6078661b65b5337618a896f5be43d3ee",
+      "bytes": 10861,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ApplicationWorkspaceTests.swift",
+      "kind": "file",
+      "sha256": "82d027409ed230c8a420d7d5eecf2658096fd9cbee4fd93181c887a6d858f224",
+      "bytes": 16059,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/BackendMultiplexingTests.swift",
+      "kind": "file",
+      "sha256": "cd4409e24b45ed743683790e2c67b1f80f7ef09f96d075fc4d800e74177f5140",
+      "bytes": 6646,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/CatalogContextMenuTests.swift",
+      "kind": "file",
+      "sha256": "f51ddcc92795302f2acac9fedeea3d513681a2c86746caa59e9d991a9938f2d6",
+      "bytes": 9712,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/CatalogCopyNameIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "cac2f0e63c231c459cec52f3a19e7a1dd05354355a97fea15e48417fef80c0cd",
+      "bytes": 8068,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/CatalogRowHoverTests.swift",
+      "kind": "file",
+      "sha256": "82cbbdbf7475460ab4eabccce10c139fa2647ab62865b9e4b9a1f6e9fc25a616",
+      "bytes": 13970,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ConnectionLibraryTests.swift",
+      "kind": "file",
+      "sha256": "04ccfe2a1792ac8035cd74e19b9daa78384e987cf27f9301a4d555c6a0c8e5fd",
+      "bytes": 15485,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ConnectionMigrationTests.swift",
+      "kind": "file",
+      "sha256": "9ad0800a351303b8ee7fec17393101fe703b8bcad3421701be0e60f859663e2b",
+      "bytes": 9201,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ConnectionsSidebarIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "b51252fc6b3bee7148f5f2d418a6a0c7273184dd43e236183f6f66e4b9c161fe",
+      "bytes": 36353,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ControlHoverTests.swift",
+      "kind": "file",
+      "sha256": "0d19cfb61c5d312b34fd86c3b4787eeae45c79f8bd808bae9074d463a7d5cfe6",
+      "bytes": 14137,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ControlSegmentPickerTests.swift",
+      "kind": "file",
+      "sha256": "c50f993293905f5bc1951bdcf5057798566215ea3fc66e105b0556f1c553619a",
+      "bytes": 8464,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/EditorThemeTests.swift",
+      "kind": "file",
+      "sha256": "fd634a94fc688c31ad04b94a5fb6f8dc6686e0bc91adb00873dc8e2670cb22d4",
+      "bytes": 14576,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ExecutionPolicyIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "7e176d962aa7f2f5d4123b8c773d25c3ce2808b7da44f8d130586ad21878f1a5",
+      "bytes": 14377,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ExecutionPolicyTests.swift",
+      "kind": "file",
+      "sha256": "8fccf9f6470c716623b2a0ac2008de736821716c5430672787f5485ef5667967",
+      "bytes": 34372,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/GridDraftTests.swift",
+      "kind": "file",
+      "sha256": "4d8e127759e90d336cd6a91aad0089bf071f70bd0968880dfd98a70461944463",
+      "bytes": 4698,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/GridIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "492da0807ba55eefe730a3ab83b72c4a8775b31a27b53832a8caad248b7b9687",
+      "bytes": 8663,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/GridLifecycleTests.swift",
+      "kind": "file",
+      "sha256": "cee834d3e7f97e3298d8ffe3bbab6fcd3329575d2b7df6f10375b43b8e458287",
+      "bytes": 19928,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/GridPresentationIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "3075abf8a57c3d528c3967299c40f9b3f2b7eaa3ac94b4bd8e3ad7cc970e06a4",
+      "bytes": 27137,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/GridPresentationTests.swift",
+      "kind": "file",
+      "sha256": "c2fe11c8754b06539ebe141f3a3686a5602893c7d35cd6f8ccd6aa214af6b800",
+      "bytes": 6114,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/HelperProcessTests.swift",
+      "kind": "file",
+      "sha256": "aec39319f30a31df083f4b4c2a06c4a38428d31b0dbe4c2c0286ab9ccc9db9f5",
+      "bytes": 1254,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/HoverConsistencyTests.swift",
+      "kind": "file",
+      "sha256": "80f8cc45a39edd50d2d29581575af19654600caaddb1ae0920998d5a50e8f460",
+      "bytes": 18247,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/JetBrainsEditorThemeTests.swift",
+      "kind": "file",
+      "sha256": "6022b5444db93aff75a68d56f5bda26780a44f536606f99517efb6d340b26010",
+      "bytes": 7938,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/LandingScreenshotTests.swift",
+      "kind": "file",
+      "sha256": "becfe416c12535e8292f51e20fb4745a1ad06925df7e4663ccd11ff93a346739",
+      "bytes": 11258,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/LocalRequestValidationTests.swift",
+      "kind": "file",
+      "sha256": "7718286d9133afb791dd18e1b54f9ea2deb3e706be168a10751f60fbb941f01c",
+      "bytes": 4441,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/NativeButtonFocusTests.swift",
+      "kind": "file",
+      "sha256": "9600b1b4dc6ec927d4bc7cc8f25797d083d6c6e46bb58a6dee660bd459e03cb4",
+      "bytes": 13691,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/NativeThemeContrastTests.swift",
+      "kind": "file",
+      "sha256": "f9907e44445ebed94fec53bf597ed0531a30db1d3c0bdf38f917c8944a7ea838",
+      "bytes": 16128,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/NativeThemeMenuActions.swift",
+      "kind": "file",
+      "sha256": "78ed597830aec1974dff39174e35b90059a3b389d3c4c7f1d0b81b7b9523ee9c",
+      "bytes": 4201,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ParityBaselineTests.swift",
+      "kind": "file",
+      "sha256": "3b44c37c3f259a05b7f0cc21a4b64c15e757f55247f933f976b6f1af8d24ac2c",
+      "bytes": 11129,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ProfileExportPresentationTests.swift",
+      "kind": "file",
+      "sha256": "735b00643c690994f7cf27cc390873dcb2151be4d70d6483e2c957e3213fde18",
+      "bytes": 2633,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ProfileImportIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "26a93ade5f7427ced356094cd2ccb94ef268326215915db463d17414a6b96423",
+      "bytes": 10567,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ProfileTransferTests.swift",
+      "kind": "file",
+      "sha256": "803307f4580e522d818fe0f759e8127138b992e43985745ac5de7e4e28f0f380",
+      "bytes": 9799,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ResultExportTests.swift",
+      "kind": "file",
+      "sha256": "d0eca3329c0b28e26ae55efc3d9cd3733e41eeb72ff46f82f7038465432782ac",
+      "bytes": 3507,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ResultGridCopyTests.swift",
+      "kind": "file",
+      "sha256": "bd4c02bd5e401c34a2a658a0e8051d4a24112428ebceb204093136b11c6c36cc",
+      "bytes": 7044,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ResultGridFocusTests.swift",
+      "kind": "file",
+      "sha256": "66917968474425294629376cee8c918d56ffdb84d948b41811829a9c77afbc43",
+      "bytes": 14317,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ResultGridInteractionTests.swift",
+      "kind": "file",
+      "sha256": "8b9ca87ede5df3167b5f1ccba8d99e264dba3d2ef897d87313cb7b024b86e8f1",
+      "bytes": 16080,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ResultGridRowNumberTests.swift",
+      "kind": "file",
+      "sha256": "ccb240766d47308c555a3ee824921a10b9f698abe10bbea4f8c3bbcf0d6777d4",
+      "bytes": 11378,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/ResultTableTests.swift",
+      "kind": "file",
+      "sha256": "dfddcf1ba31ab0a63ab3683efee8e031a04ddf655025b52747e897f26c09d45a",
+      "bytes": 7183,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLCompletionCatalogTests.swift",
+      "kind": "file",
+      "sha256": "024761edd7905425cc7cc99ed8f74ab5c513ae9c44e82816632adf2a5b1d19f6",
+      "bytes": 7445,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLCompletionIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "14662168eb4686582dbdb4aa71420c099a30e0153d9324c63e91a469096dcd74",
+      "bytes": 10263,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLDocumentStoreTests.swift",
+      "kind": "file",
+      "sha256": "577e4dd551e4fddf48bb11403f5b8a2210a4bcf1dd8ad9ea12149f16eacab2a6",
+      "bytes": 5309,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLEditorTests.swift",
+      "kind": "file",
+      "sha256": "f8a357ca23791b582f7c01a31dd53d864312c66bff35f68d78c1ed987a846ca7",
+      "bytes": 67400,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLExecutionSuccessTests.swift",
+      "kind": "file",
+      "sha256": "3613aba08c646fffed25a332a5279fadabf775273836cffbe71e18c8ce8451e6",
+      "bytes": 6201,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLLanguageServiceTests.swift",
+      "kind": "file",
+      "sha256": "a1556ed26d3a4e27b05913fd3a91c1a00888dfe390049be79aeb2dffd1a82325",
+      "bytes": 21853,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLRoutineParserIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "b1f9c3ae61a96ea65f411c2754e9c3ee43a992ecb41306fb16f56688012e2e2f",
+      "bytes": 5739,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SQLScriptParserTests.swift",
+      "kind": "file",
+      "sha256": "172cb9b60b795d997c067d69f4e58390fcdd96103cb18d428bc51c26559d07fb",
+      "bytes": 8104,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/SelectHoverTests.swift",
+      "kind": "file",
+      "sha256": "8445a0545bb1a95b4cdcbc41755d9b7bdcb2b530215ba0f53c5d7a4839f2d4aa",
+      "bytes": 9186,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/StartupConnectionTests.swift",
+      "kind": "file",
+      "sha256": "89aba082e54b71d8dae04f8bcb52bc4a032529f288b1e3be3215b7af355d83ab",
+      "bytes": 7274,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/StreamingIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "a7b255d544b9b31a6a91e7820f868e91c3e6e3c0ff1bdb97d4ed30968f5e195d",
+      "bytes": 12110,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/StreamingTransportTests.swift",
+      "kind": "file",
+      "sha256": "f417596e8cdff5a271a04849e4bc55577e131a3a2a069a84d121b9c661d5008d",
+      "bytes": 2911,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/TabHoverTests.swift",
+      "kind": "file",
+      "sha256": "1b2422c04ea5acd6e890ae16fee21620e9bf41706b81084c008b1d32fa229a7c",
+      "bytes": 9830,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/TableBrowseNavigationTests.swift",
+      "kind": "file",
+      "sha256": "4fb24d96799ba03bd9efb7ca91fe0be8948d903d296563abcc3c23bbddcd802e",
+      "bytes": 6648,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/TransportTests.swift",
+      "kind": "file",
+      "sha256": "9103686c584e4eb24a548004620f00cf11f25468c1346d87ab62f8947d443624",
+      "bytes": 9467,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/WorkspaceCloseTests.swift",
+      "kind": "file",
+      "sha256": "7caf9887ab966c1036e2a7b19f173e3654b0b6d30d6ed150263e3bc70de76556",
+      "bytes": 12654,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/WorkspaceCommandTests.swift",
+      "kind": "file",
+      "sha256": "58abbc5b9be95d27f8ae774a13c29adab57199a9ef8784cfe1b5b0f37fd84c26",
+      "bytes": 25322,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/WorkspaceConnectionTests.swift",
+      "kind": "file",
+      "sha256": "2402c7fecb6726a6d61abb2874625909599c23bf8462c61a8ede4bb394c85566",
+      "bytes": 5210,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/WorkspaceQueryTests.swift",
+      "kind": "file",
+      "sha256": "bc2cb17d8a2e823b89d7538d556f1dc0b0d71168296affbd8f95e72ed38dbdf4",
+      "bytes": 9564,
+      "mode": "0o644"
+    },
+    {
+      "path": "macos/Tests/DBeerTests/WorkspaceWindowIntegrationTests.swift",
+      "kind": "file",
+      "sha256": "2afb8cbc78c191e071ef8f3660cce0e296376b8c020a10956e119971905cc117",
+      "bytes": 22987,
+      "mode": "0o644"
+    },
+    {
+      "path": "protocol/fixtures/commands.ndjson",
+      "kind": "file",
+      "sha256": "93249200f432e6ef74468f834192109eb819a36ccdedc58da6b681646474fbaa",
+      "bytes": 1081,
+      "mode": "0o644"
+    },
+    {
+      "path": "protocol/fixtures/completion-matches.json",
+      "kind": "file",
+      "sha256": "8b1a825022fb7df0e1f8da28310ad987e159fe6bcb3790da52920279be44e7e7",
+      "bytes": 901,
+      "mode": "0o644"
+    },
+    {
+      "path": "protocol/fixtures/export.json",
+      "kind": "file",
+      "sha256": "3122d1935faf83bb7f98a17cdbb238825ba7bcd0e7397e862fe203f4cd5bfb90",
+      "bytes": 455,
+      "mode": "0o644"
+    },
+    {
+      "path": "protocol/fixtures/responses.ndjson",
+      "kind": "file",
+      "sha256": "4b6eb9a31b0190f30c8e291b1f8217cec036a9edf47d47c26c75e302d2984f9c",
+      "bytes": 3126,
+      "mode": "0o644"
+    },
+    {
+      "path": "protocol/fixtures/signature-help.json",
+      "kind": "file",
+      "sha256": "2a0ed167c0af386a36710181dc60e23c98305035dbf45c846008fc89367863e4",
+      "bytes": 8096,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/Cargo.lock",
+      "kind": "file",
+      "sha256": "369ec178c9e6fc85c0b298aec20189eefe992d39376993652ca6ec4aa1a9af33",
+      "bytes": 223361,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/Cargo.toml",
+      "kind": "file",
+      "sha256": "8fbfefdf24c80f2b042068bf83e48db18a081e20368a1c370aec59e28e92b1d3",
+      "bytes": 783,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/README.md",
+      "kind": "file",
+      "sha256": "697f88c8707d56b75f78074866e91574e3830dc5fa051d946d64cb40a0da37ba",
+      "bytes": 10449,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/failure-cases.json",
+      "kind": "file",
+      "sha256": "2988d60c818876bd65ba6482971d23083321e5c7f24a5b9976a677fb860d3eff",
+      "bytes": 2072,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/grid.json",
+      "kind": "file",
+      "sha256": "9a1678344f305b62e03bc8e4dd4710655aa16bfe695e0975fae1ca8dd4bf27ef",
+      "bytes": 1326,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/mysql.sql",
+      "kind": "file",
+      "sha256": "e2d9ceb3d915e8db1f27677d80a790a51676c2e56eb623eb2ff85953d64da0a1",
+      "bytes": 2393,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/postgresql.sql",
+      "kind": "file",
+      "sha256": "189a3b26f5d74474515df963a8ffc8858d3bdb7f2154cc2c4042e444162e0ac0",
+      "bytes": 2409,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/profile-defaults.json",
+      "kind": "file",
+      "sha256": "69641bb21e9b4f8128a19f7c8776ae0020d938c0d8a5785748ba93b1656e7884",
+      "bytes": 1146,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/sql.json",
+      "kind": "file",
+      "sha256": "ee191f5f8e2261f23ea00efae08df17f62e62bf36adaa81b863ad1681df1d2b6",
+      "bytes": 1913,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/include.jsonc",
+      "kind": "file",
+      "sha256": "39f4433becef9dfb4c6dcea7495759224e50d90c623e223cc2cd06881f5d046f",
+      "bytes": 215,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/jetbrains.icls",
+      "kind": "file",
+      "sha256": "b28af91e9f846d2726ff20a10041ebff28ddeee5b98a696afc6793b8b1a7f0db",
+      "bytes": 426,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/night.json",
+      "kind": "file",
+      "sha256": "e9454c7725ec94d0b4580093212fe62cee6acefbf11d3aa74551a75b4bfba003",
+      "bytes": 440,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/paper.json",
+      "kind": "file",
+      "sha256": "2fe393d14c8194c203bfec36c44ecaba412b5400489364912b726124edc97a8a",
+      "bytes": 441,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/parity/fixtures/themes/textmate.tmTheme",
+      "kind": "file",
+      "sha256": "d25223eec0a166cda332a6937c0d5444bcbe63f1014e1d6956ad06eeb1832146",
+      "bytes": 468,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/backend.rs",
+      "kind": "file",
+      "sha256": "b63a04194bbcabce56c70536ec7e81b3e27f5951ae7304c343839bf550e740df",
+      "bytes": 56722,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/connections.rs",
+      "kind": "file",
+      "sha256": "dc37a2534aea3849deabe95459fd4d55a518182c05c66a7015e2e279a3076757",
+      "bytes": 51026,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/demo.rs",
+      "kind": "file",
+      "sha256": "fc89ab009e6bc1b4939c6efaa5a3bba203d52e8a8454769d4936e7b03f20eeb9",
+      "bytes": 12093,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/live.rs",
+      "kind": "file",
+      "sha256": "5b5c6f22dee32f7b2ae4efb07ad734d2f34db7f8b0ff66f08ae974422a17cead",
+      "bytes": 57873,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/live_tests.rs",
+      "kind": "file",
+      "sha256": "81c9728070a77b7710623831e0128ac149b12f3efcd2c04a98fdff9f1422e2bf",
+      "bytes": 21643,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/main.rs",
+      "kind": "file",
+      "sha256": "e0b69e845785e521a1271600c223fdbbe28a9e732cc07f82fffdfa3aa44ac9f9",
+      "bytes": 46394,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/platform.rs",
+      "kind": "file",
+      "sha256": "5a637fe9ae4ef57dadbc7ed5bb4458336337585a22005141cdc6675d2fc0ad12",
+      "bytes": 5731,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/results.rs",
+      "kind": "file",
+      "sha256": "3f6674c87a058d531412b61969745fb9bd305a936b59ac1d718fe588dae83435",
+      "bytes": 12614,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/smoke.rs",
+      "kind": "file",
+      "sha256": "699d34a095c606e1605bf13effe9e0774189b58e724b005c27b9e33d81346a77",
+      "bytes": 9095,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/smoke_live.rs",
+      "kind": "file",
+      "sha256": "04e5f50c1c6d56de6f657d128318445caf1f3a622ea7b66a8b47aceee893aca6",
+      "bytes": 33666,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/smoke_termination.rs",
+      "kind": "file",
+      "sha256": "92d4a3fce043b215d69eb3d7e464a5897a88265a732f0f0e6e2b4754145a082e",
+      "bytes": 19142,
+      "mode": "0o644"
+    },
+    {
+      "path": "prototypes/gpui/src/termination.rs",
+      "kind": "file",
+      "sha256": "80886fdb2d65fd77bf2e4f25150ea0e09153a776fa8760d029557cf84dad6137",
+      "bytes": 4250,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/SwiftTestingHost.swift",
+      "kind": "file",
+      "sha256": "fcd7a892e48d67284fff138674189ca5bdb03f2a2ef2b9616c4971c289df4003",
+      "bytes": 1574,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/build-app.sh",
+      "kind": "file",
+      "sha256": "e9e487ebb0ef7702985e5809d329a083f1b3c92f4e22c31197eca2495162446b",
+      "bytes": 4439,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/build-gpui-app.sh",
+      "kind": "file",
+      "sha256": "1189ea0c057db526797144eede0d906d07a5e559cad46d84418d27a6b935518b",
+      "bytes": 3654,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/build-gpui-client.ps1",
+      "kind": "file",
+      "sha256": "ab02217461fa67ff9b5645f3f59fcd17352ce8197bb2f5d3460ae523825d47b0",
+      "bytes": 4400,
+      "mode": "0o644"
+    },
+    {
+      "path": "scripts/build-gpui-client.sh",
+      "kind": "file",
+      "sha256": "d79367d74f1772e01c8959631fc651be9fd19f86c5f50cb0a87d2b98d88791f7",
+      "bytes": 3028,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/build-icon.sh",
+      "kind": "file",
+      "sha256": "acad838b3b59a9c04afcf219d1e89b51a3549d13b2d2df2f13a07c8d0ab8fd52",
+      "bytes": 1940,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/capture-screenshots.sh",
+      "kind": "file",
+      "sha256": "c2d2d513174299d29771671df5988399ae01f8f4acae90bfe0ee4bdb7225c8d2",
+      "bytes": 4598,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/compile-accent-colors.sh",
+      "kind": "file",
+      "sha256": "791ef6bd20623fc6a20e5384fa65c2f032fd9dbcfc52ac8bc1fbf008d4bfdb85",
+      "bytes": 907,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/gpui-prototype.sh",
+      "kind": "file",
+      "sha256": "d4329dc9cf26868246b663b6cd28e3ed8a8ab78060f526faf104c744384aba16",
+      "bytes": 1802,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/package-release.sh",
+      "kind": "file",
+      "sha256": "30ecf59fb3ded1d60852327478fd5ad8f122d52fe4cf148a5eb83ba38c215651",
+      "bytes": 2584,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test-go.sh",
+      "kind": "file",
+      "sha256": "4d5a9d1e630e459eace5c36fa39524d5a88b6d5ca480e36bba57782f7088c05f",
+      "bytes": 990,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test-gpui-databases.sh",
+      "kind": "file",
+      "sha256": "c01f55adf69a10bce75173b3fc8b172164f6319509a7d4f339aaf67af09831fd",
+      "bytes": 400,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test-gpui-termination.sh",
+      "kind": "file",
+      "sha256": "f099b01939ab050f8261801f93b9860edfc2a1fa0e3e7f08580b60d696097c9d",
+      "bytes": 726,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test-install-update.sh",
+      "kind": "file",
+      "sha256": "023d02b46870e74624e763b516c4ccc78cba5ffffd3f72a4e2dcfe1e4ea7e93f",
+      "bytes": 33654,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test-mysql.sh",
+      "kind": "file",
+      "sha256": "19aeb476d35e12ac99ae8c39c37f526af9d1d4e9b0a7756cd9534ee67f5c479c",
+      "bytes": 4216,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test-postgres.sh",
+      "kind": "file",
+      "sha256": "8a94d36a22683729ff34428400570ce2fd303899643ca647cf7b6499a25ab6ca",
+      "bytes": 1744,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test-tls.sh",
+      "kind": "file",
+      "sha256": "aab6f24a87d0a8b98f0d63bc3da95eda629a26cfcace7f5b919f1797f264bb51",
+      "bytes": 3903,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/test.sh",
+      "kind": "file",
+      "sha256": "78c935d1cd58c254cb49495e0f4443b615e281436274dce4fb22ba1c5b2e12e2",
+      "bytes": 7031,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/verify-signing-update.sh",
+      "kind": "file",
+      "sha256": "e5ebd07443f77c1004fe8485e746ae312ff815439a176be644b45b8050159b90",
+      "bytes": 8291,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/version.sh",
+      "kind": "file",
+      "sha256": "8bdf4891d787bc3809b13d4b1c9f2a224c75e97c472e80ba27cd7c2d8b71ff76",
+      "bytes": 535,
+      "mode": "0o755"
+    },
+    {
+      "path": "scripts/with-test-keychain.sh",
+      "kind": "file",
+      "sha256": "59fb644af1a0dbc9be958c582e9728db3377a61b564a768989c640df6c79c5cb",
+      "bytes": 8371,
+      "mode": "0o755"
+    }
+  ],
+  "contentSHA256": "53e1992df9d2371ccaf49ce2704f79fe9a4c9a4bbb44c95cb49acefaecb73c86"
+}

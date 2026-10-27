@@ -187,12 +187,12 @@ func TestMySQLFailedControlAndServerMismatchCloseSession(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 			defer cancel()
 			started := time.Now()
-			response := session.Execute(ctx, protocol.Command{RequestID: "failure", SQL: "SELECT SLEEP(10)"})
+			response := session.Execute(ctx, protocol.Command{Type: "execute", RequestID: "failure", SQL: "SELECT SLEEP(10)"})
 			if response.Connected || !response.OutcomeUnknown || !session.closed.Load() || time.Since(started) > 6*time.Second {
 				t.Fatal("unsafe cancellation did not close session promptly")
 			}
-			if response = session.Execute(context.Background(), protocol.Command{RequestID: "next", SQL: "SELECT 1"}); response.Connected || !response.OutcomeUnknown {
-				t.Fatal("closed session accepted next query")
+			if response = session.Execute(context.Background(), protocol.Command{Type: "execute", RequestID: "next", SQL: "SELECT 1"}); response.Type != "error" || response.Connected || response.OutcomeUnknown || !response.SQLNotExecuted {
+				t.Fatal("closed session did not reject next query as not executed")
 			}
 		})
 	}

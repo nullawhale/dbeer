@@ -1,0 +1,1787 @@
+{
+  "schemaVersion": 1,
+  "scope": "Prepared behavior mappings, not runtime evidence or native acceptance. Swift suites are behavioral oracles, not translated AppKit code.",
+  "cases": [
+    {
+      "id": "VALUES-EXACT",
+      "behavior": "Preserve SQL NULL, empty text, literal NULL, DEFAULT, exact decimals and binary by ordinal.",
+      "assertions": [
+        "prototypes/gpui/src/backend_contract_tests.rs#typed_changes_preserve_default_null_empty_literal_binary_and_exact_numerics",
+        "prototypes/gpui/src/backend.rs#streaming_hydrates_exact_null_text_numeric_and_binary_values"
+      ],
+      "swiftBehaviorSuites": [
+        "GPUIContractFixturesTests",
+        "LoadedExportFixturesTests"
+      ],
+      "fixtures": [
+        "protocol/fixtures/contract-v3.json",
+        "prototypes/gpui/fixtures/parity-matrix/values.json"
+      ],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/backend_contract_tests.rs#typed_changes_preserve_default_null_empty_literal_binary_and_exact_numerics",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/backend.rs#streaming_hydrates_exact_null_text_numeric_and_binary_values",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "STREAM-BOUNDS",
+      "behavior": "Bound ACK sequences, queued bytes, result sets and aggregate display while preserving completed prefixes.",
+      "assertions": [
+        "prototypes/gpui/src/backend_contract_tests.rs#full_regular_queue_reserves_first_stop_and_exact_acks_without_unbounded_progress",
+        "prototypes/gpui/src/backend.rs#streaming_limits_apply_across_result_sets_and_bytes",
+        "prototypes/gpui/src/backend_contract_tests.rs#malformed_terminal_retains_only_completed_prefix_and_authoritative_transaction"
+      ],
+      "swiftBehaviorSuites": [
+        "StreamingTransportTests",
+        "HelperProcessTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/backend_contract_tests.rs#full_regular_queue_reserves_first_stop_and_exact_acks_without_unbounded_progress",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/backend.rs#streaming_limits_apply_across_result_sets_and_bytes",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/backend_contract_tests.rs#malformed_terminal_retains_only_completed_prefix_and_authoritative_transaction",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TRANSPORT-LOSS",
+      "behavior": "Malformed frames, helper death and unstarted submitted work remain uncertain with fixed diagnostics.",
+      "assertions": [
+        "prototypes/gpui/src/backend.rs#malformed_frames_and_duplicate_keys_have_only_fixed_diagnostics",
+        "prototypes/gpui/src/backend_contract_tests.rs#owned_helper_death_keeps_submitted_work_uncertain_before_started"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceConnectionTests",
+        "StreamingTransportTests",
+        "HelperProcessTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/backend.rs#malformed_frames_and_duplicate_keys_have_only_fixed_diagnostics",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/backend_contract_tests.rs#owned_helper_death_keeps_submitted_work_uncertain_before_started",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CANCEL-TERMINAL-GAP",
+      "behavior": "Cancel ACK never substitutes for query terminal or matching disconnect ACK.",
+      "assertions": [
+        "prototypes/gpui/src/backend_contract_tests.rs#close_requires_matching_disconnect_ack_and_stop_ack_is_not_a_query_terminal",
+        "prototypes/gpui/src/workspace_tests.rs#stop_close_waits_for_original_terminal_and_unknown_loss_stays_reviewable"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceCloseTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Physical server operation and terminal observation on every desktop"
+      ],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/backend_contract_tests.rs#close_requires_matching_disconnect_ack_and_stop_ack_is_not_a_query_terminal",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#stop_close_waits_for_original_terminal_and_unknown_loss_stays_reviewable",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CLOSE-ORIGINS",
+      "behavior": "Cancel preserves owned process/window/exact session across every close origin; repeated close remains idempotent.",
+      "assertions": [
+        "prototypes/gpui/src/workspace_tests.rs#close_cancel_retains_pid_window_query_and_exact_session_across_every_origin",
+        "prototypes/gpui/src/workspace_tests.rs#unacknowledged_disconnect_never_removes_document_or_accepts_repeated_close",
+        "prototypes/gpui/src/close.rs#repeated_request_cannot_turn_selected_commit_or_disconnect_into_stop"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceCloseTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Native titlebar/window/menu/quit/OS logout triggers"
+      ],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#close_cancel_retains_pid_window_query_and_exact_session_across_every_origin",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#unacknowledged_disconnect_never_removes_document_or_accepts_repeated_close",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/close.rs#repeated_request_cannot_turn_selected_commit_or_disconnect_into_stop",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ORIGINAL-HELPER",
+      "behavior": "Original helper/session identity owns stale completion and Commit after replacement, even when textual session IDs match.",
+      "assertions": [
+        "prototypes/gpui/src/workspace_tests.rs#queued_success_and_connected_error_use_original_helper_after_replacement",
+        "prototypes/gpui/src/workspace_tests.rs#selected_commit_is_idempotent_editor_independent_and_bound_to_original_helper"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceCloseTests",
+        "WorkspaceConnectionTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#queued_success_and_connected_error_use_original_helper_after_replacement",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#selected_commit_is_idempotent_editor_independent_and_bound_to_original_helper",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CREDENTIAL-ROLLBACK",
+      "behavior": "Metadata failure restores exact missing, empty and nonempty secrets; rollback failure is explicit.",
+      "assertions": [
+        "prototypes/gpui/src/connections.rs#metadata_failure_restores_exact_missing_empty_and_nonempty_credentials",
+        "prototypes/gpui/src/connections.rs#rollback_failure_is_explicit_for_update_and_delete",
+        "prototypes/gpui/src/connections.rs#deletion_failure_restores_profile_selection_and_exact_credential"
+      ],
+      "swiftBehaviorSuites": [
+        "ConnectionLibraryTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Windows Credential Manager locked/unavailable store",
+        "Linux Secret Service locked/unavailable store"
+      ],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#metadata_failure_restores_exact_missing_empty_and_nonempty_credentials",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#rollback_failure_is_explicit_for_update_and_delete",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#deletion_failure_restores_profile_selection_and_exact_credential",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PERSIST-CORRUPT-FUTURE",
+      "behavior": "Corrupt/future libraries and restoration bytes survive load/save; migration backups never overwrite.",
+      "assertions": [
+        "prototypes/gpui/src/connections.rs#current_policy_and_selection_corruption_future_versions_and_unknown_fields_are_preserved",
+        "prototypes/gpui/src/restoration_tests.rs#invalid_corrupt_future_duplicate_unknown_and_incomplete_files_survive_load_and_save"
+      ],
+      "swiftBehaviorSuites": [
+        "ConnectionLibraryTests",
+        "SQLDocumentStoreTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#current_policy_and_selection_corruption_future_versions_and_unknown_fields_are_preserved",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/restoration_tests.rs#invalid_corrupt_future_duplicate_unknown_and_incomplete_files_survive_load_and_save",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "LOCKED-FILE",
+      "behavior": "Native Windows deny-sharing publication failure preserves original bytes and credentials.",
+      "assertions": [
+        "prototypes/gpui/src/connections.rs#locked_windows_metadata_preserves_original_and_rolls_back_credential",
+        "prototypes/gpui/src/exports/tests.rs#windows_native_deny_sharing_prevents_export_without_changing_destination",
+        "prototypes/gpui/src/restoration_tests.rs#windows_locked_workspace_preserves_previous_state_for_retry"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLDocumentStoreTests",
+        "ResultExportTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "windows-native-headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#locked_windows_metadata_preserves_original_and_rolls_back_credential",
+          "stages": [
+            "default",
+            "native-smoke"
+          ],
+          "hosts": [
+            "Windows"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/exports/tests.rs#windows_native_deny_sharing_prevents_export_without_changing_destination",
+          "stages": [
+            "default",
+            "native-smoke"
+          ],
+          "hosts": [
+            "Windows"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/restoration_tests.rs#windows_locked_workspace_preserves_previous_state_for_retry",
+          "stages": [
+            "default",
+            "native-smoke"
+          ],
+          "hosts": [
+            "Windows"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "RESTORE-DISCONNECTED",
+      "behavior": "Safe restoration/reopen preserves opaque binding and remains disconnected until explicit connect/execute.",
+      "assertions": [
+        "prototypes/gpui/src/workspace_tests.rs#restored_draft_uuid_order_selection_missing_binding_and_history_reopen_stay_disconnected",
+        "prototypes/gpui/src/restoration_tests.rs#roundtrip_explicit_allowed_fields_preserves_opaque_binding_unicode_order_and_selection"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLDocumentStoreTests",
+        "ApplicationWorkspaceTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#restored_draft_uuid_order_selection_missing_binding_and_history_reopen_stay_disconnected",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/restoration_tests.rs#roundtrip_explicit_allowed_fields_preserves_opaque_binding_unicode_order_and_selection",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PREVIEW-GRANT",
+      "behavior": "Preview grants bind exact preparation/session/batch; Stop revokes approval and fresh preview invalidates old grants.",
+      "assertions": [
+        "prototypes/gpui/src/preview/tests.rs#approval_is_exact_preparation_session_and_invalidated_by_stop_or_teardown",
+        "prototypes/gpui/src/preview/tests.rs#new_preview_invalidates_previous_grant_even_on_same_session",
+        "prototypes/gpui/src/preview/tests.rs#apply_is_exact_one_shot_and_consumes_every_approval_before_enqueue"
+      ],
+      "swiftBehaviorSuites": [
+        "GridDraftTests",
+        "GridIntegrationTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/preview/tests.rs#approval_is_exact_preparation_session_and_invalidated_by_stop_or_teardown",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/preview/tests.rs#new_preview_invalidates_previous_grant_even_on_same_session",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/preview/tests.rs#apply_is_exact_one_shot_and_consumes_every_approval_before_enqueue",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "APPLY-CANCEL-LATE-ACK",
+      "behavior": "Drain authoritative commit or full rollback after accepted Stop; late stale Stop cannot cancel a new flow.",
+      "assertions": [
+        "prototypes/gpui/src/preview/tests.rs#stop_after_enqueue_drains_authoritative_commit_or_entire_batch_rollback",
+        "prototypes/gpui/src/preview_view/tests.rs#apply_review_stop_is_sticky_before_submission_and_stale_stop_cannot_cancel_later_flow"
+      ],
+      "swiftBehaviorSuites": [
+        "GridDraftTests",
+        "GridIntegrationTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Independent physical cancellation observer, no fixed-sleep inference"
+      ],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/preview/tests.rs#stop_after_enqueue_drains_authoritative_commit_or_entire_batch_rollback",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/preview_view/tests.rs#apply_review_stop_is_sticky_before_submission_and_stale_stop_cannot_cancel_later_flow",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "APPLY-LOST-COMMIT-ACK",
+      "behavior": "Lost submitted terminal remains unknown after disconnect and forbids automatic retry/reapply.",
+      "assertions": [
+        "prototypes/gpui/src/preview/tests.rs#lost_terminal_after_submission_remains_unknown_after_disconnect_and_never_retries",
+        "prototypes/gpui/src/preview_view/tests.rs#unknown_survives_disconnect_and_refuses_refresh_plain_discard_close_or_reapply",
+        "helper/internal/postgres/changes_integration_test.go#TestChangesLostCommitAcknowledgementIsUnknownAndNeverRepeated",
+        "helper/internal/mysql/changes_test.go#TestMySQLChangesLostCommitAckIsUnknownAndNeverRepeated"
+      ],
+      "swiftBehaviorSuites": [
+        "GridDraftTests",
+        "GridIntegrationTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-plus-shared-db",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Physical transport-drop after real COMMIT; separate observer verifies final rows"
+      ],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/preview/tests.rs#lost_terminal_after_submission_remains_unknown_after_disconnect_and_never_retries",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/preview_view/tests.rs#unknown_survives_disconnect_and_refuses_refresh_plain_discard_close_or_reapply",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "helper/internal/postgres/changes_integration_test.go#TestChangesLostCommitAcknowledgementIsUnknownAndNeverRepeated",
+          "stages": [
+            "shared-go-owned-db-race"
+          ]
+        },
+        {
+          "assertion": "helper/internal/mysql/changes_test.go#TestMySQLChangesLostCommitAckIsUnknownAndNeverRepeated",
+          "stages": [
+            "shared-go-owned-db-race"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CLEANUP-RETRY",
+      "behavior": "Preview failure retains exact request and failed acknowledged teardown remains retryable.",
+      "assertions": [
+        "prototypes/gpui/src/preview/tests.rs#preview_failure_retries_with_unchanged_request_and_cleanup_failure_requires_retry",
+        "prototypes/gpui/src/preview/tests.rs#cancel_before_submit_and_original_client_cleanup_do_not_touch_other_sessions"
+      ],
+      "swiftBehaviorSuites": [
+        "GridDraftTests",
+        "GridIntegrationTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/preview/tests.rs#preview_failure_retries_with_unchanged_request_and_cleanup_failure_requires_retry",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/preview/tests.rs#cancel_before_submit_and_original_client_cleanup_do_not_touch_other_sessions",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "STALE-PROFILE-TAB",
+      "behavior": "Source/profile/tab/service changes invalidate late callbacks before publication or helper submission.",
+      "assertions": [
+        "prototypes/gpui/src/preview_view/tests.rs#every_async_boundary_rejects_mutable_context_keeps_original_drafts_and_no_requests",
+        "prototypes/gpui/src/run_file_view/tests.rs#choosing_cancel_stale_source_and_profile_never_start_helper_or_change_sql_file",
+        "prototypes/gpui/src/language_service/tests.rs#delayed_completion_cannot_publish_after_source_or_profile_context_change"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLLanguageServiceTests",
+        "SQLDocumentStoreTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/preview_view/tests.rs#every_async_boundary_rejects_mutable_context_keeps_original_drafts_and_no_requests",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/run_file_view/tests.rs#choosing_cancel_stale_source_and_profile_never_start_helper_or_change_sql_file",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/language_service/tests.rs#delayed_completion_cannot_publish_after_source_or_profile_context_change",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DB-ATOMIC-OBSERVER",
+      "behavior": "Fresh Apply sessions preserve unrelated SQL transaction/temp/SET state; composite PK, generated fields and optimistic conflicts roll back atomically.",
+      "assertions": [
+        "prototypes/gpui/src/preview/database_tests.rs#postgres_mysql_previews_and_atomic_apply_preserve_independent_sql_state"
+      ],
+      "swiftBehaviorSuites": [
+        "GridDraftTests",
+        "GridIntegrationTests"
+      ],
+      "fixtures": [
+        "prototypes/gpui/parity/fixtures/postgresql.sql",
+        "prototypes/gpui/parity/fixtures/mysql.sql"
+      ],
+      "coverageLayer": "database",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual GUI Apply workflow on both engine families on all three desktops"
+      ],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/preview/database_tests.rs#postgres_mysql_previews_and_atomic_apply_preserve_independent_sql_state",
+          "stages": [
+            "db-apply-observer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DB-EXACT-ONCE-EXPORT",
+      "behavior": "Full export streams past display limits; observer verifies exact-once mutation and independent session state.",
+      "assertions": [
+        "prototypes/gpui/src/run_to_file/database_tests.rs#both_engines_full_counts_independent_observer_temp_set_transaction_and_exact_once_mutations"
+      ],
+      "swiftBehaviorSuites": [
+        "RunToFileContractTests",
+        "ResultExportTests"
+      ],
+      "fixtures": [
+        "protocol/fixtures/run-to-file-v1.json"
+      ],
+      "coverageLayer": "database",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/run_to_file/database_tests.rs#both_engines_full_counts_independent_observer_temp_set_transaction_and_exact_once_mutations",
+          "stages": [
+            "db-full-export-observer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EXPORT-FAULTS",
+      "behavior": "Exact one-statement grant and one submission survive ACK progress, late Stop, helper loss and publication failure.",
+      "assertions": [
+        "prototypes/gpui/src/run_to_file/tests.rs#fake_helper_progress_past_display_budget_exact_authorization_one_submission_late_stop_and_loss",
+        "prototypes/gpui/src/run_file_view/tests.rs#known_sql_publication_failure_and_lost_terminal_keep_distinct_original_recovery"
+      ],
+      "swiftBehaviorSuites": [
+        "RunToFileContractTests",
+        "ResultExportTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/run_to_file/tests.rs#fake_helper_progress_past_display_budget_exact_authorization_one_submission_late_stop_and_loss",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/run_file_view/tests.rs#known_sql_publication_failure_and_lost_terminal_keep_distinct_original_recovery",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EXPORT-LOADED",
+      "behavior": "Loaded exports use original physical rows and no new SQL; locked/canceled/stale targets preserve destination.",
+      "assertions": [
+        "prototypes/gpui/src/exports/tests.rs#cancelled_preparation_stale_destination_encoding_and_replace_failures_preserve_original",
+        "prototypes/gpui/src/export_view/tests.rs#command_menu_button_capture_exports_physical_original_rows_across_tab_filter_selection_switch"
+      ],
+      "swiftBehaviorSuites": [
+        "LoadedExportFixturesTests",
+        "ResultExportTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/exports/tests.rs#cancelled_preparation_stale_destination_encoding_and_replace_failures_preserve_original",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/export_view/tests.rs#command_menu_button_capture_exports_physical_original_rows_across_tab_filter_selection_switch",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DB-ROUTINES-MULTISETS",
+      "behavior": "Dialect delimiter routines retain ordered multiple result sets; one-shot script grants revoke on failure/Stop.",
+      "assertions": [
+        "prototypes/gpui/src/live_tests.rs#mysql_opt_in_delimiter_routine_keeps_all_statement_result_sets",
+        "prototypes/gpui/src/live_tests.rs#postgres_opt_in_script_grant_order_and_revocation",
+        "prototypes/gpui/src/live_tests.rs#mysql_opt_in_script_grant_order_and_revocation"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLScriptParserTests",
+        "ExecutionPolicyTests",
+        "ApplicationWorkspaceTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "database",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/live_tests.rs#mysql_opt_in_delimiter_routine_keeps_all_statement_result_sets",
+          "stages": [
+            "db-live"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/live_tests.rs#postgres_opt_in_script_grant_order_and_revocation",
+          "stages": [
+            "db-live"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/live_tests.rs#mysql_opt_in_script_grant_order_and_revocation",
+          "stages": [
+            "db-live"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SCRIPT-FIRST-MIDDLE",
+      "behavior": "First/middle failure stops later statements and retains completed prefix with exact Unicode source offsets.",
+      "assertions": [
+        "prototypes/gpui/src/workspace_tests.rs#script_stop_preserves_prefix_clears_active_highlight_and_marks_no_cancelled_success",
+        "prototypes/gpui/src/workspace_tests.rs#script_error_navigation_uses_original_unicode_source_and_unknown_terminal_keeps_lock"
+      ],
+      "swiftBehaviorSuites": [
+        "ExecutionPolicyTests",
+        "ApplicationWorkspaceTests",
+        "SQLScriptParserTests"
+      ],
+      "fixtures": [
+        "prototypes/gpui/parity/fixtures/failure-cases.json"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#script_stop_preserves_prefix_clears_active_highlight_and_marks_no_cancelled_success",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#script_error_navigation_uses_original_unicode_source_and_unknown_terminal_keeps_lock",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DB-READONLY-NOPK-MYISAM",
+      "behavior": "Adapters refuse unsafe Apply for generated/no-PK/view/non-InnoDB/read-only objects and active SQL transactions.",
+      "assertions": [
+        "helper/internal/postgres/changes_integration_test.go#TestChangesConstraintFailureGeneratedColumnsAndReadOnlyReasons",
+        "helper/internal/mysql/changes_test.go#TestMySQLChangesRejectReadOnlyTablesAndActiveSQLTransaction"
+      ],
+      "swiftBehaviorSuites": [
+        "GridDraftTests",
+        "GridIntegrationTests"
+      ],
+      "fixtures": [
+        "prototypes/gpui/parity/fixtures/mysql.sql"
+      ],
+      "coverageLayer": "shared-database",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Browse/apply UI capability presentation on all desktops"
+      ],
+      "executions": [
+        {
+          "assertion": "helper/internal/postgres/changes_integration_test.go#TestChangesConstraintFailureGeneratedColumnsAndReadOnlyReasons",
+          "stages": [
+            "shared-go-owned-db-race"
+          ]
+        },
+        {
+          "assertion": "helper/internal/mysql/changes_test.go#TestMySQLChangesRejectReadOnlyTablesAndActiveSQLTransaction",
+          "stages": [
+            "shared-go-owned-db-race"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TLS-TRUST-HOSTNAME",
+      "behavior": "Both engines verify trust/hostname without downgrade; PostgreSQL allow/prefer and CA-only mismatch remain mode-specific.",
+      "assertions": [
+        "prototypes/gpui/src/tls_tests.rs#real_helper_postgresql_and_mysql_tls_matrix_never_downgrades_or_executes_sql"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceConnectionTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "database",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Real unreadable CA permissions and native picker/remap on each desktop"
+      ],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/tls_tests.rs#real_helper_postgresql_and_mysql_tls_matrix_never_downgrades_or_executes_sql",
+          "stages": [
+            "db-tls"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "LSP-UNICODE-CRLF",
+      "behavior": "UTF-16 surrogate and CRLF positions preserve original exact snapshots and completion/diagnostic ranges.",
+      "assertions": [
+        "prototypes/gpui/src/language_service/tests.rs#utf16_crlf_surrogates_and_byte_boundaries_roundtrip",
+        "prototypes/gpui/src/language_service/tests.rs#signature_and_diagnostics_validate_exact_captured_source"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLLanguageServiceTests",
+        "SQLLSPCodecTests"
+      ],
+      "fixtures": [
+        "protocol/fixtures/signature-help.json"
+      ],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/language_service/tests.rs#utf16_crlf_surrogates_and_byte_boundaries_roundtrip",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/language_service/tests.rs#signature_and_diagnostics_validate_exact_captured_source",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "FINAL-SAVE-OWNERS",
+      "behavior": "Latest final flush supersedes delayed writers and retains ownership through acknowledgment.",
+      "assertions": [
+        "prototypes/gpui/src/restoration_tests.rs#final_flush_waits_for_owner_and_supersedes_delayed_older_writers",
+        "prototypes/gpui/src/restoration_tests.rs#write_request_retains_data_ownership_and_releases_it_only_after_drop"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLDocumentStoreTests"
+      ],
+      "fixtures": [],
+      "coverageLayer": "headless",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/restoration_tests.rs#final_flush_waits_for_owner_and_supersedes_delayed_older_writers",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/restoration_tests.rs#write_request_retains_data_ownership_and_releases_it_only_after_drop",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PROFILE-DEFAULTS-LIFECYCLE",
+      "behavior": "New profiles use explicit current defaults; legacy imports, rollback and selected stable identities remain distinct.",
+      "assertions": [
+        "prototypes/gpui/src/connections.rs#factory_defaults_differ_from_legacy_migration_defaults",
+        "prototypes/gpui/src/connections.rs#selection_is_stable_across_reordering_and_late_requests_cannot_overwrite_it",
+        "prototypes/gpui/src/connections.rs#credential_read_write_delete_and_partial_mutation_failures_do_not_commit_metadata"
+      ],
+      "swiftBehaviorSuites": [
+        "ConnectionLibraryTests",
+        "WorkspaceConnectionTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual native Save versus Save and Connect and profile lifecycle"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#factory_defaults_differ_from_legacy_migration_defaults",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#selection_is_stable_across_reordering_and_late_requests_cannot_overwrite_it",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#credential_read_write_delete_and_partial_mutation_failures_do_not_commit_metadata",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TRANSFER-PORTABLE-CA",
+      "behavior": "Strict portable transfers preserve policy/TLS, allocate new IDs, exclude secrets and require native foreign-CA remapping.",
+      "assertions": [
+        "prototypes/gpui/src/transfer_tests.rs#shared_roundtrip_stages_preserve_engine_tls_policy_and_allocate_fresh_ids",
+        "prototypes/gpui/src/transfer_tests.rs#shared_malformed_files_reject_secrets_duplicates_types_depth_and_unknown_fields",
+        "prototypes/gpui/src/transfer_tests.rs#ca_hints_are_syntax_only_foreign_paths_require_explicit_remap_and_tls_is_unchanged",
+        "prototypes/gpui/src/connections.rs#transfer_batch_is_atomic_merges_additions_preserves_selection_and_never_accesses_credentials"
+      ],
+      "swiftBehaviorSuites": [
+        "ProfileTransferTests",
+        "ProfileTransferFixturesTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Native chooser and real CA remapping on all supported desktops"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/transfer_tests.rs#shared_roundtrip_stages_preserve_engine_tls_policy_and_allocate_fresh_ids",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/transfer_tests.rs#shared_malformed_files_reject_secrets_duplicates_types_depth_and_unknown_fields",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/transfer_tests.rs#ca_hints_are_syntax_only_foreign_paths_require_explicit_remap_and_tls_is_unchanged",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/connections.rs#transfer_batch_is_atomic_merges_additions_preserves_selection_and_never_accesses_credentials",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EXPLICIT-STDIN-STARTUP",
+      "behavior": "Only explicit bounded connect-stdin reads launch bytes; ordinary startup never reads stdin or executes SQL.",
+      "assertions": [
+        "prototypes/gpui/src/startup.rs#ordinary_launch_never_calls_reader",
+        "prototypes/gpui/src/startup.rs#malformed_oversized_missing_and_sql_input_are_fixed_errors_and_retryable",
+        "prototypes/gpui/src/startup.rs#metadata_arguments_are_exact_and_invalid_mixes_never_fall_through",
+        "prototypes/gpui/src/startup.rs#demo_and_smoke_fixtures_are_explicit_mac_development_only"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceConnectionTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual installed launch/process identity"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/startup.rs#ordinary_launch_never_calls_reader",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/startup.rs#malformed_oversized_missing_and_sql_input_are_fixed_errors_and_retryable",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/startup.rs#metadata_arguments_are_exact_and_invalid_mixes_never_fall_through",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/startup.rs#demo_and_smoke_fixtures_are_explicit_mac_development_only",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SOURCE-PARSER-CAPTURE",
+      "behavior": "Shared Swift splitter and coordinate goldens preserve immutable selection/caret/script sources and routine boundaries.",
+      "assertions": [
+        "prototypes/gpui/src/sql_tests.rs#shared_swift_splitter_goldens_keep_exact_source_sql_ranges_and_diagnostics",
+        "prototypes/gpui/src/sql_tests.rs#shared_swift_fragments_resolve_caret_selection_script_and_original_offsets",
+        "prototypes/gpui/src/sql_tests.rs#shared_coordinates_match_swift_lsp_surrogate_combining_crlf_and_eof"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLScriptParserTests",
+        "SQLExecutionFixturesTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/sql_tests.rs#shared_swift_splitter_goldens_keep_exact_source_sql_ranges_and_diagnostics",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/sql_tests.rs#shared_swift_fragments_resolve_caret_selection_script_and_original_offsets",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/sql_tests.rs#shared_coordinates_match_swift_lsp_surrogate_combining_crlf_and_eof",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EDITOR-COMMAND-OWNER",
+      "behavior": "Native retained editing state survives tab changes and common menu/button/shortcut paths capture the same operation.",
+      "assertions": [
+        "prototypes/gpui/src/workspace_tests.rs#tab_switch_theme_and_other_tab_close_preserve_editor_selection_scroll_and_undo",
+        "prototypes/gpui/src/commands/tests.rs#button_menu_shortcut_capture_identical_sql_and_target",
+        "prototypes/gpui/src/commands/tests.rs#text_fields_dialogs_parse_failures_and_ime_start_no_helper"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLEditorTests",
+        "AppShortcutTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Real keyboard, IME, AltGr, native menus and focus"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/workspace_tests.rs#tab_switch_theme_and_other_tab_close_preserve_editor_selection_scroll_and_undo",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/commands/tests.rs#button_menu_shortcut_capture_identical_sql_and_target",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/commands/tests.rs#text_fields_dialogs_parse_failures_and_ime_start_no_helper",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SQL-FILE-OWNER",
+      "behavior": "SQL Open/Save retains original UTF-8/CRLF bytes and original document binding through native picker, source and close races.",
+      "assertions": [
+        "prototypes/gpui/src/files.rs#utf8_signature_unicode_crlf_empty_extension_and_long_paths_roundtrip_exactly",
+        "prototypes/gpui/src/file_view.rs#common_menu_save_uses_original_document_and_source_across_picker_focus_and_edits",
+        "prototypes/gpui/src/file_view.rs#native_save_cancel_keeps_binding_title_bytes_and_close_request_waits_for_file_operation"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLDocumentStoreTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Real native picker, permissions, Windows handles/DACL and native file paths"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/files.rs#utf8_signature_unicode_crlf_empty_extension_and_long_paths_roundtrip_exactly",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/file_view.rs#common_menu_save_uses_original_document_and_source_across_picker_focus_and_edits",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/file_view.rs#native_save_cancel_keeps_binding_title_bytes_and_close_request_waits_for_file_operation",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CATALOG-SERVICE-OWNER",
+      "behavior": "Server-wide search and lazy catalog metadata retain exact adapter identities; stale service/profile callbacks cannot publish or connect.",
+      "assertions": [
+        "prototypes/gpui/src/catalog/tests.rs#search_returns_unexpanded_schema_context_and_distinct_overloads",
+        "prototypes/gpui/src/catalog/tests.rs#lazy_error_retry_retains_metadata_and_exact_service_context",
+        "prototypes/gpui/src/catalog/tests.rs#table_snapshot_and_generate_select_are_typed_disconnected_and_excluded_from_drafts",
+        "prototypes/gpui/src/catalog/tests.rs#typing_and_missing_profile_never_connect_or_load_credentials"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLCompletionCatalogTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Native catalog context menu and metadata views"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/catalog/tests.rs#search_returns_unexpanded_schema_context_and_distinct_overloads",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/catalog/tests.rs#lazy_error_retry_retains_metadata_and_exact_service_context",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/catalog/tests.rs#table_snapshot_and_generate_select_are_typed_disconnected_and_excluded_from_drafts",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/catalog/tests.rs#typing_and_missing_profile_never_connect_or_load_credentials",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TABLE-PAGING-TYPED-DRAFTS",
+      "behavior": "Server paging uses all typed operators and original ordinal metadata; local drafts preserve exact original snapshots, generated/default values and adapter capabilities.",
+      "assertions": [
+        "prototypes/gpui/src/tables/tests.rs#all_nine_operators_keep_exact_typed_values_and_adapter_object_identity",
+        "prototypes/gpui/src/grid_changes/tests.rs#explicit_default_null_empty_text_binary_and_exact_temporal_never_coerce",
+        "prototypes/gpui/src/grid_changes/tests.rs#insertion_defaults_generated_values_stable_ids_and_delete_update_semantics_match_swift",
+        "prototypes/gpui/src/grid_changes/tests.rs#capability_reasons_come_from_metadata_and_never_from_native_type_whitelists"
+      ],
+      "swiftBehaviorSuites": [
+        "GridDraftTests",
+        "GridIntegrationTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Native paging/filter/edit/Columns/Discard and read-only controls"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/tables/tests.rs#all_nine_operators_keep_exact_typed_values_and_adapter_object_identity",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/grid_changes/tests.rs#explicit_default_null_empty_text_binary_and_exact_temporal_never_coerce",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/grid_changes/tests.rs#insertion_defaults_generated_values_stable_ids_and_delete_update_semantics_match_swift",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/grid_changes/tests.rs#capability_reasons_come_from_metadata_and_never_from_native_type_whitelists",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "LSP-COMPLETION-SIGNATURE",
+      "behavior": "Offline assistance keeps original source/focus owners, exact Go completion priority/edits, signature precedence and original Undo state.",
+      "assertions": [
+        "prototypes/gpui/src/language_service/completion_contract_tests.rs#bundled_go_contextual_completion_and_plain_fk_edits_both_dialects",
+        "prototypes/gpui/src/completion_view/tests.rs#popup_limit_keeps_go_priority_exact_quoting_and_whole_token_edit",
+        "prototypes/gpui/src/completion/tests.rs#retained_native_selection_focus_and_modal_owners_invalidate_pending_completion",
+        "prototypes/gpui/src/signature/tests.rs#owned_fake_signature_callbacks_and_common_completion_priority_preserve_undo",
+        "prototypes/gpui/src/language_service/tests.rs#environment_allowlist_is_case_insensitive_windows_compatible_and_excludes_secrets",
+        "prototypes/gpui/src/language_service/tests.rs#timeout_and_future_drop_cancel_only_the_owned_request_and_shutdown_reaps",
+        "prototypes/gpui/src/language_service/tests.rs#paginated_metadata_requires_original_owner_and_atomic_complete_pages",
+        "prototypes/gpui/src/language_service/tests.rs#owned_shutdown_preserves_an_unrelated_language_server_process"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLLanguageServiceTests",
+        "SQLCompletionIntegrationTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual completion/signature navigation, IME and visual diagnostics"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/language_service/completion_contract_tests.rs#bundled_go_contextual_completion_and_plain_fk_edits_both_dialects",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/completion_view/tests.rs#popup_limit_keeps_go_priority_exact_quoting_and_whole_token_edit",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/completion/tests.rs#retained_native_selection_focus_and_modal_owners_invalidate_pending_completion",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/signature/tests.rs#owned_fake_signature_callbacks_and_common_completion_priority_preserve_undo",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/language_service/tests.rs#environment_allowlist_is_case_insensitive_windows_compatible_and_excludes_secrets",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/language_service/tests.rs#timeout_and_future_drop_cancel_only_the_owned_request_and_shutdown_reaps",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/language_service/tests.rs#paginated_metadata_requires_original_owner_and_atomic_complete_pages",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/language_service/tests.rs#owned_shutdown_preserves_an_unrelated_language_server_process",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "APPEARANCE-LATEST-CLOSE",
+      "behavior": "Independent app/editor choices load before first presentation; retained Settings and latest actual close save preserve original editor state.",
+      "assertions": [
+        "prototypes/gpui/src/appearance_settings/tests.rs#startup_loads_normalized_imports_before_saved_selectors_without_source_files",
+        "prototypes/gpui/src/appearance_settings/tests.rs#common_settings_live_choices_keep_sql_grid_running_owner_focus_and_undo",
+        "prototypes/gpui/src/appearance_settings/tests.rs#normal_close_awaits_latest_actual_participant_and_stale_failure_cannot_refuse_it"
+      ],
+      "swiftBehaviorSuites": [
+        "AppearanceThemeSettingsTests",
+        "ApplicationThemeIntegrationTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Native System appearance, contrast and target DPI"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/appearance_settings/tests.rs#startup_loads_normalized_imports_before_saved_selectors_without_source_files",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/appearance_settings/tests.rs#common_settings_live_choices_keep_sql_grid_running_owner_focus_and_undo",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/appearance_settings/tests.rs#normal_close_awaits_latest_actual_participant_and_stale_failure_cannot_refuse_it",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "THEME-LIBRARY-IMPORT-OWNER",
+      "behavior": "Shared imports preserve normalized rules, safe local includes and original retained chooser/review owners through cancellation, persistence and close.",
+      "assertions": [
+        "prototypes/gpui/src/theme_library/tests.rs#shared_sources_match_every_normalized_color_rule_and_resolved_style",
+        "prototypes/gpui/src/theme_library/tests.rs#local_references_reject_traversal_remote_cycles_depth_and_nonregular_paths",
+        "prototypes/gpui/src/appearance_settings/library/tests.rs#native_picker_original_cancel_cannot_parse_or_cancel_new_review",
+        "prototypes/gpui/src/appearance_settings/library/tests.rs#committed_import_selects_editor_only_and_successful_remove_resets_current_matching_choices"
+      ],
+      "swiftBehaviorSuites": [
+        "GPUIThemeParityFixturesTests",
+        "EditorThemeStoreTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual target import chooser and readable retained surfaces"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/theme_library/tests.rs#shared_sources_match_every_normalized_color_rule_and_resolved_style",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/theme_library/tests.rs#local_references_reject_traversal_remote_cycles_depth_and_nonregular_paths",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/appearance_settings/library/tests.rs#native_picker_original_cancel_cannot_parse_or_cancel_new_review",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/appearance_settings/library/tests.rs#committed_import_selects_editor_only_and_successful_remove_resets_current_matching_choices",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SHORTCUT-STORE-REGISTRY",
+      "behavior": "Shortcut defaults/conflicts/unbound/recovery and ordered persistence use the current shared registry and exact original bytes.",
+      "assertions": [
+        "prototypes/gpui/src/shortcuts/tests.rs#common_registry_is_the_only_default_and_fixed_binding_source",
+        "prototypes/gpui/src/shortcuts/tests.rs#altgr_marked_text_dead_keys_and_unknown_evidence_pass_through_without_mutation",
+        "prototypes/gpui/src/shortcuts/tests.rs#native_layout_identity_and_menu_labels_never_substitute_text_or_physical_codes",
+        "prototypes/gpui/src/shortcuts/tests.rs#explicit_recovery_keeps_exact_original_and_invalidates_pre_recovery_requests",
+        "prototypes/gpui/src/shortcuts/tests.rs#reservations_are_ordered_concurrent_and_reload_invalidates_old_work"
+      ],
+      "swiftBehaviorSuites": [
+        "AppShortcutTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Real native recorder evidence, IME/dead keys and non-Latin layouts"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/shortcuts/tests.rs#common_registry_is_the_only_default_and_fixed_binding_source",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcuts/tests.rs#altgr_marked_text_dead_keys_and_unknown_evidence_pass_through_without_mutation",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcuts/tests.rs#native_layout_identity_and_menu_labels_never_substitute_text_or_physical_codes",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcuts/tests.rs#explicit_recovery_keeps_exact_original_and_invalidates_pre_recovery_requests",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcuts/tests.rs#reservations_are_ordered_concurrent_and_reload_invalidates_old_work",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SHORTCUT-RETAINED-SETTINGS",
+      "behavior": "Actual retained shortcut Settings validates original revision/focus, saves latest preferences and cannot start backend work.",
+      "assertions": [
+        "prototypes/gpui/src/shortcut_settings/tests.rs#shared_settings_real_requests_save_clear_restart_restore_and_reject_stale_owner",
+        "prototypes/gpui/src/shortcut_settings/tests.rs#explicit_recovery_and_reload_reconcile_original_request_after_settings_dismissal",
+        "prototypes/gpui/src/shortcut_settings/tests.rs#recorder_precedes_workspace_run_and_preserves_composition_altgr_and_original_entities",
+        "prototypes/gpui/src/shortcut_settings/tests.rs#latest_shortcut_close_drains_original_reservation_and_stale_error_reflushes_same_scope",
+        "prototypes/gpui/src/shortcut_settings_view/native_tests.rs#retained_original_input_focus_blur_aba_and_dismiss_invalidate_recorders"
+      ],
+      "swiftBehaviorSuites": [
+        "AppShortcutTests",
+        "WorkspaceCloseTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Real Settings/menu/toolbar/shortcut synchronization on every desktop"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/shortcut_settings/tests.rs#shared_settings_real_requests_save_clear_restart_restore_and_reject_stale_owner",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcut_settings/tests.rs#explicit_recovery_and_reload_reconcile_original_request_after_settings_dismissal",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcut_settings/tests.rs#recorder_precedes_workspace_run_and_preserves_composition_altgr_and_original_entities",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcut_settings/tests.rs#latest_shortcut_close_drains_original_reservation_and_stale_error_reflushes_same_scope",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/shortcut_settings_view/native_tests.rs#retained_original_input_focus_blur_aba_and_dismiss_invalidate_recorders",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ACCESSIBILITY-ORIGINAL-OWNER",
+      "behavior": "Original grid native wrappers preserve typed values, opaque original row/ordinal identity and bounded virtualization while rejecting stale/modal actions without backend work.",
+      "assertions": [
+        "prototypes/gpui/src/accessibility/workspace.rs#actual_grid_wrappers_publish_typed_values_original_ids_and_virtual_positions",
+        "prototypes/gpui/src/accessibility/workspace.rs#bounded_capture_retains_default_and_offscreen_selection_totals_without_erasing_other_cells",
+        "prototypes/gpui/src/accessibility/workspace.rs#native_cell_action_uses_original_focus_selection_and_details_without_database_work",
+        "prototypes/gpui/src/accessibility/workspace.rs#stale_source_snapshot_selection_and_modal_actions_cannot_select_a_new_owner",
+        "prototypes/gpui/src/accessibility/workspace.rs#tab_traversal_and_context_menu_use_the_retained_grid_owner"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLEditorTests",
+        "GridIntegrationTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Observed UIA/Narrator and AT-SPI/Orca author IDs, roles, exact values, ranges and focus"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/accessibility/workspace.rs#actual_grid_wrappers_publish_typed_values_original_ids_and_virtual_positions",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/accessibility/workspace.rs#bounded_capture_retains_default_and_offscreen_selection_totals_without_erasing_other_cells",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/accessibility/workspace.rs#native_cell_action_uses_original_focus_selection_and_details_without_database_work",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/accessibility/workspace.rs#stale_source_snapshot_selection_and_modal_actions_cannot_select_a_new_owner",
+          "stages": [
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/accessibility/workspace.rs#tab_traversal_and_context_menu_use_the_retained_grid_owner",
+          "stages": [
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GNOME-TERMINAL-AUTHORITY",
+      "behavior": "Only common terminal readiness and current original registration can answer GNOME session-end; cancellation/service loss never implies known completion.",
+      "assertions": [
+        "prototypes/gpui/src/session_end/policy.rs#common_token_and_readiness_remain_the_only_authority",
+        "prototypes/gpui/src/session_end/policy.rs#os_cancel_invalidates_association_and_new_query_never_inherits_ready_state",
+        "prototypes/gpui/src/session_end/policy.rs#service_loss_and_forced_stop_do_not_claim_review_or_transaction_outcome"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceCloseTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual GNOME Wayland/X11 logout/force and compositor behavior"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/session_end/policy.rs#common_token_and_readiness_remain_the_only_authority",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/session_end/policy.rs#os_cancel_invalidates_association_and_new_query_never_inherits_ready_state",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/session_end/policy.rs#service_loss_and_forced_stop_do_not_claim_review_or_transaction_outcome",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "GNOME-PRIVATE-PROTOCOL",
+      "behavior": "The real client uses its private fake GNOME bus to register, refuse, cancel, repeat, lose service and unregister under exact ownership.",
+      "assertions": [
+        "prototypes/gpui/src/session_end/gnome_tests.rs#private_bus_real_registration_negative_reply_cancel_repeat_owner_loss_and_unregistration"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceCloseTests"
+      ],
+      "coverageLayer": "private-bus",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual GNOME logout remains separate"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/session_end/gnome_tests.rs#private_bus_real_registration_negative_reply_cancel_repeat_owner_loss_and_unregistration",
+          "stages": [
+            "private-gnome-bus"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "WINDOWS-OWNED-HWND",
+      "behavior": "Native session-end subclass delivery and teardown use only the owned HWND while leaving the unrelated owned window untouched.",
+      "assertions": [
+        "prototypes/gpui/src/termination.rs#owned_hwnd_subclass_lifetime_and_native_query_delivery"
+      ],
+      "swiftBehaviorSuites": [
+        "WorkspaceCloseTests"
+      ],
+      "coverageLayer": "native-window",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual visible native close workflows and all frozen native cells"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/termination.rs#owned_hwnd_subclass_lifetime_and_native_query_delivery",
+          "stages": [
+            "windows-owned-hwnd"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "REAL-HELPER-DEATH-BARRIER",
+      "behavior": "Retire the original real helper after independent physical sleep observation, observe actual owned exit and original physical-session loss while observer remains alive; work stays unknown without reconnect.",
+      "assertions": [
+        "prototypes/gpui/src/live_tests.rs#postgres_real_helper_death_awaits_original_exit_and_physical_session_loss",
+        "prototypes/gpui/src/live_tests.rs#mysql_real_helper_death_awaits_original_exit_and_physical_session_loss"
+      ],
+      "swiftBehaviorSuites": [
+        "HelperProcessTests",
+        "WorkspaceConnectionTests"
+      ],
+      "coverageLayer": "database",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Installed opaque relay lost-ACK proves different physical COMMIT boundary"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/live_tests.rs#postgres_real_helper_death_awaits_original_exit_and_physical_session_loss",
+          "stages": [
+            "db-live"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/live_tests.rs#mysql_real_helper_death_awaits_original_exit_and_physical_session_loss",
+          "stages": [
+            "db-live"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PRODUCT-STARTUP-IDENTITY",
+      "behavior": "Canonical GUI/helper matching and shared prototype/product ownership precede explicit startup; unmarked development performs no product metadata probe.",
+      "assertions": [
+        "prototypes/gpui/src/product_identity/tests.rs#canonical_embedded_marker_is_sorted_ascii_without_file_newline",
+        "prototypes/gpui/src/product_identity/tests.rs#old_and_new_identity_processes_share_one_owner_and_preserve_bytes",
+        "prototypes/gpui/src/product_identity/preflight.rs#unmarked_development_performs_no_metadata_filesystem_or_process_probe"
+      ],
+      "swiftBehaviorSuites": [
+        "GPUIProductBuildIdentityTests",
+        "ApplicationWorkspaceTests"
+      ],
+      "coverageLayer": "headless-native-smoke",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Genuine prior/candidate packages, native install/update/remove and real stores"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/product_identity/tests.rs#canonical_embedded_marker_is_sorted_ascii_without_file_newline",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/product_identity/tests.rs#old_and_new_identity_processes_share_one_owner_and_preserve_bytes",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/src/product_identity/preflight.rs#unmarked_development_performs_no_metadata_filesystem_or_process_probe",
+          "stages": [
+            "default",
+            "native-smoke"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DEPENDENCY-NATIVE-GUARDS",
+      "behavior": "Actual maintained dependency tests preserve original live editor owners, native selection ABA and original/reopened dialog identity.",
+      "assertions": [
+        "prototypes/gpui/vendor/gpui-component/src/input/editor.rs#dbeer_native_guard_revalidates_live_owner_and_actual_selection_epoch",
+        "prototypes/gpui/vendor/gpui-component/src/dialog/dialog.rs#dbeer_named_popup_preserves_original_focus_and_reopened_dialog_has_new_native_owner",
+        "prototypes/gpui/vendor/gpui-base/src/input/base/cursor.rs#dbeer_selection_epoch_covers_secondary_mutation_and_never_wraps"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLEditorTests",
+        "WorkspaceCloseTests"
+      ],
+      "coverageLayer": "vendor",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual OS action delivery, text ranges, native IME and screen readers"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/vendor/gpui-component/src/input/editor.rs#dbeer_native_guard_revalidates_live_owner_and_actual_selection_epoch",
+          "stages": [
+            "vendor-component-units"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/vendor/gpui-component/src/dialog/dialog.rs#dbeer_named_popup_preserves_original_focus_and_reopened_dialog_has_new_native_owner",
+          "stages": [
+            "vendor-component-units"
+          ]
+        },
+        {
+          "assertion": "prototypes/gpui/vendor/gpui-base/src/input/base/cursor.rs#dbeer_selection_epoch_covers_secondary_mutation_and_never_wraps",
+          "stages": [
+            "vendor-base-units"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DB-CATALOG-OBSERVER",
+      "behavior": "Independent real database catalog/service metadata and SQL transaction remain original while offline assistance cannot submit database work.",
+      "assertions": [
+        "prototypes/gpui/src/catalog/tests.rs#postgres_mysql_service_catalog_search_and_actions_preserve_sql_transaction"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLCompletionCatalogTests",
+        "SQLLanguageServiceTests"
+      ],
+      "coverageLayer": "database",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual connected target catalog and assistance workflow"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/catalog/tests.rs#postgres_mysql_service_catalog_search_and_actions_preserve_sql_transaction",
+          "stages": [
+            "db-catalog-observer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "DB-SIGNATURE-METADATA",
+      "behavior": "Independent real database catalog/service metadata and SQL transaction remain original while offline assistance cannot submit database work.",
+      "assertions": [
+        "prototypes/gpui/src/signature/tests/connected.rs#connected_go_function_metadata_refreshes_without_database_work_while_typing"
+      ],
+      "swiftBehaviorSuites": [
+        "SQLCompletionCatalogTests",
+        "SQLLanguageServiceTests"
+      ],
+      "coverageLayer": "database",
+      "preparedStatus": "not-run",
+      "remainingNative": [
+        "Actual connected target catalog and assistance workflow"
+      ],
+      "fixtures": [],
+      "executions": [
+        {
+          "assertion": "prototypes/gpui/src/signature/tests/connected.rs#connected_go_function_metadata_refreshes_without_database_work_while_typing",
+          "stages": [
+            "db-signature-metadata"
+          ]
+        }
+      ]
+    }
+  ]
+}

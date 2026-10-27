@@ -21,7 +21,7 @@ struct ConnectionMigrationTests {
         try original.write(to: url)
         let store = FileConnectionLibraryStore(fileURL: url)
         let migrated = try await store.load()
-        #expect(migrated.version == 2)
+        #expect(migrated.version == SavedConnectionLibrary.currentVersion)
         #expect(migrated.selectedConnectionId == id)
         #expect(migrated.connections.first?.id == id)
         #expect(migrated.connections.first?.engine == .postgresql)
@@ -30,7 +30,7 @@ struct ConnectionMigrationTests {
         #expect(try Data(contentsOf: backup) == original)
         let written = try Data(contentsOf: url)
         let json = try #require(JSONSerialization.jsonObject(with: written) as? [String: Any])
-        #expect(json["version"] as? Int == 2)
+        #expect(json["version"] as? Int == SavedConnectionLibrary.currentVersion)
         #expect(!String(decoding: written, as: UTF8.self).contains("password"))
         #expect(try await store.load() == migrated)
         #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
@@ -90,6 +90,49 @@ struct ConnectionMigrationTests {
         #expect(profile.matches(mysql))
         #expect(profile.settings(password: "secret") == mysql)
         #expect(try JSONDecoder().decode(SavedConnection.self, from: JSONEncoder().encode(profile)) == profile)
+    }
+
+    @Test func versionTwoProfilesKeepUUIDAndExactBytesWhileAddingDefaultPolicy() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("connections.json")
+        let id = UUID()
+        let source = Data(("{\"version\":2," + String(decoding: legacy(id: id), as: UTF8.self).dropFirst())
+            .replacingOccurrences(of: "\"name\":", with: "\"engine\":\"mysql\",\"name\":").utf8)
+        try source.write(to: url)
+        let store = FileConnectionLibraryStore(fileURL: url)
+        let migrated = try await store.load()
+        #expect(migrated.version == SavedConnectionLibrary.currentVersion && migrated.connections.first?.id == id)
+        #expect(migrated.connections.first?.engine == .mysql)
+        #expect(migrated.connections.first?.policy == ExecutionPolicy())
+        #expect(try Data(contentsOf: url.appendingPathExtension("v2.backup")) == source)
+        #expect(try await store.load() == migrated)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
+    }
+
+    @Test func invalidVersionThreePolicyCannotBeLoadedOrOverwritten() async throws {
+        let settings = ConnectionSettings(host: "localhost", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable")
+        let encoded = try JSONEncoder().encode(SavedConnectionLibrary(connections: [SavedConnection(name: "fixture", settings: settings)]))
+        let valid = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        let invalidPolicies: [[String: Any]?] = [["environment": "unknown-environment", "readOnly": false],
+                                                 ["environment": "unspecified", "readOnly": "false"], nil]
+        for invalidPolicy in invalidPolicies {
+            var object = valid
+            var profiles = try #require(object["connections"] as? [[String: Any]])
+            profiles[0]["policy"] = invalidPolicy
+            object["connections"] = profiles
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent("connections.json")
+            let data = try JSONSerialization.data(withJSONObject: object)
+            try data.write(to: url)
+            let store = FileConnectionLibraryStore(fileURL: url)
+            await #expect(throws: ConnectionLibraryError.self) { _ = try await store.load() }
+            await #expect(throws: ConnectionLibraryError.self) { try await store.save(SavedConnectionLibrary()) }
+            #expect(try Data(contentsOf: url) == data)
+        }
     }
 
     @Test func enginePickerUpdatesOnlyUntouchedDefaultsAndUsesSupportedTLSModes() {

@@ -1,0 +1,79 @@
+{
+  "R1": [
+    "macos/Sources/DBeer/SavedConnection.swift",
+    "macos/Sources/DBeer/WorkspaceModel.swift",
+    "prototypes/gpui/src/connections.rs"
+  ],
+  "R2": [
+    "macos/Sources/DBeer/ProfileTransfer.swift",
+    "macos/Sources/DBeer/ApplicationWorkspace.swift"
+  ],
+  "R3": [
+    "macos/Sources/DBeer/StartupConnection.swift",
+    "macos/Sources/DBeer/ApplicationWorkspace.swift"
+  ],
+  "R4": [
+    "macos/Sources/DBeer/SQLScriptParser.swift",
+    "macos/Sources/DBeer/SQLExecutionFragment.swift",
+    "macos/Sources/DBeer/AppCommandRegistry.swift"
+  ],
+  "R5": [
+    "macos/Sources/DBeer/SQLDocumentStore.swift",
+    "macos/Sources/DBeer/Views/SQLHistoryView.swift"
+  ],
+  "R6": [
+    "macos/Sources/DBeer/Backend/Protocol.swift",
+    "prototypes/gpui/src/backend.rs",
+    "protocol/fixtures/"
+  ],
+  "R7": [
+    "macos/Sources/DBeer/CatalogModel.swift",
+    "macos/Sources/DBeer/Views/TableBrowseControls.swift"
+  ],
+  "R8": [
+    "macos/Sources/DBeer/GridChanges.swift",
+    "macos/Sources/DBeer/GridColumnEditing.swift",
+    "macos/Sources/DBeer/Views/DataGridView.swift",
+    "macos/Sources/DBeer/Views/GridRowDetailsView.swift"
+  ],
+  "R9": [
+    "macos/Sources/DBeer/ApplicationWorkspace+Changes.swift",
+    "helper/internal/postgres/changes.go",
+    "helper/internal/mysql/changes.go"
+  ],
+  "R10": [
+    "macos/Sources/DBeer/ResultExport.swift",
+    "helper/internal/session/stream.go",
+    "protocol/fixtures/export.json"
+  ],
+  "R11": [
+    "macos/Sources/DBeer/ExecutionPolicy.swift",
+    "macos/Sources/DBeer/ApplicationWorkspace+Policy.swift",
+    "macos/Sources/DBeer/CloseConfirmation.swift"
+  ],
+  "R12": [
+    "macos/Sources/DBeer/SQLLanguageService.swift",
+    "macos/Sources/DBeer/SQLLSPTransport.swift",
+    "macos/Sources/DBeer/SQLCompletionCatalog.swift",
+    "helper/internal/sqllsp/",
+    "helper/internal/sqlcomplete/"
+  ],
+  "R13": [
+    "macos/Sources/DBeer/AppAppearance.swift",
+    "macos/Sources/DBeer/EditorThemeStore.swift",
+    "macos/Sources/DBeer/EditorTheme.swift",
+    "macos/Sources/DBeer/Resources/EditorThemes/"
+  ],
+  "R14": [
+    "macos/Sources/DBeer/AppShortcut.swift",
+    "macos/Sources/DBeer/DBeerApp.swift",
+    "prototypes/gpui/src/platform.rs"
+  ],
+  "R15": [
+    "INSTALL.md",
+    "scripts/package-release.sh",
+    ".github/workflows/ci.yml",
+    "macos/AcceptanceTests/README.md",
+    "prototypes/gpui/README.md"
+  ]
+}

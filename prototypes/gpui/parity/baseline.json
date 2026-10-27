@@ -1,0 +1,273 @@
+{
+  "schemaVersion": 1,
+  "id": "swiftui-working-tree-v1",
+  "frozenOn": "2026-10-19",
+  "productScope": {
+    "macos": "Native SwiftUI/AppKit remains product",
+    "gpuiTargets": [
+      "Windows 11 x64",
+      "Ubuntu 24.04 x64 Wayland",
+      "Ubuntu 24.04 x64 X11"
+    ]
+  },
+  "source": {
+    "head": "2d4643ccb6db434f03e08bd3507266a060c44cce",
+    "branch": "v0.2.0",
+    "contentSHA256": "53e1992df9d2371ccaf49ce2704f79fe9a4c9a4bbb44c95cb49acefaecb73c86",
+    "manifest": "source-manifest.json",
+    "replayArchive": "build/gpui-parity/baseline-v1/source-replay-with-fixtures.tar.gz",
+    "fileCount": 308,
+    "initialRelevantWorkingChanges": [
+      ".github/workflows/ci.yml",
+      "AGENTS.md",
+      "CHANGELOG.md",
+      "README.md",
+      "macos/Sources/DBeer/AppAppearance.swift",
+      "macos/Sources/DBeer/AppThemeSurface.swift",
+      "macos/Sources/DBeer/DBeerApp.swift",
+      "macos/Sources/DBeer/NativeButtonFocusPolicy.swift",
+      "macos/Tests/DBeerTests/NativeThemeContrastTests.swift",
+      "prototypes/gpui/",
+      "scripts/build-gpui-app.sh",
+      "scripts/build-gpui-client.ps1",
+      "scripts/build-gpui-client.sh",
+      "scripts/gpui-prototype.sh",
+      "scripts/test-gpui-databases.sh",
+      "scripts/test-gpui-termination.sh"
+    ],
+    "workingChangeEvidence": "build/gpui-parity/baseline-v1/working-changes.patch and worktree.json; untracked source included in replay",
+    "behaviorClass": "Frozen working-tree behavior, including unreleased source/tests. HEAD alone is not the baseline.",
+    "replay": "Extract source-replay-with-fixtures.tar.gz into an empty owned directory; preserves repository-relative paths/resource links including parity fixture inputs; run scripts/build-app.sh with owner persistent signing identity. Registry is separate to avoid recursive hashes."
+  },
+  "referenceApp": {
+    "path": "build/gpui-parity/baseline-v1/reference-swiftui-v1.app",
+    "identity": "dev.dbeer.app",
+    "configuration": "release",
+    "version": "0.1.0",
+    "build": "6",
+    "buildKind": "local",
+    "minimumMacOS": "14.0",
+    "architecture": "arm64",
+    "teamIdentifier": "H5939L39SR",
+    "signingPolicy": "Owner persistent Apple Development identity; no ad hoc or trust changes",
+    "cdHash": "73e7e09b6eb220b97086198b84c2995bdbe73181",
+    "treeManifest": "reference-app-manifest.json",
+    "contentSHA256": "02dd47029db5e4b3bb9f7729244731b29c7ee1f8de36ffdcf15f42168b022fc9",
+    "sourceProof": "source-build-verification.json records matching source hashes before and after exact build command"
+  },
+  "preexistingApp": {
+    "path": "build/gpui-parity/baseline-v1/preexisting-unattributed.app",
+    "executableSHA256": "2832ffc53e1242f0c87e5437939730cc6c7d2a235e4d819613ef7d0d4e08e4c6",
+    "contentSHA256": "5036b4f12a2dec41b7a4666dade2bb91bc736c5f2bea019a7c045447f9a25771",
+    "provenance": "Preserved before any runner rebuild. Signed 0.1.0(6), but exact source provenance not established; never used as working-source oracle."
+  },
+  "releaseEvidence": {
+    "publishedRelease": "Not established from local repository (no tags); no network publication audit was requested.",
+    "scope": "Do not claim a capability was in a released artifact from its presence in the working tree. Historical archive behavior is unaudited unless separately verified.",
+    "historicalArchives": [
+      {
+        "path": "build/releases/DBeer-0.1.0-3-macos-arm64.zip",
+        "sha256": "1e7af80a8ec772c981784728fa2c444c9aeb72bb23d40692b653a9e811b92218",
+        "provenance": "historical local archive; publication and exact source provenance not established"
+      },
+      {
+        "path": "build/releases/DBeer-0.1.0-4-macos-arm64.zip",
+        "sha256": "61a1017a2d192dd6069c9bb6d05769d3fe4393c6e965b90c2945fbb901a52db2",
+        "provenance": "historical local archive; publication and exact source provenance not established"
+      },
+      {
+        "path": "build/releases/DBeer-0.1.0-5-macos-arm64.zip",
+        "sha256": "f1a64ab88d67c383278761247427631980094d33380dc3b725a8c0d1efcab345",
+        "provenance": "historical local archive; publication and exact source provenance not established"
+      },
+      {
+        "path": "build/releases/DBeer-0.1.0-6-macos-arm64.zip",
+        "sha256": "bd85def2ac0d63c21c4c55a4e0b1d2ad9129eeec5025285750e8f30bef515648",
+        "provenance": "historical local archive; publication and exact source provenance not established"
+      },
+      {
+        "path": "build/releases/DBeer-1.0.0-1-macos-arm64.zip",
+        "sha256": "dfb57cfc419283687254c7cb9620679c57a3478733246dfadf866ebb80096aec",
+        "provenance": "historical local archive; publication and exact source provenance not established"
+      },
+      {
+        "path": "build/releases/DBeer-1.0.0-2-macos-arm64.zip",
+        "sha256": "8465ae55a11200fa1a8337237056f38b881251c25244f64a7de4d93c21793c95",
+        "provenance": "historical local archive; publication and exact source provenance not established"
+      }
+    ],
+    "sameVersionArchiveComparison": {
+      "path": "build/releases/DBeer-0.1.0-6-macos-arm64.zip",
+      "executableSHA256": "d8701211b1554a454d4d4c5cc417ff098fcbfd3155e221380af6e0dd296f4729",
+      "matchesWorkingReferenceExecutable": false,
+      "matchesPreexistingExecutable": false
+    }
+  },
+  "defaultsDecision": "D01",
+  "defaultsDecisionAuthority": "Explicit user confirmation in this chat, 2026-10-19; see fixtures/profile-defaults.json",
+  "verification": {
+    "swift": {
+      "status": "passed",
+      "command": "DBEER_PARITY_MEASUREMENTS=<owned-build-path> ./scripts/test.sh --filter ParityBaselineTests --filter SQLScriptParserTests --filter ResultExportTests --filter SQLLanguageServiceTests --filter SQLLSPCodecTests",
+      "completedSummary": "Test run with 31 tests in 5 suites passed after 9.547 seconds.",
+      "scope": "31 tests in 5 focused suites only. Does not claim all 281 mapped reference methods ran.",
+      "skippedDatabaseUI": "All unselected Swift suites, database integration/TLS/installed upgrade and target native UI not run."
+    },
+    "go": {
+      "status": "passed",
+      "command": "go test -race ./internal/sqllsp ./internal/sqlcomplete",
+      "completedSummaries": [
+        "ok  \tdbeer/helper/internal/sqllsp\t1.706s",
+        "ok  \tdbeer/helper/internal/sqlcomplete\t1.572s"
+      ],
+      "scope": "Two focused language packages; shared signature fixture included. No DB integration."
+    },
+    "dbFixtures": {
+      "status": "passed",
+      "command": "python3 prototypes/gpui/parity/verify-db-fixtures.py --output build/gpui-parity/baseline-v1/db-fixtures.json",
+      "results": [
+        {
+          "engine": "postgresql",
+          "image": "postgres:17",
+          "status": "passed",
+          "scope": "synthetic setup SQL and server assertions only",
+          "imageID": "sha256:0af65001d05296a2ead57ac4a6412433d8913d1bb5d0c88435a7d1e1ee5cb04b",
+          "completedSummary": "postgresql synthetic setup and row-count/exact-numeric assertions completed.",
+          "durationSeconds": 1.608
+        },
+        {
+          "engine": "mysql",
+          "image": "mysql:8.4",
+          "status": "passed",
+          "scope": "synthetic setup SQL and server assertions only",
+          "imageID": "sha256:24989179f58856db763f418010c1169fecc944e3ec1ea7e921572d83eb070f70",
+          "completedSummary": "mysql synthetic setup and row-count/exact-numeric assertions completed.",
+          "durationSeconds": 4.829
+        }
+      ],
+      "scope": "Setup syntax, row-count and exact-numeric assertions on local PostgreSQL 17/MySQL 8.4 images only; no target frontend, TLS or full server version matrix."
+    },
+    "sourceAndApp": {
+      "sourceHashBeforeBuild": "53e1992df9d2371ccaf49ce2704f79fe9a4c9a4bbb44c95cb49acefaecb73c86",
+      "sourceHashAfterBuild": "53e1992df9d2371ccaf49ce2704f79fe9a4c9a4bbb44c95cb49acefaecb73c86",
+      "command": "./scripts/build-app.sh",
+      "configuration": "release",
+      "sourceChecks": "check.py verify-source completed before and after signed build; 308 files unchanged",
+      "signatureVerification": "codesign --verify --deep --strict completed on retained reference app",
+      "version": "0.1.0",
+      "build": "6"
+    },
+    "inventory": {
+      "status": "passed",
+      "completedSummary": "Inventory valid: 57 features, 57 concrete scenarios, 281 linked reference test IDs, 171 native result cells.",
+      "scope": "Structural verification only; no feature or native acceptance result changed.",
+      "regressionSummary": "Ran 5 tests in 0.138s; OK. Empty row links, borrowed scenarios, invented native passes and omitted platform/owner are rejected."
+    },
+    "replay": {
+      "status": "passed",
+      "completedSummary": "Extracted replay and verified all 308 source hashes, including all fixture paths required by ParityBaselineTests.",
+      "summary": "build/gpui-parity/baseline-v1/replay-verification.json"
+    }
+  },
+  "nativeAvailability": "User confirmed no Windows/Ubuntu graphical environments exist yet. All 171 native result cells remain not-run. Provisioning belongs to Task 2.",
+  "localArtifacts": [
+    {
+      "path": "build/gpui-parity/baseline-v1/source-replay-with-fixtures.tar.gz",
+      "sha256": "754224b51f1f795d55faa449cbdcfeafc6abe889d13ad21f2e30be2826007511"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/working-changes.patch",
+      "sha256": "ef13edd7aba79975a806a65f564b112f8874f929d3a59c31205bbbeab101ae92"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/worktree.json",
+      "sha256": "8f2b275a413e5ab445613dddd910cf00595dda70e354efe6290f2b3a94576beb"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/reference-tests.log",
+      "sha256": "c59b2372d702572573241808375c7059ce4ad27369ae9bebebc1bf07205fd1f0"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/go-language-tests.log",
+      "sha256": "064888abe5a2c989cf857613b46dfae4305174d5ce281a037b9da2fd2b6334e3"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/reference-measurements.json",
+      "sha256": "0cdac9ef9ba8804030d404858b464760befd9161d878306469bf467929018523"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/signed-reference-build.log",
+      "sha256": "b205833f4a51013f1447c7c5d657e7655f683d6e3a1574dba00e92d8d3916a1b"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/reference-signature.txt",
+      "sha256": "8e5e03e330082c80573d9de8287f00081c26b1ef7630ad0f55b1a0a0b31954c8"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/preexisting-signature.txt",
+      "sha256": "ebd37aea80ebe6530fb8bc8c0a45c58a6183b5b83579282d04093612323e6860"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/source-build-verification.json",
+      "sha256": "1841cc8cbaa1789f6fae48653f806aa92d1b0184fe619d0888c883150921d84d"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/db-fixtures.json",
+      "sha256": "06e7a3227e5bca8cdf59124612c3313ef3acee2cf2149547cab9e8ae7e354e52"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/reference-swiftui-v1.app/Contents/MacOS/DBeer",
+      "sha256": "62bc112300c48580034aff3bd0113669d06c2e80a2c1ee0cd165cfd6e5599d6f"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/reference-swiftui-v1.app/Contents/Helpers/dbeer-core",
+      "sha256": "ddd15ead12f280df1bdaf9ead36908ec41ed2a394a106c27e19b4d24b9b57211"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/reference-swiftui-v1.app/Contents/Info.plist",
+      "sha256": "afa4df0576c4634303646573bc51ea8f4785d45e7c07e3feeac1ada77c6b12cf"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/reference-swiftui-v1.app/Contents/_CodeSignature/CodeResources",
+      "sha256": "b2f7b54194fc5e537038ed3fbd1a9a6bef0794e6a2142d0f37ef127d3671a973"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/replay-verification.json",
+      "sha256": "0de12f5357f978ea9f90fbe7b0f20551580f7935f9e4203ca90c5abfbb2edff9"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/inventory-validation.txt",
+      "sha256": "047982919e565949970dafe7ba269b925708f2daa1ff5a9cc6917d3246bf0368"
+    },
+    {
+      "path": "build/gpui-parity/baseline-v1/inventory-regression-tests.txt",
+      "sha256": "30d59610017bd25d7c8834ad227e5f5859e56f013cd7f485f4d96fabf579b4b8"
+    }
+  ],
+  "changeControl": "Baseline v1 is immutable; new Swift capabilities require an explicit new baseline/version record and scenario/matrix review. Implementation status changes do not redefine source/app baseline.",
+  "acceptanceInventory": {
+    "scope": "Frozen scenario mappings, exact test catalog, source groups and fixture groups. Future capability changes require explicit baseline-version review. Registry status is separate.",
+    "files": [
+      {
+        "path": "scenarios.json",
+        "sha256": "6e7ee81fe1771046d2a5793ccb975a3f37386553c8aba6d65e4307cc1823394c"
+      },
+      {
+        "path": "reference-tests.json",
+        "sha256": "65af2597f8411bce508c889da8be591c4aea0ac1bd9dad00c89a0a9b86623c9c"
+      },
+      {
+        "path": "references.json",
+        "sha256": "914f97c794ab93f57a0029c85f361789615bf4cb44dd6e5ed7c2fdbf135968db"
+      },
+      {
+        "path": "fixture-sets.json",
+        "sha256": "ad12768a4dcc817d1f81d7dc599c01a5413d6f54a3adab63db126494876f8ab0"
+      },
+      {
+        "path": "responsiveness.json",
+        "sha256": "10ec446e0366d4038103aa9f06ace0edff382d7f4c6f29c50b4f8b034d1dbe7f"
+      }
+    ]
+  }
+}

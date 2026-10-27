@@ -12,7 +12,7 @@ struct LocalRequestValidationTests {
         def send(message):
             print(json.dumps(message), flush=True)
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':2})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
         command = read()
         send({'type':'connect.result','engine':'postgresql','capabilities':['execute','cancel','transactions'],'requestId':command['requestId'],'sessionId':'same-session','transactionStatus':'transaction'})
         command = read()
@@ -62,7 +62,8 @@ struct LocalRequestValidationTests {
         await model.start()
         await model.connect()
         model.sql = String(repeating: "a", count: BackendProtocol.maxFrameBytes)
-        await model.run()
+        let rejected = await model.run()
+        #expect(rejected == nil)
 
         #expect(model.sessionId == "same-session")
         #expect(model.connectionState == .connected)
@@ -71,6 +72,7 @@ struct LocalRequestValidationTests {
         #expect(model.queryPhase == .idle && !model.isExecuting)
         #expect(model.queryFailure?.category == "validation")
         #expect(model.queryFailure?.outcomeUnknown == false)
+        #expect(model.queryFailure?.sqlNotExecuted == true)
         #expect(model.errorMessage?.contains("command was not sent") == true)
         #expect(model.errorMessage?.contains("outcome is unknown") == false)
         let canRunAfterRejection = model.canRun

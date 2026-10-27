@@ -1,0 +1,18 @@
+[
+  {"engine":"postgresql","source":"SELECT NULLIF(ROUND(1.5, |), 0)","prefix":"ROUND(","active":1,"parameter":"scale: integer","overload":1},
+  {"engine":"mysql","source":"SELECT NULLIF(ROUND(1.5, |), 0)","prefix":"ROUND(","active":1,"parameter":"decimals: integer = DEFAULT","overload":0},
+  {"engine":"postgresql","source":"SELECT NULLIF(ROUND(1.5, 0), |)","prefix":"NULLIF(","active":1,"parameter":"value2: any","overload":0},
+  {"engine":"postgresql","source":"SELECT SUBSTRING('hello' FROM 1 FOR |)","prefix":"SUBSTRING(","active":2,"parameter":"count: integer = DEFAULT","overload":0},
+  {"engine":"mysql","source":"SELECT SUBSTRING('hello' FROM |)","prefix":"SUBSTRING(","active":1,"parameter":"position: integer","overload":0},
+  {"engine":"postgresql","source":"SELECT COALESCE(ARRAY[1,2], 'a,b', |)","prefix":"COALESCE(","active":0,"parameter":"VARIADIC values: any","overload":0},
+  {"engine":"postgresql","source":"SELECT public.calculate(scale => |, value => 1)","catalog":true,"prefix":"\"public\".calculate(","active":1,"parameter":"scale: integer = DEFAULT","overload":1},
+  {"engine":"postgresql","source":"SELECT public.calculate(value => 1, scale := |)","catalog":true,"prefix":"\"public\".calculate(","active":1,"parameter":"scale: integer = DEFAULT","overload":1},
+  {"engine":"postgresql","source":"SELECT public.calculate(1, |)","catalog":true,"prefix":"\"public\".calculate(","active":1,"parameter":"scale: integer = DEFAULT","overload":1},
+  {"engine":"postgresql","source":"SELECT public.calculate('a','b','c', |)","catalog":true,"prefix":"\"public\".calculate(","active":0,"parameter":"VARIADIC values: text[]","overload":2},
+  {"engine":"postgresql","source":"SELECT NOW(|)","prefix":"NOW(","overload":0},
+  {"engine":"mysql","source":"SELECT NOW(|)","prefix":"NOW(","active":0,"parameter":"precision: integer = DEFAULT","overload":0},
+  {"engine":"postgresql","source":"SELECT NULLIF(/* | */ 1,2)"},
+  {"engine":"postgresql","source":"SELECT NULLIF(1,2)|"},
+  {"engine":"mysql","source":"SELECT 'NULLIF(1, |'"},
+  {"engine":"postgresql","source":"SELECT private.LOWER(|)"}
+]

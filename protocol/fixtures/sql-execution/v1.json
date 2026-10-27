@@ -1,0 +1,3810 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "empty-postgresql",
+      "engine": "postgresql",
+      "source": "",
+      "statements": [],
+      "diagnostics": []
+    },
+    {
+      "id": "comment-only-postgresql",
+      "engine": "postgresql",
+      "source": "-- ;\r\n /* ; */ ;",
+      "statements": [],
+      "diagnostics": []
+    },
+    {
+      "id": "unicode-boundaries-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT '😀';\r\n\n  SELECT 'café';",
+      "statements": [
+        {
+          "sql": "SELECT '😀'",
+          "span": {
+            "bytes": [
+              0,
+              13
+            ],
+            "utf16": [
+              0,
+              11
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              14
+            ],
+            "utf16": [
+              0,
+              12
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 'café'",
+          "span": {
+            "bytes": [
+              19,
+              34
+            ],
+            "utf16": [
+              17,
+              31
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              19,
+              35
+            ],
+            "utf16": [
+              17,
+              32
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "adjacent-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT 1;SELECT 2;",
+      "statements": [
+        {
+          "sql": "SELECT 1",
+          "span": {
+            "bytes": [
+              0,
+              8
+            ],
+            "utf16": [
+              0,
+              8
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              9
+            ],
+            "utf16": [
+              0,
+              9
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 2",
+          "span": {
+            "bytes": [
+              9,
+              17
+            ],
+            "utf16": [
+              9,
+              17
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              9,
+              18
+            ],
+            "utf16": [
+              9,
+              18
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "leading-comments-postgresql",
+      "engine": "postgresql",
+      "source": "\t-- heading\r\n/* body */ SELECT 1; -- next\nSELECT 2; -- trailing",
+      "statements": [
+        {
+          "sql": "-- heading\r\n/* body */ SELECT 1",
+          "span": {
+            "bytes": [
+              1,
+              32
+            ],
+            "utf16": [
+              1,
+              32
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              1,
+              33
+            ],
+            "utf16": [
+              1,
+              33
+            ]
+          }
+        },
+        {
+          "sql": "-- next\nSELECT 2",
+          "span": {
+            "bytes": [
+              34,
+              50
+            ],
+            "utf16": [
+              34,
+              50
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              34,
+              51
+            ],
+            "utf16": [
+              34,
+              51
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "selection-whitespace-postgresql",
+      "engine": "postgresql",
+      "source": "  \tSELECT 1\r\n  ",
+      "statements": [
+        {
+          "sql": "SELECT 1",
+          "span": {
+            "bytes": [
+              4,
+              12
+            ],
+            "utf16": [
+              3,
+              11
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              4,
+              16
+            ],
+            "utf16": [
+              3,
+              15
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "empty-mysql",
+      "engine": "mysql",
+      "source": "",
+      "statements": [],
+      "diagnostics": []
+    },
+    {
+      "id": "comment-only-mysql",
+      "engine": "mysql",
+      "source": "-- ;\r\n /* ; */ ;",
+      "statements": [],
+      "diagnostics": []
+    },
+    {
+      "id": "unicode-boundaries-mysql",
+      "engine": "mysql",
+      "source": "SELECT '😀';\r\n\n  SELECT 'café';",
+      "statements": [
+        {
+          "sql": "SELECT '😀'",
+          "span": {
+            "bytes": [
+              0,
+              13
+            ],
+            "utf16": [
+              0,
+              11
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              14
+            ],
+            "utf16": [
+              0,
+              12
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 'café'",
+          "span": {
+            "bytes": [
+              19,
+              34
+            ],
+            "utf16": [
+              17,
+              31
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              19,
+              35
+            ],
+            "utf16": [
+              17,
+              32
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "adjacent-mysql",
+      "engine": "mysql",
+      "source": "SELECT 1;SELECT 2;",
+      "statements": [
+        {
+          "sql": "SELECT 1",
+          "span": {
+            "bytes": [
+              0,
+              8
+            ],
+            "utf16": [
+              0,
+              8
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              9
+            ],
+            "utf16": [
+              0,
+              9
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 2",
+          "span": {
+            "bytes": [
+              9,
+              17
+            ],
+            "utf16": [
+              9,
+              17
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              9,
+              18
+            ],
+            "utf16": [
+              9,
+              18
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "leading-comments-mysql",
+      "engine": "mysql",
+      "source": "\t-- heading\r\n/* body */ SELECT 1; -- next\nSELECT 2; -- trailing",
+      "statements": [
+        {
+          "sql": "-- heading\r\n/* body */ SELECT 1",
+          "span": {
+            "bytes": [
+              1,
+              32
+            ],
+            "utf16": [
+              1,
+              32
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              1,
+              33
+            ],
+            "utf16": [
+              1,
+              33
+            ]
+          }
+        },
+        {
+          "sql": "-- next\nSELECT 2",
+          "span": {
+            "bytes": [
+              34,
+              50
+            ],
+            "utf16": [
+              34,
+              50
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              34,
+              51
+            ],
+            "utf16": [
+              34,
+              51
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "selection-whitespace-mysql",
+      "engine": "mysql",
+      "source": "  \tSELECT 1\r\n  ",
+      "statements": [
+        {
+          "sql": "SELECT 1",
+          "span": {
+            "bytes": [
+              4,
+              12
+            ],
+            "utf16": [
+              3,
+              11
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              4,
+              16
+            ],
+            "utf16": [
+              3,
+              15
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "pg-nested-comments-dollar-escapes",
+      "engine": "postgresql",
+      "source": "/* outer ; /* nested ; */ still comment */\nCREATE FUNCTION public.example() RETURNS text LANGUAGE plpgsql AS $body$\nBEGIN\n  RETURN 'one;two' || $inner$three;four$inner$;\nEND;\n$body$;\nSELECT E'escaped\\';quote', 'doubled'';quote', \"a\"\";identifier\";",
+      "statements": [
+        {
+          "sql": "/* outer ; /* nested ; */ still comment */\nCREATE FUNCTION public.example() RETURNS text LANGUAGE plpgsql AS $body$\nBEGIN\n  RETURN 'one;two' || $inner$three;four$inner$;\nEND;\n$body$",
+          "span": {
+            "bytes": [
+              0,
+              181
+            ],
+            "utf16": [
+              0,
+              181
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              182
+            ],
+            "utf16": [
+              0,
+              182
+            ]
+          }
+        },
+        {
+          "sql": "SELECT E'escaped\\';quote', 'doubled'';quote', \"a\"\";identifier\"",
+          "span": {
+            "bytes": [
+              183,
+              245
+            ],
+            "utf16": [
+              183,
+              245
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              183,
+              246
+            ],
+            "utf16": [
+              183,
+              246
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "pg-atomic-case",
+      "engine": "postgresql",
+      "source": "CREATE FUNCTION atomic_example() RETURNS integer LANGUAGE SQL\nBEGIN ATOMIC\n  SELECT CASE WHEN true THEN 1 ELSE 2 END;\n  SELECT 3;\nEND;\nSELECT atomic_example();",
+      "statements": [
+        {
+          "sql": "CREATE FUNCTION atomic_example() RETURNS integer LANGUAGE SQL\nBEGIN ATOMIC\n  SELECT CASE WHEN true THEN 1 ELSE 2 END;\n  SELECT 3;\nEND",
+          "span": {
+            "bytes": [
+              0,
+              133
+            ],
+            "utf16": [
+              0,
+              133
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              134
+            ],
+            "utf16": [
+              0,
+              134
+            ]
+          }
+        },
+        {
+          "sql": "SELECT atomic_example()",
+          "span": {
+            "bytes": [
+              135,
+              158
+            ],
+            "utf16": [
+              135,
+              158
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              135,
+              159
+            ],
+            "utf16": [
+              135,
+              159
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "pg-nested-atomic-case",
+      "engine": "postgresql",
+      "source": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC BEGIN ATOMIC SELECT CASE WHEN true THEN CASE WHEN false THEN 1 END ELSE 2 END; END; END; SELECT 3;",
+      "statements": [
+        {
+          "sql": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC BEGIN ATOMIC SELECT CASE WHEN true THEN CASE WHEN false THEN 1 END ELSE 2 END; END; END",
+          "span": {
+            "bytes": [
+              0,
+              134
+            ],
+            "utf16": [
+              0,
+              134
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              135
+            ],
+            "utf16": [
+              0,
+              135
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 3",
+          "span": {
+            "bytes": [
+              136,
+              144
+            ],
+            "utf16": [
+              136,
+              144
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              136,
+              145
+            ],
+            "utf16": [
+              136,
+              145
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "pg-unterminated-quote",
+      "engine": "postgresql",
+      "source": "SELECT '😀",
+      "statements": [
+        {
+          "sql": "SELECT '😀",
+          "span": {
+            "bytes": [
+              0,
+              12
+            ],
+            "utf16": [
+              0,
+              10
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              12
+            ],
+            "utf16": [
+              0,
+              10
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              7,
+              12
+            ],
+            "utf16": [
+              7,
+              10
+            ]
+          },
+          "message": "Unterminated quoted value or identifier."
+        }
+      ]
+    },
+    {
+      "id": "pg-unterminated-identifier",
+      "engine": "postgresql",
+      "source": "SELECT \"identifier",
+      "statements": [
+        {
+          "sql": "SELECT \"identifier",
+          "span": {
+            "bytes": [
+              0,
+              18
+            ],
+            "utf16": [
+              0,
+              18
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              18
+            ],
+            "utf16": [
+              0,
+              18
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              7,
+              18
+            ],
+            "utf16": [
+              7,
+              18
+            ]
+          },
+          "message": "Unterminated quoted value or identifier."
+        }
+      ]
+    },
+    {
+      "id": "pg-unterminated-dollar",
+      "engine": "postgresql",
+      "source": "DO $body$ BEGIN; END;",
+      "statements": [
+        {
+          "sql": "DO $body$ BEGIN; END;",
+          "span": {
+            "bytes": [
+              0,
+              21
+            ],
+            "utf16": [
+              0,
+              21
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              21
+            ],
+            "utf16": [
+              0,
+              21
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              3,
+              21
+            ],
+            "utf16": [
+              3,
+              21
+            ]
+          },
+          "message": "Unterminated PostgreSQL dollar-quoted value."
+        }
+      ]
+    },
+    {
+      "id": "pg-unterminated-comment",
+      "engine": "postgresql",
+      "source": "/* outer /* inner */",
+      "statements": [],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              20
+            ],
+            "utf16": [
+              0,
+              20
+            ]
+          },
+          "message": "Unterminated block comment."
+        }
+      ]
+    },
+    {
+      "id": "pg-unterminated-atomic",
+      "engine": "postgresql",
+      "source": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC SELECT 1;",
+      "statements": [
+        {
+          "sql": "CREATE PROCEDURE p() LANGUAGE SQL BEGIN ATOMIC SELECT 1;",
+          "span": {
+            "bytes": [
+              0,
+              56
+            ],
+            "utf16": [
+              0,
+              56
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              56
+            ],
+            "utf16": [
+              0,
+              56
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              34,
+              56
+            ],
+            "utf16": [
+              34,
+              56
+            ]
+          },
+          "message": "Unterminated PostgreSQL BEGIN ATOMIC body."
+        }
+      ]
+    },
+    {
+      "id": "mysql-delimiter-routine-trigger",
+      "engine": "mysql",
+      "source": "DELIMITER $$\nCREATE PROCEDURE example()\nBEGIN\n  SELECT 'a; $$ b', \"a\\\";$$value\", `a``;identifier`;\n  SELECT 2;\nEND$$\nDELIMITER //\nCREATE TRIGGER example_trigger BEFORE INSERT ON example_table FOR EACH ROW\nBEGIN\n  SET NEW.value = 'contains // and ;';\nEND//\nDELIMITER ;\nCALL example();",
+      "statements": [
+        {
+          "sql": "CREATE PROCEDURE example()\nBEGIN\n  SELECT 'a; $$ b', \"a\\\";$$value\", `a``;identifier`;\n  SELECT 2;\nEND",
+          "span": {
+            "bytes": [
+              13,
+              114
+            ],
+            "utf16": [
+              13,
+              114
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              13,
+              116
+            ],
+            "utf16": [
+              13,
+              116
+            ]
+          }
+        },
+        {
+          "sql": "CREATE TRIGGER example_trigger BEFORE INSERT ON example_table FOR EACH ROW\nBEGIN\n  SET NEW.value = 'contains // and ;';\nEND",
+          "span": {
+            "bytes": [
+              130,
+              253
+            ],
+            "utf16": [
+              130,
+              253
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              130,
+              255
+            ],
+            "utf16": [
+              130,
+              255
+            ]
+          }
+        },
+        {
+          "sql": "CALL example()",
+          "span": {
+            "bytes": [
+              268,
+              282
+            ],
+            "utf16": [
+              268,
+              282
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              268,
+              283
+            ],
+            "utf16": [
+              268,
+              283
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "pg-standard-string-backslash",
+      "engine": "postgresql",
+      "source": "SELECT 'ends with slash\\'; SELECT 2;",
+      "statements": [
+        {
+          "sql": "SELECT 'ends with slash\\'",
+          "span": {
+            "bytes": [
+              0,
+              25
+            ],
+            "utf16": [
+              0,
+              25
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              26
+            ],
+            "utf16": [
+              0,
+              26
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 2",
+          "span": {
+            "bytes": [
+              27,
+              35
+            ],
+            "utf16": [
+              27,
+              35
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              27,
+              36
+            ],
+            "utf16": [
+              27,
+              36
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "mysql-incomplete-escaped-quote",
+      "engine": "mysql",
+      "source": "SELECT 'ends with slash\\'; SELECT 2;",
+      "statements": [
+        {
+          "sql": "SELECT 'ends with slash\\'; SELECT 2;",
+          "span": {
+            "bytes": [
+              0,
+              36
+            ],
+            "utf16": [
+              0,
+              36
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              36
+            ],
+            "utf16": [
+              0,
+              36
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              7,
+              36
+            ],
+            "utf16": [
+              7,
+              36
+            ]
+          },
+          "message": "Unterminated quoted value or identifier."
+        }
+      ]
+    },
+    {
+      "id": "mysql-escaped-quote",
+      "engine": "mysql",
+      "source": "SELECT 'escaped\\';semicolon'; SELECT 2;",
+      "statements": [
+        {
+          "sql": "SELECT 'escaped\\';semicolon'",
+          "span": {
+            "bytes": [
+              0,
+              28
+            ],
+            "utf16": [
+              0,
+              28
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              29
+            ],
+            "utf16": [
+              0,
+              29
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 2",
+          "span": {
+            "bytes": [
+              30,
+              38
+            ],
+            "utf16": [
+              30,
+              38
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              30,
+              39
+            ],
+            "utf16": [
+              30,
+              39
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "mysql-dash-hash-comment-rules",
+      "engine": "mysql",
+      "source": "SELECT 1--2; SELECT 3; # ; hidden\nSELECT 4; -- ; hidden\nSELECT 5;",
+      "statements": [
+        {
+          "sql": "SELECT 1--2",
+          "span": {
+            "bytes": [
+              0,
+              11
+            ],
+            "utf16": [
+              0,
+              11
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              12
+            ],
+            "utf16": [
+              0,
+              12
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 3",
+          "span": {
+            "bytes": [
+              13,
+              21
+            ],
+            "utf16": [
+              13,
+              21
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              13,
+              22
+            ],
+            "utf16": [
+              13,
+              22
+            ]
+          }
+        },
+        {
+          "sql": "# ; hidden\nSELECT 4",
+          "span": {
+            "bytes": [
+              23,
+              42
+            ],
+            "utf16": [
+              23,
+              42
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              23,
+              43
+            ],
+            "utf16": [
+              23,
+              43
+            ]
+          }
+        },
+        {
+          "sql": "-- ; hidden\nSELECT 5",
+          "span": {
+            "bytes": [
+              44,
+              64
+            ],
+            "utf16": [
+              44,
+              64
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              44,
+              65
+            ],
+            "utf16": [
+              44,
+              65
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "mysql-blocks-do-not-nest",
+      "engine": "mysql",
+      "source": "/* outer /* inner */ SELECT 1; SELECT 2;",
+      "statements": [
+        {
+          "sql": "/* outer /* inner */ SELECT 1",
+          "span": {
+            "bytes": [
+              0,
+              29
+            ],
+            "utf16": [
+              0,
+              29
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              30
+            ],
+            "utf16": [
+              0,
+              30
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 2",
+          "span": {
+            "bytes": [
+              31,
+              39
+            ],
+            "utf16": [
+              31,
+              39
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              31,
+              40
+            ],
+            "utf16": [
+              31,
+              40
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "pg-dollar-identifier-is-not-quote",
+      "engine": "postgresql",
+      "source": "SELECT a$body$; SELECT 2;",
+      "statements": [
+        {
+          "sql": "SELECT a$body$",
+          "span": {
+            "bytes": [
+              0,
+              14
+            ],
+            "utf16": [
+              0,
+              14
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              15
+            ],
+            "utf16": [
+              0,
+              15
+            ]
+          }
+        },
+        {
+          "sql": "SELECT 2",
+          "span": {
+            "bytes": [
+              16,
+              24
+            ],
+            "utf16": [
+              16,
+              24
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              16,
+              25
+            ],
+            "utf16": [
+              16,
+              25
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "pg-transaction-begin-is-not-atomic",
+      "engine": "postgresql",
+      "source": "BEGIN; SELECT CASE WHEN true THEN 1 END; COMMIT;",
+      "statements": [
+        {
+          "sql": "BEGIN",
+          "span": {
+            "bytes": [
+              0,
+              5
+            ],
+            "utf16": [
+              0,
+              5
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              6
+            ],
+            "utf16": [
+              0,
+              6
+            ]
+          }
+        },
+        {
+          "sql": "SELECT CASE WHEN true THEN 1 END",
+          "span": {
+            "bytes": [
+              7,
+              39
+            ],
+            "utf16": [
+              7,
+              39
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              7,
+              40
+            ],
+            "utf16": [
+              7,
+              40
+            ]
+          }
+        },
+        {
+          "sql": "COMMIT",
+          "span": {
+            "bytes": [
+              41,
+              47
+            ],
+            "utf16": [
+              41,
+              47
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              41,
+              48
+            ],
+            "utf16": [
+              41,
+              48
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "reject-source",
+      "engine": "mysql",
+      "source": "SOURCE example;",
+      "statements": [
+        {
+          "sql": "SOURCE example",
+          "span": {
+            "bytes": [
+              0,
+              14
+            ],
+            "utf16": [
+              0,
+              14
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              15
+            ],
+            "utf16": [
+              0,
+              15
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              6
+            ],
+            "utf16": [
+              0,
+              6
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-system",
+      "engine": "mysql",
+      "source": "SYSTEM example;",
+      "statements": [
+        {
+          "sql": "SYSTEM example",
+          "span": {
+            "bytes": [
+              0,
+              14
+            ],
+            "utf16": [
+              0,
+              14
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              15
+            ],
+            "utf16": [
+              0,
+              15
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              6
+            ],
+            "utf16": [
+              0,
+              6
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-tee",
+      "engine": "mysql",
+      "source": "TEE example;",
+      "statements": [
+        {
+          "sql": "TEE example",
+          "span": {
+            "bytes": [
+              0,
+              11
+            ],
+            "utf16": [
+              0,
+              11
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              12
+            ],
+            "utf16": [
+              0,
+              12
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              3
+            ],
+            "utf16": [
+              0,
+              3
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-notee",
+      "engine": "mysql",
+      "source": "NOTEE example;",
+      "statements": [
+        {
+          "sql": "NOTEE example",
+          "span": {
+            "bytes": [
+              0,
+              13
+            ],
+            "utf16": [
+              0,
+              13
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              14
+            ],
+            "utf16": [
+              0,
+              14
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              5
+            ],
+            "utf16": [
+              0,
+              5
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-pager",
+      "engine": "mysql",
+      "source": "PAGER example;",
+      "statements": [
+        {
+          "sql": "PAGER example",
+          "span": {
+            "bytes": [
+              0,
+              13
+            ],
+            "utf16": [
+              0,
+              13
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              14
+            ],
+            "utf16": [
+              0,
+              14
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              5
+            ],
+            "utf16": [
+              0,
+              5
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-nopager",
+      "engine": "mysql",
+      "source": "NOPAGER example;",
+      "statements": [
+        {
+          "sql": "NOPAGER example",
+          "span": {
+            "bytes": [
+              0,
+              15
+            ],
+            "utf16": [
+              0,
+              15
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              16
+            ],
+            "utf16": [
+              0,
+              16
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              7
+            ],
+            "utf16": [
+              0,
+              7
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-connect",
+      "engine": "mysql",
+      "source": "CONNECT example;",
+      "statements": [
+        {
+          "sql": "CONNECT example",
+          "span": {
+            "bytes": [
+              0,
+              15
+            ],
+            "utf16": [
+              0,
+              15
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              16
+            ],
+            "utf16": [
+              0,
+              16
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              7
+            ],
+            "utf16": [
+              0,
+              7
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-quit",
+      "engine": "mysql",
+      "source": "QUIT example;",
+      "statements": [
+        {
+          "sql": "QUIT example",
+          "span": {
+            "bytes": [
+              0,
+              12
+            ],
+            "utf16": [
+              0,
+              12
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              13
+            ],
+            "utf16": [
+              0,
+              13
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              4
+            ],
+            "utf16": [
+              0,
+              4
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-exit",
+      "engine": "mysql",
+      "source": "EXIT example;",
+      "statements": [
+        {
+          "sql": "EXIT example",
+          "span": {
+            "bytes": [
+              0,
+              12
+            ],
+            "utf16": [
+              0,
+              12
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              13
+            ],
+            "utf16": [
+              0,
+              13
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              4
+            ],
+            "utf16": [
+              0,
+              4
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-backslash-postgresql",
+      "engine": "postgresql",
+      "source": "\\d example",
+      "statements": [
+        {
+          "sql": "\\d example",
+          "span": {
+            "bytes": [
+              0,
+              10
+            ],
+            "utf16": [
+              0,
+              10
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              10
+            ],
+            "utf16": [
+              0,
+              10
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              2
+            ],
+            "utf16": [
+              0,
+              2
+            ]
+          },
+          "message": "psql and mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-backslash-mysql",
+      "engine": "mysql",
+      "source": "\\d example",
+      "statements": [
+        {
+          "sql": "\\d example",
+          "span": {
+            "bytes": [
+              0,
+              10
+            ],
+            "utf16": [
+              0,
+              10
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              10
+            ],
+            "utf16": [
+              0,
+              10
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              2
+            ],
+            "utf16": [
+              0,
+              2
+            ]
+          },
+          "message": "psql and mysql client commands are not supported."
+        }
+      ]
+    },
+    {
+      "id": "reject-copy-39",
+      "engine": "postgresql",
+      "source": "COPY example FROM STDIN;",
+      "statements": [
+        {
+          "sql": "COPY example FROM STDIN",
+          "span": {
+            "bytes": [
+              0,
+              23
+            ],
+            "utf16": [
+              0,
+              23
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              24
+            ],
+            "utf16": [
+              0,
+              24
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              23
+            ],
+            "utf16": [
+              0,
+              23
+            ]
+          },
+          "message": "Streaming COPY is not supported in SQL documents."
+        }
+      ]
+    },
+    {
+      "id": "reject-copy-40",
+      "engine": "postgresql",
+      "source": "COPY (SELECT 1) TO STDOUT;",
+      "statements": [
+        {
+          "sql": "COPY (SELECT 1) TO STDOUT",
+          "span": {
+            "bytes": [
+              0,
+              25
+            ],
+            "utf16": [
+              0,
+              25
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              26
+            ],
+            "utf16": [
+              0,
+              26
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              25
+            ],
+            "utf16": [
+              0,
+              25
+            ]
+          },
+          "message": "Streaming COPY is not supported in SQL documents."
+        }
+      ]
+    },
+    {
+      "id": "reject-local-41",
+      "engine": "mysql",
+      "source": "LOAD DATA LOCAL INFILE 'example.csv' INTO TABLE example;",
+      "statements": [
+        {
+          "sql": "LOAD DATA LOCAL INFILE 'example.csv' INTO TABLE example",
+          "span": {
+            "bytes": [
+              0,
+              55
+            ],
+            "utf16": [
+              0,
+              55
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              56
+            ],
+            "utf16": [
+              0,
+              56
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              55
+            ],
+            "utf16": [
+              0,
+              55
+            ]
+          },
+          "message": "LOAD DATA LOCAL is not supported in SQL documents."
+        }
+      ]
+    },
+    {
+      "id": "reject-local-42",
+      "engine": "mysql",
+      "source": "LOAD DATA LOW_PRIORITY LOCAL INFILE 'example.csv' INTO TABLE example;",
+      "statements": [
+        {
+          "sql": "LOAD DATA LOW_PRIORITY LOCAL INFILE 'example.csv' INTO TABLE example",
+          "span": {
+            "bytes": [
+              0,
+              68
+            ],
+            "utf16": [
+              0,
+              68
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              69
+            ],
+            "utf16": [
+              0,
+              69
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              68
+            ],
+            "utf16": [
+              0,
+              68
+            ]
+          },
+          "message": "LOAD DATA LOCAL is not supported in SQL documents."
+        }
+      ]
+    },
+    {
+      "id": "quoted-commands-safe",
+      "engine": "postgresql",
+      "source": "SELECT 'COPY t FROM STDIN', 'SOURCE x.sql', '\\d';",
+      "statements": [
+        {
+          "sql": "SELECT 'COPY t FROM STDIN', 'SOURCE x.sql', '\\d'",
+          "span": {
+            "bytes": [
+              0,
+              48
+            ],
+            "utf16": [
+              0,
+              48
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              49
+            ],
+            "utf16": [
+              0,
+              49
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "server-copy-retains-helper-policy",
+      "engine": "postgresql",
+      "source": "COPY example TO '/server/path';",
+      "statements": [
+        {
+          "sql": "COPY example TO '/server/path'",
+          "span": {
+            "bytes": [
+              0,
+              30
+            ],
+            "utf16": [
+              0,
+              30
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              31
+            ],
+            "utf16": [
+              0,
+              31
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "reject-pg-delimiter",
+      "engine": "postgresql",
+      "source": "DELIMITER $$\nSELECT 1$$",
+      "statements": [
+        {
+          "sql": "DELIMITER $$\nSELECT 1$$",
+          "span": {
+            "bytes": [
+              0,
+              23
+            ],
+            "utf16": [
+              0,
+              23
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              23
+            ],
+            "utf16": [
+              0,
+              23
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              12
+            ],
+            "utf16": [
+              0,
+              12
+            ]
+          },
+          "message": "DELIMITER is a MySQL script directive."
+        }
+      ]
+    },
+    {
+      "id": "reject-empty-delimiter",
+      "engine": "mysql",
+      "source": "DELIMITER\nSELECT 1;",
+      "statements": [
+        {
+          "sql": "DELIMITER\nSELECT 1",
+          "span": {
+            "bytes": [
+              0,
+              18
+            ],
+            "utf16": [
+              0,
+              18
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              19
+            ],
+            "utf16": [
+              0,
+              19
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              9
+            ],
+            "utf16": [
+              0,
+              9
+            ]
+          },
+          "message": "Place DELIMITER and a delimiter without spaces on their own line between statements."
+        }
+      ]
+    },
+    {
+      "id": "reject-spaced-delimiter",
+      "engine": "mysql",
+      "source": "DELIMITER x y\nSELECT 1;",
+      "statements": [
+        {
+          "sql": "DELIMITER x y\nSELECT 1",
+          "span": {
+            "bytes": [
+              0,
+              22
+            ],
+            "utf16": [
+              0,
+              22
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              0,
+              23
+            ],
+            "utf16": [
+              0,
+              23
+            ]
+          }
+        }
+      ],
+      "diagnostics": [
+        {
+          "span": {
+            "bytes": [
+              0,
+              13
+            ],
+            "utf16": [
+              0,
+              13
+            ]
+          },
+          "message": "Place DELIMITER and a delimiter without spaces on their own line between statements."
+        }
+      ]
+    },
+    {
+      "id": "mysql-lowercase-directive-crlf",
+      "engine": "mysql",
+      "source": "delimiter //\r\nCREATE PROCEDURE p() BEGIN SELECT 1; END//",
+      "statements": [
+        {
+          "sql": "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+          "span": {
+            "bytes": [
+              14,
+              54
+            ],
+            "utf16": [
+              14,
+              54
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              14,
+              56
+            ],
+            "utf16": [
+              14,
+              56
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "id": "mysql-unicode-directive-case",
+      "engine": "mysql",
+      "source": "DELIMıTER //\nSELECT 1//",
+      "statements": [
+        {
+          "sql": "SELECT 1",
+          "span": {
+            "bytes": [
+              14,
+              22
+            ],
+            "utf16": [
+              13,
+              21
+            ]
+          },
+          "editorSpan": {
+            "bytes": [
+              14,
+              24
+            ],
+            "utf16": [
+              13,
+              23
+            ]
+          }
+        }
+      ],
+      "diagnostics": []
+    }
+  ],
+  "resolutions": [
+    {
+      "id": "caret-postgresql-0",
+      "engine": "postgresql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        0,
+        0
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT '😀'",
+        "span": {
+          "bytes": [
+            0,
+            13
+          ],
+          "utf16": [
+            0,
+            11
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT '😀'",
+            "span": {
+              "bytes": [
+                0,
+                13
+              ],
+              "utf16": [
+                0,
+                11
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-postgresql-11",
+      "engine": "postgresql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        11,
+        11
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT '😀'",
+        "span": {
+          "bytes": [
+            0,
+            13
+          ],
+          "utf16": [
+            0,
+            11
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT '😀'",
+            "span": {
+              "bytes": [
+                0,
+                13
+              ],
+              "utf16": [
+                0,
+                11
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-postgresql-12",
+      "engine": "postgresql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        12,
+        12
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT '😀'",
+        "span": {
+          "bytes": [
+            0,
+            13
+          ],
+          "utf16": [
+            0,
+            11
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT '😀'",
+            "span": {
+              "bytes": [
+                0,
+                13
+              ],
+              "utf16": [
+                0,
+                11
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-second-postgresql-14",
+      "engine": "postgresql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        14,
+        14
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 'people'",
+        "span": {
+          "bytes": [
+            16,
+            31
+          ],
+          "utf16": [
+            14,
+            29
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 'people'",
+            "span": {
+              "bytes": [
+                16,
+                31
+              ],
+              "utf16": [
+                14,
+                29
+              ]
+            }
+          }
+        ],
+        "firstLine": 3,
+        "lastLine": 3,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-second-postgresql-30",
+      "engine": "postgresql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        30,
+        30
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 'people'",
+        "span": {
+          "bytes": [
+            16,
+            31
+          ],
+          "utf16": [
+            14,
+            29
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 'people'",
+            "span": {
+              "bytes": [
+                16,
+                31
+              ],
+              "utf16": [
+                14,
+                29
+              ]
+            }
+          }
+        ],
+        "firstLine": 3,
+        "lastLine": 3,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "whitespace-gap-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        13,
+        13
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 'people'",
+        "span": {
+          "bytes": [
+            16,
+            31
+          ],
+          "utf16": [
+            14,
+            29
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 'people'",
+            "span": {
+              "bytes": [
+                16,
+                31
+              ],
+              "utf16": [
+                14,
+                29
+              ]
+            }
+          }
+        ],
+        "firstLine": 3,
+        "lastLine": 3,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-adjacent-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT 1;SELECT 2;",
+      "selectionUTF16": [
+        9,
+        9
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 2",
+        "span": {
+          "bytes": [
+            9,
+            17
+          ],
+          "utf16": [
+            9,
+            17
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                9,
+                17
+              ],
+              "utf16": [
+                9,
+                17
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "selection-trim-postgresql",
+      "engine": "postgresql",
+      "source": "\t SELECT 1;\r\n SELECT 2;  ",
+      "selectionUTF16": [
+        0,
+        25
+      ],
+      "script": false,
+      "expected": {
+        "kind": "selection",
+        "sourceSQL": "SELECT 1;\r\n SELECT 2;",
+        "span": {
+          "bytes": [
+            2,
+            23
+          ],
+          "utf16": [
+            2,
+            23
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 1",
+            "span": {
+              "bytes": [
+                2,
+                10
+              ],
+              "utf16": [
+                2,
+                10
+              ]
+            }
+          },
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                14,
+                22
+              ],
+              "utf16": [
+                14,
+                22
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 2,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "partial-selection-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT 123 + 456;",
+      "selectionUTF16": [
+        7,
+        10
+      ],
+      "script": false,
+      "expected": {
+        "kind": "selection",
+        "sourceSQL": "123",
+        "span": {
+          "bytes": [
+            7,
+            10
+          ],
+          "utf16": [
+            7,
+            10
+          ]
+        },
+        "statements": [
+          {
+            "sql": "123",
+            "span": {
+              "bytes": [
+                7,
+                10
+              ],
+              "utf16": [
+                7,
+                10
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "empty-selection-postgresql",
+      "engine": "postgresql",
+      "source": " \r\n  ",
+      "selectionUTF16": [
+        0,
+        5
+      ],
+      "script": false,
+      "expected": null
+    },
+    {
+      "id": "clamped-selection-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT 1",
+      "selectionUTF16": [
+        0,
+        100
+      ],
+      "script": false,
+      "expected": {
+        "kind": "selection",
+        "sourceSQL": "SELECT 1",
+        "span": {
+          "bytes": [
+            0,
+            8
+          ],
+          "utf16": [
+            0,
+            8
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 1",
+            "span": {
+              "bytes": [
+                0,
+                8
+              ],
+              "utf16": [
+                0,
+                8
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "invalid-start-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT 1",
+      "selectionUTF16": [
+        100,
+        100
+      ],
+      "script": false,
+      "expected": null
+    },
+    {
+      "id": "script-ignores-selection-postgresql",
+      "engine": "postgresql",
+      "source": "SELECT 1; SELECT 2;",
+      "selectionUTF16": [
+        100,
+        100
+      ],
+      "script": true,
+      "expected": {
+        "kind": "script",
+        "sourceSQL": "SELECT 1; SELECT 2;",
+        "span": {
+          "bytes": [
+            0,
+            19
+          ],
+          "utf16": [
+            0,
+            19
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 1",
+            "span": {
+              "bytes": [
+                0,
+                8
+              ],
+              "utf16": [
+                0,
+                8
+              ]
+            }
+          },
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                10,
+                18
+              ],
+              "utf16": [
+                10,
+                18
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-mysql-0",
+      "engine": "mysql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        0,
+        0
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT '😀'",
+        "span": {
+          "bytes": [
+            0,
+            13
+          ],
+          "utf16": [
+            0,
+            11
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT '😀'",
+            "span": {
+              "bytes": [
+                0,
+                13
+              ],
+              "utf16": [
+                0,
+                11
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-mysql-11",
+      "engine": "mysql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        11,
+        11
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT '😀'",
+        "span": {
+          "bytes": [
+            0,
+            13
+          ],
+          "utf16": [
+            0,
+            11
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT '😀'",
+            "span": {
+              "bytes": [
+                0,
+                13
+              ],
+              "utf16": [
+                0,
+                11
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-mysql-12",
+      "engine": "mysql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        12,
+        12
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT '😀'",
+        "span": {
+          "bytes": [
+            0,
+            13
+          ],
+          "utf16": [
+            0,
+            11
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT '😀'",
+            "span": {
+              "bytes": [
+                0,
+                13
+              ],
+              "utf16": [
+                0,
+                11
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-second-mysql-14",
+      "engine": "mysql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        14,
+        14
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 'people'",
+        "span": {
+          "bytes": [
+            16,
+            31
+          ],
+          "utf16": [
+            14,
+            29
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 'people'",
+            "span": {
+              "bytes": [
+                16,
+                31
+              ],
+              "utf16": [
+                14,
+                29
+              ]
+            }
+          }
+        ],
+        "firstLine": 3,
+        "lastLine": 3,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-second-mysql-30",
+      "engine": "mysql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        30,
+        30
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 'people'",
+        "span": {
+          "bytes": [
+            16,
+            31
+          ],
+          "utf16": [
+            14,
+            29
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 'people'",
+            "span": {
+              "bytes": [
+                16,
+                31
+              ],
+              "utf16": [
+                14,
+                29
+              ]
+            }
+          }
+        ],
+        "firstLine": 3,
+        "lastLine": 3,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "whitespace-gap-mysql",
+      "engine": "mysql",
+      "source": "SELECT '😀';\n\nSELECT 'people';",
+      "selectionUTF16": [
+        13,
+        13
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 'people'",
+        "span": {
+          "bytes": [
+            16,
+            31
+          ],
+          "utf16": [
+            14,
+            29
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 'people'",
+            "span": {
+              "bytes": [
+                16,
+                31
+              ],
+              "utf16": [
+                14,
+                29
+              ]
+            }
+          }
+        ],
+        "firstLine": 3,
+        "lastLine": 3,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "caret-adjacent-mysql",
+      "engine": "mysql",
+      "source": "SELECT 1;SELECT 2;",
+      "selectionUTF16": [
+        9,
+        9
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 2",
+        "span": {
+          "bytes": [
+            9,
+            17
+          ],
+          "utf16": [
+            9,
+            17
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                9,
+                17
+              ],
+              "utf16": [
+                9,
+                17
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "selection-trim-mysql",
+      "engine": "mysql",
+      "source": "\t SELECT 1;\r\n SELECT 2;  ",
+      "selectionUTF16": [
+        0,
+        25
+      ],
+      "script": false,
+      "expected": {
+        "kind": "selection",
+        "sourceSQL": "SELECT 1;\r\n SELECT 2;",
+        "span": {
+          "bytes": [
+            2,
+            23
+          ],
+          "utf16": [
+            2,
+            23
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 1",
+            "span": {
+              "bytes": [
+                2,
+                10
+              ],
+              "utf16": [
+                2,
+                10
+              ]
+            }
+          },
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                14,
+                22
+              ],
+              "utf16": [
+                14,
+                22
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 2,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "partial-selection-mysql",
+      "engine": "mysql",
+      "source": "SELECT 123 + 456;",
+      "selectionUTF16": [
+        7,
+        10
+      ],
+      "script": false,
+      "expected": {
+        "kind": "selection",
+        "sourceSQL": "123",
+        "span": {
+          "bytes": [
+            7,
+            10
+          ],
+          "utf16": [
+            7,
+            10
+          ]
+        },
+        "statements": [
+          {
+            "sql": "123",
+            "span": {
+              "bytes": [
+                7,
+                10
+              ],
+              "utf16": [
+                7,
+                10
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "empty-selection-mysql",
+      "engine": "mysql",
+      "source": " \r\n  ",
+      "selectionUTF16": [
+        0,
+        5
+      ],
+      "script": false,
+      "expected": null
+    },
+    {
+      "id": "clamped-selection-mysql",
+      "engine": "mysql",
+      "source": "SELECT 1",
+      "selectionUTF16": [
+        0,
+        100
+      ],
+      "script": false,
+      "expected": {
+        "kind": "selection",
+        "sourceSQL": "SELECT 1",
+        "span": {
+          "bytes": [
+            0,
+            8
+          ],
+          "utf16": [
+            0,
+            8
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 1",
+            "span": {
+              "bytes": [
+                0,
+                8
+              ],
+              "utf16": [
+                0,
+                8
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "invalid-start-mysql",
+      "engine": "mysql",
+      "source": "SELECT 1",
+      "selectionUTF16": [
+        100,
+        100
+      ],
+      "script": false,
+      "expected": null
+    },
+    {
+      "id": "script-ignores-selection-mysql",
+      "engine": "mysql",
+      "source": "SELECT 1; SELECT 2;",
+      "selectionUTF16": [
+        100,
+        100
+      ],
+      "script": true,
+      "expected": {
+        "kind": "script",
+        "sourceSQL": "SELECT 1; SELECT 2;",
+        "span": {
+          "bytes": [
+            0,
+            19
+          ],
+          "utf16": [
+            0,
+            19
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 1",
+            "span": {
+              "bytes": [
+                0,
+                8
+              ],
+              "utf16": [
+                0,
+                8
+              ]
+            }
+          },
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                10,
+                18
+              ],
+              "utf16": [
+                10,
+                18
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "mysql-routine-caret-53",
+      "engine": "mysql",
+      "source": "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\nDELIMITER ;\nSELECT 2;",
+      "selectionUTF16": [
+        53,
+        53
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+        "span": {
+          "bytes": [
+            13,
+            53
+          ],
+          "utf16": [
+            13,
+            53
+          ]
+        },
+        "statements": [
+          {
+            "sql": "CREATE PROCEDURE p() BEGIN SELECT 1",
+            "span": {
+              "bytes": [
+                13,
+                48
+              ],
+              "utf16": [
+                13,
+                48
+              ]
+            }
+          },
+          {
+            "sql": "END",
+            "span": {
+              "bytes": [
+                50,
+                53
+              ],
+              "utf16": [
+                50,
+                53
+              ]
+            }
+          }
+        ],
+        "firstLine": 2,
+        "lastLine": 2,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "mysql-routine-caret-54",
+      "engine": "mysql",
+      "source": "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\nDELIMITER ;\nSELECT 2;",
+      "selectionUTF16": [
+        54,
+        54
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+        "span": {
+          "bytes": [
+            13,
+            53
+          ],
+          "utf16": [
+            13,
+            53
+          ]
+        },
+        "statements": [
+          {
+            "sql": "CREATE PROCEDURE p() BEGIN SELECT 1",
+            "span": {
+              "bytes": [
+                13,
+                48
+              ],
+              "utf16": [
+                13,
+                48
+              ]
+            }
+          },
+          {
+            "sql": "END",
+            "span": {
+              "bytes": [
+                50,
+                53
+              ],
+              "utf16": [
+                50,
+                53
+              ]
+            }
+          }
+        ],
+        "firstLine": 2,
+        "lastLine": 2,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "mysql-routine-caret-55",
+      "engine": "mysql",
+      "source": "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\nDELIMITER ;\nSELECT 2;",
+      "selectionUTF16": [
+        55,
+        55
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+        "span": {
+          "bytes": [
+            13,
+            53
+          ],
+          "utf16": [
+            13,
+            53
+          ]
+        },
+        "statements": [
+          {
+            "sql": "CREATE PROCEDURE p() BEGIN SELECT 1",
+            "span": {
+              "bytes": [
+                13,
+                48
+              ],
+              "utf16": [
+                13,
+                48
+              ]
+            }
+          },
+          {
+            "sql": "END",
+            "span": {
+              "bytes": [
+                50,
+                53
+              ],
+              "utf16": [
+                50,
+                53
+              ]
+            }
+          }
+        ],
+        "firstLine": 2,
+        "lastLine": 2,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "mysql-full-routine-script",
+      "engine": "mysql",
+      "source": "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\nDELIMITER ;\nSELECT 2;",
+      "selectionUTF16": [
+        0,
+        0
+      ],
+      "script": true,
+      "expected": {
+        "kind": "script",
+        "sourceSQL": "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END//\nDELIMITER ;\nSELECT 2;",
+        "span": {
+          "bytes": [
+            0,
+            77
+          ],
+          "utf16": [
+            0,
+            77
+          ]
+        },
+        "statements": [
+          {
+            "sql": "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+            "span": {
+              "bytes": [
+                13,
+                53
+              ],
+              "utf16": [
+                13,
+                53
+              ]
+            }
+          },
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                68,
+                76
+              ],
+              "utf16": [
+                68,
+                76
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 4,
+        "diagnostic": null
+      }
+    },
+    {
+      "id": "selected-incomplete-diagnostic",
+      "engine": "postgresql",
+      "source": "\r\nSELECT 1;\r\nSELECT '😀",
+      "selectionUTF16": [
+        13,
+        13
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT '😀",
+        "span": {
+          "bytes": [
+            13,
+            25
+          ],
+          "utf16": [
+            13,
+            23
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT '😀",
+            "span": {
+              "bytes": [
+                13,
+                25
+              ],
+              "utf16": [
+                13,
+                23
+              ]
+            }
+          }
+        ],
+        "firstLine": 3,
+        "lastLine": 3,
+        "diagnostic": {
+          "span": {
+            "bytes": [
+              20,
+              25
+            ],
+            "utf16": [
+              20,
+              23
+            ]
+          },
+          "message": "Unterminated quoted value or identifier."
+        }
+      }
+    },
+    {
+      "id": "selected-client-diagnostic",
+      "engine": "mysql",
+      "source": "SELECT 1; SOURCE x.sql;",
+      "selectionUTF16": [
+        10,
+        10
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SOURCE x.sql",
+        "span": {
+          "bytes": [
+            10,
+            22
+          ],
+          "utf16": [
+            10,
+            22
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SOURCE x.sql",
+            "span": {
+              "bytes": [
+                10,
+                22
+              ],
+              "utf16": [
+                10,
+                22
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": {
+          "span": {
+            "bytes": [
+              10,
+              16
+            ],
+            "utf16": [
+              10,
+              16
+            ]
+          },
+          "message": "mysql client commands are not supported."
+        }
+      }
+    },
+    {
+      "id": "lone-cr-fragment-lines",
+      "engine": "postgresql",
+      "source": "SELECT 1;\rSELECT 2;",
+      "selectionUTF16": [
+        10,
+        10
+      ],
+      "script": false,
+      "expected": {
+        "kind": "statement",
+        "sourceSQL": "SELECT 2",
+        "span": {
+          "bytes": [
+            10,
+            18
+          ],
+          "utf16": [
+            10,
+            18
+          ]
+        },
+        "statements": [
+          {
+            "sql": "SELECT 2",
+            "span": {
+              "bytes": [
+                10,
+                18
+              ],
+              "utf16": [
+                10,
+                18
+              ]
+            }
+          }
+        ],
+        "firstLine": 1,
+        "lastLine": 1,
+        "diagnostic": null
+      }
+    }
+  ],
+  "coordinates": {
+    "source": "A😀é\r\nβ\rZ\n",
+    "positions": [
+      {
+        "byte": 0,
+        "utf16": 0,
+        "lsp": {
+          "line": 0,
+          "character": 0
+        }
+      },
+      {
+        "byte": 1,
+        "utf16": 1,
+        "lsp": {
+          "line": 0,
+          "character": 1
+        }
+      },
+      {
+        "byte": 5,
+        "utf16": 3,
+        "lsp": {
+          "line": 0,
+          "character": 3
+        }
+      },
+      {
+        "byte": 6,
+        "utf16": 4,
+        "lsp": {
+          "line": 0,
+          "character": 4
+        }
+      },
+      {
+        "byte": 8,
+        "utf16": 5,
+        "lsp": {
+          "line": 0,
+          "character": 5
+        }
+      },
+      {
+        "byte": 9,
+        "utf16": 6,
+        "lsp": null
+      },
+      {
+        "byte": 10,
+        "utf16": 7,
+        "lsp": {
+          "line": 1,
+          "character": 0
+        }
+      },
+      {
+        "byte": 12,
+        "utf16": 8,
+        "lsp": {
+          "line": 1,
+          "character": 1
+        }
+      },
+      {
+        "byte": 13,
+        "utf16": 9,
+        "lsp": {
+          "line": 2,
+          "character": 0
+        }
+      },
+      {
+        "byte": 14,
+        "utf16": 10,
+        "lsp": {
+          "line": 2,
+          "character": 1
+        }
+      },
+      {
+        "byte": 15,
+        "utf16": 11,
+        "lsp": {
+          "line": 3,
+          "character": 0
+        }
+      }
+    ],
+    "invalidUTF16": [
+      2,
+      12
+    ],
+    "invalidBytes": [
+      2,
+      3,
+      4,
+      16
+    ],
+    "invalidLSP": [
+      {
+        "line": 0,
+        "character": 2
+      },
+      {
+        "line": 0,
+        "character": 6
+      },
+      {
+        "line": 1,
+        "character": 2
+      },
+      {
+        "line": 4,
+        "character": 0
+      }
+    ]
+  },
+  "adapter": {
+    "source": "DELIMITER //\r\nSELECT '😀é'\r\n + missing//",
+    "engine": "mysql",
+    "statement": {
+      "sql": "SELECT '😀é'\r\n + missing",
+      "span": {
+        "bytes": [
+          14,
+          42
+        ],
+        "utf16": [
+          14,
+          39
+        ]
+      },
+      "editorSpan": {
+        "bytes": [
+          14,
+          44
+        ],
+        "utf16": [
+          14,
+          41
+        ]
+      }
+    },
+    "positions": [
+      {
+        "position": 0,
+        "byte": 14,
+        "utf16": 14
+      },
+      {
+        "position": 1,
+        "byte": 14,
+        "utf16": 14
+      },
+      {
+        "position": 8,
+        "byte": 21,
+        "utf16": 21
+      },
+      {
+        "position": 9,
+        "byte": 22,
+        "utf16": 22
+      },
+      {
+        "position": 10,
+        "byte": 26,
+        "utf16": 24
+      },
+      {
+        "position": 11,
+        "byte": 27,
+        "utf16": 25
+      },
+      {
+        "position": 25,
+        "byte": 42,
+        "utf16": 39
+      },
+      {
+        "position": 999,
+        "byte": 42,
+        "utf16": 39
+      }
+    ]
+  }
+}

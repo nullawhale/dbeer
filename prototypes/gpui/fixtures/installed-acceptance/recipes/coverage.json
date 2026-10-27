@@ -1,0 +1,4588 @@
+{
+  "schemaVersion": 1,
+  "kind": "installed-acceptance-recipe-coverage",
+  "registrySha256": "beb8ad978b692af7e5c6b9f1b5572f8472a3d4ac97b8463c090e4e59c76a197a",
+  "nativeObserved": false,
+  "selectorIntegrationReviewed": false,
+  "runtimeExecuted": false,
+  "scenarioCount": 57,
+  "assertionCount": 190,
+  "nativeCellCount": 171,
+  "status": "source-plan-only-task32-open",
+  "requirements": {
+    "native-bindings": "Observe each exact previous/candidate artifact's real UIA/AT-SPI roles, names, hierarchy, actions and optional proven native IDs. Source ElementIds cannot supply native IDs. Check original window/modal lifetime before every action; new modal lifetime gets a new key. Typed NULL/text NULL require semantic kind/description, not equal text hashes alone.",
+    "captured-uuid": "Bind assert-profile-policy profileId from a genuinely new UI-created captured UUID, validated against the current isolated library. Workflow now resolves these through genuine before/after discovery, current isolated membership and capture epochs; never substitute a literal UUID.",
+    "expected-metadata": "Add exact expected columns to observer and native result assertions; compare complete ordinal/name/engine/type/OID/encoding AND rows against recipes/oracle.py. Workflow now binds independent snapshot/export/effect metadata oracles; explicit-row assertions require nonempty independently supplied columns.",
+    "fixed-inputs": "Stage only enumerated fixture inputs under the owned private inputs directory and register their exact fixed input keys. Workflow now resolves enumerated bounded corpus strings and explicitly staged pinned shared sources. Native range/language consumers still require their concrete join.",
+    "source-state": "Assert exact persisted expected subsets/deltas and UI live typed states: UUID membership/order/selected stable IDs, source/title hashes, history entries, settings DTOs, disconnected state and absence of live session/results/secrets. capture-state equality alone cannot establish new expected values or in-memory carets/Undo.",
+    "lifecycle": "Retain exact GUI children and canonical owner across reviewed common Close/restart. Fresh fixed corrupt/future profile/workspace/appearance/library/shortcut subfixtures now use exclusive private roots, original file handles, normal subfixture Close and unchanged main-state restoration. Native selectors/actions remain unobserved. Never use force-stop as rollback/flush evidence.",
+    "credential-update": "Extend owned credential journal with conditional expected-prior-hash UI update/keep/empty/delete intents and exact observed terminal hashes, including metadata failure rollback. Workflow now supports first-write and conditional current-owned-hash update/delete intents with explicit terminal write/delete/keep/rollback verification. Never adopt a collided/unowned credential or read password controls.",
+    "file-fault": "Held original file/parent identities and bytes, fresh exact recovery backup discovery and Windows deny-write/delete-sharing barriers are integrated. Original receipts allow explicit app replacement; the separate barrier blocks it. Ambiguous publication, backup-failure and safe external conflict branches still need their exact owned adapters/observations. No arbitrary path writes or broad cleanup; recovery is explicit.",
+    "startup-pipe": "Add exact GUI startup modes with bounded anonymous stdin pipe: ordinary unreadable/blocking pipe, explicit synthetic connect, 65537-byte overflow and incomplete timeout. Credentials remain pipe-only; independently count connections/fixture effects and inspect sanitized process metadata without dumping argv/env.",
+    "session-observer": "Fixed direct observers now capture original server/image plus physical session-set deltas; PostgreSQL includes backend creation and exact idle/open/failed transaction state. MySQL PROCESSLIST supplies neither creation time nor transaction ownership, and those fields are never invented. Exact per-tab/service role correlation, temp state and MySQL transaction witnesses remain required.",
+    "owned-effects": "Install only reviewed fixed acceptance-effects SQL into exact OwnedDatabases receipts with original nonce label and synthetic MySQL grants, then expose fixed readonly effect queries. OwnedDatabases.setup_acceptance_effects now accepts only its original exact receipt and one-shot fixed pinned source. Workflow effects-setup and fixed readonly effect/receipt oracles consume this API; no arbitrary request SQL is authorized.",
+    "script-trace": "Prove the exact frozen execution behavior using independently expected original native source/range/result identities and fixed ordered server receipts. Existing success/first-error/middle-error receipts prove which later fixed writes were skipped; an internal request trace is not required for that behavior. Zero read-only work needs an independent bounded query-delta witness, not merely zero final effects or before/after sessions. Do not log SQL/results or require AppKit-specific instrumentation.",
+    "fault-boundary": "Installed SQL COMMIT uses an original one-connection opaque relay: hold before one fixed Commit, independently observe effect1, drop exact sockets and require original Unknown/retry-disabled/stableeffect1/sessiongone. Apply explicitly pins original catalog, admits one fresh native-prepared second lease/review, gates only its exact reverse chunks and releases each prior chunk only after fresh effect0; effect1+exactrows holds/drops current+later bytes while catalog survives. Exact trusted paired source provenance/sequential adapters are checked. Native lease/role observations and precise other fault phases remain required; no fake peer or retry while unknown.",
+    "helper-lifetime": "Installed helper death still requires the actual packaged GUI-owned original OS handle/creation/image receipt; do not discover descendants/PIDs. Separate native real-Go tests retain the runner source file identity/hash and original BackendClient Child, observe physical sleep, retire/reap it, verify Unknown/no reconnect and exact DB-session loss while observer survives. Those native headless tests cannot supply installed-helper ownership evidence.",
+    "text-range": "Guarded original UIA TextPattern/AT-SPI Text selection and UTF-16 reads now compare fixed independent source/range hashes, reject split surrogates and retain observed native identity. UIA locates provider-defined Character endpoints by measured UTF-16 prefixes. Real keyboard/Undo/IME, visible text-run geometry, scrolling and gutter ownership remain native gates.",
+    "typed-grid": "Original native semantic reads now compare independently expected description/name hashes, enabled/readonly/selection and realized row/column/span/count fields; unsupported native fields refuse. Windows description property must be independently observed, not silently aliased. Full original typed editor/Preview/Apply procedures and row/result/snapshot correlation remain required; text NULL cannot stand for SQL NULL.",
+    "server-browse": "Add fixed readonly page/filter/catalog observers and exact captured table identity; nine filters must compare source-derived selected PK arrays/counts under stable PK tie-break order, including invalid typed input with zero request delta. UI row count alone is insufficient.",
+    "clipboard": "Manual-owned native clipboard capture/restore with enumerated exact MIME formats, typed ordinal/null/binary JSON and independently encoded TSV; no global clipboard operations exist in this harness. Do not infer clipboard success from semantic Copy invocation.",
+    "language-oracle": "Join exact shared parser/completion/signature expected fixtures and independently expected scope/ranking/quoting/UTF-16 spans to original native UI. Retain owned LSP process lifetime/environment and stale-result behavior where the frozen assertion requires them. Missing internal protocol instrumentation alone is not a parity failure; typing performs zero DB work only with an independent query-delta witness, not final effects alone.",
+    "settings-oracle": "Complete independent appearance/shortcut/library DTOs, fixed normalized RGBA/scopes/styles including explicit empty font style, genuine committed imported UUID discovery and latest full DTO checks after common Close/restart are integrated. Compare actual native controls/rendered palettes and all frozen shared imports/recovery behaviors to independent expectations. An internal held-publication/reservation trace is not an added frozen assertion; group existence or a captured app-written baseline is insufficient.",
+    "native-manual": "Retain actual per-target keyboard/Return/Escape/Undo, IME/AltGr/dead key, file chooser, screen-reader, focus/hover/contrast/DPI and window/OS appearance observations where required. Native semantic Invoke/SetValue and headless tests cannot supply them; no fabricated/manual auto-pass flag.",
+    "package-evidence": "Join exact trusted prior/candidate archive/manifest/build/native resources, runtime/GPU/standard-user dependency observations, safe integration/remove file receipts and concurrent old/new ownership checks. Existing core verifies much of this but assertion join must be explicit.",
+    "matrix-join": "Strict completed-summary consumers cover native Task30 Rust default/native-smoke with all thirteen exact portable faults once per mode, all seven versioned DB/TLS stages including original real-helper death/catalog/signature assertions, the same-owned-pair supported Go race stage with all ten exact critical assertions and actual Mac SwiftUI/Go/Swift Testing completion. Installed/manual/physical final aggregate producers remain missing. All171 exact native cells are required; zero/partial/duplicate/skipped/headless summaries cannot become native acceptance."
+  },
+  "sharedExpectedData": {
+    "profiles": [
+      "protocol/fixtures/profile-transfer",
+      "prototypes/gpui/fixtures/installed-acceptance/recipes/input-corpus.json"
+    ],
+    "editor": [
+      "protocol/fixtures/sql-execution/v1.json",
+      "prototypes/gpui/fixtures/installed-acceptance/recipes/input-corpus.json"
+    ],
+    "language": [
+      "protocol/fixtures/completion-matches.json",
+      "protocol/fixtures/signature-help.json",
+      "prototypes/gpui/fixtures/signature-help/cases.json"
+    ],
+    "theme": [
+      "protocol/fixtures/gpui-theme-parity/cases.json",
+      "prototypes/gpui/fixtures/settings-appearance/selections.json"
+    ],
+    "commands": [
+      "prototypes/gpui/fixtures/shortcut-settings/capture-safety.json",
+      "prototypes/gpui/fixtures/shortcuts/preferences-v1.json"
+    ]
+  },
+  "independentExpectedManifest": "expected-values.json",
+  "additionalEffectSetup": "effects/plan.json",
+  "scenarios": [
+    {
+      "feature": "F01",
+      "scenarioId": "INSTALLED-F01",
+      "procedure": [
+        {
+          "action": "Create a PostgreSQL profile; choose a synthetic CA file and set explicit policy. Save, edit, Save and Connect, disconnect, then delete. Repeat for MySQL.",
+          "assertions": [
+            "Save stays disconnected.",
+            "Save and Connect connects once.",
+            "TLS/policy fields survive edits.",
+            "Cancel preserves the original profile."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F01-S01-A01",
+          "frozenAssertion": "Save stays disconnected.",
+          "independentExpectedOutcome": "After metadata-only Save, both independent servers have zero product sessions and the UI-created profile has no reserved credential.",
+          "requires": [
+            "captured-uuid",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "create-disconnected-postgresql",
+            "create-disconnected-mysql"
+          ]
+        },
+        {
+          "id": "F01-S01-A02",
+          "frozenAssertion": "Save and Connect connects once.",
+          "independentExpectedOutcome": "Save & Connect creates exactly one new physical product session for the captured profile, no SQL effects, then Disconnect returns its count to zero.",
+          "requires": [
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F01-S01-A03",
+          "frozenAssertion": "TLS/policy fields survive edits.",
+          "independentExpectedOutcome": "Saved original UUID has readonly=true, environment=development, sslMode=verify-full and the exact owned CA path after name edits on each engine.",
+          "requires": [
+            "captured-uuid",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "create-disconnected-postgresql",
+            "create-disconnected-mysql"
+          ]
+        },
+        {
+          "id": "F01-S01-A04",
+          "frozenAssertion": "Cancel preserves the original profile.",
+          "independentExpectedOutcome": "Before/after canceled edit typed profile/workspace hashes and already-owned credential hash are equal.",
+          "requires": [
+            "credential-update",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "cancel-profile-edit"
+          ]
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F02",
+      "scenarioId": "INSTALLED-F02",
+      "procedure": [
+        {
+          "action": "Create two profiles and three SQL tabs. Reorder tabs, select the middle tab/profile, restart, then remove the first profile.",
+          "assertions": [
+            "UUIDs and tab order survive.",
+            "selection follows stable identity rather than vector position.",
+            "every restored tab is disconnected."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F02-S01-A01",
+          "frozenAssertion": "UUIDs and tab order survive.",
+          "independentExpectedOutcome": "Record actual two profile/three document UUIDs; after native reorder and normal restart the exact ordered UUID list and source hashes equal the chosen permutation.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F02-S01-A02",
+          "frozenAssertion": "selection follows stable identity rather than vector position.",
+          "independentExpectedOutcome": "Select captured middle document/profile ID; remove first profile and compare selected ID to its original capture, not a new vector offset.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F02-S01-A03",
+          "frozenAssertion": "every restored tab is disconnected.",
+          "independentExpectedOutcome": "All restored documents expose disconnected state and both physical server product connection counts are zero before explicit connect.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F03",
+      "scenarioId": "INSTALLED-F03",
+      "procedure": [
+        {
+          "action": "Create a new profile without touching policy. Reload an existing development/readonly profile; import each explicit environment/readonly pair and a legacy record.",
+          "assertions": [
+            "New product profile is unspecified/readOnly=false and verify-full TLS.",
+            "existing/imported explicit policy stays unchanged.",
+            "legacy rules stay format-specific."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F03-S01-A01",
+          "frozenAssertion": "New product profile is unspecified/readOnly=false and verify-full TLS.",
+          "independentExpectedOutcome": "Untouched newly UI-created original profile persists readonly=false, environment=unspecified, sslMode=verify-full for both engines.",
+          "requires": [
+            "captured-uuid",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F03-S01-A02",
+          "frozenAssertion": "existing/imported explicit policy stays unchanged.",
+          "independentExpectedOutcome": "For each of eight explicit environment/readOnly pairs, import keeps the exact pair; existing development/true record is byte-policy unchanged.",
+          "requires": [
+            "captured-uuid",
+            "fixed-inputs",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F03-S01-A03",
+          "frozenAssertion": "legacy rules stay format-specific.",
+          "independentExpectedOutcome": "Portable v1 missing/null policy yields unspecified/false; legacy private-library migration uses its separately frozen rules and preserves explicit values.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F04",
+      "scenarioId": "INSTALLED-F04",
+      "procedure": [
+        {
+          "action": "Save a profile with a synthetic password, update it with keep/empty/replacement states, inject metadata failure, then inject credential delete and rollback failures.",
+          "assertions": [
+            "Missing differs from empty.",
+            "metadata failure restores the prior credential.",
+            "rollback failure is surfaced.",
+            "no password is written to JSON or diagnostics."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F04-S01-A01",
+          "frozenAssertion": "Missing differs from empty.",
+          "independentExpectedOutcome": "Fresh absent credential verifies absent=true/empty=false; separate UI empty write verifies absent=false/empty=true and nonempty verifies exact known hash.",
+          "requires": [
+            "credential-update",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "credential-first-write-postgresql-nonempty",
+            "credential-first-write-postgresql-empty",
+            "credential-first-write-mysql-nonempty",
+            "credential-first-write-mysql-empty"
+          ]
+        },
+        {
+          "id": "F04-S01-A02",
+          "frozenAssertion": "metadata failure restores the prior credential.",
+          "independentExpectedOutcome": "Owned metadata publication failure after replacement restores exact previous credential hash and prior metadata bytes/selection.",
+          "requires": [
+            "credential-update",
+            "file-fault",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F04-S01-A03",
+          "frozenAssertion": "rollback failure is surfaced.",
+          "independentExpectedOutcome": "Inject exact owned rollback/delete failures; fixed visible error plus original/attempted journal hashes keep recovery pending, never success.",
+          "requires": [
+            "credential-update",
+            "file-fault",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F04-S01-A04",
+          "frozenAssertion": "no password is written to JSON or diagnostics.",
+          "independentExpectedOutcome": "Strict persisted metadata field allow-list and bounded private diagnostic hash-only audit find no synthetic password bytes or private key fields.",
+          "requires": [
+            "credential-update",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F05",
+      "scenarioId": "INSTALLED-F05",
+      "procedure": [
+        {
+          "action": "Load legacy, corrupt and future-version library fixtures; attempt edits after failed load; inject an atomic-replace failure.",
+          "assertions": [
+            "Legacy exact-byte backup and IDs survive.",
+            "corrupt/future bytes remain untouched.",
+            "failed saves preserve the prior library and selected identity."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F05-S01-A01",
+          "frozenAssertion": "Legacy exact-byte backup and IDs survive.",
+          "independentExpectedOutcome": "Stage exact legacy fixture before launch; exclusive backup SHA equals original bytes and every original opaque profile ID remains unchanged.",
+          "requires": [
+            "file-fault",
+            "lifecycle",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F05-S01-A02",
+          "frozenAssertion": "corrupt/future bytes remain untouched.",
+          "independentExpectedOutcome": "After failed load and attempted UI mutation, exact corrupt/future input inode/hash remains unchanged and recovery remains explicitly required.",
+          "requires": [
+            "file-fault",
+            "lifecycle",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "fresh-connections-corrupt-preserved",
+            "fresh-connections-future-preserved"
+          ]
+        },
+        {
+          "id": "F05-S01-A03",
+          "frozenAssertion": "failed saves preserve the prior library and selected identity.",
+          "independentExpectedOutcome": "Injected atomic replacement failure preserves prior connection bytes, captured selectedProfileId and owned credential hash.",
+          "requires": [
+            "file-fault",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F06",
+      "scenarioId": "INSTALLED-F06",
+      "procedure": [
+        {
+          "action": "Export both synthetic engine profiles. Inspect JSON, import v2 and v1, preview/select one and all, cancel once, then complete import. Try secret/unknown/duplicate keys and excessive depth/count/size.",
+          "assertions": [
+            "Export has no credentials/private keys.",
+            "strict invalid input is rejected.",
+            "accepted imports have fresh IDs and stay disconnected.",
+            "cancel changes nothing."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F06-S01-A01",
+          "frozenAssertion": "Export has no credentials/private keys.",
+          "independentExpectedOutcome": "Strict v1/v2 transfer-check over both profile records accepts only metadata/TLS/policy fields; exact password/private-key/UUID fields are absent.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F06-S01-A02",
+          "frozenAssertion": "strict invalid input is rejected.",
+          "independentExpectedOutcome": "Run every shared invalid transfer source plus count/depth/size boundaries; no accepted rows, new IDs, credential writes or library byte changes.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F06-S01-A03",
+          "frozenAssertion": "accepted imports have fresh IDs and stay disconnected.",
+          "independentExpectedOutcome": "Accepted UI imports generate unique IDs disjoint from source/prior IDs; exact metadata/policy preserved, no credential created, both DB session counts zero.",
+          "requires": [
+            "captured-uuid",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F06-S01-A04",
+          "frozenAssertion": "cancel changes nothing.",
+          "independentExpectedOutcome": "Capture typed state and reserved credential hashes before import review; one/all selection followed by Cancel changes neither.",
+          "requires": [
+            "credential-update",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F07",
+      "scenarioId": "INSTALLED-F07",
+      "procedure": [
+        {
+          "action": "Export a profile referencing a local CA; import on the other OS with the file missing. Remap using its native chooser, then roundtrip back to Mac. Cancel the remap once.",
+          "assertions": [
+            "POSIX/Windows path hints do not become invalid trusted paths.",
+            "explicit remap is required.",
+            "TLS is never downgraded.",
+            "cancellation leaves the library unchanged."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F07-S01-A01",
+          "frozenAssertion": "POSIX/Windows path hints do not become invalid trusted paths.",
+          "independentExpectedOutcome": "Shared Windows/POSIX CA hints remain unresolved metadata on the other OS; actual saved trusted path is absent until chooser confirms owned remap.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "native-manual",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F07-S01-A02",
+          "frozenAssertion": "explicit remap is required.",
+          "independentExpectedOutcome": "Attempt Connect before remap is refused with zero physical connections; explicitly selected actual CA maps only the original imported profile.",
+          "requires": [
+            "captured-uuid",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F07-S01-A03",
+          "frozenAssertion": "TLS is never downgraded.",
+          "independentExpectedOutcome": "Every transfer/remap/cancel stage retains original verify-ca/verify-full; no implicit disable/require downgrade; trusted host succeeds, mismatch fails.",
+          "requires": [
+            "captured-uuid",
+            "fault-boundary",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F07-S01-A04",
+          "frozenAssertion": "cancellation leaves the library unchanged.",
+          "independentExpectedOutcome": "Cancel native remap leaves original profile UUID, all metadata bytes, credential hash and CA trust policy unchanged.",
+          "requires": [
+            "credential-update",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F08",
+      "scenarioId": "INSTALLED-F08",
+      "procedure": [
+        {
+          "action": "Launch ordinarily with an unreadable/blocking stdin. Launch --connect-stdin with one synthetic payload; test 64 KiB overflow, five-second timeout and retry after failure.",
+          "assertions": [
+            "Ordinary launch reads nothing.",
+            "explicit launch connects once and executes no SQL.",
+            "bounds fail cleanly.",
+            "credentials never appear in argv/env/logs."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F08-S01-A01",
+          "frozenAssertion": "Ordinary launch reads nothing.",
+          "independentExpectedOutcome": "Ordinary startup with unreadable and blocking stdin completes with zero read/connection/effect counters, without fabricated timeout success.",
+          "requires": [
+            "native-bindings",
+            "startup-pipe"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F08-S01-A02",
+          "frozenAssertion": "explicit launch connects once and executes no SQL.",
+          "independentExpectedOutcome": "One explicit valid anonymous-pipe payload yields one physical connection and zero fixed effect receipts; no SQL is replayed.",
+          "requires": [
+            "native-bindings",
+            "owned-effects",
+            "startup-pipe"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F08-S01-A03",
+          "frozenAssertion": "bounds fail cleanly.",
+          "independentExpectedOutcome": "65537-byte payload and incomplete five-second timeout exit/refuse boundedly; retry new exact owned child accepts a valid payload once.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "startup-pipe"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F08-S01-A04",
+          "frozenAssertion": "credentials never appear in argv/env/logs.",
+          "independentExpectedOutcome": "Credential hashes are pipe-only; sanitized startup/child metadata and private structural diagnostic audit confirm no secret argv/env/log bytes.",
+          "requires": [
+            "native-bindings",
+            "startup-pipe"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F09",
+      "scenarioId": "INSTALLED-F09",
+      "procedure": [
+        {
+          "action": "Connect two SQL tabs on each engine. BEGIN/create temporary state/SET in A; query temporary state and transaction status in B; run both concurrently and disconnect only B.",
+          "assertions": [
+            "Physical sessions and state stay independent.",
+            "the active tab/profile cannot redirect a completion.",
+            "A and catalog remain connected after B closes."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F09-S01-A01",
+          "frozenAssertion": "Physical sessions and state stay independent.",
+          "independentExpectedOutcome": "Tab A and B physical backend IDs differ; A transaction/temp/session setting remains, B lacks that temp/setting and is idle on each engine.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F09-S01-A02",
+          "frozenAssertion": "the active tab/profile cannot redirect a completion.",
+          "independentExpectedOutcome": "Switch active profile/tab during two original operations; each result/terminal hash is attached to its captured UUID/query/session owner only.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F09-S01-A03",
+          "frozenAssertion": "A and catalog remain connected after B closes.",
+          "independentExpectedOutcome": "Disconnect B removes only its physical backend; A backend and catalog service IDs remain alive with original state and exact row effects.",
+          "requires": [
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "physical-session-preservation-postgresql",
+            "physical-session-preservation-mysql"
+          ]
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F10",
+      "scenarioId": "INSTALLED-F10",
+      "procedure": [
+        {
+          "action": "BEGIN in SQL tab A, then browse catalog and request completion metadata. Stage and Apply a synthetic table edit. Inspect helper sessions.",
+          "assertions": [
+            "Catalog/completion use their service session.",
+            "Apply uses a fresh idle session.",
+            "A remains uncommitted with its original SET/temp state."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F10-S01-A01",
+          "frozenAssertion": "Catalog/completion use their service session.",
+          "independentExpectedOutcome": "Catalog and completion metadata share the captured service physical backend and never the SQL tab A backend.",
+          "requires": [
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F10-S01-A02",
+          "frozenAssertion": "Apply uses a fresh idle session.",
+          "independentExpectedOutcome": "Apply's independently observed backend is distinct, idle before begin and gone after acknowledged cleanup; fixed table delta is exact.",
+          "requires": [
+            "native-bindings",
+            "owned-effects",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F10-S01-A03",
+          "frozenAssertion": "A remains uncommitted with its original SET/temp state.",
+          "independentExpectedOutcome": "A original backend remains in its uncommitted transaction with exact original temp/session setting and observer cannot see A uncommitted write.",
+          "requires": [
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F11",
+      "scenarioId": "INSTALLED-F11",
+      "procedure": [
+        {
+          "action": "Execute a query larger than row/byte/result-set display bounds, hold chunk ACKs, request Stop under backpressure, and kill the owned helper in a second run.",
+          "assertions": [
+            "Progress stays bounded.",
+            "control messages and terminal delivery remain responsive.",
+            "partial completed results and authoritative transaction state survive.",
+            "no hang."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F11-S01-A01",
+          "frozenAssertion": "Progress stays bounded.",
+          "independentExpectedOutcome": "Over-row/byte/set corpus plus held chunk ACK has maximum retained rows/bytes/sets at declared limits and bounded pending-frame counters.",
+          "requires": [
+            "fixed-inputs",
+            "helper-lifetime",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F11-S01-A02",
+          "frozenAssertion": "control messages and terminal delivery remain responsive.",
+          "independentExpectedOutcome": "Observe one physical sleep/stream before Stop, then zero and one exact original-operation terminal despite held ACK; bounded control latency recorded.",
+          "requires": [
+            "fault-boundary",
+            "helper-lifetime",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "physical-stop-postgresql",
+            "physical-stop-mysql"
+          ]
+        },
+        {
+          "id": "F11-S01-A03",
+          "frozenAssertion": "partial completed results and authoritative transaction state survive.",
+          "independentExpectedOutcome": "Partial completed set hashes remain in order; authoritative terminal transaction status matches physical original session after cancellation/death.",
+          "requires": [
+            "expected-metadata",
+            "helper-lifetime",
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F11-S01-A04",
+          "frozenAssertion": "no hang.",
+          "independentExpectedOutcome": "Every bounded operation exits/completes within its explicit deadline; exact owned helper death produces a terminal rather than a timeout-derived pass.",
+          "requires": [
+            "helper-lifetime",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F12",
+      "scenarioId": "INSTALLED-F12",
+      "procedure": [
+        {
+          "action": "Close a tab, profile, window and application with idle, open and failed transactions. Cancel, Roll Back and Commit independently; repeat Quit during commit/disconnect.",
+          "assertions": [
+            "Cancel preserves the session.",
+            "chosen resolution finishes once.",
+            "repeated Quit keeps the same decision.",
+            "process exits only after acknowledged disconnect."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F12-S01-A01",
+          "frozenAssertion": "Cancel preserves the session.",
+          "independentExpectedOutcome": "For tab/profile/window/app scopes and idle/open/failed transactions, Cancel retains exact original backend/transaction/source and no committed delta.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "native-manual",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F12-S01-A02",
+          "frozenAssertion": "chosen resolution finishes once.",
+          "independentExpectedOutcome": "Separate Roll Back/Commit cases produce fixed effect counts 0/1 and exactly one original resolution/disconnect terminal per scope.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F12-S01-A03",
+          "frozenAssertion": "repeated Quit keeps the same decision.",
+          "independentExpectedOutcome": "Repeated Quit while held commit/disconnect keeps the original decision token, produces no second commit and preserves observer receipt count one.",
+          "requires": [
+            "fault-boundary",
+            "lifecycle",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F12-S01-A04",
+          "frozenAssertion": "process exits only after acknowledged disconnect.",
+          "independentExpectedOutcome": "Retained exact GUI exits normally only after its captured disconnect acknowledgment and independent product backend count zero.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F13",
+      "scenarioId": "INSTALLED-F13",
+      "procedure": [
+        {
+          "action": "Close while a query runs, while inline edit/draft exists, during export and after unknown Apply. Choose Stop and Continue, Apply/Discard/Cancel as available.",
+          "assertions": [
+            "Safe default is Cancel.",
+            "each close scope resolves all affected work.",
+            "unknown outcome blocks blind apply/retry.",
+            "cancellation restores original context."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F13-S01-A01",
+          "frozenAssertion": "Safe default is Cancel.",
+          "independentExpectedOutcome": "Native keyboard dialog default focus is Cancel for running/edit/export/unknown cases; Enter/Escape observations retain that safe decision.",
+          "requires": [
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F13-S01-A02",
+          "frozenAssertion": "each close scope resolves all affected work.",
+          "independentExpectedOutcome": "All affected original operation/draft/export/session tokens resolve once under Stop/Apply/Discard; fixed observer effects match selected resolution for each close scope.",
+          "requires": [
+            "fault-boundary",
+            "lifecycle",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F13-S01-A03",
+          "frozenAssertion": "unknown outcome blocks blind apply/retry.",
+          "independentExpectedOutcome": "After real lost ACK, retry/reapply stays disabled; repeated close cannot issue another mutation, receipt count remains exactly one.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F13-S01-A04",
+          "frozenAssertion": "cancellation restores original context.",
+          "independentExpectedOutcome": "Cancel restores original document/result/snapshot selection/focus; uncommitted drafts and source hashes remain, with no observer mutation.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "source-state",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F14",
+      "scenarioId": "INSTALLED-F14",
+      "procedure": [
+        {
+          "action": "Paste Unicode/CRLF and literal straight quotes/dashes into two SQL tabs. Set different caret/selection/scroll, edit and Undo in both; switch tabs and themes.",
+          "assertions": [
+            "Plain text stays exact.",
+            "no smart substitution/correction.",
+            "line numbers/current-line follow source.",
+            "each tab retains independent editing and Undo state."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F14-S01-A01",
+          "frozenAssertion": "Plain text stays exact.",
+          "independentExpectedOutcome": "Original native text and persisted source equal the fixed non-BMP/combining/CRLF straight-quote/dash corpus hash in two tabs.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "editor-existing-input-exact",
+            "editor-unicode-fixed-corpus",
+            "rich-editor-original-utf16-selection"
+          ]
+        },
+        {
+          "id": "F14-S01-A02",
+          "frozenAssertion": "no smart substitution/correction.",
+          "independentExpectedOutcome": "Native paste/typing retains exact apostrophe/quote/dash bytes; no smart substitutions or correction occur.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F14-S01-A03",
+          "frozenAssertion": "line numbers/current-line follow source.",
+          "independentExpectedOutcome": "Expected UTF-16 caret/selection and original logical line number are derived from corpus CRLF/non-BMP boundaries and compared to native gutter.",
+          "requires": [
+            "native-bindings",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F14-S01-A04",
+          "frozenAssertion": "each tab retains independent editing and Undo state.",
+          "independentExpectedOutcome": "Different selections/scroll/source edits in two UUIDs survive switches/themes; one native Undo reverts only its original tab edit.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F15",
+      "scenarioId": "INSTALLED-F15",
+      "procedure": [
+        {
+          "action": "For each SQL corpus case, run a selection, caret statement (including just after semicolon), and entire script; invoke from toolbar/menu/keyboard and Run to File.",
+          "assertions": [
+            "One resolver chooses the same original range for all entry points.",
+            "selection has priority.",
+            "highlights and summary identify exact source."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F15-S01-A01",
+          "frozenAssertion": "One resolver chooses the same original range for all entry points.",
+          "independentExpectedOutcome": "All shared sql-execution corpus resolved ranges/SQL hashes equal fixed expected byte+UTF16 spans for toolbar/menu/keyboard/Run-to-File entry points.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "native-manual",
+            "script-trace",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F15-S01-A02",
+          "frozenAssertion": "selection has priority.",
+          "independentExpectedOutcome": "Nonempty selected range hash is used even when caret lies inside another statement; zero selection uses frozen caret boundary cases.",
+          "requires": [
+            "native-bindings",
+            "script-trace",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F15-S01-A03",
+          "frozenAssertion": "highlights and summary identify exact source.",
+          "independentExpectedOutcome": "Displayed range highlight and summary source hash refer to original captured tab/revision and fixture UTF-16 spans, including just after semicolon.",
+          "requires": [
+            "native-bindings",
+            "script-trace",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F16",
+      "scenarioId": "INSTALLED-F16",
+      "procedure": [
+        {
+          "action": "Execute parser corpus including PostgreSQL nested/dollar/atomic routines, MySQL DELIMITER, quoted/comment delimiters, malformed lexemes and rejected client commands.",
+          "assertions": [
+            "Only server statements are sent in order.",
+            "directives are removed.",
+            "unsupported client commands and unterminated lexemes block execution with source diagnostics."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F16-S01-A01",
+          "frozenAssertion": "Only server statements are sent in order.",
+          "independentExpectedOutcome": "Fixed parser fixture ordered statement hashes equal physical receipt/command trace; routine-body embedded delimiters never become extra statements.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F16-S01-A02",
+          "frozenAssertion": "directives are removed.",
+          "independentExpectedOutcome": "MySQL DELIMITER directives appear in neither sent statement hashes nor physical effects; frozen directive-stripped ranges match.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F16-S01-A03",
+          "frozenAssertion": "unsupported client commands and unterminated lexemes block execution with source diagnostics.",
+          "independentExpectedOutcome": "Every unsupported client-command/unterminated case yields expected original source diagnostic span, zero execute delta and no effects.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "script-trace",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F17",
+      "scenarioId": "INSTALLED-F17",
+      "procedure": [
+        {
+          "action": "Review a mixed script containing allowed/write/destructive/unknown operations. Approve once, then edit SQL, Stop, switch profile or force an error before remaining work.",
+          "assertions": [
+            "Review covers the exact ordered batch even if individual operations classify allowed.",
+            "Cancel is default.",
+            "context changes invalidate unconsumed grants."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F17-S01-A01",
+          "frozenAssertion": "Review covers the exact ordered batch even if individual operations classify allowed.",
+          "independentExpectedOutcome": "Review shows fixed ordered allowed/write/destructive/unknown classification and whole batch/source/profile hash, not a per-statement grant union.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F17-S01-A02",
+          "frozenAssertion": "Cancel is default.",
+          "independentExpectedOutcome": "Native default focus and Return/Escape follow Cancel; no grant consumption or physical mutation occurs on Cancel.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F17-S01-A03",
+          "frozenAssertion": "context changes invalidate unconsumed grants.",
+          "independentExpectedOutcome": "After SQL edit/Stop/profile switch/error before remaining work, old grant cannot authorize any later statement; fixed skipped receipts remain absent.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F18",
+      "scenarioId": "INSTALLED-F18",
+      "procedure": [
+        {
+          "action": "Execute success, first-error and middle-error scripts plus MySQL fixture_procedure multi-results. Switch tabs while results arrive.",
+          "assertions": [
+            "Statements run sequentially until first error.",
+            "completed sets remain ordered.",
+            "remaining statements are skipped.",
+            "each result retains statement/tab identity."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F18-S01-A01",
+          "frozenAssertion": "Statements run sequentially until first error.",
+          "independentExpectedOutcome": "Fixed success/first-error/middle-error scripts produce ordered receipt arrays [first,middle,last], [], [first]; first duplicate-key failure is terminal.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "script-independent-receipts-script-success-postgresql",
+            "script-independent-receipts-script-first-error-postgresql",
+            "script-independent-receipts-script-middle-error-postgresql",
+            "script-independent-receipts-script-success-mysql",
+            "script-independent-receipts-script-first-error-mysql",
+            "script-independent-receipts-script-middle-error-mysql"
+          ]
+        },
+        {
+          "id": "F18-S01-A02",
+          "frozenAssertion": "completed sets remain ordered.",
+          "independentExpectedOutcome": "Completed result sets compare exact independent columns/rows/command tags in statement order; MySQL procedure has two data sets plus explicit terminal status.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F18-S01-A03",
+          "frozenAssertion": "remaining statements are skipped.",
+          "independentExpectedOutcome": "After first/middle failure, independently expected ordered receipt arrays remain []/[first], and the distinct later fixed receipt is absent; this establishes skipped fixed statements without an internal request trace.",
+          "requires": [
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F18-S01-A04",
+          "frozenAssertion": "each result retains statement/tab identity.",
+          "independentExpectedOutcome": "Switch tabs under held results; every set retains original statement index/document/session/query IDs and old result publication cannot replace newer capture.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F19",
+      "scenarioId": "INSTALLED-F19",
+      "procedure": [
+        {
+          "action": "Fail the second selected statement after non-BMP text and CRLF; navigate to error, correct it, rerun successfully, then edit the successful source.",
+          "assertions": [
+            "Error and success gutter positions use original UTF-16 source.",
+            "current line remains correct.",
+            "editing clears obsolete success marks."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F19-S01-A01",
+          "frozenAssertion": "Error and success gutter positions use original UTF-16 source.",
+          "independentExpectedOutcome": "Fixed source places a second statement failure after emoji/CRLF; error/success gutter range equals independent fixture UTF-16 offset.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F19-S01-A02",
+          "frozenAssertion": "current line remains correct.",
+          "independentExpectedOutcome": "Caret navigation to expected diagnostic line preserves original document and correct CRLF logical current line.",
+          "requires": [
+            "native-bindings",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F19-S01-A03",
+          "frozenAssertion": "editing clears obsolete success marks.",
+          "independentExpectedOutcome": "After success then one source edit, old success mark is absent and no stale reply can restore it for a newer source revision.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F20",
+      "scenarioId": "INSTALLED-F20",
+      "procedure": [
+        {
+          "action": "Open UTF-8 files with non-BMP/combining paths and CRLF, edit/save/save-as in two documents; cancel chooser and test invalid UTF-8/locked destination.",
+          "assertions": [
+            "Each tab retains its own file binding.",
+            "exact SQL and line endings survive.",
+            "cancellation/write failure leaves original binding/content/destination intact."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F20-S01-A01",
+          "frozenAssertion": "Each tab retains its own file binding.",
+          "independentExpectedOutcome": "Two native file Open/Save-As workflows retain distinct exact owned path/file identity receipts per original document UUID.",
+          "requires": [
+            "file-fault",
+            "native-bindings",
+            "native-manual",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F20-S01-A02",
+          "frozenAssertion": "exact SQL and line endings survive.",
+          "independentExpectedOutcome": "Saved file bytes and editor/persisted hashes equal fixed UTF-8/emoji/combining/CRLF corpus, with no newline normalization.",
+          "requires": [
+            "file-fault",
+            "fixed-inputs",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F20-S01-A03",
+          "frozenAssertion": "cancellation/write failure leaves original binding/content/destination intact.",
+          "independentExpectedOutcome": "Chooser Cancel, invalid UTF-8 and locked destination preserve original file stamp/hash, editor source, binding and selected original document.",
+          "requires": [
+            "file-fault",
+            "native-bindings",
+            "native-manual",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F21",
+      "scenarioId": "INSTALLED-F21",
+      "procedure": [
+        {
+          "action": "Edit a draft, wait one second, close/restart and force flush at shutdown; inspect snapshot and test corrupt/future versions.",
+          "assertions": [
+            "Text/order/selection restore disconnected.",
+            "no session/results/credentials persist.",
+            "no SQL replays.",
+            "corrupt bytes remain recoverable."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F21-S01-A01",
+          "frozenAssertion": "Text/order/selection restore disconnected.",
+          "independentExpectedOutcome": "After observable persisted debounce completion and awaited normal-close flush, exact UUID/order/selection/source hashes restore; both servers report zero product sessions.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F21-S01-A02",
+          "frozenAssertion": "no session/results/credentials persist.",
+          "independentExpectedOutcome": "Strict source-only document/workspace schema excludes results/session/transaction/password fields; no native credentials are accessed by restoration.",
+          "requires": [
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F21-S01-A03",
+          "frozenAssertion": "no SQL replays.",
+          "independentExpectedOutcome": "Original fixed effect counters and execute trace delta remain zero through ordinary startup/restart until explicit Run.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F21-S01-A04",
+          "frozenAssertion": "corrupt bytes remain recoverable.",
+          "independentExpectedOutcome": "Corrupt/future workspace bytes remain at original exact hash after failed load/normal close; explicit recovery backup matches before overwrite.",
+          "requires": [
+            "file-fault",
+            "lifecycle",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "fresh-workspace-corrupt-preserved",
+            "fresh-workspace-future-preserved"
+          ]
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F22",
+      "scenarioId": "INSTALLED-F22",
+      "procedure": [
+        {
+          "action": "Execute a three-statement script and failed/cancelled variants; inspect history, reopen entry, exceed 1000 entries/30 days, disable, clear history and drafts, restart.",
+          "assertions": [
+            "History is per statement with bounded retention.",
+            "preferences/clear persist.",
+            "reopening restores source without connecting or execution."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F22-S01-A01",
+          "frozenAssertion": "History is per statement with bounded retention.",
+          "independentExpectedOutcome": "History contains one original statement source/outcome per success/failure/cancel with captured document/profile IDs; fixed 1001-entry/31-day inputs enforce 1000/30-day limits.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "script-trace",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F22-S01-A02",
+          "frozenAssertion": "preferences/clear persist.",
+          "independentExpectedOutcome": "Disable, Clear History and Clear Drafts exact expected DTO deltas survive normal restart; unrelated profiles/settings/credentials remain equal.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F22-S01-A03",
+          "frozenAssertion": "reopening restores source without connecting or execution.",
+          "independentExpectedOutcome": "Reopen original history entry creates source-only document with exact known source hash and zero physical connections/execute/effect delta.",
+          "requires": [
+            "native-bindings",
+            "owned-effects",
+            "script-trace",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F23",
+      "scenarioId": "INSTALLED-F23",
+      "procedure": [
+        {
+          "action": "Connect both fixtures; lazily expand schemas/table/view/function/procedure/trigger and detail groups; inject failure, retry and Refresh.",
+          "assertions": [
+            "Every supported object/detail kind appears once.",
+            "retries work.",
+            "refresh replaces removed metadata without cross-profile mixing."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F23-S01-A01",
+          "frozenAssertion": "Every supported object/detail kind appears once.",
+          "independentExpectedOutcome": "Independent synthetic DDL catalog yields exact distinct object/detail identity sets for tables/views/functions/procedure/trigger/columns/keys/indexes/constraints.",
+          "requires": [
+            "native-bindings",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F23-S01-A02",
+          "frozenAssertion": "retries work.",
+          "independentExpectedOutcome": "One bounded owned catalog fault then Retry loads exact expected set once with same profile/database owner.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F23-S01-A03",
+          "frozenAssertion": "refresh replaces removed metadata without cross-profile mixing.",
+          "independentExpectedOutcome": "After fixed owned object removal and Refresh, removed identity absent and other profile's distinct set unchanged; late original reply refused.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F24",
+      "scenarioId": "INSTALLED-F24",
+      "procedure": [
+        {
+          "action": "Search for an unexpanded synthetic object across two connected profiles; clear/change search during asynchronous replies.",
+          "assertions": [
+            "Search goes to the server independently of prior expansion.",
+            "stale/profile-mismatched replies cannot replace current matches."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F24-S01-A01",
+          "frozenAssertion": "Search goes to the server independently of prior expansion.",
+          "independentExpectedOutcome": "Unexpanded target is found by independent catalog search request, with expected quoted identity set and a positive server request delta despite zero prior expansion.",
+          "requires": [
+            "native-bindings",
+            "script-trace",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F24-S01-A02",
+          "frozenAssertion": "stale/profile-mismatched replies cannot replace current matches.",
+          "independentExpectedOutcome": "Search clear/change and profile switch under delayed reply retain newest exact match IDs; old profile/request/source cannot publish matches.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F25",
+      "scenarioId": "INSTALLED-F25",
+      "procedure": [
+        {
+          "action": "Invoke Structure, Definition, Open Data, Generate SELECT and Copy Name on table/view/routine with spaces/non-BMP names, using mouse and context-menu keyboard.",
+          "assertions": [
+            "Actions are context-appropriate.",
+            "names/SQL use adapter dialect quoting.",
+            "generated SQL opens without implicit execution.",
+            "details identify correct object."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F25-S01-A01",
+          "frozenAssertion": "Actions are context-appropriate.",
+          "independentExpectedOutcome": "Fixed table/view/routine capability matrix enables only appropriate actions; native pointer/context-keyboard entry points agree.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F25-S01-A02",
+          "frozenAssertion": "names/SQL use adapter dialect quoting.",
+          "independentExpectedOutcome": "Independent fixed identifier fixtures with spaces/emoji/embedded quote use PostgreSQL double quotes or MySQL backticks and exact generated source hash.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F25-S01-A03",
+          "frozenAssertion": "generated SQL opens without implicit execution.",
+          "independentExpectedOutcome": "Generate SELECT creates source-only original document with expected source hash, zero new connections/execute/effect counts.",
+          "requires": [
+            "native-bindings",
+            "owned-effects",
+            "script-trace",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F25-S01-A04",
+          "frozenAssertion": "details identify correct object.",
+          "independentExpectedOutcome": "Structure/Definition/Data detail metadata matches independent original object identity/type/DDL digest, including profile/database capture.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F26",
+      "scenarioId": "INSTALLED-F26",
+      "procedure": [
+        {
+          "action": "Open the fixture table with over 1000 rows, page at 200 rows, sort tied values, then apply all nine typed filter operators including NULL and clear filters.",
+          "assertions": [
+            "Paging/sort/filter run on server.",
+            "PK tie-breaks give stable boundaries.",
+            "dedicated table document captures identity.",
+            "invalid values cannot launch."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F26-S01-A01",
+          "frozenAssertion": "Paging/sort/filter run on server.",
+          "independentExpectedOutcome": "For each 200-row page/sort/nine typed filters, compare actual original PK arrays to fixed physical readonly expected query; requests execute server-side, no client-only slice.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F26-S01-A02",
+          "frozenAssertion": "PK tie-breaks give stable boundaries.",
+          "independentExpectedOutcome": "Equal sort values use full PK tie-breaks; concatenated page IDs have no duplicate/missing boundary keys, including composite (1,1),(1,2),(2,1).",
+          "requires": [
+            "native-bindings",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F26-S01-A03",
+          "frozenAssertion": "dedicated table document captures identity.",
+          "independentExpectedOutcome": "Dedicated table document retains exact profile/database/schema/table/result/snapshot identities across paging and stale replies.",
+          "requires": [
+            "native-bindings",
+            "source-state",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F26-S01-A04",
+          "frozenAssertion": "invalid values cannot launch.",
+          "independentExpectedOutcome": "Invalid typed numeric/binary/filter input yields zero browse request/effect delta and original page/selection unchanged.",
+          "requires": [
+            "native-bindings",
+            "script-trace",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F27",
+      "scenarioId": "INSTALLED-F27",
+      "procedure": [
+        {
+          "action": "Run duplicate-name/NULL/empty/literal NULL/exact numeric/binary query and routine multi-sets; exceed 1000 rows and 8 MiB; fail a later set.",
+          "assertions": [
+            "Columns retain ordinal/type/encoding metadata.",
+            "values stay distinct.",
+            "display bounds/truncation are explicit.",
+            "prior sets and partial error remain available."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F27-S01-A01",
+          "frozenAssertion": "Columns retain ordinal/type/encoding metadata.",
+          "independentExpectedOutcome": "Native result columns match oracle columns exactly, retaining duplicate x ordinals, per-engine native types, PostgreSQL OIDs and Base64 payload encoding.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "typed-observer-head-postgresql",
+            "typed-observer-head-mysql"
+          ]
+        },
+        {
+          "id": "F27-S01-A02",
+          "frozenAssertion": "values stay distinct.",
+          "independentExpectedOutcome": "Native typed values and independent head rows equal null, empty, literal NULL, exact scale-18 numerics, AP8=/empty/AA== binary and combining/CRLF corpus.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "typed-observer-head-postgresql",
+            "typed-observer-head-mysql"
+          ]
+        },
+        {
+          "id": "F27-S01-A03",
+          "frozenAssertion": "display bounds/truncation are explicit.",
+          "independentExpectedOutcome": "Over-1000-row and over-8MiB cases disclose exact full/displayed counts/truncation; 1000 retained rows never imply full export count.",
+          "requires": [
+            "expected-metadata",
+            "fixed-inputs",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F27-S01-A04",
+          "frozenAssertion": "prior sets and partial error remain available.",
+          "independentExpectedOutcome": "Later result failure preserves prior exact ordered sets and partial-error/transaction terminal ownership instead of replacing them with current tab results.",
+          "requires": [
+            "expected-metadata",
+            "fault-boundary",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F28",
+      "scenarioId": "INSTALLED-F28",
+      "procedure": [
+        {
+          "action": "Select a cell, rectangle and sparse whole rows. Copy from keyboard/context menu; inspect TSV plus typed clipboard JSON, including duplicate names and all special values.",
+          "assertions": [
+            "Only intended cells/rows copy in source order.",
+            "JSON retains ordinals and typed NULL/binary.",
+            "TSV quoting/null marker is unambiguous.",
+            "row numbers are excluded."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F28-S01-A01",
+          "frozenAssertion": "Only intended cells/rows copy in source order.",
+          "independentExpectedOutcome": "Cell/rectangle/sparse-row selections produce exact independently selected original row/column arrays in source order, including noncontiguous rows.",
+          "requires": [
+            "clipboard",
+            "native-bindings",
+            "native-manual",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F28-S01-A02",
+          "frozenAssertion": "JSON retains ordinals and typed NULL/binary.",
+          "independentExpectedOutcome": "Native typed clipboard JSON equals independent schema/ordinals/null/Base64 selected subset, never flattened duplicate-name object keys.",
+          "requires": [
+            "clipboard",
+            "expected-metadata",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F28-S01-A03",
+          "frozenAssertion": "TSV quoting/null marker is unambiguous.",
+          "independentExpectedOutcome": "Native TSV bytes equal independent selected cells with explicit SQL NULL marker; embedded tabs/CRLF/quotes escaped and marker collision handled.",
+          "requires": [
+            "clipboard",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F28-S01-A04",
+          "frozenAssertion": "row numbers are excluded.",
+          "independentExpectedOutcome": "Neither typed JSON nor TSV includes visual row-number column; compare exact original column count/ordinals.",
+          "requires": [
+            "clipboard",
+            "expected-metadata",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F29",
+      "scenarioId": "INSTALLED-F29",
+      "procedure": [
+        {
+          "action": "Load the 1000x32 grid, resize columns, select rows, scroll vertically/horizontally, switch away/back and change theme/DPI; inspect focus and row numbers.",
+          "assertions": [
+            "Widths/selection remain.",
+            "horizontal overflow and virtualization work.",
+            "row numbering stays fixed.",
+            "keyboard focus/selection remains visible."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F29-S01-A01",
+          "frozenAssertion": "Widths/selection remain.",
+          "independentExpectedOutcome": "Original 1000x32 grid resized column widths and original selected row IDs persist across switch/theme changes without new result identity.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "native-manual",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F29-S01-A02",
+          "frozenAssertion": "horizontal overflow and virtualization work.",
+          "independentExpectedOutcome": "Native horizontal scroll reaches last original column; realized row slice stays bounded and offscreen action realizes correct original row.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F29-S01-A03",
+          "frozenAssertion": "row numbering stays fixed.",
+          "independentExpectedOutcome": "Visual row-number header remains fixed while data columns scroll; native positions match original row ordinals without becoming selection data.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F29-S01-A04",
+          "frozenAssertion": "keyboard focus/selection remains visible.",
+          "independentExpectedOutcome": "Real keyboard focus/selection is visibly retained across scroll/DPI/theme and announced by target native accessibility.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F30",
+      "scenarioId": "INSTALLED-F30",
+      "procedure": [
+        {
+          "action": "Open row inspector for NULL, empty, literal NULL, multiline, 1 MiB text and binary; toggle inspector and inspect editable/read-only reasons.",
+          "assertions": [
+            "Large/binary data is bounded and accurate.",
+            "special values are distinct.",
+            "edit affordances and explanations follow adapter metadata."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F30-S01-A01",
+          "frozenAssertion": "Large/binary data is bounded and accurate.",
+          "independentExpectedOutcome": "Inspector exact known 1MiB text hash and binary byte count/Base64 match fixture with documented bounded rendering, never a copied UI value oracle.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F30-S01-A02",
+          "frozenAssertion": "special values are distinct.",
+          "independentExpectedOutcome": "Inspector distinguishes SQL NULL, empty, text NULL, multiline and binary using exact semantic kind/value/description, not just text hash.",
+          "requires": [
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F30-S01-A03",
+          "frozenAssertion": "edit affordances and explanations follow adapter metadata.",
+          "independentExpectedOutcome": "Adapter capability matrix governs actual edit actions/reasons for PK/generated/view/noPK/restricted/nontransactional objects; no mutation before Apply.",
+          "requires": [
+            "native-bindings",
+            "server-browse",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F31",
+      "scenarioId": "INSTALLED-F31",
+      "procedure": [
+        {
+          "action": "Edit fixture nullable/default/text/numeric/binary cells; try generated, no-PK, view, restricted-privilege and MyISAM data.",
+          "assertions": [
+            "Permitted edits use typed values.",
+            "NULL/empty/text NULL/DEFAULT differ.",
+            "unsupported cells explain why and cannot silently change values."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F31-S01-A01",
+          "frozenAssertion": "Permitted edits use typed values.",
+          "independentExpectedOutcome": "Typed editor capture preserves exact text/numeric/Base64 states; observer sees only expected values after original Preview/Apply.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F31-S01-A02",
+          "frozenAssertion": "NULL/empty/text NULL/DEFAULT differ.",
+          "independentExpectedOutcome": "Separate fresh cases assign null/empty/literal NULL/default; physical values are null, empty, NULL, fixture default with generated lengths null/0/4/15.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "owned-effects",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F31-S01-A03",
+          "frozenAssertion": "unsupported cells explain why and cannot silently change values.",
+          "independentExpectedOutcome": "Generated/noPK/view/restricted/MyISAM cells refuse staging or Apply with fixed capability reason and exact unchanged observer snapshot.",
+          "requires": [
+            "native-bindings",
+            "server-browse",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F32",
+      "scenarioId": "INSTALLED-F32",
+      "procedure": [
+        {
+          "action": "Stage insert/update/delete, inspect original values/markers/counts/Columns, edit a value back to original, delete an inserted row, then Discard.",
+          "assertions": [
+            "Drafts remain local until Apply.",
+            "exact original snapshots and counts stay coherent.",
+            "reverting/discard restores content and selection safely."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F32-S01-A01",
+          "frozenAssertion": "Drafts remain local until Apply.",
+          "independentExpectedOutcome": "Mixed stage operations leave independent values-head/composite/count snapshots unchanged until explicit Apply.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F32-S01-A02",
+          "frozenAssertion": "exact original snapshots and counts stay coherent.",
+          "independentExpectedOutcome": "Original row snapshots and typed staged delta/counts exactly match insert/update/delete fixture; Columns and markers track captured ordinal ownership.",
+          "requires": [
+            "native-bindings",
+            "source-state",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F32-S01-A03",
+          "frozenAssertion": "reverting/discard restores content and selection safely.",
+          "independentExpectedOutcome": "Edit-back-to-original, delete newly inserted row and Discard leave zero draft deltas; original selected IDs and observer rows unchanged.",
+          "requires": [
+            "native-bindings",
+            "source-state",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F33",
+      "scenarioId": "INSTALLED-F33",
+      "procedure": [
+        {
+          "action": "Stage a mixed immutable batch; Preview and review helper-generated parameterized SQL; mutate draft/context while preview reply is delayed.",
+          "assertions": [
+            "Preview uses exact captured typed batch.",
+            "frontend generates no mutation SQL.",
+            "stale preview cannot authorize changed work."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F33-S01-A01",
+          "frozenAssertion": "Preview uses exact captured typed batch.",
+          "independentExpectedOutcome": "Preview received typed batch hash equals original immutable staged capture, including null/default/exact numeric/binary values and PK/original snapshot hashes.",
+          "requires": [
+            "native-bindings",
+            "script-trace",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F33-S01-A02",
+          "frozenAssertion": "frontend generates no mutation SQL.",
+          "independentExpectedOutcome": "Generated parameterized mutation SQL hash originates in exact helper adapter preview; GUI command trace contains typed request only and no frontend mutation SQL construction.",
+          "requires": [
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F33-S01-A03",
+          "frozenAssertion": "stale preview cannot authorize changed work.",
+          "independentExpectedOutcome": "Edit/context change under delayed preview invalidates original grant; Apply disabled/refused, observer unchanged, old success cannot authorize a new revision.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F34",
+      "scenarioId": "INSTALLED-F34",
+      "procedure": [
+        {
+          "action": "Keep a SQL tab transaction open; Preview/Apply in grid, attempt edits/navigation/profile mutation while snapshot locked, then deliver stale reply.",
+          "assertions": [
+            "Apply owns a fresh idle session.",
+            "original SQL transaction is untouched.",
+            "locked snapshot/context is revalidated and stale completion rejected."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F34-S01-A01",
+          "frozenAssertion": "Apply owns a fresh idle session.",
+          "independentExpectedOutcome": "Apply's physical backend ID differs from SQL/service IDs and starts idle; exact fixed observer delta occurs once.",
+          "requires": [
+            "native-bindings",
+            "owned-effects",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F34-S01-A02",
+          "frozenAssertion": "original SQL transaction is untouched.",
+          "independentExpectedOutcome": "Original SQL tab backend/transaction/temp setting remains unchanged and its uncommitted receipt is still invisible to independent observer.",
+          "requires": [
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F34-S01-A03",
+          "frozenAssertion": "locked snapshot/context is revalidated and stale completion rejected.",
+          "independentExpectedOutcome": "Locked original snapshot rejects edit/navigation/profile changes; stale completion for another result/revision cannot unlock/replace or publish success.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F35",
+      "scenarioId": "INSTALLED-F35",
+      "procedure": [
+        {
+          "action": "Apply a multi-row batch; use an observer to modify original rows or constraints/metadata; test deadlock and Stop during Apply.",
+          "assertions": [
+            "All writes commit atomically or roll back.",
+            "full-original conflicts fail safely.",
+            "failed/cancelled apply retains recoverable drafts.",
+            "reload is explicit."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F35-S01-A01",
+          "frozenAssertion": "All writes commit atomically or roll back.",
+          "independentExpectedOutcome": "Fresh success batch yields every expected insert/update/delete and counts together; constraint/deadlock/cancel batch leaves entire original independent snapshot unchanged.",
+          "requires": [
+            "expected-metadata",
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F35-S01-A02",
+          "frozenAssertion": "full-original conflicts fail safely.",
+          "independentExpectedOutcome": "Observer modifies a fixed original nonPK value/constraint before Apply; full-original compare conflict refuses with no partial writes and original draft retained.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F35-S01-A03",
+          "frozenAssertion": "failed/cancelled apply retains recoverable drafts.",
+          "independentExpectedOutcome": "Known failed/cancelled terminal keeps original typed draft batch/hash for explicit recovery; no automatic rerun or loss of original originals.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F35-S01-A04",
+          "frozenAssertion": "reload is explicit.",
+          "independentExpectedOutcome": "Only explicit Reload replaces baseline/draft/result identity with independently observed current rows; stale success cannot simulate reload.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F36",
+      "scenarioId": "INSTALLED-F36",
+      "procedure": [
+        {
+          "action": "Inject lost COMMIT ACK for SQL and Apply. Try retry/reapply, close, explicit verification via independent observer, then discard/reload.",
+          "assertions": [
+            "Outcome stays unknown until explicitly resolved.",
+            "no automatic retry/duplicate write.",
+            "close preserves the uncertainty and recovery path."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F36-S01-A01",
+          "frozenAssertion": "Outcome stays unknown until explicitly resolved.",
+          "independentExpectedOutcome": "Lose only real SQL/Apply commit acknowledgment after physical observer proves committed receipt=1; native state is unknown until explicit verification decision.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "independent-once-sql-commit-postgresql",
+            "independent-once-sql-commit-mysql"
+          ]
+        },
+        {
+          "id": "F36-S01-A02",
+          "frozenAssertion": "no automatic retry/duplicate write.",
+          "independentExpectedOutcome": "Attempt retry/reapply/repeated close before verification; receipt remains exactly 1, never 0/2, and no second mutation execute trace occurs.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "independent-once-apply-commit-postgresql",
+            "independent-once-apply-commit-mysql"
+          ]
+        },
+        {
+          "id": "F36-S01-A03",
+          "frozenAssertion": "close preserves the uncertainty and recovery path.",
+          "independentExpectedOutcome": "Close retains unknown original operation and recovery controls; explicit independent verify then Discard/Reload resolves to committed snapshot with no blind rerun.",
+          "requires": [
+            "fault-boundary",
+            "lifecycle",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F37",
+      "scenarioId": "INSTALLED-F37",
+      "procedure": [
+        {
+          "action": "Capture a truncated loaded result, start Export Loaded, then switch tabs/replace results; inspect helper request count.",
+          "assertions": [
+            "Export uses captured rows/metadata and discloses truncation.",
+            "no SQL executes.",
+            "cancelled/failed publication preserves destination."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "independent-export-bytes-and-counts"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F37-S01-A01",
+          "frozenAssertion": "Export uses captured rows/metadata and discloses truncation.",
+          "independentExpectedOutcome": "Loaded exact JSON/CSV hashes match original captured 1000 rows/metadata with full rowCount1205/1005 and truncated=true after tab/result replacement.",
+          "requires": [
+            "expected-metadata",
+            "fixed-inputs",
+            "native-bindings",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F37-S01-A02",
+          "frozenAssertion": "no SQL executes.",
+          "independentExpectedOutcome": "Loaded export has zero helper execute/effect delta, even after result replacement; physical count alone cannot prove absence of readonly SQL.",
+          "requires": [
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F37-S01-A03",
+          "frozenAssertion": "cancelled/failed publication preserves destination.",
+          "independentExpectedOutcome": "Cancel/locked/changed destination preserves captured original file inode/hash and never publishes partial output or reruns query.",
+          "requires": [
+            "file-fault",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F38",
+      "scenarioId": "INSTALLED-F38",
+      "procedure": [
+        {
+          "action": "Export shared grid to JSON and CSV with default NULL marker, then choose collision-free marker; inspect Unicode/CRLF/binary/numeric/duplicate-column content.",
+          "assertions": [
+            "JSON uses ordered metadata/value arrays and exact strings.",
+            "CSV rejects marker collisions and quotes correctly.",
+            "NULL/empty/literal NULL stay distinct."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "independent-export-bytes-and-counts"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F38-S01-A01",
+          "frozenAssertion": "JSON uses ordered metadata/value arrays and exact strings.",
+          "independentExpectedOutcome": "Loaded JSON exact independently serialized bytes preserve ordered duplicate columns/metadata/typed arrays/Unicode/CRLF/exact strings for each engine.",
+          "requires": [
+            "expected-metadata",
+            "fixed-inputs",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "loaded-json-postgresql",
+            "loaded-csv-postgresql",
+            "loaded-json-mysql",
+            "loaded-csv-mysql"
+          ]
+        },
+        {
+          "id": "F38-S01-A02",
+          "frozenAssertion": "CSV rejects marker collisions and quotes correctly.",
+          "independentExpectedOutcome": "Default backslash-N marker collides with fixed row5 and refuses; explicit <DBEER-SQL-NULL> yields exact independently encoded CSV bytes/records.",
+          "requires": [
+            "file-fault",
+            "fixed-inputs",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F38-S01-A03",
+          "frozenAssertion": "NULL/empty/literal NULL stay distinct.",
+          "independentExpectedOutcome": "Parse exact output to typed independent row arrays; SQL null/empty/text NULL/binary remain distinct without converting numeric strings to floating point.",
+          "requires": [
+            "expected-metadata",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F39",
+      "scenarioId": "INSTALLED-F39",
+      "procedure": [
+        {
+          "action": "Run to File once on the over-limit query and multi-result routine; test JSON/CSV, Stop, first/middle errors and locked replacement.",
+          "assertions": [
+            "Full rows export independently of display limit.",
+            "execution happens once.",
+            "JSON supports multi-set and CSV rejects ambiguity.",
+            "failed/cancelled export never publishes partial output."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "independent-export-bytes-and-counts"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F39-S01-A01",
+          "frozenAssertion": "Full rows export independently of display limit.",
+          "independentExpectedOutcome": "Full exact JSON/CSV hashes contain 1205 PostgreSQL/1005 MySQL rows, physical values-count agrees; independently sorted tail avoids MySQL auto-ID order assumption.",
+          "requires": [
+            "expected-metadata",
+            "fixed-inputs",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "complete-json-postgresql",
+            "complete-csv-postgresql",
+            "complete-json-mysql",
+            "complete-csv-mysql",
+            "fixed-effect-baseline-postgresql",
+            "independent-once-full-export-postgresql",
+            "fixed-effect-baseline-mysql",
+            "independent-once-full-export-mysql"
+          ]
+        },
+        {
+          "id": "F39-S01-A02",
+          "frozenAssertion": "execution happens once.",
+          "independentExpectedOutcome": "Fixed Run-to-File routine increments dedicated server counter exactly once and emits full rows; receipt=1 after success/late-stop/publication failure, never inferred from file count.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "owned-effects",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F39-S01-A03",
+          "frozenAssertion": "JSON supports multi-set and CSV rejects ambiguity.",
+          "independentExpectedOutcome": "Fixed routine JSON preserves all expected data/status set metadata/order; CSV rejects multiple sets without destination publication.",
+          "requires": [
+            "expected-metadata",
+            "file-fault",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F39-S01-A04",
+          "frozenAssertion": "failed/cancelled export never publishes partial output.",
+          "independentExpectedOutcome": "Stop/first-error/middle-error/locked replacement leaves prior destination identity/hash intact; server receipt states match exact completed statements and no partial file publishes.",
+          "requires": [
+            "fault-boundary",
+            "file-fault",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F40",
+      "scenarioId": "INSTALLED-F40",
+      "procedure": [
+        {
+          "action": "Start offline completion with no DB; fragment/coalesce Content-Length frames, overflow/truncate, timeout/kill/restart the separate LSP process; inspect inherited environment.",
+          "assertions": [
+            "LSP is separate from DB helper sessions, bounded and sanitized.",
+            "credentials absent.",
+            "timeout/failure leaves plain editing/execution usable."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F40-S01-A01",
+          "frozenAssertion": "LSP is separate from DB helper sessions, bounded and sanitized.",
+          "independentExpectedOutcome": "Separate LSP exact process/pipe receives bounded fragmented/coalesced Content-Length cases; DB helper connection/execute counters stay zero offline.",
+          "requires": [
+            "helper-lifetime",
+            "language-oracle",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F40-S01-A02",
+          "frozenAssertion": "credentials absent.",
+          "independentExpectedOutcome": "Sanitized inherited LSP environment/argv audit excludes synthetic DB secret hashes; protocol frames/source never enter diagnostics.",
+          "requires": [
+            "language-oracle",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F40-S01-A03",
+          "frozenAssertion": "timeout/failure leaves plain editing/execution usable.",
+          "independentExpectedOutcome": "Overflow/truncation/timeout/death/restart cases leave exact editor source/caret usable and explicit SQL Run still reaches original DB session once.",
+          "requires": [
+            "helper-lifetime",
+            "language-oracle",
+            "native-bindings",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F41",
+      "scenarioId": "INSTALLED-F41",
+      "procedure": [
+        {
+          "action": "Explicitly connect each fixture, paginate completion metadata, Refresh after adding/removing an object, then switch profiles during delayed metadata replies.",
+          "assertions": [
+            "Metadata loads only after explicit connect through service session.",
+            "all pages and FK/signatures arrive.",
+            "stale entries/replies are replaced without leakage."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F41-S01-A01",
+          "frozenAssertion": "Metadata loads only after explicit connect through service session.",
+          "independentExpectedOutcome": "Offline metadata request has zero DB/service counts; only explicit Connect creates original service session and loads metadata pages.",
+          "requires": [
+            "language-oracle",
+            "native-bindings",
+            "session-observer"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F41-S01-A02",
+          "frozenAssertion": "all pages and FK/signatures arrive.",
+          "independentExpectedOutcome": "Expected complete fixture metadata ID set, foreign-key links and routine overload signatures equal independent catalog across every page.",
+          "requires": [
+            "language-oracle",
+            "native-bindings",
+            "server-browse"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F41-S01-A03",
+          "frozenAssertion": "stale entries/replies are replaced without leakage.",
+          "independentExpectedOutcome": "Fixed add/remove/Refresh replaces original page cache; delayed former profile/generation reply cannot publish stale entries into current catalog.",
+          "requires": [
+            "fault-boundary",
+            "language-oracle",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F42",
+      "scenarioId": "INSTALLED-F42",
+      "procedure": [
+        {
+          "action": "Run shared completion fixtures for CTE/subquery/correlated/LATERAL/alias/projection/ambiguous columns and FK JOIN/ON; inspect ranking and fuzzy UTF-16 highlights.",
+          "assertions": [
+            "Scope-correct suggestions, quoting, ranking, abbreviation/typo matching and highlighted spans match the Go oracle for both dialects."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F42-S01-A01",
+          "frozenAssertion": "Scope-correct suggestions, quoting, ranking, abbreviation/typo matching and highlighted spans match the Go oracle for both dialects.",
+          "independentExpectedOutcome": "For both dialects, every shared completion case has nonempty pinned Go oracle evidence and exact suggestion order/quote/insertion/UTF16 fuzzy spans; missing/zero cases refuse.",
+          "requires": [
+            "fixed-inputs",
+            "language-oracle",
+            "native-bindings",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F43",
+      "scenarioId": "INSTALLED-F43",
+      "procedure": [
+        {
+          "action": "Type and manually invoke completion, navigate/accept with Tab and Return, dismiss Escape, Undo once; repeat in literal/comment and IME composition and with delayed stale replies.",
+          "assertions": [
+            "Popup appears only in valid context.",
+            "focus/caret remain correct.",
+            "insertion quotes safely and is one Undo.",
+            "stale/IME/literal replies cannot modify source."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F43-S01-A01",
+          "frozenAssertion": "Popup appears only in valid context.",
+          "independentExpectedOutcome": "Source fixture expected context enables popup in SQL, refuses literal/comment/invalid context; no hidden DB action offline.",
+          "requires": [
+            "fixed-inputs",
+            "language-oracle",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F43-S01-A02",
+          "frozenAssertion": "focus/caret remain correct.",
+          "independentExpectedOutcome": "Real Tab/Return/Escape preserves original editor focus/caret/selection and no navigation is consumed outside original popup owner.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F43-S01-A03",
+          "frozenAssertion": "insertion quotes safely and is one Undo.",
+          "independentExpectedOutcome": "Accepted fixed quoted identifier source hash equals oracle and one native Undo restores exact before source without undoing an earlier edit.",
+          "requires": [
+            "language-oracle",
+            "native-bindings",
+            "native-manual",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F43-S01-A04",
+          "frozenAssertion": "stale/IME/literal replies cannot modify source.",
+          "independentExpectedOutcome": "Under active real IME and delayed stale replies, original/new source hashes and revision stay untouched by completion; literal/comment replies never insert.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "native-manual",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F44",
+      "scenarioId": "INSTALLED-F44",
+      "procedure": [
+        {
+          "action": "Run all shared signature cases including nested/SUBSTRING/named/default/variadic/overload/Unicode; type/change caret/Escape/Undo, refresh connected routine metadata and switch theme/DPI.",
+          "assertions": [
+            "Correct function/overload/active UTF-16 parameter and return type display.",
+            "stale diagnostics/help are rejected.",
+            "offline built-ins need no DB queries."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F44-S01-A01",
+          "frozenAssertion": "Correct function/overload/active UTF-16 parameter and return type display.",
+          "independentExpectedOutcome": "Each shared signature case matches known function/overload/return type/active-parameter UTF16 spans, including nested/named/default/variadic/nonBMP.",
+          "requires": [
+            "fixed-inputs",
+            "language-oracle",
+            "native-bindings",
+            "text-range"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F44-S01-A02",
+          "frozenAssertion": "stale diagnostics/help are rejected.",
+          "independentExpectedOutcome": "Delayed help/diagnostic response for prior caret/source/profile cannot change current exact signature/diagnostic capture.",
+          "requires": [
+            "fault-boundary",
+            "language-oracle",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F44-S01-A03",
+          "frozenAssertion": "offline built-ins need no DB queries.",
+          "independentExpectedOutcome": "Offline built-in help has zero DB connection/metadata/execute delta; native theme/DPI renders actual intended independent editor palette.",
+          "requires": [
+            "language-oracle",
+            "native-bindings",
+            "native-manual",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F45",
+      "scenarioId": "INSTALLED-F45",
+      "procedure": [
+        {
+          "action": "Invoke Run/Script/Stop/Run to File from toolbar/menu/keyboard while editor, grid, chooser and modal dialog have focus; switch document before delayed completion.",
+          "assertions": [
+            "One command registry captures exact context.",
+            "editing/protected shortcuts are not stolen.",
+            "focus/modal/busy gating is identical across entry points."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F45-S01-A01",
+          "frozenAssertion": "One command registry captures exact context.",
+          "independentExpectedOutcome": "Toolbar/menu/native keyboard commands capture same original document/source/range/profile/query hash and execute exactly once despite active-tab switch.",
+          "requires": [
+            "fault-boundary",
+            "native-bindings",
+            "native-manual",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F45-S01-A02",
+          "frozenAssertion": "editing/protected shortcuts are not stolen.",
+          "independentExpectedOutcome": "Editing/Complete SQL/protected native shortcuts retain expected text/clipboard behavior and produce zero execution request delta outside allowed context.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F45-S01-A03",
+          "frozenAssertion": "focus/modal/busy gating is identical across entry points.",
+          "independentExpectedOutcome": "Editor/grid/chooser/modal/busy context matrix exposes identical permitted command set at menu/toolbar/keyboard; stale command rejects without mutation.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F46",
+      "scenarioId": "INSTALLED-F46",
+      "procedure": [
+        {
+          "action": "Record/rebind/unbind/reset execution shortcuts, provoke duplicate/protected-key conflicts, restart, and load corrupt preferences; repeat under non-Latin layout/AltGr.",
+          "assertions": [
+            "Explicit unbinding persists.",
+            "conflicts are rejected.",
+            "safe fallback recovers corruption.",
+            "menus/toolbar/keyboard stay synchronized using native keys."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F46-S01-A01",
+          "frozenAssertion": "Explicit unbinding persists.",
+          "independentExpectedOutcome": "Native Clear yields exact override query.runCurrent binding.state=unbound; restart retains it and Run default no longer dispatches.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "native-manual",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F46-S01-A02",
+          "frozenAssertion": "conflicts are rejected.",
+          "independentExpectedOutcome": "Duplicate/protected/Complete SQL key attempts preserve exact previous preferences hash and show fixed validation; no accidental dispatch.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F46-S01-A03",
+          "frozenAssertion": "safe fallback recovers corruption.",
+          "independentExpectedOutcome": "Corrupt/future shortcut file stays exact original bytes during readonly fallback; explicit Recover Defaults writes exact backup before latest-value reset.",
+          "requires": [
+            "file-fault",
+            "lifecycle",
+            "native-bindings",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "fresh-shortcuts-corrupt-preserved",
+            "fresh-shortcuts-future-preserved",
+            "shortcut-explicit-default-recovery"
+          ]
+        },
+        {
+          "id": "F46-S01-A04",
+          "frozenAssertion": "menus/toolbar/keyboard stay synchronized using native keys.",
+          "independentExpectedOutcome": "After native rebind/reset, menu/toolbar labels and actual native command match same preferences including nonLatin/AltGr; IME/dead/Unknown/repeat never records.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F47",
+      "scenarioId": "INSTALLED-F47",
+      "procedure": [
+        {
+          "action": "Select System/Lager/Porter and named app scheme; select independent editor scheme/Follow App Appearance, preview and restart.",
+          "assertions": [
+            "Preferences persist independently with safe fallback.",
+            "system changes update only following choices.",
+            "all screens/popups use intended palette."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F47-S01-A01",
+          "frozenAssertion": "Preferences persist independently with safe fallback.",
+          "independentExpectedOutcome": "Exact independent appearance DTO retains chosen application/editor IDs across restart; missing IDs preserve stored strings but resolve safe fallback.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "fresh-appearance-corrupt-preserved",
+            "fresh-appearance-future-preserved",
+            "latest-settings-close-full-dtos"
+          ]
+        },
+        {
+          "id": "F47-S01-A02",
+          "frozenAssertion": "system changes update only following choices.",
+          "independentExpectedOutcome": "Real OS light/dark change alters only System/Follow resolved palette, not explicit selected ID, saved bytes, source/query/session or independent editor choice.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F47-S01-A03",
+          "frozenAssertion": "all screens/popups use intended palette.",
+          "independentExpectedOutcome": "All actual screens/popups resolve the chosen app/editor palette with independent expected color/alpha/scope roles and observable readable native rendering.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F48",
+      "scenarioId": "INSTALLED-F48",
+      "procedure": [
+        {
+          "action": "Load bundled schemes and all shared imports including JSONC include/TextMate/JetBrains; delete source and reload; remove custom; test traversal/symlink/cycle/remote/XML entity/size attacks.",
+          "assertions": [
+            "Normalized colors/font/scope/alpha precedence match.",
+            "imports persist independently.",
+            "unsafe input is rejected and corrupt library preserved.",
+            "notices accompany bundled assets."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F48-S01-A01",
+          "frozenAssertion": "Normalized colors/font/scope/alpha precedence match.",
+          "independentExpectedOutcome": "Every shared JSONC/include/TextMate/binaryPlist/JetBrains normalized expected color/font/scope/alpha precedence matches pinned fixture, independent of imported UI output.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F48-S01-A02",
+          "frozenAssertion": "imports persist independently.",
+          "independentExpectedOutcome": "Explicit import/review/commit persists normalized custom theme; remove source under owned receipt then normal restart still loads exact colors; remove custom only after successful ordered commit.",
+          "requires": [
+            "file-fault",
+            "lifecycle",
+            "native-bindings",
+            "native-manual",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F48-S01-A03",
+          "frozenAssertion": "unsafe input is rejected and corrupt library preserved.",
+          "independentExpectedOutcome": "Traversal/symlink/cycle/remote/entity/oversize inputs yield fixed parser errors and zero library change; corrupt/future bytes require explicit recovery backup.",
+          "requires": [
+            "file-fault",
+            "fixed-inputs",
+            "native-bindings",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "fresh-themes-corrupt-preserved",
+            "fresh-themes-future-preserved"
+          ]
+        },
+        {
+          "id": "F48-S01-A04",
+          "frozenAssertion": "notices accompany bundled assets.",
+          "independentExpectedOutcome": "Exact bundled theme source/license/notice digest inventory is included in the manifest, not merely a UI link or inferred package filename.",
+          "requires": [
+            "native-bindings",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F49",
+      "scenarioId": "INSTALLED-F49",
+      "procedure": [
+        {
+          "action": "During active editor Undo/selection/scroll, result selection and query execution, switch app/editor light/dark/system choices and render every dialog/popup/settings screen.",
+          "assertions": [
+            "Live themes keep editing/execution state and readable text/icons/hover/focus/selection.",
+            "native light controls have correct contrast."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F49-S01-A01",
+          "frozenAssertion": "Live themes keep editing/execution state and readable text/icons/hover/focus/selection.",
+          "independentExpectedOutcome": "During original query and edit, app/editor switch preserves exact original editor entity/text/Undo/selection/scroll, result IDs/selection and operation token; live palette changes expected roles only.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "settings-oracle",
+            "text-range",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F49-S01-A02",
+          "frozenAssertion": "native light controls have correct contrast.",
+          "independentExpectedOutcome": "Actual Windows/Wayland/X11 light controls, focus/hover/selection/text/icons remain visible/readable under native screen-reader/highContrast/DPI observations.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "settings-oracle"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F50",
+      "scenarioId": "INSTALLED-F50",
+      "procedure": [
+        {
+          "action": "Use native Open/Save/CA choosers and clipboard on Unicode/CRLF paths; type via IME/non-Latin/AltGr, move focus by keyboard, change fractional/mixed DPI and window bounds.",
+          "assertions": [
+            "Desktop conventions and exact text survive.",
+            "file/clipboard roundtrips succeed.",
+            "focus/selection/readability remain visible across displays."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F50-S01-A01",
+          "frozenAssertion": "Desktop conventions and exact text survive.",
+          "independentExpectedOutcome": "Real native keyboard/IME/nonLatin/AltGr/file paths preserve fixed emoji/combining/CRLF source hashes and standard dialog/window behavior.",
+          "requires": [
+            "fixed-inputs",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F50-S01-A02",
+          "frozenAssertion": "file/clipboard roundtrips succeed.",
+          "independentExpectedOutcome": "Native Open/Save/CA and clipboard roundtrips compare exact independently known bytes/types; chooser cancel preserves original binding/destination.",
+          "requires": [
+            "clipboard",
+            "file-fault",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F50-S01-A03",
+          "frozenAssertion": "focus/selection/readability remain visible across displays.",
+          "independentExpectedOutcome": "Real fractional/mixed-monitor DPI/window changes preserve visible focus/caret/selection and readable geometry on all three supported targets.",
+          "requires": [
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F51",
+      "scenarioId": "INSTALLED-F51",
+      "procedure": [
+        {
+          "action": "As standard user, create/read/update/delete a unique fixture credential in real native store; test missing/empty/locked/unavailable service and rollback failure.",
+          "assertions": [
+            "Credential Manager/Secret Service roundtrip succeeds privately.",
+            "failure is explicit.",
+            "no plaintext fallback, unrelated credential access or loss of existing password."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-credential-absence-and-roundtrip",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F51-S01-A01",
+          "frozenAssertion": "Credential Manager/Secret Service roundtrip succeeds privately.",
+          "independentExpectedOutcome": "Fresh UI-created UUID reserved absent, then actual app nonempty/empty/keep/update/delete yields exact expected hashes and no unrelated lookup.",
+          "requires": [
+            "credential-update",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "credential-first-write-postgresql-nonempty",
+            "credential-first-write-postgresql-empty",
+            "credential-first-write-mysql-nonempty",
+            "credential-first-write-mysql-empty"
+          ]
+        },
+        {
+          "id": "F51-S01-A02",
+          "frozenAssertion": "failure is explicit.",
+          "independentExpectedOutcome": "Locked/unavailable/rollback-failure cases report fixed errors boundedly; absence stays unproven and no success/cleanup ownership is invented.",
+          "requires": [
+            "credential-update",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F51-S01-A03",
+          "frozenAssertion": "no plaintext fallback, unrelated credential access or loss of existing password.",
+          "independentExpectedOutcome": "Conditional cleanup only after normal GUI exit rechecks expected hash; foreign replacement preserved; metadata allow-list has no plaintext fallback and prior owned password survives failure.",
+          "requires": [
+            "credential-update",
+            "lifecycle",
+            "native-bindings",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F52",
+      "scenarioId": "INSTALLED-F52",
+      "procedure": [
+        {
+          "action": "With Narrator/UIA or Orca/AT-SPI, navigate editor, virtualized grid, NULL/binary cells, inspector, menus, Settings and dialogs entirely by keyboard.",
+          "assertions": [
+            "Names/roles/values/actions/focus are announced correctly.",
+            "modal safe defaults and row/column position are operable.",
+            "rendering/headless tests do not substitute for this run."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F52-S01-A01",
+          "frozenAssertion": "Names/roles/values/actions/focus are announced correctly.",
+          "independentExpectedOutcome": "Narrator or Orca actual keyboard navigation announces expected editor/grid/inspector/menu/Settings/dialog names/roles/kinds/actions/focus with original stable identity.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F52-S01-A02",
+          "frozenAssertion": "modal safe defaults and row/column position are operable.",
+          "independentExpectedOutcome": "Actual keyboard reaches virtualized original row/column and safe modal Cancel default; visual/native position agrees with source, NULL/binary semantics announced.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "text-range",
+            "typed-grid"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F52-S01-A03",
+          "frozenAssertion": "rendering/headless tests do not substitute for this run.",
+          "independentExpectedOutcome": "Require explicit supported-target human observation pinned to exact artifact/session; no headless/render/source/native-node-count evidence can fulfill this assertion.",
+          "requires": [
+            "matrix-join",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F53",
+      "scenarioId": "INSTALLED-F53",
+      "procedure": [
+        {
+          "action": "Launch exact packaged helper, check protocol/version and no Windows console; saturate stream, Stop, kill only owned helper and retry/recover.",
+          "assertions": [
+            "Matching executable is used.",
+            "control/terminal traffic stays bounded.",
+            "helper death surfaces correct disconnected/unknown state.",
+            "unrelated processes remain untouched."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F53-S01-A01",
+          "frozenAssertion": "Matching executable is used.",
+          "independentExpectedOutcome": "Actual GUI-spawned sibling helper exact executable hash/build identity/capturedExportV1 matches artifact and native Windows has no console window.",
+          "requires": [
+            "helper-lifetime",
+            "native-bindings",
+            "native-manual",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F53-S01-A02",
+          "frozenAssertion": "control/terminal traffic stays bounded.",
+          "independentExpectedOutcome": "Held ACK saturation plus real Stop yields bounded queued frames/progress and original terminal order/count with physical server cancellation.",
+          "requires": [
+            "fault-boundary",
+            "helper-lifetime",
+            "native-bindings",
+            "script-trace"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": [
+            "physical-stop-postgresql",
+            "physical-stop-mysql"
+          ]
+        },
+        {
+          "id": "F53-S01-A03",
+          "frozenAssertion": "helper death surfaces correct disconnected/unknown state.",
+          "independentExpectedOutcome": "Owned helper death yields disconnected versus unknown according to fixed transaction phase; independent observer receipt proves no fabricated rollback.",
+          "requires": [
+            "fault-boundary",
+            "helper-lifetime",
+            "native-bindings",
+            "owned-effects"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F53-S01-A04",
+          "frozenAssertion": "unrelated processes remain untouched.",
+          "independentExpectedOutcome": "Fault targets only retained exact handle/hash/creation time; registered unrelated sentinel process/file identities remain unchanged through cleanup.",
+          "requires": [
+            "helper-lifetime",
+            "native-bindings",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F54",
+      "scenarioId": "INSTALLED-F54",
+      "procedure": [
+        {
+          "action": "Inspect candidate GUI/helper version/build/icons/identity; migrate a copied prototype library and credentials; launch old/new simultaneously; independently rebuild Mac SwiftUI.",
+          "assertions": [
+            "Stable identity retains IDs/credentials without data races.",
+            "GUI/helper metadata match.",
+            "Mac dev.dbeer.app/signing/release path remains independent."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "native-credential-absence-and-roundtrip"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F54-S01-A01",
+          "frozenAssertion": "Stable identity retains IDs/credentials without data races.",
+          "independentExpectedOutcome": "Actual trusted compatible prototype/candidate retains original opaque IDs and exact reserved credential hashes under same canonical data owner; concurrent old/new safely refuses.",
+          "requires": [
+            "credential-update",
+            "lifecycle",
+            "native-bindings",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F54-S01-A02",
+          "frozenAssertion": "GUI/helper metadata match.",
+          "independentExpectedOutcome": "Exact GUI/helper embedded identity, build-info and hello metadata match canonical manifest, PE/ELF architecture and actual Windows icon/taskbar/version resources.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F54-S01-A03",
+          "frozenAssertion": "Mac dev.dbeer.app/signing/release path remains independent.",
+          "independentExpectedOutcome": "Separately completed native macOS SwiftUI/AppKit build/tests/signing/package route uses existing identity and original release conventions; GPUI Mac cannot substitute.",
+          "requires": [
+            "matrix-join",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F55",
+      "scenarioId": "INSTALLED-F55",
+      "procedure": [
+        {
+          "action": "On clean standard-user desktops, verify archive/package checksum/notices/dependencies and signing/provenance policy, extract/install, launch without Go/Rust, then manually update.",
+          "assertions": [
+            "Documented Windows runtime/Linux glibc/GPU/Secret Service requirements suffice.",
+            "matching helper and notices present.",
+            "existing release archives are untouched."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F55-S01-A01",
+          "frozenAssertion": "Documented Windows runtime/Linux glibc/GPU/Secret Service requirements suffice.",
+          "independentExpectedOutcome": "Actual clean standard-user Windows11/Ubuntu24 x64 Wayland/X11 launches extracted candidate without Go/Rust using documented GPU/runtime/store dependencies; native warnings/provenance recorded.",
+          "requires": [
+            "native-bindings",
+            "native-manual",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F55-S01-A02",
+          "frozenAssertion": "matching helper and notices present.",
+          "independentExpectedOutcome": "Archive/whole-file manifest exact helper/version/capability and complete dependency/theme/license notices validate against independent pinned package inputs.",
+          "requires": [
+            "native-bindings",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F55-S01-A03",
+          "frozenAssertion": "existing release archives are untouched.",
+          "independentExpectedOutcome": "Old release archive path/size/hash receipts are unchanged and verified complete-folder manual update publishes only a new owned candidate folder.",
+          "requires": [
+            "file-fault",
+            "native-bindings",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F56",
+      "scenarioId": "INSTALLED-F56",
+      "procedure": [
+        {
+          "action": "Install exact previous/candidate artifacts in an owned fixture; exercise repeated launch, preserve profiles/UUIDs/credentials/drafts/history/settings, restart/update/remove.",
+          "assertions": [
+            "State survives migration.",
+            "documents restore disconnected.",
+            "instance ownership prevents clobbering.",
+            "removal does not touch unrelated user data or processes."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "engine-independent",
+        "postgresql",
+        "mysql"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-persisted-typed-state",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip",
+        "actual-trusted-prior-upgrade",
+        "concurrent-exact-image-refusal",
+        "ordinary-restart-disconnected"
+      ],
+      "manualRequiredByFrozenCatalog": false,
+      "assertions": [
+        {
+          "id": "F56-S01-A01",
+          "frozenAssertion": "State survives migration.",
+          "independentExpectedOutcome": "Actual previous\u2192candidate normal close/update compares populated exact UUID/order/policy/TLS/credentials/document/history/appearance/library/shortcut hashes.",
+          "requires": [
+            "credential-update",
+            "lifecycle",
+            "native-bindings",
+            "package-evidence",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F56-S01-A02",
+          "frozenAssertion": "documents restore disconnected.",
+          "independentExpectedOutcome": "Ordinary candidate restart restores source-only original documents with zero product connections and execute/effect deltas until explicit Connect/Run.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "owned-effects",
+            "script-trace",
+            "source-state"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F56-S01-A03",
+          "frozenAssertion": "instance ownership prevents clobbering.",
+          "independentExpectedOutcome": "Previous/previous, previous/candidate, candidate/previous, candidate/candidate exact cooperating lock attempts refuse while owner alive; all canonical state bytes remain equal.",
+          "requires": [
+            "lifecycle",
+            "native-bindings",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F56-S01-A04",
+          "frozenAssertion": "removal does not touch unrelated user data or processes.",
+          "independentExpectedOutcome": "Remove only original owned integration/file receipts after normal close; unrelated sentinel file/process identities unchanged and private app data/credentials remain unless explicitly removed.",
+          "requires": [
+            "file-fault",
+            "lifecycle",
+            "native-bindings",
+            "package-evidence"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    },
+    {
+      "feature": "F57",
+      "scenarioId": "INSTALLED-F57",
+      "procedure": [
+        {
+          "action": "Run every required scenario on Windows 11 x64 and Ubuntu 24.04 x64 Wayland/X11 with PostgreSQL 16/17/18 and MySQL 8.0/8.4, TLS/fault/upgrade cases; audit summaries and skips.",
+          "assertions": [
+            "Every native column has exact artifact/build/session/engine evidence and completed-run summary.",
+            "no headless-derived UI pass.",
+            "Mac regression route remains green."
+          ]
+        }
+      ],
+      "requiredEngines": [
+        "postgresql-16",
+        "postgresql-17",
+        "postgresql-18",
+        "mysql-8.0",
+        "mysql-8.4"
+      ],
+      "mandatoryProofKinds": [
+        "exact-owned-native-actions",
+        "completed-procedure-assertions",
+        "independent-physical-database-observer",
+        "native-credential-absence-and-roundtrip",
+        "native-manual-observation"
+      ],
+      "manualRequiredByFrozenCatalog": true,
+      "assertions": [
+        {
+          "id": "F57-S01-A01",
+          "frozenAssertion": "Every native column has exact artifact/build/session/engine evidence and completed-run summary.",
+          "independentExpectedOutcome": "Require all 171 frozen target cells with every assertion and mandatory proof kind, both engines plus all required versions/TLS/faults, exact prior/candidate builds/session and nonempty completed summaries.",
+          "requires": [
+            "matrix-join",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F57-S01-A02",
+          "frozenAssertion": "no headless-derived UI pass.",
+          "independentExpectedOutcome": "Reject headless/container/Server-as-Windows11, zero-case, missing manual observation, missing engine or incomplete cleanup as native pass.",
+          "requires": [
+            "matrix-join",
+            "native-bindings",
+            "native-manual"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        },
+        {
+          "id": "F57-S01-A03",
+          "frozenAssertion": "Mac regression route remains green.",
+          "independentExpectedOutcome": "Join actual completed required SwiftUI/AppKit/Go regression summaries with exact native artifacts; skipped/unrun Mac route keeps parity open.",
+          "requires": [
+            "matrix-join",
+            "native-bindings"
+          ],
+          "status": "source-plan-only",
+          "passed": false,
+          "fragments": []
+        }
+      ],
+      "nativeCells": {
+        "windows11-x64": "not-run",
+        "ubuntu2404-x64-wayland": "not-run",
+        "ubuntu2404-x64-x11": "not-run"
+      }
+    }
+  ],
+  "frozenCatalogSha256": "256ed24cb5c718d7907a03fa7675dc4b6fc5c56b444515cbfb62c642c93dc7c3"
+}

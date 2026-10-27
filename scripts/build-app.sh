@@ -7,6 +7,12 @@ if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
     printf 'DBeer builds require an Apple Silicon Mac.\n' >&2
     exit 1
 fi
+for ssh_tool in /usr/bin/ssh /usr/bin/ssh-keyscan; do
+    if [[ ! -x "$ssh_tool" ]]; then
+        printf 'DBeer SSH support requires the macOS OpenSSH tools.\n' >&2
+        exit 1
+    fi
+done
 build_root="$repo_root/build"
 app="$build_root/DBeer.app"
 configuration="${CONFIGURATION:-release}"
@@ -43,6 +49,13 @@ for icon in ToolbarIcon ToolbarIconDark; do
 done
 cp "$repo_root/macos/Resources/Assets.car" "$app/Contents/Resources/Assets.car"
 cp "$repo_root/LICENSE" "$app/Contents/Resources/LICENSE"
+cp "$repo_root/helper/internal/textdiff/LICENSE.revdiff" "$app/Contents/Resources/LICENSE-revdiff.txt"
+cp -f "$repo_root/helper/internal/mongodb/licenses/LICENSE.mongo-driver" "$app/Contents/Resources/LICENSE-mongo-driver.txt"
+cp -f "$repo_root/helper/internal/mongodb/licenses/THIRD-PARTY-NOTICES.mongo-driver" "$app/Contents/Resources/NOTICE-mongo-driver.txt"
+cp "$repo_root/helper/third_party/cassandra-gocql-driver/LICENSE" "$app/Contents/Resources/LICENSE-cassandra-gocql-driver.txt"
+cp "$repo_root/helper/third_party/cassandra-gocql-driver/NOTICE" "$app/Contents/Resources/NOTICE-cassandra-gocql-driver.txt"
+mkdir -p "$app/Contents/Resources/MCP-Licenses"
+cp -f "$repo_root/helper/internal/mcpbridge/licenses/"* "$app/Contents/Resources/MCP-Licenses/"
 export GOCACHE="$build_root/.cache/go"
 export GOMODCACHE="$build_root/.cache/go-mod"
 export CLANG_MODULE_CACHE_PATH="$build_root/.cache/clang"
@@ -59,6 +72,10 @@ swift_bin="$(swift build --disable-sandbox --cache-path "$build_root/.cache/swif
     --package-path "$repo_root/macos" --scratch-path "$build_root/swift" \
     --configuration "$configuration" -debug-info-format none --show-bin-path)"
 cp "$swift_bin/DBeer" "$app/Contents/MacOS/DBeer"
+"$repo_root/scripts/prepare-swift-resources.sh" "$swift_bin/DBeer_DBeer.bundle"
+# Replace the generated bundle so an earlier SwiftPM build cannot leave links
+# at the copy destination or retain resources from a different bundle layout.
+rm -rf -- "$app/Contents/Resources/DBeer_DBeer.bundle"
 cp -R "$swift_bin/DBeer_DBeer.bundle" "$app/Contents/Resources/"
 
 cat > "$app/Contents/Info.plist" <<PLIST
@@ -86,6 +103,9 @@ PLIST
 
 codesign --force --timestamp=none --keychain "$signing_keychain" --sign "$signing_identity" \
     --identifier dev.dbeer.core "$app/Contents/Helpers/dbeer-core"
+# The askpass and crash-watchdog entry points dispatch in this same binary,
+# including outside the source checkout; there are no unsigned script helpers.
+codesign --verify --strict "$app/Contents/Helpers/dbeer-core"
 codesign --force --timestamp=none --keychain "$signing_keychain" --sign "$signing_identity" "$app"
 codesign --verify --deep --strict "$app"
 # Let Finder notice resource changes when rebuilding an existing app bundle.

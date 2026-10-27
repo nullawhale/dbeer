@@ -1,0 +1,324 @@
+[
+  {
+    "id": "SIG-postgresql-01",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT COALESCE(|)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "COALESCE",
+      "activeParameter": 0
+    }
+  },
+  {
+    "id": "SIG-postgresql-02",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT NULLIF('x,y', |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "NULLIF",
+      "activeParameter": 1
+    }
+  },
+  {
+    "id": "SIG-postgresql-03",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT NULLIF(ROUND(1.5, |), 0)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "ROUND",
+      "activeParameter": 1
+    }
+  },
+  {
+    "id": "SIG-postgresql-04",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT SUBSTRING('hello' FROM |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "SUBSTRING",
+      "activeParameter": 1
+    }
+  },
+  {
+    "id": "SIG-postgresql-05",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT SUBSTRING('hello' FROM 1 FOR |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "SUBSTRING",
+      "activeParameter": 2
+    }
+  },
+  {
+    "id": "SIG-postgresql-06",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT COALESCE(1,2,3, |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "COALESCE",
+      "activeParameter": 0
+    }
+  },
+  {
+    "id": "SIG-postgresql-outside",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT NULLIF(1,2); SELECT |",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": false
+    }
+  },
+  {
+    "id": "SIG-postgresql-comment",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT NULLIF(/* | */ 1,2)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": false
+    }
+  },
+  {
+    "id": "SIG-mysql-01",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT COALESCE(|)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "COALESCE",
+      "activeParameter": 0
+    }
+  },
+  {
+    "id": "SIG-mysql-02",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT NULLIF('x,y', |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "NULLIF",
+      "activeParameter": 1
+    }
+  },
+  {
+    "id": "SIG-mysql-03",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT NULLIF(ROUND(1.5, |), 0)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "ROUND",
+      "activeParameter": 1
+    }
+  },
+  {
+    "id": "SIG-mysql-04",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT SUBSTRING('hello' FROM |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "SUBSTRING",
+      "activeParameter": 1
+    }
+  },
+  {
+    "id": "SIG-mysql-05",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT SUBSTRING('hello' FROM 1 FOR |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "SUBSTRING",
+      "activeParameter": 2
+    }
+  },
+  {
+    "id": "SIG-mysql-06",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT COALESCE(1,2,3, |)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": true,
+      "name": "COALESCE",
+      "activeParameter": 0
+    }
+  },
+  {
+    "id": "SIG-mysql-outside",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT NULLIF(1,2); SELECT |",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": false
+    }
+  },
+  {
+    "id": "SIG-mysql-comment",
+    "engine": "mysql",
+    "sqlWithCaret": "SELECT NULLIF(/* | */ 1,2)",
+    "sourceTest": "TestSignatureHelpNestedCallsAndArgumentDelimiters",
+    "expect": {
+      "present": false
+    }
+  },
+  {
+    "id": "SIG-named-default",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT public.calculate(scale => |, value => 1)",
+    "sourceTest": "TestSignatureMetadataOverloadsNamedDefaultAndVariadicArguments",
+    "expect": {
+      "present": true,
+      "name": "\"public\".calculate",
+      "activeParameter": 1,
+      "parameterText": "scale: integer = DEFAULT"
+    },
+    "catalog": [
+      {
+        "schema": "public",
+        "name": "calculate",
+        "kind": "function",
+        "signatures": [
+          {
+            "parameters": [
+              {
+                "name": "value",
+                "type": "integer"
+              }
+            ],
+            "returnType": "integer"
+          },
+          {
+            "parameters": [
+              {
+                "name": "scale",
+                "type": "integer",
+                "position": 2,
+                "optional": true
+              },
+              {
+                "name": "value",
+                "type": "numeric",
+                "position": 1
+              }
+            ],
+            "returnType": "numeric"
+          },
+          {
+            "parameters": [
+              {
+                "name": "values",
+                "type": "text[]",
+                "variadic": true
+              }
+            ],
+            "returnType": "text"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "SIG-variadic",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT public.calculate('a','b','c',|)",
+    "sourceTest": "TestSignatureMetadataOverloadsNamedDefaultAndVariadicArguments",
+    "expect": {
+      "present": true,
+      "name": "\"public\".calculate",
+      "activeParameter": 0
+    },
+    "catalog": [
+      {
+        "schema": "public",
+        "name": "calculate",
+        "kind": "function",
+        "signatures": [
+          {
+            "parameters": [
+              {
+                "name": "value",
+                "type": "integer"
+              }
+            ],
+            "returnType": "integer"
+          },
+          {
+            "parameters": [
+              {
+                "name": "scale",
+                "type": "integer",
+                "position": 2,
+                "optional": true
+              },
+              {
+                "name": "value",
+                "type": "numeric",
+                "position": 1
+              }
+            ],
+            "returnType": "numeric"
+          },
+          {
+            "parameters": [
+              {
+                "name": "values",
+                "type": "text[]",
+                "variadic": true
+              }
+            ],
+            "returnType": "text"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "SIG-unicode-crlf",
+    "engine": "postgresql",
+    "sqlWithCaret": "-- 😀\r\nSELECT public.\"function 😀\"('x', |)",
+    "sourceTest": "TestSignatureLabelOffsetsAreUTF16",
+    "expect": {
+      "present": true,
+      "name": "\"public\".\"function 😀\"",
+      "activeParameter": 1,
+      "parameterText": "second: integer"
+    },
+    "catalog": [
+      {
+        "schema": "public",
+        "name": "function 😀",
+        "kind": "function",
+        "signatures": [
+          {
+            "returnType": "text",
+            "parameters": [
+              {
+                "name": "first 😀",
+                "type": "text"
+              },
+              {
+                "name": "second",
+                "type": "integer"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "SIG-qualified-no-builtin",
+    "engine": "postgresql",
+    "sqlWithCaret": "SELECT private.LOWER(|)",
+    "sourceTest": "TestSignatureDialectQualifiedNamesAndNoArgumentCalls",
+    "expect": {
+      "present": false
+    }
+  }
+]

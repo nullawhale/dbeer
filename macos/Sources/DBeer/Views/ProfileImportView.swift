@@ -7,7 +7,7 @@ struct ProfileImportView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Import Connections").font(.title2)
             Text("Choose the connections to import. Each selected profile becomes a new connection. Enter your own password in Edit Connection after importing.")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.callout).appSecondaryText()
             HStack {
                 Button("Select All") { workspace.selectAllImportProfiles(true) }.controlHover()
                     .accessibilityIdentifier("selectAllImportProfiles")
@@ -15,7 +15,7 @@ struct ProfileImportView: View {
                     .accessibilityIdentifier("deselectAllImportProfiles")
                 Spacer()
                 Text("\(workspace.selectedImportProfiles.count) of \(workspace.importPreview?.count ?? 0) selected")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.callout).appSecondaryText()
             }.disabled(workspace.isImportingProfiles)
             List(workspace.importPreview ?? []) { imported in
                 HStack(alignment: .top, spacing: 10) {
@@ -29,12 +29,23 @@ struct ProfileImportView: View {
                         Text("\(imported.profile.engine.displayName) · \(imported.profile.user)@\(imported.profile.host):\(imported.profile.port)/\(imported.profile.database)")
                             .font(.callout).textSelection(.enabled)
                         HStack {
-                            Text("TLS: \(imported.profile.sslMode)").font(.caption).foregroundStyle(.secondary)
+                            Text("TLS: \(imported.profile.sslMode)").font(.caption).appSecondaryText()
                             if imported.profile.sslRootCert != nil {
                                 Button(imported.requiresCASelection ? "Choose Missing CA File…" : "Change CA File…") {
                                     workspace.chooseImportedCA(imported.id)
                                 }.controlHover()
                                 .disabled(!imported.isSelected)
+                            }
+                        }
+                        if let ssh = imported.profile.ssh {
+                            Text("SSH: \(ssh.user)@\(ssh.host):\(ssh.port) · \(ssh.authMethod.label)").font(.caption).appSecondaryText()
+                            if ssh.authMethod == .privateKey {
+                                Button(imported.requiresSSHKeySelection ? "Choose Local SSH Key…" : "Change SSH Key…") {
+                                    workspace.chooseImportedSSHKey(imported.id)
+                                }.controlHover().disabled(!imported.isSelected)
+                            }
+                            if imported.requiresSSHKeySelection {
+                                Text("Select a private key on this Mac before importing.").font(.caption).foregroundStyle(.orange)
                             }
                         }
                         if imported.requiresCASelection {

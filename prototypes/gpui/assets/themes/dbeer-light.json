@@ -1,0 +1,53 @@
+{
+  "$schema": "vscode://schemas/color-theme",
+  "name": "DBeer Light",
+  "type": "light",
+  "colors": {
+    "editor.background": "#FFFFFF",
+    "editor.foreground": "#000000D9",
+    "editorCursor.foreground": "#000000",
+    "editor.selectionBackground": "#B2D7FF",
+    "editor.selectionForeground": "#000000",
+    "editor.inactiveSelectionBackground": "#DCDCDC",
+    "editor.lineHighlightBackground": "#00000005",
+    "editorGutter.background": "#F5F5F5",
+    "editorLineNumber.foreground": "#6C6C70",
+    "editorLineNumber.activeForeground": "#000000D9",
+    "editorError.foreground": "#FF3B30",
+    "editorWarning.foreground": "#FF9500",
+    "editorInfo.foreground": "#007AFF",
+    "editorSuggestWidget.background": "#FFFFFF",
+    "editorSuggestWidget.foreground": "#000000D9",
+    "editorSuggestWidget.highlightForeground": "#007AFF",
+    "editorSuggestWidget.focusHighlightForeground": "#005BB5",
+    "editorSuggestWidget.selectedBackground": "#CBE4FF",
+    "editorSuggestWidget.selectedForeground": "#000000",
+    "editorSuggestWidget.border": "#C6C6C6"
+  },
+  "tokenColors": [
+    {
+      "scope": "keyword",
+      "settings": {
+        "foreground": "#6E38A6"
+      }
+    },
+    {
+      "scope": "string",
+      "settings": {
+        "foreground": "#296E45"
+      }
+    },
+    {
+      "scope": "constant.numeric",
+      "settings": {
+        "foreground": "#1757AD"
+      }
+    },
+    {
+      "scope": "comment",
+      "settings": {
+        "foreground": "#6C6C70"
+      }
+    }
+  ]
+}

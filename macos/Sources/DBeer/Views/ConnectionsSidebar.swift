@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ConnectionsSidebar: View {
@@ -7,7 +8,7 @@ struct ConnectionsSidebar: View {
 
     private var expandedState = SwiftUI.State(initialValue: true)
     private var deletionState = SwiftUI.State<SavedConnection?>(initialValue: nil)
-    private let amber = AppPalette.accent
+    private var amber: Color { AppPalette.accent }
 
     init(model: WorkspaceModel, onCreate: @escaping () -> Void, onEdit: @escaping (SavedConnection) -> Void) {
         self.model = model
@@ -50,31 +51,15 @@ struct ConnectionsSidebar: View {
                             .tag(connection.id)
                             .listRowBackground(model.selectedConnectionId == connection.id
                                 ? AppPalette.accent.opacity(0.12) : Color.clear)
-                            .contextMenu {
-                                if model.activeConnectionId == connection.id {
-                                    Button("Disconnect") { Task { await model.disconnect() } }
-                                        .disabled(!model.canDisconnect)
-                                        .accessibilityIdentifier("disconnect")
-                                } else {
-                                    Button("Connect") { connect(connection) }
-                                        .disabled(!model.canConnect || model.isSavingConnection)
-                                        .accessibilityIdentifier("connectSavedConnection")
-                                }
-                                Divider()
-                                Button("Edit Connection…") { onEdit(connection) }
-                                    .disabled(model.isSavingConnection)
-                                    .accessibilityIdentifier("editConnection")
-                                Button("Delete Connection…", role: .destructive) {
-                                    deletionState.wrappedValue = connection
-                                }
-                                .disabled(!canDelete(connection))
-                                .accessibilityIdentifier("deleteConnectionRequest")
-                            }
+                            .catalogRowContextMenu { contextMenu(for: connection) }
                     }
                 } label: {
                     Label("PostgreSQL", systemImage: "externaldrive.connected.to.line.below")
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .appSecondaryText()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) { expandedState.wrappedValue.toggle() }
                         .catalogRowHover()
                 }
                 .accessibilityIdentifier("postgresConnectionsGroup")
@@ -86,9 +71,9 @@ struct ConnectionsSidebar: View {
                 if model.savedConnections.isEmpty {
                     VStack(spacing: 10) {
                         Text("No saved connections")
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.callout).appSecondaryText()
                         Text("Use + above to add a connection.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).appSecondaryText()
                     }
                     .padding(20)
                 }
@@ -141,7 +126,7 @@ struct ConnectionsSidebar: View {
                     .lineLimit(1)
                 Text("\(connection.host):\(String(connection.port))/\(connection.database)")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .appSecondaryText()
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -166,6 +151,26 @@ struct ConnectionsSidebar: View {
     private func connect(_ connection: SavedConnection) {
         guard model.canConnect, !model.isSavingConnection else { return }
         Task { await model.connectSavedConnection(connection.id) }
+    }
+
+    private func contextMenu(for connection: SavedConnection) -> NSMenu {
+        let menu = NSMenu()
+        if model.activeConnectionId == connection.id {
+            menu.addCatalogAction("Disconnect", enabled: model.canDisconnect, identifier: "disconnect") {
+                Task { await model.disconnect() }
+            }
+        } else {
+            menu.addCatalogAction("Connect", enabled: model.canConnect && !model.isSavingConnection,
+                                  identifier: "connectSavedConnection") { connect(connection) }
+        }
+        menu.addItem(.separator())
+        menu.addCatalogAction("Edit Connection…", enabled: !model.isSavingConnection, identifier: "editConnection") {
+            onEdit(connection)
+        }
+        menu.addCatalogAction("Delete Connection…", enabled: canDelete(connection), identifier: "deleteConnectionRequest") {
+            deletionState.wrappedValue = connection
+        }
+        return menu
     }
 
     private func canDelete(_ connection: SavedConnection) -> Bool {

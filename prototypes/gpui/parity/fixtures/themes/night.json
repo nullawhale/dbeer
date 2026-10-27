@@ -1,0 +1,24 @@
+{
+  "name": "Parity Night",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#112233",
+    "editor.foreground": "#eeeeee",
+    "editor.selectionBackground": "#44668880"
+  },
+  "tokenColors": [
+    {
+      "scope": "keyword",
+      "settings": {
+        "foreground": "#ffcc88",
+        "fontStyle": "bold italic"
+      }
+    },
+    {
+      "scope": "string",
+      "settings": {
+        "foreground": "#aabbcc"
+      }
+    }
+  ]
+}

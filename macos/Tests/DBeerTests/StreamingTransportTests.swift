@@ -9,7 +9,7 @@ struct StreamingTransportTests {
         def read(): return json.loads(sys.stdin.readline())
         def send(value): print(json.dumps(value,ensure_ascii=False),flush=True)
         hello=read()
-        send({'type':'hello.ack','requestId':hello['requestId'],'protocolVersion':2})
+        send({'type':'hello.ack','requestId':hello['requestId'],'protocolVersion':5})
         command=read()
         ids={'requestId':command['requestId'],'sessionId':command['sessionId'],'queryId':command['queryId']}
         column={'index':0,'name':'x','engine':'postgresql','nativeType':'numeric','typeOid':1700}
@@ -54,5 +54,35 @@ struct StreamingTransportTests {
             #expect(error.outcomeUnknown)
         }
         _ = await client.shutdown()
+    }
+
+    @Test func terminalSourceOmissionNoticeSurvivesHydrationAndResultSetSelection() async throws {
+        let client = helper("""
+        summaries=[]
+        for index in range(2):
+            send(dict(ids,type='query.chunk',sequence=index+1,resultIndex=index,columns=[column],rows=[[str(index)]]))
+            ack=read()
+            assert ack['type']=='stream.ack' and ack['sequence']==index+1
+            summaries.append(dict(columns=[column],rows=[],commandTag='SELECT 1',rowCount=1,displayedRowCount=1,
+                truncated=False,displayNotice='Original result notice.'))
+        send(dict(ids,type='query.result',streamed=True,resultSets=summaries,columns=[],rows=[],commandTag='SELECT 1',
+            rowCount=1,displayedRowCount=1,truncated=False,transactionStatus='idle',durationMs=1,
+            displayNotice='The source SQL exceeded the supported size limit. Pin Result is unavailable.'))
+        """)
+        try await client.start()
+        do {
+            let result = try await client.request(.execute(sessionId: "session", sql: "SELECT fixture"))
+            #expect(result.sql == nil && result.displayNotice?.contains("source SQL exceeded") == true)
+            for index in 0..<2 {
+                let selected = try #require(ResultSnapshotSource.project(result, resultSetIndex: index))
+                #expect(selected.rows == [[String(index)]])
+                #expect(selected.displayNotice?.contains("Original result notice.") == true)
+                #expect(selected.displayNotice?.contains("source SQL exceeded") == true)
+            }
+            #expect(await client.shutdown().acknowledged)
+        } catch {
+            _ = await client.shutdown()
+            throw error
+        }
     }
 }

@@ -43,14 +43,16 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    struct QueryFailure: Equatable {
+    struct QueryFailure: Equatable, Sendable {
         let category: String
         let message: String
         let sqlState: String?
         let outcomeUnknown: Bool
+        var sqlNotExecuted: Bool = false
 
         var title: String {
-            switch category {
+            if sqlNotExecuted { return "Not executed" }
+            return switch category {
             case "cancelled": "Query cancelled"
             case "timeout": "Query timed out"
             case "connection", "transport": "Connection lost"
@@ -58,6 +60,14 @@ final class WorkspaceModel: ObservableObject {
             default: "Query failed"
             }
         }
+    }
+
+    struct QueryCompletion: Sendable {
+        let startedAt: Date
+        let finishedAt: Date
+        let durationMs: Double
+        let reply: BackendMessage?
+        let failure: QueryFailure?
     }
 
     nonisolated static let sslModes = ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
@@ -69,8 +79,21 @@ final class WorkspaceModel: ObservableObject {
     @Published var user = "postgres"
     // Runtime credentials stay in memory; saved passwords use the credential store.
     @Published var password = ""
+    @Published var passwordCommand: PasswordCommand?
     @Published var sslMode = "verify-full"
     @Published var sslRootCert = ""
+    @Published var policy = ExecutionPolicy()
+    @Published var contactPoints: [String]?
+    @Published var localDatacenter: String?
+    @Published var consistency: String?
+    @Published var mongodb: MongoDBSettings?
+    @Published var ssh: SSHSettings?
+    @Published private(set) var connectionProgress: String?
+    @Published private var connectionPreparationId: UUID?
+    private var connectionAttempt = UUID()
+    var isConnecting: Bool { connectionState == .connecting || connectionPreparationId != nil }
+    @Published private(set) var currentKeyspace: String?
+    @Published private(set) var capabilities: Set<String> = []
     @Published var sql = "SELECT 1 AS id, 'hello'::text AS name;"
 
     @Published private(set) var state: HelperState = .starting
@@ -89,6 +112,7 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var savedConnections: [SavedConnection] = []
     @Published private(set) var selectedConnectionId: UUID?
     @Published private(set) var activeConnectionId: UUID?
+    private(set) var connectionsErrorProfileID: UUID?
     @Published private(set) var connectionsError: String?
     @Published private(set) var isSavingConnection = false
     @Published var isConnectionEditorPresented = false
@@ -115,7 +139,7 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var canConnect: Bool {
-        guard !stopping, activeQueryId == nil, connectionState == .disconnected else { return false }
+        guard !stopping, connectionPreparationId == nil, activeQueryId == nil, connectionState == .disconnected else { return false }
         switch state {
         case .ready, .failed: return true
         default: return false
@@ -135,6 +159,7 @@ final class WorkspaceModel: ObservableObject {
     var transactionLabel: String {
         switch transactionStatus {
         case .idle: "Idle"
+        case .unsupported: "Not supported"
         case .transaction: "In transaction"
         case .failedTransaction: "Failed transaction"
         case nil: "No session"
@@ -147,8 +172,16 @@ final class WorkspaceModel: ObservableObject {
     }
 
     var connectionSummary: String {
-        sessionId == nil ? connectionState.label : "\(user)@\(host):\(port)/\(database)"
+        guard sessionId != nil else { return connectionProgress ?? connectionState.label }
+        if engine == .cassandra {
+            return "\(host):\(port)/\(currentKeyspace ?? database) · \(consistency ?? "LOCAL_QUORUM")"
+        }
+        return "\(user)@\(host):\(port)/\(database)"
     }
+
+    var supportsGridEditing: Bool { capabilities.contains("gridEditing") }
+    var usesCursorPagination: Bool { capabilities.contains("cursorPagination") }
+    var readOnlyScope: String { capabilities.contains("localReadOnly") ? "Local readonly" : "Readonly" }
 
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil,
                sharedHelper: BackendClient? = nil) async {
@@ -183,9 +216,10 @@ final class WorkspaceModel: ObservableObject {
     }
 
     private func openConnection(savedProfileId: UUID?) async {
+        let attempt = connectionAttempt
         guard canConnect else { return }
         guard let portNumber = Int(port), (1...65535).contains(portNumber),
-              !host.isEmpty, !database.isEmpty, !user.isEmpty else {
+              !host.isEmpty, ([.cassandra, .mongodb].contains(engine) || (!database.isEmpty && !user.isEmpty)) else {
             errorMessage = "Enter a host, database, user, and a port from 1 to 65535."
             return
         }
@@ -195,25 +229,42 @@ final class WorkspaceModel: ObservableObject {
         }
         let settings = ConnectionSettings(host: host, port: portNumber, database: database,
             user: user, password: password, sslMode: sslMode,
-            sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine)
+            sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine, policy: policy,
+            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh, passwordCommand: passwordCommand, mongodb: mongodb)
+        guard settings.hasValidNativeFields else {
+            errorMessage = "Enter valid connection settings for the selected database engine."
+            return
+        }
         let connectingProfileId = savedConnections.first { $0.id == selectedConnectionId && $0.matches(settings) }?.id
         clearQueryFeedback()
         connectionState = .connecting
+        connectionProgress = settings.ssh == nil ? "Connecting to database…" : "Verifying SSH server…"
+        defer { connectionProgress = nil }
         do {
             let client: BackendClient
             if case .ready = state, let helper { client = helper }
             else { client = try await startHelper() }
             guard !stopping else { return }
+            try await SSHConnectionReview.prepare(settings, client: client)
+            try Task.checkCancellation()
+            guard !stopping, connectionAttempt == attempt else { throw CancellationError() }
+            if let savedProfileId, let profile = savedConnections.first(where: { $0.id == savedProfileId }), !profile.matches(settings) {
+                throw CancellationError()
+            }
+            connectionProgress = settings.ssh == nil ? "Connecting to database…" : "Opening SSH tunnel and database connection…"
             let reply = try await client.request(.connect(settings))
-            if stopping, !ownsHelper {
+            if stopping || connectionAttempt != attempt || Task.isCancelled {
                 if let openedSession = reply.sessionId {
                     _ = try? await client.request(.disconnect(sessionId: openedSession))
                 }
+                if !stopping { connectionState = .disconnected }
                 return
             }
             guard !stopping, case .ready = state else { return }
             sessionId = reply.sessionId
             transactionStatus = reply.transactionStatus
+            capabilities = Set(reply.capabilities ?? [])
+            currentKeyspace = reply.currentKeyspace ?? (engine == .cassandra ? database : nil)
             connectionState = .connected
             let connectedSession = reply.sessionId
             // A saved profile already owns these credentials. Reconnecting must
@@ -227,6 +278,9 @@ final class WorkspaceModel: ObservableObject {
             if !stopping, sessionId == connectedSession, connectionState == .connected {
                 activeConnectionId = rememberedId
             }
+        } catch is CancellationError {
+            connectionState = .disconnected
+            errorMessage = nil
         } catch let error as BackendRequestError {
             guard !stopping, case .ready = state else { return }
             errorMessage = error.localizedDescription
@@ -238,6 +292,13 @@ final class WorkspaceModel: ObservableObject {
             guard !stopping else { return }
             showTransportFailure(error)
         }
+    }
+
+    func cancelConnection() {
+        connectionAttempt = UUID()
+        if let connectionPreparationId { SSHConnectionReview.cancel(profileId: connectionPreparationId.uuidString) }
+        if let ssh { SSHConnectionReview.cancel(profileId: ssh.profileId) }
+        connectionPreparationId = nil
     }
 
     func disconnect() async {
@@ -261,14 +322,20 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    func dismissConnectionsError() { connectionsError = nil }
+    private func reportConnectionsError(_ message: String, profileID: UUID? = nil) {
+        connectionsErrorProfileID = profileID
+        connectionsError = message
+    }
+
+    func dismissConnectionsError() { connectionsErrorProfileID = nil; connectionsError = nil }
 
     /// nil is a read failure; an empty string is a successfully read empty/missing password.
     func passwordForConnection(_ id: UUID) async -> String? {
-        guard savedConnections.contains(where: { $0.id == id }) else { return nil }
+        guard let profile = savedConnections.first(where: { $0.id == id }) else { return nil }
+        if profile.passwordCommand != nil { return "" }
         do { return try await credentialStore.password(for: id) ?? "" }
         catch {
-            connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
+            reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
             return nil
         }
     }
@@ -280,7 +347,7 @@ final class WorkspaceModel: ObservableObject {
         selectedConnectionId = id
         if hasLoadedConnections {
             do { try await connectionStore.save(librarySnapshot()) }
-            catch { connectionsError = ConnectionLibraryError.save.localizedDescription }
+            catch { reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id) }
         }
         // Selection is independent of the live session, including connection transitions.
         if connectionState == .disconnected {
@@ -288,53 +355,88 @@ final class WorkspaceModel: ObservableObject {
         }
     }
 
-    func connectSavedConnection(_ id: UUID) async {
+    func connectSavedConnection(_ id: UUID, sshSnapshot: SSHSettings? = nil) async {
         guard canConnect else { return }
         await waitForConnectionMutation()
         guard canConnect,
               let profile = savedConnections.first(where: { $0.id == id }) else { return }
         await selectConnection(id)
         guard canConnect, selectedConnectionId == id else { return }
+        let attempt = UUID()
+        connectionAttempt = attempt
+        connectionPreparationId = id
+        defer { if connectionAttempt == attempt { connectionPreparationId = nil } }
         do {
-            let secret = try await credentialStore.password(for: id) ?? ""
-            guard canConnect, selectedConnectionId == id else { return }
-            applyConnection(profile.settings(password: secret))
+            let secret = profile.passwordCommand == nil ? try await credentialStore.password(for: id) ?? "" : ""
+            guard !stopping, connectionAttempt == attempt, connectionState == .disconnected, selectedConnectionId == id else { return }
+            var settings = profile.settings(password: secret)
+            if let sshSnapshot {
+                guard sshSnapshot.profileId == id.uuidString, sshSnapshot.configuration == profile.ssh else {
+                    reportConnectionsError("The SSH profile changed. Disconnect and reconnect before opening another session.", profileID: id)
+                    return
+                }
+                settings.ssh = sshSnapshot
+            } else if var ssh = settings.ssh {
+                if ssh.authMethod == .password {
+                    ssh.password = try await credentialStore.secret(for: id, purpose: .sshPassword)
+                    if ssh.password == nil { ssh.password = try await SSHConnectionReview.requestSecret(passphrase: false, profileId: id.uuidString, configuration: ssh.configuration) }
+                } else if ssh.authMethod == .privateKey {
+                    ssh.passphrase = try await credentialStore.secret(for: id, purpose: .sshPassphrase)
+                    if ssh.passphrase == nil { ssh.passphrase = try await SSHConnectionReview.requestSecret(passphrase: true, profileId: id.uuidString, configuration: ssh.configuration) }
+                }
+                settings.ssh = ssh
+            }
+            guard !stopping, connectionAttempt == attempt, connectionState == .disconnected, selectedConnectionId == id else { return }
+            applyConnection(settings)
+            connectionPreparationId = nil
             await openConnection(savedProfileId: id)
-        } catch { connectionsError = ConnectionLibraryError.credentialRead.localizedDescription }
+        } catch is CancellationError { return }
+        catch { reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id) }
     }
 
     @discardableResult
-    func saveConnection(name: String, settings: ConnectionSettings, id: UUID? = nil) async -> Bool {
+    func saveConnection(name: String, settings: ConnectionSettings, id: UUID? = nil, rememberSSHSecret: Bool = true) async -> Bool {
         guard !isSavingConnection else { return false }
         if !hasLoadedConnections { await loadConnections() }
         guard hasLoadedConnections else { return false }
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanName.isEmpty, cleanName.count <= 128 else {
-            connectionsError = "Enter a connection name with 1 to 128 characters."
+            reportConnectionsError("Enter a connection name with 1 to 128 characters.", profileID: id)
             return false
         }
-        guard !settings.host.isEmpty, !settings.database.isEmpty, !settings.user.isEmpty,
-              (1...65535).contains(settings.port), settings.engine.sslModes.contains(settings.sslMode) else {
-            connectionsError = "Enter a host, database, user, valid port, and supported TLS mode."
+        guard settings.hasValidNativeFields else {
+            reportConnectionsError("Enter a host, database, user, valid port, and supported TLS mode.", profileID: id)
             return false
         }
         if let id, !savedConnections.contains(where: { $0.id == id }) {
-            connectionsError = "This saved connection is no longer available."
+            reportConnectionsError("This saved connection is no longer available.", profileID: id)
             return false
         }
         isSavingConnection = true
         defer { finishConnectionMutation() }
-        connectionsError = nil
+        dismissConnectionsError()
         let profile = SavedConnection(id: id ?? UUID(), name: cleanName, settings: settings)
-        let previousPassword: String?
-        do { previousPassword = try await credentialStore.password(for: profile.id) }
-        catch {
-            connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
+        var previousSecrets: [ConnectionCredentialPurpose: String] = [:]
+        do {
+            for purpose in ConnectionCredentialPurpose.allCases {
+                previousSecrets[purpose] = try await credentialStore.secret(for: profile.id, purpose: purpose)
+            }
+        } catch {
+            reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
             return false
         }
-        do { try await credentialStore.savePassword(settings.password, for: profile.id) }
-        catch {
-            connectionsError = ConnectionLibraryError.credentialWrite.localizedDescription
+        do {
+            if settings.passwordCommand == nil { try await credentialStore.savePassword(settings.password, for: profile.id) }
+            else { try await credentialStore.deletePassword(for: profile.id) }
+            for purpose in [ConnectionCredentialPurpose.sshPassword, .sshPassphrase] {
+                let value = purpose == .sshPassword ? settings.ssh?.password : settings.ssh?.passphrase
+                if rememberSSHSecret, let value { try await credentialStore.saveSecret(value, for: profile.id, purpose: purpose) }
+                else { try await credentialStore.deleteSecret(for: profile.id, purpose: purpose) }
+            }
+        } catch {
+            let restored = await restoreSecrets(previousSecrets, for: profile.id)
+            reportConnectionsError(ConnectionLibraryError.credentialWrite.localizedDescription +
+                (restored ? "" : " The credential change could not be undone in macOS Keychain."), profileID: id)
             return false
         }
         var updated = savedConnections
@@ -347,13 +449,10 @@ final class WorkspaceModel: ObservableObject {
             selectedConnectionId = profile.id
             return true
         } catch {
-            connectionsError = ConnectionLibraryError.save.localizedDescription
-            do {
-                if let previousPassword { try await credentialStore.savePassword(previousPassword, for: profile.id) }
-                else { try await credentialStore.deletePassword(for: profile.id) }
-            } catch {
-                connectionsError = ConnectionLibraryError.save.localizedDescription +
-                    " The password change could not be undone in macOS Keychain."
+            reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id)
+            if !(await restoreSecrets(previousSecrets, for: profile.id)) {
+                reportConnectionsError(ConnectionLibraryError.save.localizedDescription +
+                    " The credential change could not be undone in macOS Keychain.", profileID: id)
             }
             return false
         }
@@ -364,25 +463,30 @@ final class WorkspaceModel: ObservableObject {
         guard !isSavingConnection, hasLoadedConnections,
               savedConnections.contains(where: { $0.id == id }) else { return false }
         guard activeConnectionId != id else {
-            connectionsError = "Disconnect this connection before deleting it."
+            reportConnectionsError("Disconnect this connection before deleting it.", profileID: id)
             return false
         }
         guard connectionState != .connecting, connectionState != .disconnecting else {
-            connectionsError = "Wait for the connection operation to finish before deleting a connection."
+            reportConnectionsError("Wait for the connection operation to finish before deleting a connection.", profileID: id)
             return false
         }
         isSavingConnection = true
         defer { finishConnectionMutation() }
-        connectionsError = nil
-        let secret: String?
-        do { secret = try await credentialStore.password(for: id) }
-        catch {
-            connectionsError = ConnectionLibraryError.credentialRead.localizedDescription
+        dismissConnectionsError()
+        var secrets: [ConnectionCredentialPurpose: String] = [:]
+        do {
+            for purpose in ConnectionCredentialPurpose.allCases {
+                secrets[purpose] = try await credentialStore.secret(for: id, purpose: purpose)
+            }
+        } catch {
+            reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
             return false
         }
-        do { try await credentialStore.deletePassword(for: id) }
-        catch {
-            connectionsError = ConnectionLibraryError.credentialDelete.localizedDescription
+        do {
+            for purpose in ConnectionCredentialPurpose.allCases { try await credentialStore.deleteSecret(for: id, purpose: purpose) }
+        } catch {
+            _ = await restoreSecrets(secrets, for: id)
+            reportConnectionsError(ConnectionLibraryError.credentialDelete.localizedDescription, profileID: id)
             return false
         }
         let updated = savedConnections.filter { $0.id != id }
@@ -392,20 +496,18 @@ final class WorkspaceModel: ObservableObject {
             savedConnections = updated
             selectedConnectionId = selected
         } catch {
-            connectionsError = ConnectionLibraryError.save.localizedDescription
-            if let secret {
-                do { try await credentialStore.savePassword(secret, for: id) }
-                catch {
-                    connectionsError = ConnectionLibraryError.save.localizedDescription +
-                        " The password could not be restored in macOS Keychain."
-                }
+            reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id)
+            if !(await restoreSecrets(secrets, for: id)) {
+                reportConnectionsError(ConnectionLibraryError.save.localizedDescription +
+                    " The credentials could not be restored in macOS Keychain.", profileID: id)
             }
             return false
         }
         return true
     }
 
-    private func loadConnections() async {
+    /// Read profile metadata without starting a helper or restoring credentials.
+    func loadConnections() async {
         guard !hasLoadedConnections, !isSavingConnection else { return }
         isSavingConnection = true
         defer { finishConnectionMutation() }
@@ -419,22 +521,45 @@ final class WorkspaceModel: ObservableObject {
                let profile = savedConnections.first(where: { $0.id == selectedConnectionId }) {
                 applyConnection(profile.settings(password: ""))
             }
-        } catch { connectionsError = ConnectionLibraryError.load.localizedDescription }
+        } catch { reportConnectionsError(ConnectionLibraryError.load.localizedDescription) }
     }
 
     private func librarySnapshot() -> SavedConnectionLibrary {
         SavedConnectionLibrary(connections: savedConnections, selectedConnectionId: selectedConnectionId)
     }
 
+    private func restoreSecrets(_ secrets: [ConnectionCredentialPurpose: String], for id: UUID) async -> Bool {
+        var success = true
+        for purpose in ConnectionCredentialPurpose.allCases {
+            do {
+                if let value = secrets[purpose] { try await credentialStore.saveSecret(value, for: id, purpose: purpose) }
+                else { try await credentialStore.deleteSecret(for: id, purpose: purpose) }
+            } catch { success = false }
+        }
+        return success
+    }
+
+    func sshSecretForConnection(_ id: UUID, purpose: ConnectionCredentialPurpose) async -> String? {
+        do { return try await credentialStore.secret(for: id, purpose: purpose) }
+        catch { reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id); return nil }
+    }
+
     private func applyConnection(_ settings: ConnectionSettings) {
+        ssh = settings.ssh
         engine = settings.engine
         host = settings.host
         port = String(settings.port)
         database = settings.database
         user = settings.user
         password = settings.password
+        passwordCommand = settings.passwordCommand
         sslMode = settings.sslMode
         sslRootCert = settings.sslRootCert ?? ""
+        policy = settings.policy
+        contactPoints = settings.contactPoints
+        localDatacenter = settings.localDatacenter
+        consistency = settings.consistency
+        mongodb = settings.mongodb
     }
 
     private func finishConnectionMutation() {
@@ -460,23 +585,35 @@ final class WorkspaceModel: ObservableObject {
         let existing = savedConnections.first { $0.id == preferredId }
             ?? savedConnections.first { $0.id == selectedConnectionId && $0.matches(settings) }
             ?? savedConnections.first { $0.matches(settings) }
-        let saved = await saveConnection(name: existing?.name ?? settings.database,
+        let saved = await saveConnection(name: existing?.name ?? (settings.database.isEmpty ? settings.host : settings.database),
             settings: settings, id: existing?.id)
         return saved ? selectedConnectionId : existing?.id
     }
 
-    func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil) async {
-        guard canRun, let sessionId, let helper else { return }
+    @discardableResult
+    func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil,
+             authorization: String? = nil) async -> QueryCompletion? {
+        guard canRun, let sessionId, let helper else { return nil }
         let queryId = UUID().uuidString
         let generation = helperGeneration
-        let command: BackendCommand
+        var command: BackendCommand
         if let catalog { command = .catalog(sessionId: sessionId, queryId: queryId, request: catalog) }
         else if let export { command = .runToFile(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql, export: export) }
         else { command = .execute(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql) }
+        command.authorization = authorization
         clearQueryFeedback()
         latestQueryId = queryId
         activeQueryId = queryId
-        queryStartedAt = .now
+        let startedAt = Date.now
+        let clock = ContinuousClock.now
+        func completion(reply: BackendMessage? = nil, failure: QueryFailure? = nil) -> QueryCompletion {
+            let elapsed = clock.duration(to: .now).components
+            let elapsedMs = Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15
+            let duration = reply?.durationMs.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil } ?? elapsedMs
+            return QueryCompletion(startedAt: startedAt, finishedAt: .now, durationMs: max(0, duration),
+                reply: reply, failure: failure)
+        }
+        queryStartedAt = startedAt
         queryPhase = .starting
         do {
             let reply = try await helper.request(command) { [weak self] event in
@@ -487,35 +624,49 @@ final class WorkspaceModel: ObservableObject {
                     self.queryPhase = .running
                 }
             }
-            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
+            let terminal = completion(reply: reply)
+            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
             result = reply
+            if let keyspace = reply.currentKeyspace { currentKeyspace = keyspace }
             queryFailure = nil
             if case .ready = state { transactionStatus = reply.transactionStatus }
             else { preserveConfirmedOutcome() }
             queryDurationMs = reply.durationMs
             finishQuery()
+            return terminal
         } catch let error as BackendRequestError {
-            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
+            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return nil }
             queryFailure = QueryFailure(category: "validation", message: error.localizedDescription,
-                sqlState: nil, outcomeUnknown: false)
+                sqlState: nil, outcomeUnknown: false, sqlNotExecuted: true)
             queryDurationMs = nil
             errorMessage = error.localizedDescription
             preserveConfirmedOutcome()
             finishQuery()
+            return nil
         } catch let error as BackendRemoteError {
-            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return }
+            let failure = QueryFailure(category: error.reply.category ?? "sql",
+                message: error.reply.message ?? "The query failed.", sqlState: error.reply.sqlState,
+                outcomeUnknown: error.reply.outcomeUnknown == true, sqlNotExecuted: error.reply.sqlNotExecuted == true)
+            let terminal = completion(reply: error.reply, failure: failure)
+            guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
+            if let keyspace = error.reply.currentKeyspace { currentKeyspace = keyspace }
             queryErrorPosition = error.reply.errorPosition
             if error.reply.resultSets?.isEmpty == false { result = error.reply }
             queryDurationMs = error.reply.durationMs ?? elapsedMilliseconds()
-            queryFailure = QueryFailure(category: error.reply.category ?? "sql",
-                message: error.reply.message ?? error.localizedDescription,
-                sqlState: error.reply.sqlState, outcomeUnknown: error.reply.outcomeUnknown == true)
+            queryFailure = failure
             showRemoteFailure(error)
             if case .failed = state, error.reply.outcomeUnknown != true { preserveConfirmedOutcome() }
             finishQuery()
+            return terminal
         } catch {
-            guard !stopping, helperGeneration == generation, activeQueryId == queryId else { return }
+            let transport = error as? BackendTransportError
+            let terminal = completion(failure: QueryFailure(category: "transport",
+                message: transport.map { BackendTransportError($0.code).localizedDescription } ?? "The helper connection failed.",
+                sqlState: nil, outcomeUnknown: transport?.outcomeUnknown ?? true,
+                sqlNotExecuted: transport?.outcomeUnknown == false))
+            guard !stopping, helperGeneration == generation, activeQueryId == queryId else { return terminal }
             showTransportFailure(error)
+            return terminal
         }
     }
 
@@ -543,6 +694,8 @@ final class WorkspaceModel: ObservableObject {
     func shutdown() async {
         guard !stopping else { return }
         stopping = true
+        if let ssh { SSHConnectionReview.cancel(profileId: ssh.profileId) }
+        if let connectionPreparationId { SSHConnectionReview.cancel(profileId: connectionPreparationId.uuidString) }
         state = .stopping
         if let helper {
             if ownsHelper { _ = await helper.shutdown() }
@@ -553,6 +706,8 @@ final class WorkspaceModel: ObservableObject {
         finishQuery()
         clearSession()
         password = ""
+        ssh?.password = nil
+        ssh?.passphrase = nil
         state = .stopped
     }
 
@@ -588,6 +743,8 @@ final class WorkspaceModel: ObservableObject {
         sessionId = nil
         activeConnectionId = nil
         transactionStatus = nil
+        currentKeyspace = nil
+        capabilities = []
         connectionState = .disconnected
     }
 

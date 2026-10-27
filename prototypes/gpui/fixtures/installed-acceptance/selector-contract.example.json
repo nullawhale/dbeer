@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "nativeObserved": false,
+  "desktop": "ubuntu2404-x64-wayland",
+  "guiSha256": "REPLACE_WITH_ACTUAL_PINNED_GUI_SHA256",
+  "sourceSha256": "REPLACE_WITH_ACTUAL_BUILD_SOURCE_SHA256",
+  "window": {"role": "frame", "name": "DBeer"},
+  "selectors": {
+    "workspace.quit": {"role": "menu item", "name": "Quit", "ancestors": []},
+    "profiles.add": {"role": "push button", "name": "New Connection", "ancestors": []},
+    "profiles.save": {"role": "push button", "name": "Save", "ancestors": []},
+    "profiles.save-connect": {"role": "push button", "name": "Save & Connect", "ancestors": []},
+    "profiles.password": {"role": "password text", "name": "Password", "secret": true, "ancestors": []},
+    "grid.original-cell": {"role": "table cell", "name": null, "identitySensitive": true, "nativeId": null, "ancestors": []}
+  },
+  "note": "Names and roles are unverified examples. Observe actual native trees on each exact artifact; never derive native IDs from local GPUI ElementId strings. Missing or ambiguous bindings remain pending."
+}

@@ -10,7 +10,8 @@ struct DBeerApp: App {
             Group {
                 if let workspace = appDelegate.workspace {
                     ApplicationWorkspaceView(workspace: workspace)
-                } else { WorkspaceView(model: appDelegate.model) }
+                } else { WorkspaceView(model: appDelegate.model, editorThemes: appDelegate.editorThemes,
+                    appearance: appDelegate.appearance) }
             }
                 .frame(minWidth: 900, minHeight: 620)
                 .task { await appDelegate.start() }
@@ -25,7 +26,25 @@ struct DBeerApp: App {
         }
 
         Settings {
-            AppearanceSettingsView(appearance: appDelegate.appearance)
+            // Theme the panels so toolbar symbols retain native template rendering.
+            TabView {
+                AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
+                    .tabItem { Label("Appearance", systemImage: "paintpalette") }
+                if let workspace = appDelegate.workspace {
+                    if let agents = appDelegate.agents {
+                        AgentAccessSettingsView(coordinator: agents, brokerError: appDelegate.agentBrokerError,
+                            revoke: { await appDelegate.revokeAgent($0) })
+                            .applicationTheme(appearance: appDelegate.appearance)
+                            .tabItem { Label("Agents", systemImage: "person.badge.key") }
+                    }
+                    ResultCopySettingsView(settings: workspace.copySettings)
+                        .applicationTheme(appearance: appDelegate.appearance)
+                        .tabItem { Label("Copying", systemImage: "doc.on.doc") }
+                    ShortcutSettingsView(store: workspace.commandShortcuts)
+                        .applicationTheme(appearance: appDelegate.appearance)
+                        .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+                }
+            }
         }
     }
 }
@@ -48,57 +67,95 @@ private struct ConnectionCommands: Commands {
 
 private struct WorkspaceCommands: Commands {
     @ObservedObject var workspace: ApplicationWorkspace
-    @FocusedValue(\.focusCatalogSearch) private var focusCatalogSearch
+    @ObservedObject private var commands: AppCommandRegistry
+
+    init(workspace: ApplicationWorkspace) {
+        self.workspace = workspace
+        self.commands = workspace.commands
+    }
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New Connection…") { workspace.library.isConnectionEditorPresented = true }
-                .keyboardShortcut("n", modifiers: .command)
-            Button("New SQL Tab") { workspace.newDocument() }.keyboardShortcut("t", modifiers: .command)
-            Button("Open SQL…") { workspace.openSQLFile() }.keyboardShortcut("o", modifiers: .command)
+            commandItem(.newConnection)
+            commandItem(.newSQLTab)
+            commandItem(.closeTab)
+            commandItem(.reopenClosedTab)
+            commandItem(.openSQL)
+            commandItem(.attachSQLFolder)
+            commandItem(.checkSQLFiles)
         }
         CommandGroup(replacing: .saveItem) {
-            Button("Save SQL") { if let document = workspace.selectedDocument { workspace.saveSQLFile(document) } }
-                .keyboardShortcut("s", modifiers: .command)
-                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil)
-            Button("Save SQL As…") {
-                if let document = workspace.selectedDocument { workspace.saveSQLFile(document, chooseLocation: true) }
-            }.keyboardShortcut("s", modifiers: [.command, .shift])
-                .disabled(workspace.selectedDocument?.table != nil || workspace.selectedDocument == nil)
+            commandItem(.saveSQL)
+            commandItem(.saveSQLAs)
         }
         CommandGroup(after: .textEditing) {
-            Button("Find in Connections") { focusCatalogSearch?() }
-                .keyboardShortcut("f", modifiers: .command)
-                .disabled(focusCatalogSearch == nil)
+            commandItem(.findInConnections)
+        }
+        CommandGroup(after: .pasteboard) {
+            commandItem(.copyAsJSON)
+            commandItem(.copyAsMarkdown)
+            commandItem(.copyAsSQLInsert)
+        }
+        CommandGroup(after: .sidebar) {
+            commandItem(.toggleConnectionsPanel)
+            commandItem(.toggleFilesPanel)
+            commandItem(.toggleSQLLibraryPanel)
+            commandItem(.toggleInvestigationsPanel)
         }
         CommandMenu("Query") {
-            Button("Run Selection or Current Statement") {
-                if let document = workspace.selectedDocument { Task { await workspace.run(document) } }
-            }.keyboardShortcut(.return, modifiers: .command)
-                .disabled(workspace.selectedDocument?.isRunning == true || workspace.selectedDocument?.profileID == nil)
-            Button("Run Script") {
-                if let document = workspace.selectedDocument { Task { await workspace.runScript(document) } }
-            }.keyboardShortcut(.return, modifiers: [.command, .shift])
-                .disabled(workspace.selectedDocument?.isRunning == true || workspace.selectedDocument?.profileID == nil || workspace.selectedDocument?.table != nil)
-            Button("Stop") { if let document = workspace.selectedDocument { Task { await workspace.stop(document) } } }
-                .disabled(workspace.selectedDocument?.isRunning != true && workspace.selectedDocument?.grid?.isApplying != true)
+            commandItem(.runCurrent)
+            commandItem(.runScript)
+            Menu("Run to File") {
+                commandItem(.runToJSON)
+                commandItem(.runToCSV)
+            }
+            commandItem(.stop)
             Divider()
-            Button("SQL History…") { workspace.isHistoryPresented = true }
+            commandItem(.showSQLHistory)
+            Button("Result Snapshots…") { workspace.isSnapshotsPresented = true }
+                .disabled(!workspace.canManageWorkspace)
         }
         CommandMenu("Connections") {
-            Button("Import Connections…") { workspace.previewProfileImport() }
-            Button("Export Connections…") { workspace.exportProfiles() }
-                .disabled(workspace.library.savedConnections.isEmpty)
+            Button("Compare Table Data…") { workspace.showDataComparison() }
+                .disabled(!workspace.canManageWorkspace)
+            Button("Compare Schema Structure…") { workspace.showSchemaComparison() }
+                .disabled(!workspace.canManageWorkspace)
+            Divider()
+            commandItem(.importConnections)
+            commandItem(.exportConnections)
         }
+        CommandGroup(after: .windowArrangement) {
+            commandItem(.splitRight)
+            commandItem(.splitLeft)
+            commandItem(.splitUp)
+            commandItem(.splitDown)
+            commandItem(.unsplitCurrent)
+            commandItem(.unsplitAll)
+            Divider()
+            commandItem(.previousTab)
+            commandItem(.nextTab)
+        }
+    }
+
+    private func commandItem(_ command: AppCommandID) -> some View {
+        let shortcut = commands.shortcuts.shortcut(for: command)
+        let descriptor = commands.shortcuts.descriptors.first { $0.id == command }
+        return Button(descriptor?.title ?? command.rawValue) { commands.perform(command) }
+            .keyboardShortcut(shortcut.map { KeyboardShortcut($0.keyEquivalent, modifiers: $0.eventModifiers) })
+            .disabled(!commands.canPerform(command))
     }
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    let appearance = AppAppearance()
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+    let appearance: AppAppearance
+    let editorThemes: EditorThemeStore
     let buttonFocusPolicy = NativeButtonFocusPolicy()
     let model: WorkspaceModel
     let workspace: ApplicationWorkspace?
+    let agents: AgentAccessCoordinator?
+    @Published private(set) var agentBrokerError: String?
+    private var agentBroker: AgentSocketBroker?
     private let terminationReply: (@MainActor (Bool) -> Void)?
     private var hasStarted = false
     private var isTerminating = false
@@ -113,7 +170,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
          terminationReply: (@MainActor (Bool) -> Void)? = nil) {
         self.model = model
         self.workspace = workspace
+        self.editorThemes = workspace?.editorThemes ?? EditorThemeStore()
+        self.appearance = workspace?.appearance ?? AppAppearance(editorThemes: self.editorThemes)
         self.terminationReply = terminationReply
+        if let workspace {
+            self.agents = AgentAccessCoordinator(profiles: { [weak workspace] in workspace?.library.savedConnections ?? [] },
+                settings: { [weak workspace] profile in try await workspace?.agentConnectionSettings(profile) },
+                approve: { name, profiles in await AgentAccessApproval.present(clientName: name, profiles: profiles) },
+                confirm: AgentAccessApproval.confirm)
+        } else { self.agents = nil }
         super.init()
     }
 
@@ -128,10 +193,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = await StartupConnection.load(arguments: CommandLine.arguments)
         if let workspace { await workspace.start(startupConnection: settings) }
         else { await model.start(startupConnection: settings) }
+        if let agents, !isTerminating {
+            let broker = AgentSocketBroker(onRequest: { [weak agents] id, request in
+                guard let agents else { return AgentResponse(id: request.id, ok: false, error: "DBeer is shutting down.") }
+                return await agents.handle(clientID: id, request: request)
+            }, onDisconnect: { [weak agents] id in await agents?.disconnect(clientID: id) })
+            do { try broker.start(); agentBroker = broker }
+            catch { agentBrokerError = "Local agent access could not start. Close other DBeer instances and restart the app." }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func revokeAgent(_ id: UUID) async {
+        agentBroker?.disconnect(clientID: id)
+        await agents?.revoke(clientID: id)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -145,6 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     else { sender.reply(toApplicationShouldTerminate: false) }
                     return
                 }
+                agentBroker?.stop(); agentBroker = nil
+                await agents?.shutdown()
                 await workspace.shutdown()
             }
             else { await model.shutdown() }

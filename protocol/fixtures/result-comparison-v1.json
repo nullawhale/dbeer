@@ -1,0 +1,474 @@
+{
+  "version": 5,
+  "capability": "resultComparisonV1",
+  "commands": [
+    {
+      "type": "compare.start",
+      "requestId": "comparison-start",
+      "comparison": {
+        "left": {
+          "kind": "snapshot",
+          "id": "11111111-1111-1111-1111-111111111111"
+        },
+        "right": {
+          "kind": "snapshot",
+          "id": "22222222-2222-2222-2222-222222222222"
+        },
+        "mode": "key",
+        "columns": [
+          {
+            "left": 0,
+            "right": 0,
+            "key": true
+          },
+          {
+            "left": 1,
+            "right": 1
+          },
+          {
+            "left": 2,
+            "right": 2
+          },
+          {
+            "left": 3,
+            "right": 3
+          }
+        ]
+      }
+    },
+    {
+      "type": "compare.status",
+      "requestId": "comparison-status",
+      "comparison": {
+        "jobId": "fixture-comparison"
+      }
+    },
+    {
+      "type": "compare.page",
+      "requestId": "comparison-page",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "offset": 0,
+        "limit": 100,
+        "maxBytes": 262144,
+        "cellOffset": 1
+      }
+    },
+    {
+      "type": "compare.value",
+      "requestId": "comparison-value",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "valueRef": "fixture-exact-value",
+        "offset": 0,
+        "maxBytes": 65536
+      }
+    },
+    {
+      "type": "compare.cancel",
+      "requestId": "comparison-cancel",
+      "comparison": {
+        "jobId": "fixture-comparison"
+      }
+    },
+    {
+      "type": "compare.close",
+      "requestId": "comparison-close",
+      "comparison": {
+        "jobId": "fixture-comparison"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "type": "compare.start.result",
+      "requestId": "comparison-start",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "state": "pending"
+      }
+    },
+    {
+      "type": "compare.status.result",
+      "requestId": "comparison-status",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "state": "completed",
+        "summary": {
+          "leftRows": 3,
+          "rightRows": 3,
+          "equalRows": 1,
+          "addedRows": 1,
+          "deletedRows": 1,
+          "changedRows": 1,
+          "ambiguousRows": 0,
+          "uncertainRows": 0,
+          "reportRows": 3,
+          "complete": true,
+          "fullEquality": false,
+          "schemaDifferences": [],
+          "schemaDifferenceCount": 0,
+          "schemaDifferencesTruncated": false,
+          "warnings": []
+        }
+      }
+    },
+    {
+      "type": "compare.page.result",
+      "requestId": "comparison-page",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "state": "completed",
+        "page": {
+          "offset": 0,
+          "nextOffset": 1,
+          "hasMore": true,
+          "rows": [
+            {
+              "index": 0,
+              "kind": "changed",
+              "leftIndex": 1,
+              "rightIndex": 1,
+              "cells": [
+                {
+                  "mapping": 1,
+                  "left": {
+                    "isNull": false,
+                    "preview": "",
+                    "totalBytes": 0,
+                    "truncated": false,
+                    "valueRef": "fixture-empty"
+                  },
+                  "right": {
+                    "isNull": false,
+                    "preview": "NULL",
+                    "totalBytes": 4,
+                    "truncated": false,
+                    "valueRef": "fixture-exact-value"
+                  },
+                  "different": true,
+                  "uncertain": false
+                }
+              ],
+              "cellOffset": 1,
+              "nextCellOffset": 2,
+              "totalCells": 4,
+              "cellsTruncated": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "compare.value.result",
+      "requestId": "comparison-value",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "state": "completed",
+        "value": {
+          "valueRef": "fixture-exact-value",
+          "isNull": false,
+          "totalBytes": 4,
+          "offset": 0,
+          "nextOffset": 4,
+          "dataBase64": "TlVMTA==",
+          "hasMore": false
+        }
+      }
+    },
+    {
+      "type": "compare.cancel.result",
+      "requestId": "comparison-cancel",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "state": "cancelled"
+      }
+    },
+    {
+      "type": "compare.close.result",
+      "requestId": "comparison-close",
+      "comparison": {
+        "jobId": "fixture-comparison",
+        "state": "closed"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "name": "exact-key-values",
+      "mode": "key",
+      "columns": [
+        {
+          "left": 0,
+          "right": 0,
+          "key": true
+        },
+        {
+          "left": 1,
+          "right": 1
+        },
+        {
+          "left": 2,
+          "right": 2
+        },
+        {
+          "left": 3,
+          "right": 3
+        }
+      ],
+      "leftColumns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "int8"
+        },
+        {
+          "index": 1,
+          "name": "same",
+          "engine": "postgresql",
+          "nativeType": "text"
+        },
+        {
+          "index": 2,
+          "name": "same",
+          "engine": "postgresql",
+          "nativeType": "numeric",
+          "typeIdentity": "pgtype-v1:0bda421a9e8a70f87f0da4e16bbab56f6ad8287fcb3bdfe92f10854b45e010fe"
+        },
+        {
+          "index": 3,
+          "name": "binary",
+          "engine": "postgresql",
+          "nativeType": "bytea",
+          "encoding": "base64"
+        }
+      ],
+      "rightColumns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "int8"
+        },
+        {
+          "index": 1,
+          "name": "same",
+          "engine": "postgresql",
+          "nativeType": "text"
+        },
+        {
+          "index": 2,
+          "name": "same",
+          "engine": "postgresql",
+          "nativeType": "numeric",
+          "typeIdentity": "pgtype-v1:0bda421a9e8a70f87f0da4e16bbab56f6ad8287fcb3bdfe92f10854b45e010fe"
+        },
+        {
+          "index": 3,
+          "name": "binary",
+          "engine": "postgresql",
+          "nativeType": "bytea",
+          "encoding": "base64"
+        }
+      ],
+      "leftRows": [
+        [
+          "1",
+          null,
+          "9007199254740993.123456789",
+          "AP8="
+        ],
+        [
+          "2",
+          "",
+          "1.00",
+          ""
+        ],
+        [
+          "3",
+          "NULL",
+          null,
+          null
+        ]
+      ],
+      "rightRows": [
+        [
+          "1",
+          null,
+          "9007199254740993.123456789",
+          "AP8="
+        ],
+        [
+          "2",
+          "NULL",
+          "1.0",
+          ""
+        ],
+        [
+          "4",
+          "NULL",
+          null,
+          null
+        ]
+      ],
+      "expected": {
+        "leftRows": 3,
+        "rightRows": 3,
+        "equalRows": 1,
+        "addedRows": 1,
+        "deletedRows": 1,
+        "changedRows": 1,
+        "ambiguousRows": 0,
+        "uncertainRows": 0,
+        "reportRows": 3,
+        "complete": true,
+        "fullEquality": false,
+        "schemaDifferences": [],
+        "schemaDifferenceCount": 0,
+        "schemaDifferencesTruncated": false,
+        "warnings": []
+      }
+    },
+    {
+      "name": "null-empty-literal-null",
+      "mode": "rowOrder",
+      "columns": [
+        {
+          "left": 0,
+          "right": 0
+        }
+      ],
+      "leftColumns": [
+        {
+          "index": 0,
+          "name": "same",
+          "engine": "postgresql",
+          "nativeType": "text"
+        }
+      ],
+      "rightColumns": [
+        {
+          "index": 0,
+          "name": "same",
+          "engine": "postgresql",
+          "nativeType": "text"
+        }
+      ],
+      "leftRows": [
+        [
+          null
+        ],
+        [
+          ""
+        ],
+        [
+          "NULL"
+        ]
+      ],
+      "rightRows": [
+        [
+          ""
+        ],
+        [
+          "NULL"
+        ],
+        [
+          null
+        ]
+      ],
+      "expected": {
+        "changedRows": 3,
+        "equalRows": 0,
+        "fullEquality": false
+      }
+    },
+    {
+      "name": "duplicate-keys",
+      "mode": "key",
+      "columns": [
+        {
+          "left": 0,
+          "right": 0,
+          "key": true
+        }
+      ],
+      "leftColumns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "int8"
+        }
+      ],
+      "rightColumns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "int8"
+        }
+      ],
+      "leftRows": [
+        [
+          "1"
+        ],
+        [
+          "1"
+        ]
+      ],
+      "rightRows": [
+        [
+          "1"
+        ]
+      ],
+      "expected": {
+        "ambiguousRows": 3,
+        "equalRows": 0,
+        "fullEquality": false
+      }
+    },
+    {
+      "name": "unresolved-local-oid-key",
+      "mode": "key",
+      "columns": [
+        {
+          "left": 0,
+          "right": 0,
+          "key": true
+        }
+      ],
+      "leftColumns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "oid:42000"
+        }
+      ],
+      "rightColumns": [
+        {
+          "index": 0,
+          "name": "id",
+          "engine": "postgresql",
+          "nativeType": "oid:42000"
+        }
+      ],
+      "leftRows": [
+        [
+          "same"
+        ]
+      ],
+      "rightRows": [
+        [
+          "same"
+        ]
+      ],
+      "expected": {
+        "uncertainRows": 2,
+        "equalRows": 0,
+        "fullEquality": false
+      }
+    }
+  ]
+}

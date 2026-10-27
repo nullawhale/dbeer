@@ -12,8 +12,18 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
     var user: String
     var sslMode: String
     var sslRootCert: String?
+    var policy: ExecutionPolicy
+    var contactPoints: [String]?
+    var localDatacenter: String?
+    var consistency: String?
+    var ssh: SSHConfiguration?
+    var passwordCommand: PasswordCommand?
+    var mongodb: MongoDBSettings?
 
     init(id: UUID = UUID(), name: String, settings: ConnectionSettings) {
+        ssh = settings.ssh?.configuration
+        passwordCommand = settings.passwordCommand
+        mongodb = settings.mongodb
         self.id = id
         self.name = name
         engine = settings.engine
@@ -23,14 +33,21 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         user = settings.user
         sslMode = settings.sslMode
         sslRootCert = settings.sslRootCert
+        policy = settings.policy
+        contactPoints = settings.contactPoints
+        localDatacenter = settings.localDatacenter
+        consistency = settings.consistency
     }
 
     fileprivate enum CodingKeys: String, CodingKey {
-        case id, name, engine, host, port, database, user, sslMode, sslRootCert
+        case id, name, engine, host, port, database, user, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, passwordCommand, mongodb
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        mongodb = try values.decodeIfPresent(MongoDBSettings.self, forKey: .mongodb)
+        ssh = try values.decodeIfPresent(SSHConfiguration.self, forKey: .ssh)
+        passwordCommand = try values.decodeIfPresent(PasswordCommand.self, forKey: .passwordCommand)
         id = try values.decode(UUID.self, forKey: .id)
         name = try values.decode(String.self, forKey: .name)
         engine = try values.decodeIfPresent(DatabaseEngine.self, forKey: .engine) ?? .postgresql
@@ -40,21 +57,27 @@ struct SavedConnection: Identifiable, Codable, Equatable, Sendable {
         user = try values.decode(String.self, forKey: .user)
         sslMode = try values.decode(String.self, forKey: .sslMode)
         sslRootCert = try values.decodeIfPresent(String.self, forKey: .sslRootCert)
+        policy = try values.decodeIfPresent(ExecutionPolicy.self, forKey: .policy) ?? ExecutionPolicy()
+        contactPoints = try values.decodeIfPresent([String].self, forKey: .contactPoints)
+        localDatacenter = try values.decodeIfPresent(String.self, forKey: .localDatacenter)
+        consistency = try values.decodeIfPresent(String.self, forKey: .consistency) ?? (engine == .cassandra ? "LOCAL_QUORUM" : nil)
     }
 
     func settings(password: String) -> ConnectionSettings {
         ConnectionSettings(host: host, port: port, database: database, user: user,
-            password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine)
+            password: password, sslMode: sslMode, sslRootCert: sslRootCert, engine: engine, policy: policy, contactPoints: contactPoints,
+            localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.runtime(profileId: id), passwordCommand: passwordCommand, mongodb: mongodb)
     }
 
     func matches(_ settings: ConnectionSettings) -> Bool {
-        engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
-            user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert
+        mongodb == settings.mongodb && passwordCommand == settings.passwordCommand && ssh == settings.ssh?.configuration && engine == settings.engine && host == settings.host && port == settings.port && database == settings.database &&
+            user == settings.user && sslMode == settings.sslMode && sslRootCert == settings.sslRootCert && policy == settings.policy &&
+            contactPoints == settings.contactPoints && localDatacenter == settings.localDatacenter && consistency == settings.consistency
     }
 }
 
 struct SavedConnectionLibrary: Codable, Equatable, Sendable {
-    static let currentVersion = 2
+    static let currentVersion = 5
     private(set) var version: Int
     var connections: [SavedConnection]
     var selectedConnectionId: UUID?
@@ -70,18 +93,19 @@ struct SavedConnectionLibrary: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         version = try values.decodeIfPresent(Int.self, forKey: .version) ?? 1
-        guard version == 1 || version == Self.currentVersion else {
+        guard (1...Self.currentVersion).contains(version) else {
             throw ConnectionLibraryError.load
         }
         var records = try values.nestedUnkeyedContainer(forKey: .connections)
         connections = []
         while !records.isAtEnd {
             let record = try records.superDecoder()
-            if version == Self.currentVersion {
+            if version >= 2 {
                 // Missing engine is a migration rule only for old profiles;
                 // malformed v2 records must not silently change their adapter.
                 let header = try record.container(keyedBy: SavedConnection.CodingKeys.self)
                 _ = try header.decode(DatabaseEngine.self, forKey: .engine)
+                if version >= 3 { _ = try header.decode(ExecutionPolicy.self, forKey: .policy) }
             }
             connections.append(try SavedConnection(from: record))
         }
@@ -98,6 +122,22 @@ protocol ConnectionCredentialStore: Sendable {
     func password(for id: UUID) async throws -> String?
     func savePassword(_ password: String, for id: UUID) async throws
     func deletePassword(for id: UUID) async throws
+    func secret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws -> String?
+    func saveSecret(_ value: String, for id: UUID, purpose: ConnectionCredentialPurpose) async throws
+    func deleteSecret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws
+}
+
+extension ConnectionCredentialStore {
+    func secret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws -> String? {
+        purpose == .databasePassword ? try await password(for: id) : nil
+    }
+    func saveSecret(_ value: String, for id: UUID, purpose: ConnectionCredentialPurpose) async throws {
+        guard purpose == .databasePassword else { throw ConnectionLibraryError.credentialWrite }
+        try await savePassword(value, for: id)
+    }
+    func deleteSecret(for id: UUID, purpose: ConnectionCredentialPurpose) async throws {
+        if purpose == .databasePassword { try await deletePassword(for: id) }
+    }
 }
 
 enum ConnectionLibraryError: LocalizedError {
@@ -124,10 +164,22 @@ actor MemoryConnectionLibraryStore: ConnectionLibraryStore {
 
 actor MemoryConnectionCredentialStore: ConnectionCredentialStore {
     private var passwords: [UUID: String] = [:]
+    private var sshSecrets: [String: String] = [:]
 
     func password(for id: UUID) -> String? { passwords[id] }
     func savePassword(_ password: String, for id: UUID) { passwords[id] = password }
     func deletePassword(for id: UUID) { passwords[id] = nil }
+    func secret(for id: UUID, purpose: ConnectionCredentialPurpose) async -> String? {
+        purpose == .databasePassword ? passwords[id] : sshSecrets[id.uuidString + purpose.rawValue]
+    }
+    func saveSecret(_ value: String, for id: UUID, purpose: ConnectionCredentialPurpose) async {
+        if purpose == .databasePassword { passwords[id] = value }
+        else { sshSecrets[id.uuidString + purpose.rawValue] = value }
+    }
+    func deleteSecret(for id: UUID, purpose: ConnectionCredentialPurpose) async {
+        if purpose == .databasePassword { passwords[id] = nil }
+        else { sshSecrets[id.uuidString + purpose.rawValue] = nil }
+    }
 }
 
 /// File and Keychain actors keep blocking system calls away from the UI actor.
@@ -148,7 +200,7 @@ actor FileConnectionLibraryStore: ConnectionLibraryStore {
         do {
             let library = try decode(data)
             if library.version < SavedConnectionLibrary.currentVersion {
-                try backupLegacyFile()
+                try backupLegacyFile(version: library.version)
                 let migrated = SavedConnectionLibrary(connections: library.connections,
                     selectedConnectionId: library.selectedConnectionId)
                 try write(migrated)
@@ -162,7 +214,7 @@ actor FileConnectionLibraryStore: ConnectionLibraryStore {
         do {
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 let existing = try decode(Data(contentsOf: fileURL))
-                if existing.version < SavedConnectionLibrary.currentVersion { try backupLegacyFile() }
+                if existing.version < SavedConnectionLibrary.currentVersion { try backupLegacyFile(version: existing.version) }
             }
             try validate(library)
             try write(SavedConnectionLibrary(connections: library.connections,
@@ -180,17 +232,16 @@ actor FileConnectionLibraryStore: ConnectionLibraryStore {
         guard Set(library.connections.map(\.id)).count == library.connections.count,
               library.connections.allSatisfy({
                   !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 128 &&
-                      !$0.host.isEmpty && !$0.database.isEmpty && !$0.user.isEmpty &&
-                      (1...65_535).contains($0.port) && $0.engine.sslModes.contains($0.sslMode)
+                      $0.settings(password: "").hasValidNativeFields
               }) else { throw ConnectionLibraryError.load }
     }
 
     /// Preserve the exact old bytes before the first atomic v2 replacement.
     /// An existing backup is never overwritten by another migration attempt.
-    private func backupLegacyFile() throws {
-        var backup = fileURL.appendingPathExtension("v1.backup")
+    private func backupLegacyFile(version: Int) throws {
+        var backup = fileURL.appendingPathExtension("v\(version).backup")
         if FileManager.default.fileExists(atPath: backup.path) {
-            backup = fileURL.appendingPathExtension("v1-\(UUID().uuidString).backup")
+            backup = fileURL.appendingPathExtension("v\(version)-\(UUID().uuidString).backup")
         }
         try FileManager.default.copyItem(at: fileURL, to: backup)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)

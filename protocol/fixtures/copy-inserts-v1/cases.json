@@ -1,0 +1,273 @@
+{
+  "version": 1,
+  "capability": "formatInsertsV1",
+  "cases": [
+    {
+      "command": {
+        "type": "formatInserts",
+        "requestId": "copy-pg",
+        "insert": {
+          "engine": "postgresql",
+          "schema": "quoted \"schema",
+          "table": "target; --",
+          "columns": [
+            {
+              "name": "value"
+            },
+            {
+              "name": "value_2"
+            },
+            {
+              "name": "nullable"
+            },
+            {
+              "name": "empty"
+            },
+            {
+              "name": "default"
+            },
+            {
+              "name": "binary"
+            },
+            {
+              "name": "precise"
+            }
+          ],
+          "rows": [
+            [
+              {
+                "kind": "text",
+                "value": "quote' \\ line\r\nκόσμος 🌍"
+              },
+              {
+                "kind": "text",
+                "value": "NULL"
+              },
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "text",
+                "value": ""
+              },
+              {
+                "kind": "default"
+              },
+              {
+                "kind": "binary",
+                "value": "AP+A"
+              },
+              {
+                "kind": "text",
+                "value": "9007199254740993.12345678901234567890"
+              }
+            ],
+            [
+              {
+                "kind": "text",
+                "value": "'); DROP TABLE target; --"
+              },
+              {
+                "kind": "text",
+                "value": "DEFAULT"
+              },
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "text",
+                "value": ""
+              },
+              {
+                "kind": "default"
+              },
+              {
+                "kind": "binary",
+                "value": ""
+              },
+              {
+                "kind": "text",
+                "value": "-1.00000000000000000001e+200"
+              }
+            ]
+          ]
+        }
+      },
+      "response": {
+        "type": "insertSQL",
+        "requestId": "copy-pg",
+        "sql": "INSERT INTO \"quoted \"\"schema\".\"target; --\" (\"value\", \"value_2\", \"nullable\", \"empty\", \"default\", \"binary\", \"precise\") VALUES (E'quote'' \\\\ line\r\nκόσμος 🌍', E'NULL', NULL, E'', DEFAULT, pg_catalog.decode('00ff80', 'hex'), E'9007199254740993.12345678901234567890');\nINSERT INTO \"quoted \"\"schema\".\"target; --\" (\"value\", \"value_2\", \"nullable\", \"empty\", \"default\", \"binary\", \"precise\") VALUES (E'''); DROP TABLE target; --', E'DEFAULT', NULL, E'', DEFAULT, pg_catalog.decode('', 'hex'), E'-1.00000000000000000001e+200');"
+      }
+    },
+    {
+      "command": {
+        "type": "formatInserts",
+        "requestId": "copy-mysql",
+        "insert": {
+          "engine": "mysql",
+          "schema": "quoted `db",
+          "table": "target; --",
+          "columns": [
+            {
+              "name": "value"
+            },
+            {
+              "name": "binary"
+            },
+            {
+              "name": "nullable"
+            },
+            {
+              "name": "empty"
+            },
+            {
+              "name": "default"
+            },
+            {
+              "name": "precise"
+            }
+          ],
+          "rows": [
+            [
+              {
+                "kind": "text",
+                "value": "quote' \\ zero\u0000\r\n🌍"
+              },
+              {
+                "kind": "binary",
+                "value": "AP+A"
+              },
+              {
+                "kind": "null"
+              },
+              {
+                "kind": "text",
+                "value": ""
+              },
+              {
+                "kind": "default"
+              },
+              {
+                "kind": "text",
+                "value": "9007199254740993.12345678901234567890"
+              }
+            ]
+          ]
+        }
+      },
+      "response": {
+        "type": "insertSQL",
+        "requestId": "copy-mysql",
+        "sql": "INSERT INTO `quoted ``db`.`target; --` (`value`, `binary`, `nullable`, `empty`, `default`, `precise`) VALUES (CONVERT(X'71756f746527205c207a65726f000d0af09f8c8d' USING utf8mb4), X'00ff80', NULL, CONVERT(X'' USING utf8mb4), DEFAULT, CONVERT(X'393030373139393235343734303939332e3132333435363738393031323334353637383930' USING utf8mb4));"
+      }
+    },
+    {
+      "command": {
+        "type": "formatInserts",
+        "requestId": "copy-pg-nul",
+        "insert": {
+          "engine": "postgresql",
+          "schema": "public",
+          "table": "target",
+          "columns": [
+            {
+              "name": "value"
+            }
+          ],
+          "rows": [
+            [
+              {
+                "kind": "text",
+                "value": "sensitive\u0000value"
+              }
+            ]
+          ]
+        }
+      },
+      "response": {
+        "type": "error",
+        "requestId": "copy-pg-nul",
+        "category": "validation",
+        "message": "PostgreSQL text values cannot contain a zero byte. Choose a binary value or another target dialect.",
+        "connected": false,
+        "outcomeUnknown": false
+      }
+    },
+    {
+      "command": {
+        "type": "formatInserts",
+        "requestId": "copy-unqualified-postgresql",
+        "insert": {
+          "engine": "postgresql",
+          "schema": "",
+          "table": "target",
+          "columns": [
+            {
+              "name": "value"
+            }
+          ],
+          "rows": [
+            [
+              {
+                "kind": "null"
+              }
+            ]
+          ]
+        }
+      },
+      "response": {
+        "type": "insertSQL",
+        "requestId": "copy-unqualified-postgresql",
+        "sql": "INSERT INTO \"target\" (\"value\") VALUES (NULL);"
+      }
+    },
+    {
+      "command": {
+        "type": "formatInserts",
+        "requestId": "copy-unqualified-mysql",
+        "insert": {
+          "engine": "mysql",
+          "schema": "",
+          "table": "target",
+          "columns": [
+            {
+              "name": "value"
+            }
+          ],
+          "rows": [
+            [
+              {
+                "kind": "null"
+              }
+            ]
+          ]
+        }
+      },
+      "response": {
+        "type": "insertSQL",
+        "requestId": "copy-unqualified-mysql",
+        "sql": "INSERT INTO `target` (`value`) VALUES (NULL);"
+      }
+    }
+  ],
+  "invalidCommands": [
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"cassandra\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"bad\\u0000schema\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"bad\\u0000table\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"Name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\",\"name\":\"second\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"extra\":true,\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"Rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"},{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"binary\",\"value\":\"!!!\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"null\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"default\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":null}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"Value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"kind\":\"null\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"sessionId\":\"live-session\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"queryId\":\"query\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}",
+    "{\"type\":\"formatInserts\",\"requestId\":\"copy-invalid\",\"sql\":\"sensitive\",\"insert\":{\"engine\":\"postgresql\",\"schema\":\"public\",\"table\":\"target\",\"columns\":[{\"name\":\"v\"}],\"rows\":[[{\"kind\":\"text\",\"value\":\"sensitive\"}]]}}"
+  ]
+}

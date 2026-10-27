@@ -124,19 +124,10 @@ final class CatalogRowFeedbackView: ControlFeedbackView {
             removeFromSuperview()
             return
         }
-        // Keep the outline's row view hierarchy intact: SwiftUI depends on it
-        // to resolve native context menus. Paint from the table's document view.
-        var ancestor = row.superview
-        var table: NSTableView?
-        while let view = ancestor {
-            if let candidate = view as? NSTableView { table = candidate; break }
-            ancestor = view.superview
-        }
-        let parent: NSView = table ?? row
-        if superview !== parent { parent.addSubview(self, positioned: .above, relativeTo: nil) }
-        let rect: NSRect
-        if let table, table.row(for: row) >= 0 { rect = table.rect(ofRow: table.row(for: row)) }
-        else { rect = row.convert(row.bounds, to: parent) }
+        // Keep feedback inside the native row so outline animation snapshots
+        // and live content cannot paint two independently positioned surfaces.
+        if superview !== row { row.addSubview(self, positioned: .above, relativeTo: nil) }
+        let rect = row.bounds
         let target = rect.width > ControlHoverAppearance.gap * 2
             ? rect.insetBy(dx: ControlHoverAppearance.gap, dy: 0) : .zero
         if frame != target { frame = target }

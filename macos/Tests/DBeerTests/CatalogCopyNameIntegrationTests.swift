@@ -24,7 +24,8 @@ struct CatalogCopyNameIntegrationTests {
 
     private func exercise(_ engine: DatabaseEngine) async throws {
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(),
-            credentialStore: MemoryConnectionCredentialStore(), helperFactory: { BackendClient(executableURL: executable) })
+            credentialStore: MemoryConnectionCredentialStore(), executionDecision: { _ in true },
+            helperFactory: { BackendClient(executableURL: executable) })
         defer { Task { await workspace.shutdown() } }
         await workspace.start()
         let settings = try settings(engine)

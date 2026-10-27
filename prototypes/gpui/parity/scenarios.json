@@ -1,0 +1,1407 @@
+{
+  "schemaVersion": 1,
+  "baselineID": "swiftui-working-tree-v1",
+  "scenarioCount": 57,
+  "scenarios": [
+    {
+      "id": "PARITY-F01",
+      "feature": "F01",
+      "domain": "profiles",
+      "steps": [
+        {
+          "action": "Create a PostgreSQL profile; choose a synthetic CA file and set explicit policy. Save, edit, Save and Connect, disconnect, then delete. Repeat for MySQL.",
+          "assertions": [
+            "Save stays disconnected.",
+            "Save and Connect connects once.",
+            "TLS/policy fields survive edits.",
+            "Cancel preserves the original profile."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ConnectionLibraryTests",
+        "SWIFT-WorkspaceConnectionTests",
+        "SWIFT-ConnectionsSidebarIntegrationTests"
+      ],
+      "fixture_set": "profiles",
+      "precondition_set": "profiles",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F02",
+      "feature": "F02",
+      "domain": "workspace",
+      "steps": [
+        {
+          "action": "Create two profiles and three SQL tabs. Reorder tabs, select the middle tab/profile, restart, then remove the first profile.",
+          "assertions": [
+            "UUIDs and tab order survive.",
+            "selection follows stable identity rather than vector position.",
+            "every restored tab is disconnected."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ConnectionLibraryTests",
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "fixture_set": "workspace",
+      "precondition_set": "workspace",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F03",
+      "feature": "F03",
+      "domain": "profiles",
+      "steps": [
+        {
+          "action": "Create a new profile without touching policy. Reload an existing development/readonly profile; import each explicit environment/readonly pair and a legacy record.",
+          "assertions": [
+            "New product profile is unspecified/readOnly=false and verify-full TLS.",
+            "existing/imported explicit policy stays unchanged.",
+            "legacy rules stay format-specific."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ExecutionPolicyTests",
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-ProfileTransferTests"
+      ],
+      "fixture_set": "profiles",
+      "precondition_set": "profiles",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F04",
+      "feature": "F04",
+      "domain": "profiles",
+      "steps": [
+        {
+          "action": "Save a profile with a synthetic password, update it with keep/empty/replacement states, inject metadata failure, then inject credential delete and rollback failures.",
+          "assertions": [
+            "Missing differs from empty.",
+            "metadata failure restores the prior credential.",
+            "rollback failure is surfaced.",
+            "no password is written to JSON or diagnostics."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ConnectionLibraryTests"
+      ],
+      "fixture_set": "profiles",
+      "precondition_set": "profiles",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F05",
+      "feature": "F05",
+      "domain": "profiles",
+      "steps": [
+        {
+          "action": "Load legacy, corrupt and future-version library fixtures; attempt edits after failed load; inject an atomic-replace failure.",
+          "assertions": [
+            "Legacy exact-byte backup and IDs survive.",
+            "corrupt/future bytes remain untouched.",
+            "failed saves preserve the prior library and selected identity."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-ConnectionLibraryTests"
+      ],
+      "fixture_set": "profiles",
+      "precondition_set": "profiles",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F06",
+      "feature": "F06",
+      "domain": "profiles",
+      "steps": [
+        {
+          "action": "Export both synthetic engine profiles. Inspect JSON, import v2 and v1, preview/select one and all, cancel once, then complete import. Try secret/unknown/duplicate keys and excessive depth/count/size.",
+          "assertions": [
+            "Export has no credentials/private keys.",
+            "strict invalid input is rejected.",
+            "accepted imports have fresh IDs and stay disconnected.",
+            "cancel changes nothing."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ProfileTransferTests",
+        "SWIFT-ProfileImportIntegrationTests",
+        "SWIFT-ProfileExportPresentationTests"
+      ],
+      "fixture_set": "profiles",
+      "precondition_set": "profiles",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F07",
+      "feature": "F07",
+      "domain": "profiles",
+      "steps": [
+        {
+          "action": "Export a profile referencing a local CA; import on the other OS with the file missing. Remap using its native chooser, then roundtrip back to Mac. Cancel the remap once.",
+          "assertions": [
+            "POSIX/Windows path hints do not become invalid trusted paths.",
+            "explicit remap is required.",
+            "TLS is never downgraded.",
+            "cancellation leaves the library unchanged."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ProfileTransferTests",
+        "SWIFT-ProfileImportIntegrationTests"
+      ],
+      "fixture_set": "profiles",
+      "precondition_set": "profiles",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F08",
+      "feature": "F08",
+      "domain": "profiles",
+      "steps": [
+        {
+          "action": "Launch ordinarily with an unreadable/blocking stdin. Launch --connect-stdin with one synthetic payload; test 64 KiB overflow, five-second timeout and retry after failure.",
+          "assertions": [
+            "Ordinary launch reads nothing.",
+            "explicit launch connects once and executes no SQL.",
+            "bounds fail cleanly.",
+            "credentials never appear in argv/env/logs."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-StartupConnectionTests"
+      ],
+      "fixture_set": "profiles",
+      "precondition_set": "profiles",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F09",
+      "feature": "F09",
+      "domain": "sessions",
+      "steps": [
+        {
+          "action": "Connect two SQL tabs on each engine. BEGIN/create temporary state/SET in A; query temporary state and transaction status in B; run both concurrently and disconnect only B.",
+          "assertions": [
+            "Physical sessions and state stay independent.",
+            "the active tab/profile cannot redirect a completion.",
+            "A and catalog remain connected after B closes."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ApplicationWorkspaceTests",
+        "SWIFT-WorkspaceQueryTests",
+        "SWIFT-BackendMultiplexingTests"
+      ],
+      "fixture_set": "sessions",
+      "precondition_set": "sessions",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F10",
+      "feature": "F10",
+      "domain": "sessions",
+      "steps": [
+        {
+          "action": "BEGIN in SQL tab A, then browse catalog and request completion metadata. Stage and Apply a synthetic table edit. Inspect helper sessions.",
+          "assertions": [
+            "Catalog/completion use their service session.",
+            "Apply uses a fresh idle session.",
+            "A remains uncommitted with its original SET/temp state."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLCompletionCatalogTests",
+        "SWIFT-GridLifecycleTests"
+      ],
+      "fixture_set": "sessions",
+      "precondition_set": "sessions",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F11",
+      "feature": "F11",
+      "domain": "transport",
+      "steps": [
+        {
+          "action": "Execute a query larger than row/byte/result-set display bounds, hold chunk ACKs, request Stop under backpressure, and kill the owned helper in a second run.",
+          "assertions": [
+            "Progress stays bounded.",
+            "control messages and terminal delivery remain responsive.",
+            "partial completed results and authoritative transaction state survive.",
+            "no hang."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-StreamingTransportTests",
+        "SWIFT-StreamingIntegrationTests",
+        "SWIFT-HelperProcessTests"
+      ],
+      "fixture_set": "transport",
+      "precondition_set": "transport",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F12",
+      "feature": "F12",
+      "domain": "close",
+      "steps": [
+        {
+          "action": "Close a tab, profile, window and application with idle, open and failed transactions. Cancel, Roll Back and Commit independently; repeat Quit during commit/disconnect.",
+          "assertions": [
+            "Cancel preserves the session.",
+            "chosen resolution finishes once.",
+            "repeated Quit keeps the same decision.",
+            "process exits only after acknowledged disconnect."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-WorkspaceCloseTests",
+        "SWIFT-AppTerminationTests"
+      ],
+      "fixture_set": "close",
+      "precondition_set": "close",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F13",
+      "feature": "F13",
+      "domain": "close",
+      "steps": [
+        {
+          "action": "Close while a query runs, while inline edit/draft exists, during export and after unknown Apply. Choose Stop and Continue, Apply/Discard/Cancel as available.",
+          "assertions": [
+            "Safe default is Cancel.",
+            "each close scope resolves all affected work.",
+            "unknown outcome blocks blind apply/retry.",
+            "cancellation restores original context."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-WorkspaceCloseTests",
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-AppTerminationTests"
+      ],
+      "fixture_set": "close",
+      "precondition_set": "close",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F14",
+      "feature": "F14",
+      "domain": "editor",
+      "steps": [
+        {
+          "action": "Paste Unicode/CRLF and literal straight quotes/dashes into two SQL tabs. Set different caret/selection/scroll, edit and Undo in both; switch tabs and themes.",
+          "assertions": [
+            "Plain text stays exact.",
+            "no smart substitution/correction.",
+            "line numbers/current-line follow source.",
+            "each tab retains independent editing and Undo state."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "fixture_set": "editor",
+      "precondition_set": "editor",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F15",
+      "feature": "F15",
+      "domain": "editor",
+      "steps": [
+        {
+          "action": "For each SQL corpus case, run a selection, caret statement (including just after semicolon), and entire script; invoke from toolbar/menu/keyboard and Run to File.",
+          "assertions": [
+            "One resolver chooses the same original range for all entry points.",
+            "selection has priority.",
+            "highlights and summary identify exact source."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLScriptParserTests",
+        "SWIFT-WorkspaceCommandTests",
+        "SWIFT-SQLExecutionSuccessTests"
+      ],
+      "fixture_set": "editor",
+      "precondition_set": "editor",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F16",
+      "feature": "F16",
+      "domain": "editor",
+      "steps": [
+        {
+          "action": "Execute parser corpus including PostgreSQL nested/dollar/atomic routines, MySQL DELIMITER, quoted/comment delimiters, malformed lexemes and rejected client commands.",
+          "assertions": [
+            "Only server statements are sent in order.",
+            "directives are removed.",
+            "unsupported client commands and unterminated lexemes block execution with source diagnostics."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLScriptParserTests",
+        "SWIFT-SQLRoutineParserIntegrationTests"
+      ],
+      "fixture_set": "editor",
+      "precondition_set": "editor",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F17",
+      "feature": "F17",
+      "domain": "policy",
+      "steps": [
+        {
+          "action": "Review a mixed script containing allowed/write/destructive/unknown operations. Approve once, then edit SQL, Stop, switch profile or force an error before remaining work.",
+          "assertions": [
+            "Review covers the exact ordered batch even if individual operations classify allowed.",
+            "Cancel is default.",
+            "context changes invalidate unconsumed grants."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ExecutionPolicyTests",
+        "SWIFT-ExecutionPolicyIntegrationTests"
+      ],
+      "fixture_set": "policy",
+      "precondition_set": "policy",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F18",
+      "feature": "F18",
+      "domain": "execution",
+      "steps": [
+        {
+          "action": "Execute success, first-error and middle-error scripts plus MySQL fixture_procedure multi-results. Switch tabs while results arrive.",
+          "assertions": [
+            "Statements run sequentially until first error.",
+            "completed sets remain ordered.",
+            "remaining statements are skipped.",
+            "each result retains statement/tab identity."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-WorkspaceQueryTests",
+        "SWIFT-SQLRoutineParserIntegrationTests",
+        "SWIFT-StreamingIntegrationTests"
+      ],
+      "fixture_set": "execution",
+      "precondition_set": "execution",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F19",
+      "feature": "F19",
+      "domain": "editor",
+      "steps": [
+        {
+          "action": "Fail the second selected statement after non-BMP text and CRLF; navigate to error, correct it, rerun successfully, then edit the successful source.",
+          "assertions": [
+            "Error and success gutter positions use original UTF-16 source.",
+            "current line remains correct.",
+            "editing clears obsolete success marks."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLExecutionSuccessTests",
+        "SWIFT-SQLEditorTests",
+        "SWIFT-SQLLSPCodecTests"
+      ],
+      "fixture_set": "editor",
+      "precondition_set": "editor",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F20",
+      "feature": "F20",
+      "domain": "documents",
+      "steps": [
+        {
+          "action": "Open UTF-8 files with non-BMP/combining paths and CRLF, edit/save/save-as in two documents; cancel chooser and test invalid UTF-8/locked destination.",
+          "assertions": [
+            "Each tab retains its own file binding.",
+            "exact SQL and line endings survive.",
+            "cancellation/write failure leaves original binding/content/destination intact."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ApplicationWorkspaceTests",
+        "SWIFT-SQLDocumentStoreTests"
+      ],
+      "fixture_set": "documents",
+      "precondition_set": "documents",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F21",
+      "feature": "F21",
+      "domain": "documents",
+      "steps": [
+        {
+          "action": "Edit a draft, wait one second, close/restart and force flush at shutdown; inspect snapshot and test corrupt/future versions.",
+          "assertions": [
+            "Text/order/selection restore disconnected.",
+            "no session/results/credentials persist.",
+            "no SQL replays.",
+            "corrupt bytes remain recoverable."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "fixture_set": "documents",
+      "precondition_set": "documents",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F22",
+      "feature": "F22",
+      "domain": "documents",
+      "steps": [
+        {
+          "action": "Execute a three-statement script and failed/cancelled variants; inspect history, reopen entry, exceed 1000 entries/30 days, disable, clear history and drafts, restart.",
+          "assertions": [
+            "History is per statement with bounded retention.",
+            "preferences/clear persist.",
+            "reopening restores source without connecting or execution."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "fixture_set": "documents",
+      "precondition_set": "documents",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F23",
+      "feature": "F23",
+      "domain": "catalog",
+      "steps": [
+        {
+          "action": "Connect both fixtures; lazily expand schemas/table/view/function/procedure/trigger and detail groups; inject failure, retry and Refresh.",
+          "assertions": [
+            "Every supported object/detail kind appears once.",
+            "retries work.",
+            "refresh replaces removed metadata without cross-profile mixing."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-CatalogContextMenuTests",
+        "SWIFT-SQLCompletionCatalogTests",
+        "SWIFT-WorkspaceConnectionTests"
+      ],
+      "fixture_set": "catalog",
+      "precondition_set": "catalog",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F24",
+      "feature": "F24",
+      "domain": "catalog",
+      "steps": [
+        {
+          "action": "Search for an unexpanded synthetic object across two connected profiles; clear/change search during asynchronous replies.",
+          "assertions": [
+            "Search goes to the server independently of prior expansion.",
+            "stale/profile-mismatched replies cannot replace current matches."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-CatalogContextMenuTests",
+        "SWIFT-SQLCompletionCatalogTests"
+      ],
+      "fixture_set": "catalog",
+      "precondition_set": "catalog",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F25",
+      "feature": "F25",
+      "domain": "catalog",
+      "steps": [
+        {
+          "action": "Invoke Structure, Definition, Open Data, Generate SELECT and Copy Name on table/view/routine with spaces/non-BMP names, using mouse and context-menu keyboard.",
+          "assertions": [
+            "Actions are context-appropriate.",
+            "names/SQL use adapter dialect quoting.",
+            "generated SQL opens without implicit execution.",
+            "details identify correct object."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-CatalogContextMenuTests",
+        "SWIFT-CatalogCopyNameIntegrationTests"
+      ],
+      "fixture_set": "catalog",
+      "precondition_set": "catalog",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F26",
+      "feature": "F26",
+      "domain": "browse",
+      "steps": [
+        {
+          "action": "Open the fixture table with over 1000 rows, page at 200 rows, sort tied values, then apply all nine typed filter operators including NULL and clear filters.",
+          "assertions": [
+            "Paging/sort/filter run on server.",
+            "PK tie-breaks give stable boundaries.",
+            "dedicated table document captures identity.",
+            "invalid values cannot launch."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-TableBrowseNavigationTests",
+        "SWIFT-GridIntegrationTests"
+      ],
+      "fixture_set": "browse",
+      "precondition_set": "browse",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F27",
+      "feature": "F27",
+      "domain": "results",
+      "steps": [
+        {
+          "action": "Run duplicate-name/NULL/empty/literal NULL/exact numeric/binary query and routine multi-sets; exceed 1000 rows and 8 MiB; fail a later set.",
+          "assertions": [
+            "Columns retain ordinal/type/encoding metadata.",
+            "values stay distinct.",
+            "display bounds/truncation are explicit.",
+            "prior sets and partial error remain available."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ProtocolFixtureTests",
+        "SWIFT-BackendClientTests",
+        "SWIFT-StreamingTransportTests",
+        "SWIFT-ResultTableTests"
+      ],
+      "fixture_set": "results",
+      "precondition_set": "results",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F28",
+      "feature": "F28",
+      "domain": "results",
+      "steps": [
+        {
+          "action": "Select a cell, rectangle and sparse whole rows. Copy from keyboard/context menu; inspect TSV plus typed clipboard JSON, including duplicate names and all special values.",
+          "assertions": [
+            "Only intended cells/rows copy in source order.",
+            "JSON retains ordinals and typed NULL/binary.",
+            "TSV quoting/null marker is unambiguous.",
+            "row numbers are excluded."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ResultGridCopyTests",
+        "SWIFT-ResultGridRowNumberTests"
+      ],
+      "fixture_set": "results",
+      "precondition_set": "results",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F29",
+      "feature": "F29",
+      "domain": "results",
+      "steps": [
+        {
+          "action": "Load the 1000x32 grid, resize columns, select rows, scroll vertically/horizontally, switch away/back and change theme/DPI; inspect focus and row numbers.",
+          "assertions": [
+            "Widths/selection remain.",
+            "horizontal overflow and virtualization work.",
+            "row numbering stays fixed.",
+            "keyboard focus/selection remains visible."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ResultGridRowNumberTests",
+        "SWIFT-ResultGridFocusTests",
+        "SWIFT-GridPresentationTests"
+      ],
+      "fixture_set": "results",
+      "precondition_set": "results",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F30",
+      "feature": "F30",
+      "domain": "grid",
+      "steps": [
+        {
+          "action": "Open row inspector for NULL, empty, literal NULL, multiline, 1 MiB text and binary; toggle inspector and inspect editable/read-only reasons.",
+          "assertions": [
+            "Large/binary data is bounded and accurate.",
+            "special values are distinct.",
+            "edit affordances and explanations follow adapter metadata."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-GridPresentationIntegrationTests",
+        "SWIFT-GridColumnEditingTests"
+      ],
+      "fixture_set": "grid",
+      "precondition_set": "grid",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F31",
+      "feature": "F31",
+      "domain": "grid",
+      "steps": [
+        {
+          "action": "Edit fixture nullable/default/text/numeric/binary cells; try generated, no-PK, view, restricted-privilege and MyISAM data.",
+          "assertions": [
+            "Permitted edits use typed values.",
+            "NULL/empty/text NULL/DEFAULT differ.",
+            "unsupported cells explain why and cannot silently change values."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-GridDraftTests",
+        "SWIFT-GridColumnEditingTests",
+        "SWIFT-GridIntegrationTests"
+      ],
+      "fixture_set": "grid",
+      "precondition_set": "grid",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F32",
+      "feature": "F32",
+      "domain": "grid",
+      "steps": [
+        {
+          "action": "Stage insert/update/delete, inspect original values/markers/counts/Columns, edit a value back to original, delete an inserted row, then Discard.",
+          "assertions": [
+            "Drafts remain local until Apply.",
+            "exact original snapshots and counts stay coherent.",
+            "reverting/discard restores content and selection safely."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-GridDraftTests",
+        "SWIFT-GridPresentationTests"
+      ],
+      "fixture_set": "grid",
+      "precondition_set": "grid",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F33",
+      "feature": "F33",
+      "domain": "grid",
+      "steps": [
+        {
+          "action": "Stage a mixed immutable batch; Preview and review helper-generated parameterized SQL; mutate draft/context while preview reply is delayed.",
+          "assertions": [
+            "Preview uses exact captured typed batch.",
+            "frontend generates no mutation SQL.",
+            "stale preview cannot authorize changed work."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-ExecutionPolicyIntegrationTests"
+      ],
+      "fixture_set": "grid",
+      "precondition_set": "grid",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F34",
+      "feature": "F34",
+      "domain": "grid",
+      "steps": [
+        {
+          "action": "Keep a SQL tab transaction open; Preview/Apply in grid, attempt edits/navigation/profile mutation while snapshot locked, then deliver stale reply.",
+          "assertions": [
+            "Apply owns a fresh idle session.",
+            "original SQL transaction is untouched.",
+            "locked snapshot/context is revalidated and stale completion rejected."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-GridIntegrationTests"
+      ],
+      "fixture_set": "grid",
+      "precondition_set": "grid",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F35",
+      "feature": "F35",
+      "domain": "grid",
+      "steps": [
+        {
+          "action": "Apply a multi-row batch; use an observer to modify original rows or constraints/metadata; test deadlock and Stop during Apply.",
+          "assertions": [
+            "All writes commit atomically or roll back.",
+            "full-original conflicts fail safely.",
+            "failed/cancelled apply retains recoverable drafts.",
+            "reload is explicit."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-GridIntegrationTests",
+        "SWIFT-GridLifecycleTests"
+      ],
+      "fixture_set": "grid",
+      "precondition_set": "grid",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F36",
+      "feature": "F36",
+      "domain": "grid",
+      "steps": [
+        {
+          "action": "Inject lost COMMIT ACK for SQL and Apply. Try retry/reapply, close, explicit verification via independent observer, then discard/reload.",
+          "assertions": [
+            "Outcome stays unknown until explicitly resolved.",
+            "no automatic retry/duplicate write.",
+            "close preserves the uncertainty and recovery path."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-GridLifecycleTests",
+        "SWIFT-WorkspaceCloseTests",
+        "SWIFT-WorkspaceQueryTests"
+      ],
+      "fixture_set": "grid",
+      "precondition_set": "grid",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F37",
+      "feature": "F37",
+      "domain": "export",
+      "steps": [
+        {
+          "action": "Capture a truncated loaded result, start Export Loaded, then switch tabs/replace results; inspect helper request count.",
+          "assertions": [
+            "Export uses captured rows/metadata and discloses truncation.",
+            "no SQL executes.",
+            "cancelled/failed publication preserves destination."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ResultExportTests",
+        "SWIFT-WorkspaceQueryTests"
+      ],
+      "fixture_set": "export",
+      "precondition_set": "export",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F38",
+      "feature": "F38",
+      "domain": "export",
+      "steps": [
+        {
+          "action": "Export shared grid to JSON and CSV with default NULL marker, then choose collision-free marker; inspect Unicode/CRLF/binary/numeric/duplicate-column content.",
+          "assertions": [
+            "JSON uses ordered metadata/value arrays and exact strings.",
+            "CSV rejects marker collisions and quotes correctly.",
+            "NULL/empty/literal NULL stay distinct."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ResultExportTests",
+        "SWIFT-ParityBaselineTests"
+      ],
+      "fixture_set": "export",
+      "precondition_set": "export",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F39",
+      "feature": "F39",
+      "domain": "export",
+      "steps": [
+        {
+          "action": "Run to File once on the over-limit query and multi-result routine; test JSON/CSV, Stop, first/middle errors and locked replacement.",
+          "assertions": [
+            "Full rows export independently of display limit.",
+            "execution happens once.",
+            "JSON supports multi-set and CSV rejects ambiguity.",
+            "failed/cancelled export never publishes partial output."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-StreamingIntegrationTests",
+        "SWIFT-ResultExportTests",
+        "SWIFT-WorkspaceCommandTests"
+      ],
+      "fixture_set": "export",
+      "precondition_set": "export",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F40",
+      "feature": "F40",
+      "domain": "language",
+      "steps": [
+        {
+          "action": "Start offline completion with no DB; fragment/coalesce Content-Length frames, overflow/truncate, timeout/kill/restart the separate LSP process; inspect inherited environment.",
+          "assertions": [
+            "LSP is separate from DB helper sessions, bounded and sanitized.",
+            "credentials absent.",
+            "timeout/failure leaves plain editing/execution usable."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLLSPCodecTests",
+        "SWIFT-SQLLanguageServiceTests"
+      ],
+      "fixture_set": "language",
+      "precondition_set": "language",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F41",
+      "feature": "F41",
+      "domain": "language",
+      "steps": [
+        {
+          "action": "Explicitly connect each fixture, paginate completion metadata, Refresh after adding/removing an object, then switch profiles during delayed metadata replies.",
+          "assertions": [
+            "Metadata loads only after explicit connect through service session.",
+            "all pages and FK/signatures arrive.",
+            "stale entries/replies are replaced without leakage."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLCompletionCatalogTests",
+        "SWIFT-SQLLanguageServiceTests"
+      ],
+      "fixture_set": "language",
+      "precondition_set": "language",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F42",
+      "feature": "F42",
+      "domain": "language",
+      "steps": [
+        {
+          "action": "Run shared completion fixtures for CTE/subquery/correlated/LATERAL/alias/projection/ambiguous columns and FK JOIN/ON; inspect ranking and fuzzy UTF-16 highlights.",
+          "assertions": [
+            "Scope-correct suggestions, quoting, ranking, abbreviation/typo matching and highlighted spans match the Go oracle for both dialects."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLLanguageServiceTests",
+        "SWIFT-SQLEditorTests"
+      ],
+      "fixture_set": "language",
+      "precondition_set": "language",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F43",
+      "feature": "F43",
+      "domain": "language",
+      "steps": [
+        {
+          "action": "Type and manually invoke completion, navigate/accept with Tab and Return, dismiss Escape, Undo once; repeat in literal/comment and IME composition and with delayed stale replies.",
+          "assertions": [
+            "Popup appears only in valid context.",
+            "focus/caret remain correct.",
+            "insertion quotes safely and is one Undo.",
+            "stale/IME/literal replies cannot modify source."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-SQLLanguageServiceTests"
+      ],
+      "fixture_set": "language",
+      "precondition_set": "language",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F44",
+      "feature": "F44",
+      "domain": "language",
+      "steps": [
+        {
+          "action": "Run all shared signature cases including nested/SUBSTRING/named/default/variadic/overload/Unicode; type/change caret/Escape/Undo, refresh connected routine metadata and switch theme/DPI.",
+          "assertions": [
+            "Correct function/overload/active UTF-16 parameter and return type display.",
+            "stale diagnostics/help are rejected.",
+            "offline built-ins need no DB queries."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ParityBaselineTests",
+        "SWIFT-SQLLanguageServiceTests",
+        "SWIFT-SQLEditorTests"
+      ],
+      "fixture_set": "language",
+      "precondition_set": "language",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F45",
+      "feature": "F45",
+      "domain": "commands",
+      "steps": [
+        {
+          "action": "Invoke Run/Script/Stop/Run to File from toolbar/menu/keyboard while editor, grid, chooser and modal dialog have focus; switch document before delayed completion.",
+          "assertions": [
+            "One command registry captures exact context.",
+            "editing/protected shortcuts are not stolen.",
+            "focus/modal/busy gating is identical across entry points."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-WorkspaceCommandTests",
+        "SWIFT-AppShortcutTests"
+      ],
+      "fixture_set": "commands",
+      "precondition_set": "commands",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F46",
+      "feature": "F46",
+      "domain": "commands",
+      "steps": [
+        {
+          "action": "Record/rebind/unbind/reset execution shortcuts, provoke duplicate/protected-key conflicts, restart, and load corrupt preferences; repeat under non-Latin layout/AltGr.",
+          "assertions": [
+            "Explicit unbinding persists.",
+            "conflicts are rejected.",
+            "safe fallback recovers corruption.",
+            "menus/toolbar/keyboard stay synchronized using native keys."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-AppShortcutTests",
+        "SWIFT-WorkspaceCommandTests"
+      ],
+      "fixture_set": "commands",
+      "precondition_set": "commands",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F47",
+      "feature": "F47",
+      "domain": "theme",
+      "steps": [
+        {
+          "action": "Select System/Lager/Porter and named app scheme; select independent editor scheme/Follow App Appearance, preview and restart.",
+          "assertions": [
+            "Preferences persist independently with safe fallback.",
+            "system changes update only following choices.",
+            "all screens/popups use intended palette."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-AppAppearanceTests",
+        "SWIFT-AppearanceThemeSettingsTests",
+        "SWIFT-ApplicationColorThemeTests"
+      ],
+      "fixture_set": "theme",
+      "precondition_set": "theme",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F48",
+      "feature": "F48",
+      "domain": "theme",
+      "steps": [
+        {
+          "action": "Load bundled schemes and all shared imports including JSONC include/TextMate/JetBrains; delete source and reload; remove custom; test traversal/symlink/cycle/remote/XML entity/size attacks.",
+          "assertions": [
+            "Normalized colors/font/scope/alpha precedence match.",
+            "imports persist independently.",
+            "unsafe input is rejected and corrupt library preserved.",
+            "notices accompany bundled assets."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-EditorThemeTests",
+        "SWIFT-JetBrainsEditorThemeTests",
+        "SWIFT-ParityBaselineTests"
+      ],
+      "fixture_set": "theme",
+      "precondition_set": "theme",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F49",
+      "feature": "F49",
+      "domain": "theme",
+      "steps": [
+        {
+          "action": "During active editor Undo/selection/scroll, result selection and query execution, switch app/editor light/dark/system choices and render every dialog/popup/settings screen.",
+          "assertions": [
+            "Live themes keep editing/execution state and readable text/icons/hover/focus/selection.",
+            "native light controls have correct contrast."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-ApplicationThemeIntegrationTests",
+        "SWIFT-NativeThemeContrastTests",
+        "SWIFT-GridPresentationIntegrationTests"
+      ],
+      "fixture_set": "theme",
+      "precondition_set": "theme",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F50",
+      "feature": "F50",
+      "domain": "platform",
+      "steps": [
+        {
+          "action": "Use native Open/Save/CA choosers and clipboard on Unicode/CRLF paths; type via IME/non-Latin/AltGr, move focus by keyboard, change fractional/mixed DPI and window bounds.",
+          "assertions": [
+            "Desktop conventions and exact text survive.",
+            "file/clipboard roundtrips succeed.",
+            "focus/selection/readability remain visible across displays."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-SQLEditorTests",
+        "SWIFT-ApplicationFocusAuditTests",
+        "SWIFT-ResultGridFocusTests"
+      ],
+      "fixture_set": "platform",
+      "precondition_set": "platform",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F51",
+      "feature": "F51",
+      "domain": "platform",
+      "steps": [
+        {
+          "action": "As standard user, create/read/update/delete a unique fixture credential in real native store; test missing/empty/locked/unavailable service and rollback failure.",
+          "assertions": [
+            "Credential Manager/Secret Service roundtrip succeeds privately.",
+            "failure is explicit.",
+            "no plaintext fallback, unrelated credential access or loss of existing password."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ConnectionLibraryTests"
+      ],
+      "fixture_set": "platform",
+      "precondition_set": "platform",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F52",
+      "feature": "F52",
+      "domain": "platform",
+      "steps": [
+        {
+          "action": "With Narrator/UIA or Orca/AT-SPI, navigate editor, virtualized grid, NULL/binary cells, inspector, menus, Settings and dialogs entirely by keyboard.",
+          "assertions": [
+            "Names/roles/values/actions/focus are announced correctly.",
+            "modal safe defaults and row/column position are operable.",
+            "rendering/headless tests do not substitute for this run."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ApplicationFocusAuditTests",
+        "SWIFT-ResultGridFocusTests",
+        "SWIFT-ResultGridRowNumberTests"
+      ],
+      "fixture_set": "platform",
+      "precondition_set": "platform",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F53",
+      "feature": "F53",
+      "domain": "platform",
+      "steps": [
+        {
+          "action": "Launch exact packaged helper, check protocol/version and no Windows console; saturate stream, Stop, kill only owned helper and retry/recover.",
+          "assertions": [
+            "Matching executable is used.",
+            "control/terminal traffic stays bounded.",
+            "helper death surfaces correct disconnected/unknown state.",
+            "unrelated processes remain untouched."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-HelperProcessTests",
+        "SWIFT-BackendMultiplexingTests",
+        "SWIFT-StreamingTransportTests"
+      ],
+      "fixture_set": "platform",
+      "precondition_set": "platform",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F54",
+      "feature": "F54",
+      "domain": "delivery",
+      "steps": [
+        {
+          "action": "Inspect candidate GUI/helper version/build/icons/identity; migrate a copied prototype library and credentials; launch old/new simultaneously; independently rebuild Mac SwiftUI.",
+          "assertions": [
+            "Stable identity retains IDs/credentials without data races.",
+            "GUI/helper metadata match.",
+            "Mac dev.dbeer.app/signing/release path remains independent."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-HelperProcessTests"
+      ],
+      "fixture_set": "delivery",
+      "precondition_set": "delivery",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F55",
+      "feature": "F55",
+      "domain": "delivery",
+      "steps": [
+        {
+          "action": "On clean standard-user desktops, verify archive/package checksum/notices/dependencies and signing/provenance policy, extract/install, launch without Go/Rust, then manually update.",
+          "assertions": [
+            "Documented Windows runtime/Linux glibc/GPU/Secret Service requirements suffice.",
+            "matching helper and notices present.",
+            "existing release archives are untouched."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-HelperProcessTests"
+      ],
+      "fixture_set": "delivery",
+      "precondition_set": "delivery",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F56",
+      "feature": "F56",
+      "domain": "delivery",
+      "steps": [
+        {
+          "action": "Install exact previous/candidate artifacts in an owned fixture; exercise repeated launch, preserve profiles/UUIDs/credentials/drafts/history/settings, restart/update/remove.",
+          "assertions": [
+            "State survives migration.",
+            "documents restore disconnected.",
+            "instance ownership prevents clobbering.",
+            "removal does not touch unrelated user data or processes."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ConnectionMigrationTests",
+        "SWIFT-SQLDocumentStoreTests",
+        "SWIFT-ApplicationWorkspaceTests"
+      ],
+      "fixture_set": "delivery",
+      "precondition_set": "delivery",
+      "native_status": "planned"
+    },
+    {
+      "id": "PARITY-F57",
+      "feature": "F57",
+      "domain": "verification",
+      "steps": [
+        {
+          "action": "Run every required scenario on Windows 11 x64 and Ubuntu 24.04 x64 Wayland/X11 with PostgreSQL 16/17/18 and MySQL 8.0/8.4, TLS/fault/upgrade cases; audit summaries and skips.",
+          "assertions": [
+            "Every native column has exact artifact/build/session/engine evidence and completed-run summary.",
+            "no headless-derived UI pass.",
+            "Mac regression route remains green."
+          ]
+        }
+      ],
+      "reference_checks": [
+        "SWIFT-ParityBaselineTests",
+        "SWIFT-ProtocolFixtureTests",
+        "SWIFT-BackendClientTests"
+      ],
+      "fixture_set": "verification",
+      "precondition_set": "verification",
+      "native_status": "planned"
+    }
+  ],
+  "precondition_sets": {
+    "profiles": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "workspace": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "sessions": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ],
+    "transport": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "close": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ],
+    "editor": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "policy": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "execution": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ],
+    "documents": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "catalog": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ],
+    "browse": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ],
+    "results": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "grid": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ],
+    "export": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ],
+    "language": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "commands": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "theme": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "platform": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "delivery": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials."
+    ],
+    "verification": [
+      "Use exact candidate executable/build hash and an owned fixture data directory.",
+      "Restore/start disconnected; never read personal profile libraries or credentials.",
+      "Use disposable supported-version database servers and synthetic setup SQL; independent observer owns cleanup."
+    ]
+  },
+  "native_execution_policy": {
+    "targets": [
+      "windows11-x64",
+      "ubuntu2404-x64-wayland",
+      "ubuntu2404-x64-x11"
+    ],
+    "method": "Execute listed actions against the exact GUI/PID with the native harness introduced in Task 2; retain per-assertion evidence and completed-run summary. Until then this is an executable Swift reference scenario plus a concrete native operator procedure.",
+    "extra_requirements": [
+      "Native credential service",
+      "Native file/clipboard/IME and assistive technology where the scenario calls for them"
+    ],
+    "acceptance_rule": "All listed actions/assertions and platform-specific extensions must pass; reference-suite success never closes a native result.",
+    "id": "native-v1"
+  }
+}

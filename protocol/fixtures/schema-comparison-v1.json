@@ -1,0 +1,264 @@
+{
+  "version": 5,
+  "capability": "schemaComparisonV1",
+  "commands": [
+    {
+      "type": "schema.start",
+      "requestId": "start",
+      "schemaComparison": {
+        "source": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "localhost",
+            "port": 5432,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable"
+          }
+        },
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "localhost",
+            "port": 5432,
+            "database": "fixture",
+            "user": "fixture",
+            "password": "",
+            "sslMode": "disable"
+          }
+        },
+        "mappings": {
+          "schemas": [
+            {
+              "source": "source_schema",
+              "target": "target_schema"
+            }
+          ],
+          "tables": [],
+          "types": []
+        }
+      }
+    },
+    {
+      "type": "schema.status",
+      "requestId": "status",
+      "schemaComparison": {
+        "jobId": "schema-job"
+      }
+    },
+    {
+      "type": "schema.page",
+      "requestId": "page",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "collection": "differences"
+      }
+    },
+    {
+      "type": "schema.value",
+      "requestId": "value",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "valueRef": "v0"
+      }
+    },
+    {
+      "type": "schema.export",
+      "requestId": "export",
+      "schemaComparison": {
+        "jobId": "schema-job"
+      }
+    },
+    {
+      "type": "schema.cancel",
+      "requestId": "cancel",
+      "schemaComparison": {
+        "jobId": "schema-job"
+      }
+    },
+    {
+      "type": "schema.close",
+      "requestId": "close",
+      "schemaComparison": {
+        "jobId": "schema-job"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "type": "schema.start.result",
+      "requestId": "start",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "pending"
+      }
+    },
+    {
+      "type": "schema.status.result",
+      "requestId": "status",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "summary": {
+          "formatVersion": 1,
+          "engine": "postgresql",
+          "source": {
+            "engine": "postgresql",
+            "version": "17",
+            "database": "fixture",
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "repeatableRead",
+            "visibility": "complete",
+            "engineContext": {
+              "state": "known",
+              "value": []
+            }
+          },
+          "target": {
+            "engine": "postgresql",
+            "version": "17",
+            "database": "fixture",
+            "startedAt": "2026-10-22T10:00:00Z",
+            "finishedAt": "2026-10-22T10:00:01Z",
+            "consistency": "repeatableRead",
+            "visibility": "complete",
+            "engineContext": {
+              "state": "known",
+              "value": []
+            }
+          },
+          "mappings": {
+            "schemas": [
+              {
+                "source": "source_schema",
+                "target": "target_schema"
+              }
+            ],
+            "tables": [],
+            "types": []
+          },
+          "scope": {
+            "kind": "mappedTableStructure",
+            "excludedObjectKinds": [
+              "views",
+              "routines",
+              "triggers",
+              "privileges",
+              "statistics",
+              "physicalContents",
+              "sequenceCounters",
+              "autoIncrementCounters"
+            ]
+          },
+          "equalObjects": 0,
+          "sourceOnlyObjects": 0,
+          "targetOnlyObjects": 0,
+          "changedObjects": 1,
+          "indeterminateObjects": 0,
+          "differenceCount": 1,
+          "issueCount": 0,
+          "complete": true,
+          "fullEquality": false,
+          "modelDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "schema.page.result",
+      "requestId": "page",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "page": {
+          "collection": "differences",
+          "offset": 0,
+          "nextOffset": 1,
+          "hasMore": false,
+          "items": [
+            {
+              "index": 0,
+              "sourceRef": {
+                "kind": "column",
+                "schema": "source_schema",
+                "table": "orders",
+                "name": "amount"
+              },
+              "targetRef": {
+                "kind": "column",
+                "schema": "target_schema",
+                "table": "orders",
+                "name": "amount"
+              },
+              "property": "tables.columns.default",
+              "kind": "changed",
+              "sourcePreview": {
+                "text": "{\"state\":\"known\",\"value\":\"9007199254740993.123456789\"}",
+                "totalBytes": 54,
+                "truncated": false,
+                "valueRef": "v0"
+              },
+              "targetPreview": {
+                "text": "{\"state\":\"known\",\"value\":\"9007199254740993.123456789\"}",
+                "totalBytes": 54,
+                "truncated": false,
+                "valueRef": "v0"
+              },
+              "planning": "structured",
+              "reasonCodes": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "schema.value.result",
+      "requestId": "value",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "value": {
+          "valueRef": "v0",
+          "totalBytes": 54,
+          "offset": 0,
+          "nextOffset": 54,
+          "dataBase64": "eyJzdGF0ZSI6Imtub3duIiwidmFsdWUiOiI5MDA3MTk5MjU0NzQwOTkzLjEyMzQ1Njc4OSJ9",
+          "hasMore": false
+        }
+      }
+    },
+    {
+      "type": "schema.export.result",
+      "requestId": "export",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "export": {
+          "sha256": "6c9d869e7a0944a0b0c28aaa561e293e5c4720344860ae902ee9fd25cb8002ff",
+          "totalBytes": 54,
+          "offset": 0,
+          "nextOffset": 54,
+          "dataBase64": "eyJzdGF0ZSI6Imtub3duIiwidmFsdWUiOiI5MDA3MTk5MjU0NzQwOTkzLjEyMzQ1Njc4OSJ9",
+          "hasMore": false
+        }
+      }
+    },
+    {
+      "type": "schema.cancel.result",
+      "requestId": "cancel",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "cancelled"
+      }
+    },
+    {
+      "type": "schema.close.result",
+      "requestId": "close",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "closed"
+      }
+    }
+  ]
+}

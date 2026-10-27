@@ -34,8 +34,26 @@ func TestSharedCommandFixtures(t *testing.T) {
 		}
 		count++
 	}
-	if count != 6 {
+	if count != 11 {
 		t.Fatalf("expected one fixture per command, got %d", count)
+	}
+}
+
+func TestCompletionCatalogRequestValidation(t *testing.T) {
+	for _, request := range []CatalogRequest{{Kind: "completion"}, {Kind: "completion", Schema: `quoted' schema`, Page: 1}} {
+		if !request.Valid() {
+			t.Fatal("valid metadata batch rejected")
+		}
+	}
+	for _, request := range []CatalogRequest{
+		{Kind: "completion", Page: -1}, {Kind: "completion", Object: "table"},
+		{Kind: "completion", Search: "prefix"}, {Kind: "completion", ObjectKind: "table"},
+		{Kind: "completion", Sort: []CatalogSort{{Column: "name", Direction: "asc"}}},
+		{Kind: "schemas", Page: 1}, {Kind: "objects", Schema: "public", ObjectKind: "table", Page: 1},
+	} {
+		if request.Valid() {
+			t.Fatal("invalid metadata batch accepted")
+		}
 	}
 }
 
@@ -145,7 +163,7 @@ func (reader *chunkedReader) Read(output []byte) (int, error) {
 }
 
 func TestFramesAcrossArbitraryReadBoundaries(t *testing.T) {
-	input := []byte("{\"type\":\"hello\",\"requestId\":\"κόσμος\",\"protocolVersion\":2}\n{\"type\":\"shutdown\",\"requestId\":\"s1\"}\n")
+	input := []byte("{\"type\":\"hello\",\"requestId\":\"κόσμος\",\"protocolVersion\":5}\n{\"type\":\"shutdown\",\"requestId\":\"s1\"}\n")
 	for _, size := range []int{1, 2, 7, len(input)} {
 		reader := NewReader(&chunkedReader{input: input, size: size})
 		for _, expected := range []string{"hello", "shutdown"} {

@@ -1,71 +1,308 @@
 import Darwin
 import Foundation
 
+enum StoredWorkspaceDocumentKind: String, Codable, Sendable { case sql, table, snapshot, investigation }
+
+struct StoredTableDocument: Codable, Equatable, Sendable {
+    var reference: TableReference
+    var page: Int
+    var filters: [CatalogFilter]
+    var sort: [CatalogSort]
+
+    init(reference: TableReference, page: Int = 0, filters: [CatalogFilter] = [], sort: [CatalogSort] = []) {
+        self.reference = reference
+        self.page = page
+        self.filters = filters
+        self.sort = sort
+    }
+
+    var isValid: Bool {
+        func validName(_ name: String) -> Bool { !name.isEmpty && name.utf8.count <= 1_024 && !name.contains("\0") }
+        guard validName(reference.schema), validName(reference.name), ["table", "view"].contains(reference.kind),
+              (0...1_000_000).contains(page), filters.count <= 32, sort.count <= 32,
+              sort.allSatisfy({ validName($0.column) && ["asc", "desc"].contains($0.direction) }) else { return false }
+        return filters.allSatisfy { filter in
+            guard validName(filter.column) else { return false }
+            switch filter.operator {
+            case "eq", "ne", "lt", "lte", "gt", "gte", "contains":
+                return filter.value.map { $0.utf8.count <= 1_024 * 1_024 && !$0.contains("\0") } == true
+            case "isNull", "isNotNull": return filter.value == nil
+            default: return false
+            }
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case reference, page, filters, sort }
+
+    init(from decoder: Decoder) throws {
+        try requireWorkspaceKeys(decoder, allowed: ["reference", "page", "filters", "sort"])
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let referenceDecoder = try values.superDecoder(forKey: .reference)
+        try requireWorkspaceKeys(referenceDecoder, allowed: ["schema", "name", "kind"])
+        reference = try TableReference(from: referenceDecoder)
+        page = try values.decode(Int.self, forKey: .page)
+        filters = try values.decode([CatalogFilter].self, forKey: .filters)
+        sort = try values.decode([CatalogSort].self, forKey: .sort)
+        // Reject unknown operational fields rather than silently dropping them
+        // before the next autosave of a newer document format.
+        var filterValues = try values.nestedUnkeyedContainer(forKey: .filters)
+        while !filterValues.isAtEnd {
+            try requireWorkspaceKeys(filterValues.superDecoder(), allowed: ["column", "operator", "value"])
+        }
+        var sortValues = try values.nestedUnkeyedContainer(forKey: .sort)
+        while !sortValues.isAtEnd { try requireWorkspaceKeys(sortValues.superDecoder(), allowed: ["column", "direction"]) }
+    }
+}
+
 struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     var id: UUID
     var title: String
     var text: String
     var profileID: UUID?
+    var kind: StoredWorkspaceDocumentKind
+    var table: StoredTableDocument?
+    var snapshotID: UUID?
+    var investigationID: UUID?
+    var fileURL: URL?
+    var fileContentSHA256: String?
+    var fileDocumentID: UUID?
+    var fileRecoveryURL: URL?
+    var sqlLibraryEntryID: UUID?
 
-    init(id: UUID = UUID(), title: String, text: String, profileID: UUID? = nil) {
+    init(id: UUID = UUID(), title: String, text: String, profileID: UUID? = nil,
+         kind: StoredWorkspaceDocumentKind = .sql, table: StoredTableDocument? = nil,
+         snapshotID: UUID? = nil, investigationID: UUID? = nil,
+         fileURL: URL? = nil, fileContentSHA256: String? = nil, fileDocumentID: UUID? = nil, fileRecoveryURL: URL? = nil,
+         sqlLibraryEntryID: UUID? = nil) {
         self.id = id
         self.title = title
         self.text = text
         self.profileID = profileID
+        self.kind = kind
+        self.table = table
+        self.snapshotID = snapshotID
+        self.investigationID = investigationID
+        self.fileURL = fileURL
+        self.fileContentSHA256 = fileContentSHA256
+        self.fileDocumentID = fileURL.map { _ in fileDocumentID ?? id }
+        self.fileRecoveryURL = fileRecoveryURL
+        self.sqlLibraryEntryID = sqlLibraryEntryID
+    }
+
+    var isValid: Bool {
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        switch kind {
+        case .sql:
+            guard table == nil, snapshotID == nil, investigationID == nil else { return false }
+        case .table:
+            guard table?.isValid == true, snapshotID == nil, investigationID == nil, fileURL == nil, fileContentSHA256 == nil, fileDocumentID == nil,
+                  fileRecoveryURL == nil, sqlLibraryEntryID == nil else { return false }
+        case .snapshot:
+            // An offline tab stores an opaque artifact reference only. In
+            // particular, captured SQL and profile context stay in the private
+            // artifact and cannot become an executable restored SQL document.
+            guard snapshotID != nil, investigationID == nil, text.isEmpty, profileID == nil, table == nil,
+                  fileURL == nil, fileContentSHA256 == nil, fileDocumentID == nil,
+                  fileRecoveryURL == nil, sqlLibraryEntryID == nil else { return false }
+        case .investigation:
+            guard investigationID != nil, snapshotID == nil, text.isEmpty, profileID == nil, table == nil,
+                  fileURL == nil, fileContentSHA256 == nil, fileDocumentID == nil,
+                  fileRecoveryURL == nil, sqlLibraryEntryID == nil else { return false }
+        }
+        guard fileDocumentID == nil || fileURL != nil else { return false }
+        guard sqlLibraryEntryID == nil || fileURL != nil else { return false }
+        if let fileRecoveryURL {
+            guard SQLFileBinding.isLocalFile(fileRecoveryURL), fileRecoveryURL.path.utf8.count <= 4_096 else { return false }
+        }
+        if let fileURL {
+            guard fileURL.isFileURL, fileURL.path.hasPrefix("/"), fileURL.path.utf8.count <= 4_096,
+                  fileURL.path != "/", !fileURL.hasDirectoryPath, !fileURL.lastPathComponent.isEmpty,
+                  !fileURL.path.contains("\0"), fileURL.host?.isEmpty != false || fileURL.host?.lowercased() == "localhost",
+                  fileURL.user == nil, fileURL.password == nil, fileURL.port == nil,
+                  fileURL.query == nil, fileURL.fragment == nil else { return false }
+        }
+        if let digest = fileContentSHA256 {
+            guard fileURL != nil, digest.utf8.count == 64,
+                  digest.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return false }
+        }
+        return true
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, text, profileID, kind, table, snapshotID, investigationID, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID
+    }
+
+    init(from decoder: Decoder) throws {
+        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "investigationID", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID"])
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        title = try values.decode(String.self, forKey: .title)
+        kind = try values.decode(StoredWorkspaceDocumentKind.self, forKey: .kind)
+        if kind == .snapshot {
+            try requireWorkspaceKeys(decoder, allowed: ["id", "title", "kind", "snapshotID"])
+        } else if values.contains(.snapshotID) { throw SQLDocumentStoreError.read }
+        if kind == .investigation {
+            try requireWorkspaceKeys(decoder, allowed: ["id", "title", "kind", "investigationID"])
+        } else if values.contains(.investigationID) { throw SQLDocumentStoreError.read }
+        text = kind == .snapshot || kind == .investigation ? "" : try values.decode(String.self, forKey: .text)
+        profileID = try values.decodeIfPresent(UUID.self, forKey: .profileID)
+        table = try values.decodeIfPresent(StoredTableDocument.self, forKey: .table)
+        snapshotID = try values.decodeIfPresent(UUID.self, forKey: .snapshotID)
+        investigationID = try values.decodeIfPresent(UUID.self, forKey: .investigationID)
+        fileURL = try values.decodeIfPresent(URL.self, forKey: .fileURL)
+        fileContentSHA256 = try values.decodeIfPresent(String.self, forKey: .fileContentSHA256)
+        fileDocumentID = try values.decodeIfPresent(UUID.self, forKey: .fileDocumentID) ?? fileURL.map { _ in id }
+        fileRecoveryURL = try values.decodeIfPresent(URL.self, forKey: .fileRecoveryURL)
+        sqlLibraryEntryID = try values.decodeIfPresent(UUID.self, forKey: .sqlLibraryEntryID)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        guard isValid else { throw SQLDocumentStoreError.write }
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(title, forKey: .title)
+        try values.encode(kind, forKey: .kind)
+        if kind == .snapshot {
+            try values.encode(snapshotID, forKey: .snapshotID)
+            return
+        }
+        if kind == .investigation {
+            try values.encode(investigationID, forKey: .investigationID)
+            return
+        }
+        try values.encode(text, forKey: .text)
+        try values.encodeIfPresent(profileID, forKey: .profileID)
+        try values.encodeIfPresent(table, forKey: .table)
+        try values.encodeIfPresent(fileURL, forKey: .fileURL)
+        try values.encodeIfPresent(fileContentSHA256, forKey: .fileContentSHA256)
+        try values.encodeIfPresent(fileDocumentID, forKey: .fileDocumentID)
+        try values.encodeIfPresent(fileRecoveryURL, forKey: .fileRecoveryURL)
+        try values.encodeIfPresent(sqlLibraryEntryID, forKey: .sqlLibraryEntryID)
     }
 }
 
-struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
-    var id: UUID
-    var date: Date
-    var documentID: UUID?
-    var profileID: UUID?
-    var sql: String
-    var outcome: String
+private struct LegacyStoredSQLDocument: Decodable {
+    let document: StoredSQLDocument
 
-    init(id: UUID = UUID(), date: Date = .now, documentID: UUID? = nil, profileID: UUID? = nil,
-         sql: String, outcome: String) {
-        self.id = id
-        self.date = date
-        self.documentID = documentID
-        self.profileID = profileID
-        self.sql = sql
-        self.outcome = outcome
+    private enum CodingKeys: String, CodingKey { case id, title, text, profileID }
+
+    init(from decoder: Decoder) throws {
+        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID"])
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        document = StoredSQLDocument(id: try values.decode(UUID.self, forKey: .id),
+            title: try values.decode(String.self, forKey: .title), text: try values.decode(String.self, forKey: .text),
+            profileID: try values.decodeIfPresent(UUID.self, forKey: .profileID))
     }
 }
 
-/// Contains documents and history only. Sessions, results and passwords never
-/// enter the format; restoring the snapshot cannot reconnect or execute SQL.
+private struct WorkspaceCodingKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+}
+
+private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) throws {
+    let values = try decoder.container(keyedBy: WorkspaceCodingKey.self)
+    guard Set(values.allKeys.map(\.stringValue)).isSubset(of: allowed) else { throw SQLDocumentStoreError.read }
+}
+
+/// Contains documents, pane presentation state and history only. Sessions,
+/// results and passwords never enter the format; restoring the snapshot cannot
+/// reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    static let currentVersion = 10
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
     private(set) var version: Int
     var documents: [StoredSQLDocument]
+    // Compatibility mirror only; decode and file saves require the active
+    // pane's selection so there is no second persisted selection authority.
     var selectedDocumentID: UUID?
+    var paneLayout: WorkspacePaneLayout
     var history: [SQLHistoryEntry]
     var historyEnabled: Bool
+    var historySettings: SQLHistoryRetentionSettings
+    var sqlFolders: [SQLFolderAttachment]
+    var sqlLibrary: SQLLibrarySnapshot
 
     init(documents: [StoredSQLDocument] = [], selectedDocumentID: UUID? = nil,
-         history: [SQLHistoryEntry] = [], historyEnabled: Bool = true) {
+         history: [SQLHistoryEntry] = [], historyEnabled: Bool = true,
+         historySettings: SQLHistoryRetentionSettings = .default, sqlFolders: [SQLFolderAttachment] = [],
+         sqlLibrary: SQLLibrarySnapshot = SQLLibrarySnapshot(), paneLayout: WorkspacePaneLayout? = nil) {
         version = Self.currentVersion
         self.documents = documents
-        self.selectedDocumentID = selectedDocumentID
+        let layout = paneLayout ?? .singlePane(documentIDs: documents.map(\.id), selectedDocumentID: selectedDocumentID)
+        self.paneLayout = layout
+        self.selectedDocumentID = selectedDocumentID ?? layout.selectedDocumentID
         self.history = history
         self.historyEnabled = historyEnabled
+        self.historySettings = historySettings
+        self.sqlFolders = sqlFolders
+        self.sqlLibrary = sqlLibrary
     }
 
-    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, history, historyEnabled }
+    private enum CodingKeys: String, CodingKey { case version, documents, selectedDocumentID, paneLayout, history, historyEnabled, historySettings, sqlFolders, sqlLibrary }
 
     init(from decoder: Decoder) throws {
+        try requireWorkspaceKeys(decoder, allowed: ["version", "documents", "selectedDocumentID", "paneLayout", "history", "historyEnabled", "historySettings", "sqlFolders", "sqlLibrary"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        version = try values.decodeIfPresent(Int.self, forKey: .version) ?? 0
-        guard version == 0 || version == Self.currentVersion else { throw SQLDocumentStoreError.read }
-        documents = try values.decode([StoredSQLDocument].self, forKey: .documents)
+        version = values.contains(.version) ? try values.decode(Int.self, forKey: .version) : 0
+        guard (0...Self.currentVersion).contains(version) else { throw SQLDocumentStoreError.read }
+        if version < 5, values.contains(.sqlFolders) { throw SQLDocumentStoreError.read }
+        sqlFolders = version >= 5 ? try values.decode([SQLFolderAttachment].self, forKey: .sqlFolders) : []
+        if version < 6, values.contains(.sqlLibrary) { throw SQLDocumentStoreError.read }
+        sqlLibrary = version >= 6 ? try values.decode(SQLLibrarySnapshot.self, forKey: .sqlLibrary) : SQLLibrarySnapshot()
+        documents = version < 4
+            ? try values.decode([LegacyStoredSQLDocument].self, forKey: .documents).map(\.document)
+            : try values.decode([StoredSQLDocument].self, forKey: .documents)
+        if version < 7 {
+            // A newer operational binding in an older version is corruption,
+            // not a format that can be silently migrated or overwritten.
+            guard !documents.contains(where: { $0.kind == .snapshot }) else { throw SQLDocumentStoreError.read }
+        }
+        if version < 9 {
+            guard !documents.contains(where: { $0.kind == .investigation }) else { throw SQLDocumentStoreError.read }
+        }
+        let investigationIDs = documents.compactMap(\.investigationID)
+        guard Set(investigationIDs).count == investigationIDs.count else { throw SQLDocumentStoreError.read }
         selectedDocumentID = try values.decodeIfPresent(UUID.self, forKey: .selectedDocumentID)
+        if version < 4, let selectedDocumentID, !documents.contains(where: { $0.id == selectedDocumentID }) {
+            // Old snapshots omitted table tabs but could still name one as
+            // selected. Preserve the available SQL drafts during migration.
+            self.selectedDocumentID = documents.first?.id
+        }
+        if version < 8 {
+            // Older formats never carried pane ownership. Accepting this key,
+            // including null, would silently discard a newer operational layout.
+            guard !values.contains(.paneLayout) else { throw SQLDocumentStoreError.read }
+            paneLayout = .singlePane(documentIDs: documents.map(\.id), selectedDocumentID: selectedDocumentID)
+            self.selectedDocumentID = paneLayout.selectedDocumentID
+        } else if version < 10 {
+            paneLayout = try WorkspacePaneLayout(legacyFrom: values.superDecoder(forKey: .paneLayout))
+        } else {
+            paneLayout = try values.decode(WorkspacePaneLayout.self, forKey: .paneLayout)
+        }
+        guard paneLayout.isValid(documentIDs: documents.map(\.id)),
+              self.selectedDocumentID == paneLayout.selectedDocumentID else { throw SQLDocumentStoreError.read }
         history = try values.decodeIfPresent([SQLHistoryEntry].self, forKey: .history) ?? []
+        if version < 2 {
+            // Legacy status strings never established typed outcomes or timing,
+            // even if one happens to match a new enum's spelling.
+            history = history.map { SQLHistoryEntry(id: $0.id, date: $0.date, documentID: $0.documentID,
+                profileID: $0.profileID, sql: $0.sql, outcome: $0.legacyOutcome ?? $0.outcome.rawValue) }
+        }
         historyEnabled = try values.decodeIfPresent(Bool.self, forKey: .historyEnabled) ?? true
+        if version < 3 { historySettings = .default }
+        else { historySettings = try values.decode(SQLHistoryRetentionSettings.self, forKey: .historySettings) }
+        if version < 3 {
+            history = history.map { entry in
+                var migrated = entry
+                migrated.isFavorite = false
+                return migrated
+            }
+        }
     }
 
     mutating func record(_ entry: SQLHistoryEntry, now: Date = .now) {
@@ -75,19 +312,34 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
     }
 
     mutating func trimHistory(now: Date = .now) {
-        let oldest = now.addingTimeInterval(-Self.historyRetention)
+        guard historySettings.isValid else { return }
+        let oldest = now.addingTimeInterval(-historySettings.retentionInterval)
         // Stable tie breaking preserves the order of commands in a script.
-        history = Array(history.enumerated().filter { $0.element.date >= oldest }
+        // Favorites consume neither the age allowance nor the ordinary entry limit.
+        var ordinaryCount = 0
+        history = Array(history.enumerated().filter { $0.element.isFavorite || $0.element.date >= oldest }
             .sorted { lhs, rhs in lhs.element.date == rhs.element.date ? lhs.offset > rhs.offset : lhs.element.date > rhs.element.date }
-            .prefix(Self.historyLimit).map(\.element).reversed())
+            .filter { indexed in
+                if indexed.element.isFavorite { return true }
+                guard ordinaryCount < historySettings.maxEntries else { return false }
+                ordinaryCount += 1
+                return true
+            }.map(\.element).reversed())
     }
 
-    mutating func clearHistory() { history.removeAll() }
-    mutating func clearDocuments() { documents.removeAll(); selectedDocumentID = nil }
+    mutating func clearHistory(includeFavorites: Bool = false) {
+        history.removeAll { includeFavorites || !$0.isFavorite }
+    }
+    mutating func clearDocuments() {
+        documents.removeAll()
+        selectedDocumentID = nil
+        for pane in paneLayout.storedPaneIDs { paneLayout[pane] = WorkspacePaneState() }
+    }
 
     fileprivate func current(now: Date = .now) -> SQLWorkspaceSnapshot {
         var result = SQLWorkspaceSnapshot(documents: documents, selectedDocumentID: selectedDocumentID,
-            history: history, historyEnabled: historyEnabled)
+            history: history, historyEnabled: historyEnabled, historySettings: historySettings,
+            sqlFolders: sqlFolders, sqlLibrary: sqlLibrary, paneLayout: paneLayout)
         result.trimHistory(now: now)
         return result
     }
@@ -133,7 +385,7 @@ actor FileSQLDocumentStore: SQLDocumentStore {
             let snapshot = try decode(data)
             let current = snapshot.current()
             if snapshot.version < SQLWorkspaceSnapshot.currentVersion {
-                try backup(version: snapshot.version)
+                try backup(data, version: snapshot.version)
                 try write(current)
             }
             return current
@@ -142,11 +394,12 @@ actor FileSQLDocumentStore: SQLDocumentStore {
 
     func save(_ snapshot: SQLWorkspaceSnapshot) throws {
         do {
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                let original = try decode(Data(contentsOf: fileURL))
-                if original.version < SQLWorkspaceSnapshot.currentVersion { try backup(version: original.version) }
-            }
             try validate(snapshot)
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                let data = try Data(contentsOf: fileURL)
+                let original = try decode(data)
+                if original.version < SQLWorkspaceSnapshot.currentVersion { try backup(data, version: original.version) }
+            }
             try write(snapshot.current())
         } catch { throw SQLDocumentStoreError.write }
     }
@@ -161,18 +414,54 @@ actor FileSQLDocumentStore: SQLDocumentStore {
 
     private func validate(_ snapshot: SQLWorkspaceSnapshot) throws {
         guard Set(snapshot.documents.map(\.id)).count == snapshot.documents.count,
+              Set(snapshot.documents.compactMap(\.investigationID)).count == snapshot.documents.compactMap(\.investigationID).count,
               Set(snapshot.history.map(\.id)).count == snapshot.history.count,
-              snapshot.documents.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
-              snapshot.history.allSatisfy({ $0.date.timeIntervalSince1970.isFinite }) else { throw SQLDocumentStoreError.read }
+              snapshot.historySettings.isValid,
+              snapshot.sqlLibrary.isValid,
+              snapshot.documents.allSatisfy(\.isValid),
+              snapshot.paneLayout.isValid(documentIDs: snapshot.documents.map(\.id)),
+              snapshot.selectedDocumentID == snapshot.paneLayout.selectedDocumentID,
+              snapshot.selectedDocumentID.map({ id in snapshot.documents.contains { $0.id == id } }) != false,
+              snapshot.history.allSatisfy(\.isValid) else { throw SQLDocumentStoreError.read }
+        guard snapshot.sqlFolders.count <= 32, Set(snapshot.sqlFolders.map(\.id)).count == snapshot.sqlFolders.count,
+              Set(snapshot.sqlFolders.map { $0.url.standardizedFileURL }).count == snapshot.sqlFolders.count,
+              snapshot.sqlFolders.allSatisfy(\.isValid) else { throw SQLDocumentStoreError.read }
+        var files: [UUID: StoredSQLDocument] = [:]
+        for document in snapshot.documents {
+            guard let id = document.fileDocumentID else { continue }
+            if let previous = files[id] {
+                guard previous.fileURL == document.fileURL, previous.fileContentSHA256 == document.fileContentSHA256,
+                      previous.fileRecoveryURL == document.fileRecoveryURL,
+                      previous.text.utf8.elementsEqual(document.text.utf8) else { throw SQLDocumentStoreError.read }
+            } else { files[id] = document }
+        }
     }
 
-    private func backup(version: Int) throws {
-        var destination = fileURL.appendingPathExtension("v\(version).backup")
-        if FileManager.default.fileExists(atPath: destination.path) {
-            destination = fileURL.appendingPathExtension("v\(version)-\(UUID().uuidString).backup")
+    private func backup(_ data: Data, version: Int) throws {
+        // Create the private file before writing any SQL or history bytes.
+        let temporary = fileURL.deletingLastPathComponent().appendingPathComponent(".workspace-backup-\(UUID()).tmp")
+        let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard descriptor >= 0 else { throw SQLDocumentStoreError.write }
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        do {
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+            guard try Data(contentsOf: temporary) == data else { throw SQLDocumentStoreError.write }
+            // Publishing a hard link is atomic and never replaces another
+            // backup, even if a destination appears after it was inspected.
+            for attempt in 0..<8 {
+                let suffix = attempt == 0 ? "v\(version).backup" : "v\(version)-\(UUID()).backup"
+                let destination = fileURL.appendingPathExtension(suffix)
+                if link(temporary.path, destination.path) == 0 { return }
+                guard errno == EEXIST else { throw SQLDocumentStoreError.write }
+            }
+            throw SQLDocumentStoreError.write
+        } catch {
+            try? handle.close()
+            throw error
         }
-        try FileManager.default.copyItem(at: fileURL, to: destination)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
     }
 
     private func write(_ snapshot: SQLWorkspaceSnapshot) throws {

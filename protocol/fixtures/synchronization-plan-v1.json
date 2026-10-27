@@ -1,0 +1,106 @@
+{
+  "version": 5,
+  "capability": "synchronizationPlanV1",
+  "commands": [
+    {
+      "type": "schema.plan",
+      "requestId": "schema-plan",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "modelDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "type": "data.plan",
+      "requestId": "data-plan",
+      "dataComparison": {
+        "jobId": "data-job",
+        "modelDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    }
+  ],
+  "responses": [
+    {
+      "type": "schema.plan.result",
+      "requestId": "schema-plan",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "plan": {
+          "formatVersion": 1,
+          "kind": "schema",
+          "engine": "postgresql",
+          "modelDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "warnings": [
+            "Direction: source → target.",
+            "Captures are historical. Concurrent changes may invalidate this plan.",
+            "Execution may finish only partially. Review transaction and DDL behavior."
+          ],
+          "steps": [
+            {
+              "id": "create-column",
+              "title": "Add target column",
+              "sql": "ALTER TABLE \"target\".\"orders\" ADD COLUMN \"note\" text;",
+              "destructive": false,
+              "manual": false,
+              "reason": "",
+              "dependsOn": [],
+              "selected": true
+            },
+            {
+              "id": "drop-column",
+              "title": "Drop target legacy column",
+              "sql": "ALTER TABLE \"target\".\"orders\" DROP COLUMN \"legacy\";",
+              "destructive": true,
+              "manual": false,
+              "reason": "",
+              "dependsOn": [],
+              "selected": false
+            },
+            {
+              "id": "convert-type",
+              "title": "Review custom type conversion",
+              "sql": "",
+              "destructive": false,
+              "manual": true,
+              "reason": "The type conversion requires manual work.",
+              "dependsOn": [],
+              "selected": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "data.plan.result",
+      "requestId": "data-plan",
+      "dataComparison": {
+        "jobId": "data-job",
+        "state": "completed",
+        "plan": {
+          "formatVersion": 1,
+          "kind": "data",
+          "engine": "mysql",
+          "modelDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "warnings": [
+            "Direction: source → target.",
+            "Captures are historical. Concurrent changes may invalidate this plan.",
+            "Execution may finish only partially. Review transaction and DDL behavior."
+          ],
+          "steps": [
+            {
+              "id": "delete-row-0",
+              "title": "Delete target row",
+              "sql": "DELETE FROM `target`.`orders` WHERE `id` <=> 9007199254740993 AND `note` <=> NULL;",
+              "destructive": true,
+              "manual": false,
+              "reason": "",
+              "dependsOn": [],
+              "selected": false
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
