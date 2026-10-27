@@ -385,6 +385,9 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
     @Published var catalogSearch = ""
+    /// An editor navigation target comes from already loaded metadata. Showing
+    /// it never refreshes the catalog or opens a database session.
+    @Published var editorCatalogTarget: CatalogNode?
     @Published var sidebarPanel: WorkspaceSidebarPanel? = .connections
     @Published var catalogSearchFocusRequested = false
     @Published private(set) var catalogSearchResults: [UUID: [CatalogNode]] = [:]

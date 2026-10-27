@@ -111,7 +111,7 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 	case "objects", "search", "completion":
 		names = []string{"name", "kind", "schema", "identity"}
 		if request.Kind == "completion" {
-			names = []string{"name", "kind", "schema", "columns", "foreignKeys", "signatures", "partitionKeys", "clusteringColumns", "staticColumns"}
+			names = []string{"name", "kind", "schema", "columns", "foreignKeys", "signatures", "partitionKeys", "clusteringColumns", "staticColumns", "columnTypes"}
 		}
 		objects, failure := s.catalogObjects(ctx, command)
 		if failure != nil {
@@ -134,15 +134,19 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 				continue
 			}
 			var all, partition, clustering, statics []string
+			columnTypes := map[string]string{}
 			if object.kind == "function" {
 				// Routine declarations are metadata only. Their source bodies are
 				// never loaded for language assistance.
 			} else if object.kind == "type" {
-				fields, _, failure := s.typeFields(ctx, command, object.keyspace, object.name)
+				fields, fieldTypes, failure := s.typeFields(ctx, command, object.keyspace, object.name)
 				if failure != nil {
 					return *failure
 				}
 				all = fields
+				for i, name := range fields {
+					columnTypes[name] = fieldTypes[i]
+				}
 			} else {
 				columns, failure := s.tableColumns(ctx, command, object.keyspace, object.name)
 				if failure != nil {
@@ -150,6 +154,7 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 				}
 				for _, column := range columns {
 					all = append(all, column.name)
+					columnTypes[column.name] = column.nativeType
 					switch column.kind {
 					case "partition_key":
 						partition = append(partition, column.name)
@@ -165,7 +170,8 @@ func (s *Session) catalog(ctx context.Context, command protocol.Command, sink ad
 				encoded, _ := json.Marshal(object.signatures)
 				signatures = string(encoded)
 			}
-			row := cells(object.name, object.kind, object.keyspace, jsonNames(all), "[]", signatures, jsonNames(partition), jsonNames(clustering), jsonNames(statics))
+			encodedTypes, _ := json.Marshal(columnTypes)
+			row := cells(object.name, object.kind, object.keyspace, jsonNames(all), "[]", signatures, jsonNames(partition), jsonNames(clustering), jsonNames(statics), string(encodedTypes))
 			encoded, _ := json.Marshal(row)
 			rowBytes += len(encoded)
 			if rowBytes > maxBytes-4096 {

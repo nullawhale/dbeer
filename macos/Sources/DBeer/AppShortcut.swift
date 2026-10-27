@@ -92,7 +92,7 @@ struct AppCommandDescriptor: Identifiable, Hashable, Sendable {
         self.defaultShortcut = defaultShortcut
     }
 
-    static let builtins: [Self] = [
+    static let builtins: [Self] = SQLToolCommand.allCases.map(\.descriptor) + [
         .init(id: .newConnection, title: "New Connection…", scope: .workspace,
             defaultShortcut: AppShortcut(key: "n", modifiers: .command)),
         .init(id: .newSQLTab, title: "New SQL Tab", scope: .workspace,
@@ -342,7 +342,8 @@ final class AppShortcutStore: ObservableObject {
         guard let shortcut else { return nil }
         if let error = Self.nativeValidationError(shortcut, command: descriptor.id, scope: descriptor.scope) { return error }
         if let conflict = descriptors.first(where: {
-            $0.id != command && descriptor.scope.overlaps($0.scope) && self.shortcut(for: $0.id) == shortcut
+            let contextualFindPair = Set([$0.id, command]) == Set([.findInConnections, SQLToolCommand.find.commandID])
+            return $0.id != command && !contextualFindPair && descriptor.scope.overlaps($0.scope) && self.shortcut(for: $0.id) == shortcut
         }) { return "This shortcut is already assigned to \(conflict.title)." }
         return nil
     }
@@ -378,6 +379,8 @@ final class AppShortcutStore: ObservableObject {
             return "Include Command, Control, or Option in the shortcut."
         }
         let key = shortcut.key
+        if let tool = command.editorTool, [.addCursorAbove, .addCursorBelow].contains(tool),
+           tool.defaultShortcut == shortcut { return nil }
         if key == "return", !modifiers.contains(.command) {
             return "This shortcut is reserved for inserting a native newline or line break."
         }
@@ -457,6 +460,7 @@ final class AppShortcutStore: ObservableObject {
                 guard let shortcut = effectiveShortcut(for: descriptor) else { continue }
                 for other in descriptors.dropFirst(index + 1)
                     where descriptor.scope.overlaps(other.scope) && effectiveShortcut(for: other) == shortcut {
+                    if Set([descriptor.id, other.id]) == Set([.findInConnections, SQLToolCommand.find.commandID]) { continue }
                     if validated[descriptor.id] != nil { rejected.insert(descriptor.id) }
                     if validated[other.id] != nil { rejected.insert(other.id) }
                 }

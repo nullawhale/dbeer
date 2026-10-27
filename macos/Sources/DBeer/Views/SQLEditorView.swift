@@ -18,6 +18,12 @@ final class SQLEditorState {
         editors[documentID]?.selectedRange() ?? fallback
     }
 
+    func hasMultipleSelections(for documentID: UUID) -> Bool {
+        editors[documentID]?.hasMultipleEditorSelections == true
+    }
+
+    func editor(for documentID: UUID) -> SQLTextView? { editors[documentID] }
+
     func prepareForPaneMove(_ documentID: UUID) {
         guard let editor = editors[documentID], editor.window?.firstResponder === editor else { return }
         editor.restoreFocusAfterPaneMove = true
@@ -27,6 +33,7 @@ final class SQLEditorState {
         if focusRequest?.documentID == documentID { focusRequest = nil }
         languageService.close(documentID: documentID)
         editors[documentID]?.dismissCompletion?()
+        editors[documentID]?.editorTools?.detach()
         editors[documentID] = nil
         scrollOrigins[documentID] = nil
     }
@@ -91,6 +98,11 @@ struct SQLEditorView: NSViewRepresentable {
         private var parsedText: String?
         private var parsedEngine: DatabaseEngine?
         private var parsedResult: SQLParseResult?
+        private let backgroundParser = SQLEditorBackgroundParser()
+        private var backgroundParseTask: Task<Void, Never>?
+        private var backgroundParseText: String?
+        private var backgroundParseEngine: DatabaseEngine?
+        private let backgroundParseThreshold = 128 * 1024
         private var lastScrolledError: Int?
         private var isUpdating = false
         private var languageService: SQLLanguageService?
@@ -100,6 +112,8 @@ struct SQLEditorView: NSViewRepresentable {
         private var completionGeneration = 0
         private let completionPopup = SQLCompletionPopup()
         private var completionSnapshot: CompletionSnapshot?
+        private var completionSuppressedSnapshot: CompletionSnapshot?
+        private var pendingLargeCompletion: (snapshot: CompletionSnapshot, explicit: Bool)?
         private var signatureTask: Task<Void, Never>?
         private var signatureGeneration = 0
         private var signatureSnapshot: CompletionSnapshot?
@@ -128,6 +142,7 @@ struct SQLEditorView: NSViewRepresentable {
         deinit {
             completionTask?.cancel()
             signatureTask?.cancel()
+            backgroundParseTask?.cancel()
             let service = languageService
             let observer = diagnosticsObserver
             let popup = completionPopup
@@ -142,6 +157,8 @@ struct SQLEditorView: NSViewRepresentable {
         init(text: Binding<String>) { self.text = text }
 
         func detach(from scrollView: NSScrollView) {
+            backgroundParseTask?.cancel()
+            backgroundParseText = nil
             dismissCompletions()
             dismissSignatures()
             if let diagnosticsObserver { languageService?.removeDiagnosticsObserver(diagnosticsObserver) }
@@ -190,6 +207,7 @@ struct SQLEditorView: NSViewRepresentable {
                 return cached
             }
             let textView = SQLTextView(frame: .zero)
+            textView.textContainer?.replaceLayoutManager(SQLFoldingLayoutManager())
             textView.delegate = self
             textView.focusRingType = .none
             textView.canDrawConcurrently = false
@@ -308,6 +326,10 @@ struct SQLEditorView: NSViewRepresentable {
             completionPopup.applyTheme(editorTheme, appearance: textView.effectiveAppearance)
             signaturePopup.applyTheme(editorTheme, appearance: textView.effectiveAppearance)
             textView.appCommandDocumentID = documentID
+            textView.editorEngine = engine
+            if textView.editorTools == nil { textView.editorTools = SQLEditorToolsController() }
+            textView.editorTools?.configure(editor: textView, documentID: id, engine: engine,
+                languageService: languageService, completionContext: completionContext)
             textView.requestCompletion = { [weak self, weak textView] in
                 guard let textView else { return }
                 self?.requestCompletion(in: textView, explicit: true)
@@ -342,14 +364,13 @@ struct SQLEditorView: NSViewRepresentable {
             if textView.string != text.wrappedValue {
                 dismissCompletions()
                 dismissSignatures()
-                let selection = textView.selectedRanges
+                let selection = textView.editorSelections
                 textView.string = text.wrappedValue
                 let length = textView.string.utf16.count
-                textView.selectedRanges = selection.map { value in
-                    let range = value.rangeValue
+                textView.setEditorSelections(selection.map { range in
                     let location = min(range.location, length)
-                    return NSValue(range: NSRange(location: location, length: min(range.length, length - location)))
-                }
+                    return NSRange(location: location, length: min(range.length, length - location))
+                })
             }
             languageService?.update(documentID: id, text: textView.string, engine: engine, context: completionContext)
             let sourceLength = textView.string.utf16.count
@@ -362,6 +383,7 @@ struct SQLEditorView: NSViewRepresentable {
             (scrollView.verticalRulerView as? SQLLineNumberRuler)?.updateLines()
             if let errorPosition, errorPosition != lastScrolledError {
                 let location = min(max(0, errorPosition), textView.string.utf16.count)
+                textView.editorTools?.reveal(NSRange(location: location, length: 0))
                 textView.scrollRangeToVisible(NSRange(location: location, length: 0))
                 lastScrolledError = errorPosition
             } else if errorPosition == nil { lastScrolledError = nil }
@@ -370,6 +392,36 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func parse(_ value: String) -> SQLParseResult {
             if parsedText == value, parsedEngine == engine, let parsedResult { return parsedResult }
+            if (value as NSString).length > backgroundParseThreshold {
+                if backgroundParseText != value || backgroundParseEngine != engine {
+                    backgroundParseTask?.cancel()
+                    backgroundParseText = value
+                    backgroundParseEngine = engine
+                    let dialect = engine
+                    let worker = backgroundParser
+                    backgroundParseTask = Task { [weak self] in
+                        let result = await worker.parse(value, engine: dialect)
+                        guard !Task.isCancelled, let self, self.engine == dialect,
+                              self.backgroundParseText == value else { return }
+                        self.backgroundParseText = nil
+                        self.backgroundParseTask = nil
+                        guard let result, let id = self.activeDocumentID, let editor = self.activeState?.editors[id],
+                              editor.delegate === self, editor.string == value else { return }
+                        self.parsedText = value
+                        self.parsedEngine = dialect
+                        self.parsedResult = result
+                        editor.syntaxText = nil
+                        self.highlight(editor)
+                        if let pending = self.pendingLargeCompletion, self.snapshot(for: editor) == pending.snapshot {
+                            self.pendingLargeCompletion = nil
+                            self.requestCompletion(in: editor, explicit: pending.explicit)
+                        }
+                    }
+                }
+                return SQLParseResult(statements: [], statementEditorRanges: [], tokens: [], diagnostics: [])
+            }
+            backgroundParseTask?.cancel()
+            backgroundParseText = nil
             let result = SQLScriptParser.parse(value, engine: engine)
             parsedText = value
             parsedEngine = engine
@@ -381,12 +433,14 @@ struct SQLEditorView: NSViewRepresentable {
             guard let manager = textView.layoutManager else { return }
             let full = NSRange(location: 0, length: textView.string.utf16.count)
             let parsed = parse(textView.string)
+            guard (textView.string as NSString).length <= backgroundParseThreshold || parsedText == textView.string else { return }
             highlightExecutionFragment(textView)
             let languageDiagnostics = activeDocumentID.flatMap { languageService?.diagnostics(documentID: $0) } ?? []
             if let editor = textView as? SQLTextView {
                 guard editor.syntaxText != textView.string || editor.syntaxEngine != engine ||
                         editor.syntaxDiagnostics != languageDiagnostics || editor.syntaxErrorPosition != errorPosition ||
                         editor.syntaxTheme != editorTheme else { return }
+                editor.protectedParse = parsed
                 editor.syntaxText = textView.string
                 editor.syntaxEngine = engine
                 editor.syntaxDiagnostics = languageDiagnostics
@@ -469,7 +523,9 @@ struct SQLEditorView: NSViewRepresentable {
             }
             let range: NSRange?
             let selection = textView.selectedRange()
-            if selection.length == 0 {
+            if editor?.hasMultipleEditorSelections == true {
+                range = nil
+            } else if selection.length == 0 {
                 range = parse(textView.string).statement(atUTF16: selection.location)?.range
             } else {
                 let source = textView.string as NSString
@@ -518,6 +574,7 @@ struct SQLEditorView: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard !isUpdating, let textView = notification.object as? NSTextView, isActiveEditor(textView) else { return }
             (textView as? SQLTextView)?.successfulExecutionLocations = []
+            (textView as? SQLTextView)?.editorTools?.textDidChange()
             text.wrappedValue = textView.string
             if let activeDocumentID {
                 languageService?.update(documentID: activeDocumentID, text: textView.string,
@@ -533,7 +590,10 @@ struct SQLEditorView: NSViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
-            guard !isUpdating, let textView = notification.object as? NSTextView, isActiveEditor(textView) else { return }
+            guard !isUpdating, let textView = notification.object as? NSTextView, isActiveEditor(textView),
+                  (textView as? SQLTextView)?.movingAllEditorSelections != true else { return }
+            (textView as? SQLTextView)?.editorTools?.selectionDidChange()
+            if (textView as? SQLTextView)?.hasMultipleEditorSelections == true { dismissCompletions(); dismissSignatures() }
             if completionSnapshot != snapshot(for: textView) { dismissCompletions() }
             textView.needsDisplay = true
             highlightExecutionFragment(textView)
@@ -543,7 +603,8 @@ struct SQLEditorView: NSViewRepresentable {
         }
 
         private func snapshot(for textView: NSTextView) -> CompletionSnapshot? {
-            guard isActiveEditor(textView), let activeDocumentID else { return nil }
+            guard isActiveEditor(textView), let activeDocumentID,
+                  (textView as? SQLTextView)?.hasMultipleEditorSelections != true else { return nil }
             return CompletionSnapshot(documentID: activeDocumentID, text: textView.string,
                 selection: textView.selectedRange(), engine: engine, context: completionContext)
         }
@@ -553,6 +614,7 @@ struct SQLEditorView: NSViewRepresentable {
             completionTask?.cancel()
             completionTask = nil
             completionSnapshot = nil
+            pendingLargeCompletion = nil
             completionPopup.hide()
         }
 
@@ -592,10 +654,18 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func requestCompletion(in textView: SQLTextView, explicit: Bool) {
             dismissCompletions()
+            if explicit { completionSuppressedSnapshot = nil }
             guard textView.isEditable, !textView.hasMarkedText(),
                   textView.window?.firstResponder === textView, textView.window?.isKeyWindow == true,
                   let snapshot = snapshot(for: textView), snapshot.selection.length == 0,
-                  !suppressesCompletion(text: snapshot.text, offset: snapshot.selection.location) else { return }
+                  explicit || snapshot != completionSuppressedSnapshot else { return }
+            if (snapshot.text as NSString).length > backgroundParseThreshold, parsedText != snapshot.text {
+                completionSnapshot = snapshot
+                pendingLargeCompletion = (snapshot, explicit)
+                _ = parse(snapshot.text)
+                return
+            }
+            guard !suppressesCompletion(text: snapshot.text, offset: snapshot.selection.location) else { return }
             let offset = snapshot.selection.location
             let input = completionInput(text: snapshot.text, offset: offset)
             guard explicit || offset > 0 else { return }
@@ -656,6 +726,7 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func suppressesCompletion(text: String, offset: Int) -> Bool {
             if engine == .mongodb { return false }
+            if (text as NSString).length > backgroundParseThreshold, parsedText != text { return true }
             let parsed = parse(text)
             let source = text as NSString
             return parsed.tokens.contains { token in
@@ -687,7 +758,8 @@ struct SQLEditorView: NSViewRepresentable {
 
         private func handleCompletionKey(_ event: NSEvent, in textView: SQLTextView) -> Bool {
             guard isActiveEditor(textView) else { return false }
-            if event.keyCode == 53, completionTask != nil || !completionPopup.items.isEmpty || signatureTask != nil || signaturePopup.isVisible {
+            if event.keyCode == 53 { completionSuppressedSnapshot = snapshot(for: textView) }
+            if event.keyCode == 53, completionTask != nil || pendingLargeCompletion != nil || !completionPopup.items.isEmpty || signatureTask != nil || signaturePopup.isVisible {
                 signatureSuppressedSnapshot = snapshot(for: textView)
                 dismissCompletions()
                 dismissSignatures()
@@ -776,8 +848,26 @@ enum SQLSyntaxPalette {
 @MainActor
 final class SQLTextView: NSTextView, AppCommandFocusResponder {
     private let documentUndo = UndoManager()
+    var editorEngine: DatabaseEngine = .postgresql
+    var editorIndentWidth = 4
+    var editorUsesTabs = false
+    var editorAutoPairs = true
+    var editorAutoIndent = true
+    var editorTools: SQLEditorToolsController?
+    private var additionalEditorSelections: [NSRange] = []
+    private var applyingEditorBatch = false
+    private var insertingPlainText = false
+    private var changingEditorSelections = false
+    private(set) var movingAllEditorSelections = false
+    private(set) var editorSelectionLimitReached = false
+    static let maximumEditorSelections = 4096
+    var hasMultipleEditorSelections: Bool { !additionalEditorSelections.isEmpty }
+    var editorSelections: [NSRange] { [selectedRange()] + additionalEditorSelections }
+    var editorIndent: String { editorUsesTabs ? "\t" : String(repeating: " ", count: max(1, min(8, editorIndentWidth))) }
+
     private(set) var editorTheme: EditorTheme?
     var syntaxText: String?
+    var protectedParse: SQLParseResult?
     var syntaxEngine: DatabaseEngine?
     var syntaxTheme: EditorTheme?
     var syntaxErrorPosition: Int?
@@ -845,6 +935,7 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
         WorkspacePaneContainerView.activatePane(containing: self)
+        if editorTools?.handleKeyEvent(event) == true || handleCoreKeyEvent(event) { return true }
         if commandEvent?(event, selectedRange()) == true { return true }
         if commandEvent == nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 36, let runSelection {
@@ -857,6 +948,7 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     override func keyDown(with event: NSEvent) {
         WorkspacePaneContainerView.activatePane(containing: self)
         if completionKey?(event) == true { return }
+        if editorTools?.handleKeyEvent(event) == true || handleCoreKeyEvent(event) { return }
         if commandEvent?(event, selectedRange()) == true { return }
         if commandEvent == nil, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 36, let runSelection {
@@ -864,10 +956,380 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
             return
         }
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control, event.keyCode == 49 { complete(nil); return }
+        if hasMultipleEditorSelections, handleMultipleCursorMovement(event) { return }
         super.keyDown(with: event)
     }
 
-    override func complete(_ sender: Any?) { requestCompletion?() }
+    override func complete(_ sender: Any?) {
+        guard !hasMultipleEditorSelections else { dismissCompletion?(); return }
+        requestCompletion?()
+    }
+
+    override func setSelectedRange(_ charRange: NSRange) {
+        if !changingEditorSelections && !applyingEditorBatch && !movingAllEditorSelections { additionalEditorSelections = [] }
+        super.setSelectedRange(charRange)
+        needsDisplay = true
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting flag: Bool) {
+        if !changingEditorSelections && !applyingEditorBatch && !movingAllEditorSelections { additionalEditorSelections = [] }
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: flag)
+        needsDisplay = true
+    }
+
+    private func handleMultipleCursorMovement(_ event: NSEvent) -> Bool {
+        guard [123, 124, 125, 126].contains(event.keyCode), !hasMarkedText() else { return false }
+        let original = editorSelections
+        movingAllEditorSelections = true
+        additionalEditorSelections = []
+        var moved: [NSRange] = []
+        for range in original {
+            super.setSelectedRange(range)
+            super.keyDown(with: event)
+            moved.append(selectedRange())
+        }
+        movingAllEditorSelections = false
+        setEditorSelections(moved)
+        return true
+    }
+
+    func setEditorSelections(_ ranges: [NSRange]) {
+        editorSelectionLimitReached = ranges.count > Self.maximumEditorSelections
+        let normalized = SQLTextEditing.normalized(Array(ranges.prefix(Self.maximumEditorSelections)), length: string.utf16.count)
+        changingEditorSelections = true
+        additionalEditorSelections = Array(normalized.dropFirst())
+        super.setSelectedRange(normalized[0])
+        changingEditorSelections = false
+        if hasMultipleEditorSelections { dismissCompletion?() }
+        needsDisplay = true
+        editorTools?.selectionDidChange()
+    }
+
+    func applyEditorEdits(_ edits: [SQLTextEdit], selections: [NSRange]? = nil, actionName: String) {
+        guard isEditable, !edits.isEmpty else { return }
+        let source = string as NSString
+        let sorted = edits.sorted { $0.range.location < $1.range.location }
+        var previousEnd = 0
+        var delta = 0
+        var inverse: [SQLTextEdit] = []
+        for edit in sorted {
+            guard edit.range.location != NSNotFound, edit.range.location >= previousEnd,
+                  edit.range.length >= 0, edit.range.location <= source.length,
+                  edit.range.length <= source.length - edit.range.location else { return }
+            inverse.append(SQLTextEdit(range: NSRange(location: edit.range.location + delta, length: edit.text.utf16.count),
+                text: source.substring(with: edit.range)))
+            previousEnd = NSMaxRange(edit.range)
+            delta += edit.text.utf16.count - edit.range.length
+        }
+        let replaying = documentUndo.isUndoing || documentUndo.isRedoing
+        if !replaying {
+            // NSTextView normally records its own inverse in this preflight.
+            // This batch owns one inverse for every range and its selections.
+            documentUndo.disableUndoRegistration()
+            let accepted = shouldChangeText(inRanges: sorted.map { NSValue(range: $0.range) }, replacementStrings: sorted.map(\.text))
+            documentUndo.enableUndoRegistration()
+            guard accepted else { return }
+        }
+        if zip(sorted, inverse).allSatisfy({ $0.text == $1.text }) {
+            if let selections { setEditorSelections(selections) }
+            return
+        }
+        let previousSelections = editorSelections
+        let nextSelections = selections ?? SQLTextEditing.mappedRanges(previousSelections, through: sorted)
+        editorTools?.prepareForEdit()
+        let ownsUndoGroup = !replaying && documentUndo.groupingLevel == 0
+        if ownsUndoGroup { documentUndo.beginUndoGrouping() }
+        defer { if ownsUndoGroup { documentUndo.endUndoGrouping() } }
+        let undoEdits = inverse
+        documentUndo.registerUndo(withTarget: self) { target in
+            target.applyEditorEdits(undoEdits, selections: previousSelections, actionName: actionName)
+        }
+        documentUndo.setActionName(actionName)
+        applyingEditorBatch = true
+        documentUndo.disableUndoRegistration()
+        textStorage?.beginEditing()
+        for edit in sorted.reversed() { textStorage?.replaceCharacters(in: edit.range, with: edit.text) }
+        textStorage?.endEditing()
+        setEditorSelections(nextSelections)
+        applyingEditorBatch = false
+        didChangeText()
+        documentUndo.enableUndoRegistration()
+    }
+
+    func performEditorAction(_ action: SQLTextEditorAction) {
+        guard !hasMarkedText() else { return }
+        switch action {
+        case .selectNextOccurrence: selectOccurrence(all: false)
+        case .selectAllOccurrences: selectOccurrence(all: true)
+        case .addCursorAbove: addEditorCursor(direction: -1)
+        case .addCursorBelow: addEditorCursor(direction: 1)
+        default:
+            let edits = SQLTextEditing.lineEdits(action: action, text: string, selections: editorSelections,
+                indent: editorIndent, engine: editorEngine)
+            let selections = action == .moveLinesUp || action == .moveLinesDown
+                ? SQLTextEditing.selectionsAfterMovingLines(action: action, text: string, selections: editorSelections, edits: edits) : nil
+            applyEditorEdits(edits, selections: selections, actionName: action.undoTitle)
+        }
+    }
+
+    private func selectOccurrence(all: Bool) {
+        let source = string as NSString
+        var ranges = editorSelections
+        if ranges[0].length == 0 {
+            guard let word = SQLTextEditing.wordRange(in: string, at: ranges[0].location) else { return }
+            ranges[0] = word
+            if !all { setEditorSelections(ranges); return }
+        }
+        let needle = source.substring(with: ranges[0])
+        guard !needle.isEmpty else { return }
+        let selected = Set(ranges)
+        if all {
+            var found = [ranges[0]]
+            var location = 0
+            while location < source.length, found.count <= Self.maximumEditorSelections {
+                let range = source.range(of: needle, options: .literal, range: NSRange(location: location, length: source.length - location))
+                guard range.location != NSNotFound else { break }
+                if range != ranges[0] { found.append(range) }
+                location = NSMaxRange(range)
+            }
+            setEditorSelections(found)
+        } else {
+            guard ranges.count < Self.maximumEditorSelections else {
+                editorSelectionLimitReached = true; needsDisplay = true; return
+            }
+            let last = ranges.last ?? ranges[0]
+            let start = NSMaxRange(last)
+            let intervals = [NSRange(location: start, length: source.length - start), NSRange(location: 0, length: start)]
+            for interval in intervals {
+                var location = interval.location
+                while location < NSMaxRange(interval) {
+                    let range = source.range(of: needle, options: .literal, range: NSRange(location: location, length: NSMaxRange(interval) - location))
+                    guard range.location != NSNotFound else { break }
+                    if !selected.contains(range), !ranges.contains(where: { NSIntersectionRange($0, range).length > 0 }) {
+                        setEditorSelections(ranges + [range]); scrollRangeToVisible(range); return
+                    }
+                    location = NSMaxRange(range)
+                }
+            }
+        }
+    }
+
+    private func addEditorCursor(direction: Int) {
+        let source = string as NSString
+        let last = editorSelections.last ?? selectedRange()
+        let line = source.lineRange(for: NSRange(location: last.location, length: 0))
+        let column = last.location - line.location
+        let target: NSRange
+        if direction < 0 {
+            guard line.location > 0 else { return }
+            target = source.lineRange(for: NSRange(location: line.location - 1, length: 0))
+        } else {
+            guard NSMaxRange(line) < source.length || NSMaxRange(line) == source.length && line.length > 0 && string.hasSuffix("\n") else { return }
+            target = source.lineRange(for: NSRange(location: NSMaxRange(line), length: 0))
+        }
+        let content = source.substring(with: target).trimmingCharacters(in: .newlines)
+        var location = target.location + min(column, content.utf16.count)
+        if location < source.length {
+            let composed = source.rangeOfComposedCharacterSequence(at: location)
+            if location > composed.location { location = composed.location }
+        }
+        let range = NSRange(location: location, length: 0)
+        setEditorSelections(editorSelections + [range])
+        scrollRangeToVisible(range)
+    }
+
+    private func handleCoreKeyEvent(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock)
+        if event.keyCode == 53, hasMultipleEditorSelections { setEditorSelections([selectedRange()]); return true }
+        if commandEvent == nil, flags == .command, event.charactersIgnoringModifiers?.lowercased() == "d" { performEditorAction(.selectNextOccurrence); return true }
+        if commandEvent == nil, flags == [.command, .control], event.charactersIgnoringModifiers?.lowercased() == "g" { performEditorAction(.selectAllOccurrences); return true }
+        if commandEvent == nil, flags == [.control, .shift], event.keyCode == 126 || event.keyCode == 125 {
+            performEditorAction(event.keyCode == 126 ? .addCursorAbove : .addCursorBelow); return true
+        }
+        if commandEvent == nil, flags == .command, event.charactersIgnoringModifiers == "/" { performEditorAction(.toggleLineComment); return true }
+        if commandEvent == nil, hasMultipleEditorSelections, flags == .command, event.keyCode == 36 {
+            NSSound.beep()
+            return true
+        }
+        return false
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock) == .option {
+            let point = convert(event.locationInWindow, from: nil)
+            let location = characterIndexForInsertion(at: point)
+            setEditorSelections(editorSelections + [NSRange(location: location, length: 0)])
+            window?.makeFirstResponder(self)
+            return
+        }
+        additionalEditorSelections = []
+        super.mouseDown(with: event)
+        needsDisplay = true
+    }
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        if hasMultipleEditorSelections { setEditorSelections([self.selectedRange()]) }
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+    }
+
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        guard isEditable else { return }
+        let value = (insertString as? String) ?? (insertString as? NSAttributedString)?.string
+        guard let value, !hasMarkedText(), !applyingEditorBatch else { super.insertText(insertString, replacementRange: replacementRange); return }
+        if replacementRange.location != NSNotFound {
+            if hasMultipleEditorSelections { setEditorSelections([selectedRange()]) }
+            super.insertText(insertString, replacementRange: replacementRange)
+            return
+        }
+        let pairs = ["(": ")", "[": "]", "{": "}", "'": "'", "\"": "\"", "`": "`"]
+        if editorAutoPairs, !insertingPlainText, value.utf16.count == 1 {
+            let ranges = editorSelections
+            if !hasMultipleEditorSelections, ranges[0].length == 0, [")", "]", "}", "'", "\"", "`"].contains(value),
+               ranges[0].location < string.utf16.count,
+               (string as NSString).substring(with: NSRange(location: ranges[0].location, length: 1)) == value,
+               !insideProtectedText(at: ranges[0].location) || isClosingQuote(value, at: ranges[0].location) {
+                setEditorSelections([NSRange(location: ranges[0].location + 1, length: 0)])
+                return
+            }
+            if let close = pairs[value], !(editorEngine == .mongodb && (value == "'" || value == "`")),
+               !(value == "`" && editorEngine != .mysql), ranges.allSatisfy({ !insideProtectedText(at: $0.location) }) {
+                let source = string as NSString
+                let edits = ranges.map { SQLTextEdit(range: $0, text: value + source.substring(with: $0) + close) }
+                let sorted = edits.sorted { $0.range.location < $1.range.location }
+                let selections = ranges.map { range in
+                    let shift = sorted.filter { $0.range.location < range.location }.reduce(0) { $0 + $1.text.utf16.count - $1.range.length }
+                    return NSRange(location: range.location + shift + 1, length: range.length)
+                }
+                applyEditorEdits(edits, selections: selections, actionName: "Insert Pair")
+                return
+            }
+        }
+        if hasMultipleEditorSelections {
+            let edits = editorSelections.map { SQLTextEdit(range: $0, text: value) }
+            let selections = SQLTextEditing.insertionCarets(for: editorSelections, edits: edits)
+            applyEditorEdits(edits, selections: selections, actionName: "Typing")
+        } else {
+            editorTools?.prepareForEdit()
+            super.insertText(insertString, replacementRange: replacementRange)
+        }
+    }
+
+    private func protectedParseForCurrentSource() -> SQLParseResult {
+        if syntaxText == string, syntaxEngine == editorEngine, let protectedParse { return protectedParse }
+        guard (string as NSString).length <= 128 * 1024 else {
+            return SQLParseResult(statements: [], statementEditorRanges: [], tokens: [], diagnostics: [])
+        }
+        return SQLScriptParser.parse(string, engine: editorEngine)
+    }
+
+    private func isClosingQuote(_ value: String, at location: Int) -> Bool {
+        guard ["'", "\"", "`"].contains(value) else { return false }
+        let parsed = protectedParseForCurrentSource()
+        return parsed.tokens.contains { token in
+            (token.kind == .string || token.kind == .identifier) && NSMaxRange(token.range) - 1 == location &&
+                !parsed.diagnostics.contains(where: { $0.range == token.range }) &&
+                (string as NSString).substring(with: NSRange(location: token.range.location, length: 1)) == value
+        }
+    }
+
+    private func insideProtectedText(at location: Int) -> Bool {
+        if (string as NSString).length > 128 * 1024, syntaxText != string { return true }
+        let parsed = protectedParseForCurrentSource()
+        return parsed.tokens.contains { token in
+            let quotedIdentifier = token.kind == .identifier && token.range.length > 0 &&
+                [34, 96].contains((string as NSString).character(at: token.range.location))
+            guard token.kind == .string || token.kind == .comment || quotedIdentifier,
+                  location > token.range.location, location <= NSMaxRange(token.range) else { return false }
+            if location < NSMaxRange(token.range) { return true }
+            return parsed.diagnostics.contains { $0.range == token.range } ||
+                (token.kind == .comment && !(string as NSString).substring(with: token.range).hasSuffix("*/"))
+        }
+    }
+
+    override func insertNewline(_ sender: Any?) {
+        guard !hasMarkedText() else { super.insertNewline(sender); return }
+        guard editorAutoIndent else {
+            if hasMultipleEditorSelections { insertText(SQLTextEditing.newline(in: string), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+            else { super.insertNewline(sender) }
+            return
+        }
+        let source = string as NSString
+        let edits = editorSelections.map { range -> SQLTextEdit in
+            let line = source.lineRange(for: NSRange(location: range.location, length: 0))
+            let before = source.substring(with: NSRange(location: line.location, length: range.location - line.location))
+            var indentation = String(before.prefix(while: { $0 == " " || $0 == "\t" }))
+            let tail = before.trimmingCharacters(in: .whitespaces)
+            if !insideProtectedText(at: range.location), ["(", "[", "{"].contains(where: { tail.hasSuffix($0) }) { indentation += editorIndent }
+            return SQLTextEdit(range: range, text: SQLTextEditing.newline(in: string) + indentation)
+        }
+        let selections = SQLTextEditing.insertionCarets(for: editorSelections, edits: edits)
+        applyEditorEdits(edits, selections: selections, actionName: "Insert Newline")
+    }
+
+    override func insertTab(_ sender: Any?) {
+        if editorSelections.contains(where: { $0.length > 0 }) { performEditorAction(.indent) }
+        else if editorUsesTabs { insertText("\t", replacementRange: NSRange(location: NSNotFound, length: 0)) }
+        else { insertText(editorIndent, replacementRange: NSRange(location: NSNotFound, length: 0)) }
+    }
+
+    override func insertBacktab(_ sender: Any?) { performEditorAction(.outdent) }
+
+    override func deleteBackward(_ sender: Any?) {
+        guard hasMultipleEditorSelections else { editorTools?.prepareForEdit(); super.deleteBackward(sender); return }
+        let source = string as NSString
+        let ranges = editorSelections.map { range -> NSRange in
+            if range.length > 0 || range.location == 0 { return range }
+            return source.rangeOfComposedCharacterSequence(at: range.location - 1)
+        }
+        let edits = SQLTextEditing.normalized(ranges, length: source.length).map { SQLTextEdit(range: $0, text: "") }
+        applyEditorEdits(edits, selections: ranges.map { SQLTextEditing.mapped(NSRange(location: $0.location, length: 0), through: edits) }, actionName: "Delete")
+    }
+
+    override func deleteForward(_ sender: Any?) {
+        guard hasMultipleEditorSelections else { editorTools?.prepareForEdit(); super.deleteForward(sender); return }
+        let source = string as NSString
+        let ranges = editorSelections.map { range -> NSRange in
+            if range.length > 0 || range.location >= source.length { return range }
+            return source.rangeOfComposedCharacterSequence(at: range.location)
+        }
+        let edits = SQLTextEditing.normalized(ranges, length: source.length).map { SQLTextEdit(range: $0, text: "") }
+        applyEditorEdits(edits, selections: ranges.map { SQLTextEditing.mapped(NSRange(location: $0.location, length: 0), through: edits) }, actionName: "Delete")
+    }
+
+    override func paste(_ sender: Any?) {
+        insertingPlainText = true
+        defer { insertingPlainText = false }
+        guard hasMultipleEditorSelections, let value = NSPasteboard.general.string(forType: .string) else { super.paste(sender); return }
+        insertText(value, replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+
+    private func drawAdditionalSelections(in rect: NSRect) {
+        guard hasMultipleEditorSelections, let manager = layoutManager, let container = textContainer else { return }
+        for range in additionalEditorSelections {
+            if range.length > 0 {
+                let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+                manager.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container) { selection, _ in
+                    let selection = selection.offsetBy(dx: self.textContainerOrigin.x, dy: self.textContainerOrigin.y)
+                    guard selection.intersects(rect) else { return }
+                    (self.selectedTextAttributes[.backgroundColor] as? NSColor ?? .selectedTextBackgroundColor).setFill()
+                    selection.fill()
+                }
+            } else {
+                let location = range.location
+                let caret: NSRect
+                if location < string.utf16.count {
+                    let glyph = manager.glyphIndexForCharacter(at: location)
+                    let line = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                    let point = manager.location(forGlyphAt: glyph)
+                    caret = NSRect(x: line.minX + point.x + textContainerOrigin.x, y: line.minY + textContainerOrigin.y, width: 1, height: line.height)
+                } else {
+                    let line = manager.extraLineFragmentRect
+                    caret = NSRect(x: line.minX + textContainerOrigin.x, y: line.minY + textContainerOrigin.y, width: 1, height: max(line.height, font?.boundingRectForFont.height ?? 16))
+                }
+                if caret.intersects(rect) { insertionPointColor.setFill(); caret.fill() }
+            }
+        }
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -927,6 +1389,8 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
 
     override func drawBackground(in rect: NSRect) {
         super.drawBackground(in: rect)
+        drawAdditionalSelections(in: rect)
+        editorTools?.drawOverlay(in: self, rect: rect)
         guard let highlight = currentLineHighlightRect else { return }
         guard highlight.intersects(rect) else { return }
         currentLineHighlightColor.setFill()

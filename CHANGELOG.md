@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Expand the native editor with local find/replace, whole-word and regular-expression
+  search, multi-cursor editing, line commands, automatic indentation and matching
+  brackets/quotes. Editor preferences and customizable menu commands apply to
+  SQL, CQL and MongoDB JSON where supported.
+- Add offline formatting, document outline, statement/line navigation, local and
+  cached-catalog definitions, usage highlighting and source-preserving code
+  folding. Search and error navigation reveal hidden text; multiple cursors
+  suspend assistance and require a single cursor for Run Current/Run to File.
+  Routine/custom-delimiter formatting is conservatively rejected without edits.
+
 - Prepare table filters and sorting as a local draft, then explicitly Apply one
   read. PostgreSQL, MySQL and MongoDB support nested AND/OR groups and ordered
   multi-column sorting. Cassandra shares the editor while retaining its supported

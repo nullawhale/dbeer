@@ -41,8 +41,9 @@ struct WorkspaceShortcutCommandTests {
         defer { fixture.defaults.removePersistentDomain(forName: fixture.defaultsName) }
         let descriptors = fixture.shortcuts.descriptors
         #expect(Set(descriptors.map(\.id)).count == descriptors.count)
-        let bindings = descriptors.compactMap(\.defaultShortcut)
+        let bindings = descriptors.filter { $0.id != SQLToolCommand.find.commandID }.compactMap(\.defaultShortcut)
         #expect(Set(bindings).count == bindings.count)
+        #expect(fixture.shortcuts.shortcut(for: SQLToolCommand.find.commandID) == fixture.shortcuts.shortcut(for: .findInConnections))
         let standardCommands: [AppCommandID] = [.newConnection, .newSQLTab, .openSQL,
             .saveSQL, .saveSQLAs, .findInConnections, .reopenClosedTab, .previousTab, .nextTab,
             .splitRight, .splitLeft, .splitUp, .splitDown, .unsplitCurrent, .unsplitAll]

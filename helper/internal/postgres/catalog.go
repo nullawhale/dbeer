@@ -150,7 +150,9 @@ COALESCE((SELECT json_agg(overloads.signature ORDER BY overloads.oid) FROM (
  FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
  WHERE page.kind='function' AND p.proname::text=page.name AND n.nspname::text=page.schema AND p.prokind IN ('f','a','w')
  AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
- ORDER BY p.oid LIMIT 32) overloads),'[]'::json)::text AS signatures
+ ORDER BY p.oid LIMIT 32) overloads),'[]'::json)::text AS signatures,
+COALESCE((SELECT json_object_agg(a.attname::text,pg_catalog.format_type(a.atttypid,a.atttypmod))
+ FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'{}'::json)::text AS "columnTypes"
 FROM page ORDER BY schema,name,kind`, params(request.Schema, fmt.Sprint(request.Page)), ""
 	case "schemas":
 		return `SELECT nspname::text AS name, 'schema'::text AS kind FROM pg_catalog.pg_namespace

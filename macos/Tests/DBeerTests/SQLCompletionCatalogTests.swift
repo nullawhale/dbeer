@@ -111,3 +111,30 @@ struct SQLCompletionCatalogTests {
         await workspace.shutdown()
     }
 }
+
+struct SQLCompletionColumnTypeTests {
+    @Test func snapshotsAndExplicitColumnRefreshReplaceTypesWithoutInventingNames() throws {
+        let profile = UUID()
+        var catalog = SQLCompletionCatalog()
+        catalog.record([["schema": "demo", "name": "events", "kind": "table", "columns": "[\"id\",\"value\"]",
+            "columnTypes": "{\"id\":\"bigint\",\"value\":\"numeric(20,4)\",\"missing\":\"text\"}"]],
+            request: CatalogRequest(kind: "completion"), profileID: profile)
+        #expect(catalog.context(profileID: profile).catalog.first?.columnTypes == ["id": "bigint", "value": "numeric(20,4)"])
+        catalog.record([["name": "id", "nativeType": "uuid"]],
+            request: CatalogRequest(kind: "columns", schema: "demo", object: "events", objectKind: "table"), profileID: profile)
+        #expect(catalog.context(profileID: profile).catalog.first?.columnTypes == ["id": "uuid"])
+        catalog.record([["schema": "demo", "name": "events", "kind": "table", "columns": "[\"id\"]"]],
+            request: CatalogRequest(kind: "completion"), profileID: profile)
+        #expect(catalog.context(profileID: profile).catalog.first?.columnTypes.isEmpty == true)
+    }
+
+    @Test @MainActor func nativeTypePayloadFollowsRetainedColumnsAndByteBudget() throws {
+        let oversized = String(repeating: "x", count: 4_097)
+        let relation = SQLCompletionRelation(schema: "demo", name: "events", kind: "table", columns: ["id", "value"],
+            columnTypes: ["id": "bigint", "value": oversized, "missing": "text"])
+        let payload = try #require(SQLLanguageService.boundedCatalog([relation]).first)
+        #expect(payload["columnTypes"]?["id"]?.string == "bigint")
+        #expect(payload["columnTypes"]?["value"] == nil)
+        #expect(payload["columnTypes"]?["missing"] == nil)
+    }
+}

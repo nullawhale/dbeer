@@ -851,6 +851,57 @@ Readonly rejects writes and unknown constructs before reaching the adapter and d
 
 Assessment follows SQL structure and a limited list of built-in functions for each engine. Production confirmation applies to operations classified as writes or unknown commands. Views, custom overloads of built-in names, casts, and operators can hide side effects; the client does not fully resolve server objects and types. Server-side readonly blocks ordinary writes to permanent tables, but database permissions must restrict server-allowed temporary-table exceptions and function execution.
 
+## Editor improvements in development for 0.4.0
+
+These changes are in the working source and are not part of the current release
+archive. The **Editor** menu collects editing, formatting and navigation commands;
+**Settings → Shortcuts** can change or clear their bindings. **Settings → Editor**
+controls the font and size, line wrapping, invisible characters, tabs/spaces,
+indent width, automatic indentation, matching brackets/quotes and formatter
+keyword case. Changes apply to open editors while retaining text and Undo.
+
+With focus in an editor, **⌘F** opens local Find; **⌥⌘F** opens Find and Replace.
+Search supports case sensitivity, whole identifiers, regular expressions and
+selected ranges. **⌘G** and **⇧⌘G** move through matches. Regular-expression
+replacement supports capture references such as `$1`. Replace All is one Undo
+operation. Matching runs in the background with a work limit; an invalid or
+expensive expression leaves the source unchanged. **Find in Connections** remains
+an explicit menu command.
+
+Use **⌥Click** for another cursor, **⌘D** for the next occurrence, **⌃⌘G** for all
+occurrences, and **⌃⇧↑/↓** for cursors above or below. A document supports up to
+4,096 cursors, with a visible notice when that limit is reached. Input and line operations
+apply to all selected ranges. Escape first dismisses assistance, then keeps the
+primary cursor. IME composition uses one cursor. Completion and signature help
+are suspended while multiple cursors are active. Run Current and Run to File
+require one cursor; Run Script retains the ordinary full-document review.
+
+The Editor menu provides line indentation, duplication, deletion and movement,
+SQL/CQL line and block comments, formatting for the selection/current statement/
+whole document, Go to Line, statement navigation, Document Outline, symbol
+information, Go to Definition and collapse/expand commands. MongoDB uses strict
+JSON, so comment commands are unavailable. Its outline follows objects and
+arrays; SQL and CQL outlines follow statements and nested blocks.
+
+Formatting is offline and explicit. SQL/CQL formatting preserves literals,
+quoted identifiers and comments; unsupported routine bodies or custom delimiter
+scripts return an explanation without edits. MongoDB JSON formatting preserves
+field order, duplicate keys, exact numeric spelling and Extended JSON. Formatting
+is applied atomically and is one Undo operation.
+
+Go to Definition resolves local aliases/CTEs or uses the already loaded catalog;
+ambiguous matches offer a choice. Catalog targets appear under **From Editor** in
+Connections without connecting or refreshing. Their ordinary context-menu actions
+remain explicit. Information from MongoDB field samples is descriptive, not a
+schema guarantee. Missing catalog metadata requires an explicit Connect/Refresh.
+
+Collapsing code only changes its display: saving, execution, diagnostics and
+search retain the complete source. Fold markers show the hidden line count and
+an indicator for hidden errors. Find, Go to Line and error navigation reveal
+their targets. Editing expands folds before changing the source. Cursor and fold
+state survive tab/theme changes during the current process; reopening the
+application restores a single primary cursor with all code expanded.
+
 ## SQL editor and completion
 
 Completion search matches parts of a name: `oi` finds `order_items` and `OrderItems`, while `items` matches the second word. Minor typos are tolerated: `ordres` finds `orders`. Among candidates of comparable match quality, columns in the current query and CTEs rank above general functions and keywords. Exact names take priority, and typo corrections follow ordinary matches. Typo correction is disabled for queries of one or two letters.
