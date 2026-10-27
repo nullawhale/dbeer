@@ -2,12 +2,13 @@
 
 A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0.
 
-The current macOS release is **0.2.1, build 11**. Download the signed application
-ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.1)
+The current macOS release is **0.3.0, build 12**. Download the signed application
+ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.3.0)
 and follow [the installation instructions](INSTALL.md). This release includes
 MongoDB, SQL result editing, synchronization SQL plans, snapshots, investigations,
-the expanded workspace, local MCP agent access, and expanded Cassandra CQL language
-assistance. Earlier prerelease archives, including build 8, remain unchanged.
+the expanded workspace, local MCP agent access, expanded Cassandra CQL language
+assistance, grouped table filters, multi-column sorting and saved table views.
+Earlier release and prerelease archives remain unchanged.
 Homebrew installation is not available.
 
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
@@ -35,10 +36,9 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
-## Table views in development for 0.3.0
+## Table filters, sorting and saved views
 
-These changes are in the working source and are not included in the 0.2.1/build 11
-download. Open **Filter** above a loaded table to prepare conditions and sorting
+Open **Filter** above a loaded table to prepare conditions and sorting
 without reading the database. **Apply** starts one read from the first page;
 **Reset** restores the last applied settings. Header clicks edit the sort draft,
 and multiple sort columns show their priority and direction. Apply or reset a
@@ -166,10 +166,11 @@ buffers adopt external changes, while changed drafts retain both versions for
 review. Missing or unreadable files keep their editable drafts. Bindings without
 a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage is v10, with exact private backups before migrating
-v0/v1/v2/v3/v4/v5/v6/v7/v8/v9. Formats before v8 start with their tabs in the left
-pane; v8/v9 retain their saved pane layout. V10 also preserves nested horizontal
-and vertical splits and each divider's position.
+Workspace storage is v11, with exact private backups before migrating
+v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10. Formats before v8 start with their tabs in the left
+pane; v8/v9 retain their saved pane layout. Nested horizontal and vertical splits
+and each divider's position are preserved. V11 stores grouped applied filters and
+migrates legacy filters as AND groups; unapplied browsing drafts are not restored.
 Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
@@ -670,7 +671,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v10. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9 files
+History uses versioned workspace storage, currently v11. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values.
 
@@ -1293,8 +1294,8 @@ only its own test windows and requires the usual persistent signing identity.
 
 ## Releases
 
-The current release is **0.2.1, build 11**, available with its checksum from
-[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.1).
+The current release is **0.3.0, build 12**, available with its checksum from
+[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.3.0).
 It contains the native macOS SwiftUI/AppKit client and bundled Go helper.
 Windows/Linux GPUI candidates are outside this release. Earlier prereleases,
 including [0.2.0/build 8](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8),
@@ -1310,7 +1311,7 @@ Existing archives are never overwritten and temporary CI signatures are rejected
 The previous **0.1.0** internal release passed installation and update acceptance
 from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived
 that release's required second-Mac check. These historical results do not certify
-the new build 11 archive. Finder/Gatekeeper and installation on a clean second
+the new build 12 archive. Finder/Gatekeeper and installation on a clean second
 device have not been verified. An Apple Development signature is not notarization.
 
 Windows/Linux contributions are welcome outside the release roadmap. Public overview sources:

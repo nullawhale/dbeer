@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — build 12 — 2026-10-27
 
 - Expand the native editor with local find/replace, whole-word and regular-expression
   search, multi-cursor editing, line commands, automatic indentation and matching
