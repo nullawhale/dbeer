@@ -27,7 +27,11 @@ struct DataGridView: View {
         return grid.rows[row].id
     }
     private var usesCursors: Bool { document.runtime?.usesCursorPagination == true }
-    private var canEdit: Bool { grid.canEdit && !document.isRunning && !document.isNavigatingTable && !workspace.isClosing }
+    private var canEdit: Bool {
+        grid.canEdit && !document.isRunning && !document.isNavigatingTable && !workspace.isClosing &&
+            (grid.querySource == nil || (document.runtime?.connectionState == .connected &&
+                document.runtime?.sessionId == grid.querySessionID && document.runtime?.transactionStatus == .idle))
+    }
     private var canPreview: Bool {
         (grid.pendingCount > 0 || grid.hasInlineDraft) && !grid.isApplying && !grid.isPreviewing && !document.isRunning &&
             !document.isNavigatingTable && !grid.isReloading && !grid.isClosing && !workspace.isClosing && !grid.outcomeUnknown
@@ -41,9 +45,9 @@ struct DataGridView: View {
                 Text(notice).font(.caption).appSecondaryText().padding(8)
             }
             if grid.isApplying { ProgressView("Applying changes…").controlSize(.small).padding(8) }
-            if grid.outcomeUnknown {
+            if grid.outcomeUnknown || (grid.resultIsStale && grid.pendingCount > 0) {
                 HStack {
-                    Text("Write outcome unknown. Verify data before making further changes.").foregroundStyle(.orange)
+                    Text(grid.outcomeUnknown ? "Write outcome unknown. Verify data before making further changes." : "The source row changed. Discard local changes and run the query again before applying.").foregroundStyle(.orange)
                     Button("Review Data in New Tab") { Task { await workspace.reviewGridData(document) } }
                         .controlHover().disabled(document.isNavigatingTable)
                 }.font(.callout).padding(8)
@@ -65,7 +69,7 @@ struct DataGridView: View {
             Divider()
             changesToolbar
             Divider()
-            navigationToolbar
+            if grid.querySource != nil { sourceToolbar } else { navigationToolbar }
         }
         .onDisappear { grid.commitEditing?() }
         .sheet(item: editing.projectedValue) { edit in
@@ -131,6 +135,21 @@ struct DataGridView: View {
         return InspectedResultTableView(table: view, rowDetails: showingRowDetails.wrappedValue
             ? GridRowDetailsView(grid: grid, canEdit: canEdit, edit: openEditor,
                 close: { showingRowDetails.wrappedValue = false }) : nil)
+    }
+
+    private var sourceToolbar: some View {
+        HStack {
+            Button("Open Source Row") {
+                guard let rowID = selectedRelationshipRowID else { return }
+                Task { await workspace.openSQLSourceRow(document, rowID: rowID) }
+            }.controlHover()
+                .disabled(selectedRelationshipRowID == nil || document.isRunning || document.isNavigatingTable ||
+                    grid.isApplying || grid.outcomeUnknown || grid.resultIsStale || workspace.isClosing)
+                .help("Open the selected row in a new table tab using its original primary key")
+                .accessibilityIdentifier("openSQLSourceRow")
+            Spacer()
+            Text("Source: \(grid.reference.schema).\(grid.reference.name)").font(.caption).appSecondaryText()
+        }.controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)
     }
 
     private var navigationToolbar: some View {
@@ -209,10 +228,10 @@ struct DataGridView: View {
                     Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
                 }
             }.fixedSize().controlHover().help("Export loaded rows")
-                .disabled(result == nil || grid.pendingCount > 0 || grid.hasInlineDraft || grid.isApplying || grid.outcomeUnknown || document.isRunning || document.isNavigatingTable)
+                .disabled(result == nil || grid.pendingCount > 0 || grid.hasInlineDraft || grid.isApplying || grid.outcomeUnknown || grid.resultIsStale || document.isRunning || document.isNavigatingTable)
                 .accessibilityIdentifier("gridExport")
-            Button("Pin Result") { Task { await workspace.pinResult(document) } }.controlHover()
-                .disabled(workspace.resultSnapshots.isBusy || workspace.snapshotCapture(for: document) == nil)
+            Button("Pin Result") { Task { await workspace.pinResult(document, resultSetIndex: document.queryResultSelection?.resultSetIndex ?? 0) } }.controlHover()
+                .disabled(workspace.resultSnapshots.isBusy || workspace.snapshotCapture(for: document, resultSetIndex: document.queryResultSelection?.resultSetIndex ?? 0) == nil)
                 .help("Save server-loaded rows as an offline snapshot. Local edits are excluded.")
                 .accessibilityIdentifier("pinTableResult")
             Spacer(minLength: 4)

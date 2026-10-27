@@ -719,7 +719,8 @@ type Column struct {
 }
 
 type ResultSet struct {
-	StorageTokens []string `json:"storageTokens,omitempty"`
+	Source        *ResultSource `json:"source,omitempty"`
+	StorageTokens []string      `json:"storageTokens,omitempty"`
 	// False means rowCount is a returned-row count, not an affected-row assertion.
 	AffectedRowCountKnown *bool       `json:"affectedRowCountKnown,omitempty"`
 	NextCursor            string      `json:"nextCursor,omitempty"`
@@ -744,6 +745,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	Source                *ResultSource
 	StorageTokens         []string
 	DataComparison        *DataComparisonResponse
 	SchemaComparison      *SchemaComparisonResponse
@@ -848,6 +850,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		}
 		fields["rows"] = rows
 	case "query.result":
+		if response.Source != nil {
+			fields["source"] = response.Source
+		}
 		if response.StorageTokens != nil {
 			fields["storageTokens"] = response.StorageTokens
 		}

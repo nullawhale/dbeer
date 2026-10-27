@@ -127,7 +127,12 @@ func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Co
 		return response
 	}
 	return session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
-		return session.executeResults(command.SQL, collector, result)
+		if err := session.executeResults(command.SQL, collector, result); err != nil {
+			return err
+		}
+		// The user statement has been drained before metadata is read. Never
+		// re-execute it to reconstruct an original row or infer its source.
+		return session.attachResultSource(ctx, command.SQL, collector)
 	}, sink)
 }
 
@@ -259,7 +264,7 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 			response.ResultSets = collector.resultSets
 			response = boundResultSets(response)
 		}
-		return response
+		return collector.attachResults(response)
 	}
 	response := collector.finish(result, time.Since(started), session.TransactionStatus())
 	if cancelled.attempted {

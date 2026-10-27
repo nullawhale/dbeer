@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Testing
 @testable import DBeer
 
@@ -26,6 +27,55 @@ struct ResultGridRowNumberTests {
         return try #require(NSEvent.mouseEvent(with: type, location: point, modifierFlags: modifiers,
             timestamp: 0, windowNumber: ruler.window?.windowNumber ?? 0, context: nil,
             eventNumber: 1, clickCount: clickCount, pressure: 1))
+    }
+
+    @Test func firstColumnStartsAfterTheRulerBeforeAnyInteraction() async throws {
+        _ = NSApplication.shared
+        let rows: [[String?]] = [["9223372036854775807", "original"], ["2", "other"]]
+        let content = NSHostingView(rootView: InspectedResultTableView(
+            table: ResultTableView(columns: columns, rows: rows)))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 360),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = content
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        func descendants<T: NSView>(_ root: NSView, _ type: T.Type) -> [T] {
+            ((root as? T).map { [$0] } ?? []) + root.subviews.flatMap { descendants($0, type) }
+        }
+        try await Task.sleep(for: .milliseconds(180))
+        content.layoutSubtreeIfNeeded()
+        let table = try #require(descendants(content, ResultGridTableView.self).first)
+        let scroll = try #require(table.enclosingScrollView)
+        let ruler = try #require(scroll.verticalRulerView as? ResultGridRowNumberRuler)
+        let header = try #require(table.headerView)
+        // These checks precede selection, scrollToVisible, or an inline edit.
+        // Merely opening the result must reveal the leading PK digits.
+        for width in [CGFloat(760), CGFloat(680)] {
+            window.setContentSize(NSSize(width: width, height: 360))
+            content.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(100))
+            let cell = table.frameOfCell(atColumn: 0, row: 0)
+            let dataFrame = table.convert(cell, to: scroll)
+            let rulerFrame = ruler.convert(ruler.bounds, to: scroll)
+            let headerFrame = header.convert(header.headerRect(ofColumn: 0), to: scroll)
+            #expect(dataFrame.minX >= rulerFrame.maxX - 0.5,
+                "The row ruler must not cover the first result column on initial layout.")
+            #expect(table.visibleRect.minX <= cell.minX + 0.5)
+            #expect(abs(dataFrame.minX - headerFrame.minX - table.intercellSpacing.width / 2) <= 0.5)
+        }
+        // Once displayed, layout changes must preserve intentional horizontal
+        // scrolling instead of repeatedly forcing the first column into view.
+        table.tableColumns.forEach { $0.width = 500 }
+        table.frame.size.width = 1_016
+        table.scroll(NSPoint(x: 200, y: 0))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let offset = scroll.contentView.bounds.minX
+        #expect(offset > 0)
+        window.setContentSize(NSSize(width: 720, height: 360))
+        content.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(abs(scroll.contentView.bounds.minX - offset) <= 0.5)
     }
 
     @Test func gutterSelectsRangesAndSparseRowsWithoutReloadingOrCopyingNumbers() throws {

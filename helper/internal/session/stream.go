@@ -187,6 +187,14 @@ func (sink *streamSink) End(index int, summary protocol.ResultSet) error {
 	} else {
 		set.summary.StorageTokens = nil
 	}
+	if set.summary.Source != nil {
+		encoded, _ := json.Marshal(set.summary.Source)
+		if len(set.columns) != len(summary.Columns) || sink.bytes+len(encoded) > displayBytes {
+			set.summary.Source = nil
+		} else {
+			sink.bytes += len(encoded)
+		}
+	}
 	set.summary.Truncated = summary.Truncated && strings.Contains(summary.DisplayNotice, "Cassandra") || set.dropped || int64(set.sent) < set.seen
 	if summary.Truncated && !set.summary.Truncated {
 		set.summary.DisplayNotice = strings.TrimSpace(strings.ReplaceAll(set.summary.DisplayNotice, "Result display is limited to 1000 rows and 8 MiB. The command completed in full.", ""))
@@ -223,6 +231,7 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 			response.NextCursor = set.summary.NextCursor
 			response.AffectedRowCountKnown = set.summary.AffectedRowCountKnown
 			response.StorageTokens = set.summary.StorageTokens
+			response.Source = set.summary.Source
 			first = false
 		}
 		response.ResultSets = append(response.ResultSets, set.summary)

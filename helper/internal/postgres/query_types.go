@@ -20,16 +20,16 @@ import (
 // Parse/Describe obtains result types before Execute. Metadata reads use the
 // owning connection, including its uncommitted types and temporary schema.
 // The named statement survives those reads and is executed exactly once.
-func prepareQueryTypes(ctx context.Context, conn *pgx.Conn, sql string) (string, []protocol.Column, error) {
+func prepareQueryTypes(ctx context.Context, conn *pgx.Conn, sql string) (string, []protocol.Column, []pgconn.FieldDescription, error) {
 	var token [16]byte
 	if _, err := rand.Read(token[:]); err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	name := "dbeer_types_" + hex.EncodeToString(token[:])
 	description, err := conn.PgConn().Prepare(ctx, name, sql, nil)
 	if err != nil {
 		releaseQueryTypes(conn, name)
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	columns := newResultCollector(protocol.Command{}, description.Fields, MaxResultBytes).response.Columns
 	limits := sc.DefaultLimits()
@@ -57,13 +57,13 @@ func prepareQueryTypes(ctx context.Context, conn *pgx.Conn, sql string) (string,
 		if r.version == 0 {
 			if err = conn.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::pg_catalog.int4", pgx.QueryExecModeExec).Scan(&r.version); err != nil {
 				releaseQueryTypes(conn, name)
-				return "", nil, err
+				return "", nil, nil, err
 			}
 		}
 		use, lookupErr := r.typeUse(strconv.FormatUint(uint64(field.DataTypeOID), 10), int64(field.TypeModifier), 0)
 		if lookupErr != nil {
 			releaseQueryTypes(conn, name)
-			return "", nil, lookupErr
+			return "", nil, nil, lookupErr
 		}
 		identity, identityErr := tc.PostgresType(use, collector.Capture.Types)
 		if identityErr != nil {
@@ -84,7 +84,7 @@ func prepareQueryTypes(ctx context.Context, conn *pgx.Conn, sql string) (string,
 			column.Encoding = "base64"
 		}
 	}
-	return name, columns, nil
+	return name, columns, description.Fields, nil
 }
 
 func releaseQueryTypes(conn *pgx.Conn, name string) {

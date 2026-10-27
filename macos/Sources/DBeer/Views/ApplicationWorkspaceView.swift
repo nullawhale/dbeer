@@ -557,7 +557,7 @@ struct SQLDocumentPane: View {
                 libraryContext(url)
                 Divider()
             }
-            if document.table != nil, let error = document.tableNavigationError {
+            if let error = document.tableNavigationError {
                 HStack(alignment: .top, spacing: 8) {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange).textSelection(.enabled)
@@ -629,7 +629,11 @@ struct SQLDocumentPane: View {
                 result.frame(maxHeight: .infinity)
             }
         }
-        .onChange(of: document.selectedExecution) { _, _ in resultSetIndex.wrappedValue = 0 }
+        .onChange(of: document.selectedExecution) { _, _ in
+            resultSetIndex.wrappedValue = 0
+            document.selectQueryResult()
+        }
+        .onChange(of: resultSetIndex.wrappedValue) { _, index in document.selectQueryResult(index) }
         .onChange(of: document.isRunning) { _, value in if value { resultSetIndex.wrappedValue = 0 } }
         .sheet(item: editingLibrary.projectedValue) { request in
             SQLLibraryEntryEditor(workspace: workspace, fileURL: request.url)
@@ -952,10 +956,11 @@ struct SQLDocumentPane: View {
             ScrollView(.horizontal) {
                 HStack {
                     ForEach(Array(document.executions.enumerated()), id: \.element.id) { index, execution in
-                        Button("\(index + 1) · \(execution.status)") { document.selectedExecution = index }.controlHover()
+                        Button("\(index + 1) · \(execution.status)") { document.selectSQLExecution(index) }.controlHover()
                             .buttonStyle(.bordered)
                             .tint(index == document.selectedExecution ? AppPalette.accent : .secondary)
                             .help(execution.sql)
+                            .disabled(document.queryResultSelectionLocked)
                     }
                 }.padding(8)
             }
@@ -991,11 +996,13 @@ struct SQLDocumentPane: View {
                         let showsRows = result.columns?.isEmpty == false
                         if !showsRows { Text(result.commandTag ?? "Results").font(.headline) }
                         if let sets = result.resultSets, sets.count > 1 {
-                            Picker("Result Set", selection: resultSetIndex.projectedValue) {
+                            Picker("Result Set", selection: Binding(get: { resultSetIndex.wrappedValue }, set: { index in
+                                if document.selectQueryResult(index) { resultSetIndex.wrappedValue = index }
+                            })) {
                                 ForEach(sets.indices, id: \.self) { index in
                                     Text("\(index + 1) · \(sets[index].commandTag)").tag(index)
                                 }
-                            }.controlHover().frame(maxWidth: 240)
+                            }.controlHover().frame(maxWidth: 240).disabled(document.queryResultSelectionLocked)
                         }
                         Spacer()
                         Button("Pin Result") {
@@ -1009,7 +1016,7 @@ struct SQLDocumentPane: View {
                         Menu("Export Loaded") {
                             Button("JSON…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "json") }
                             Button("CSV…") { workspace.exportLoaded(ExportResultSet(result), title: document.title, format: "csv") }
-                        }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true)
+                        }.fixedSize().controlHover().disabled((document.grid?.pendingCount ?? 0) > 0 || document.grid?.isApplying == true || document.grid?.outcomeUnknown == true || document.grid?.resultIsStale == true || document.grid?.hasInlineDraft == true)
                         let shown = result.displayedRowCount ?? result.rows?.count ?? 0
                         Text(result.affectedRowCountKnown == false && !showsRows ? "Affected rows unknown" : (showsRows ? "\(shown) from \(result.rowCount ?? Int64(shown)) rows shown" : "\(shown) rows shown"))
                             .accessibilityIdentifier("queryRowCount")
@@ -1024,9 +1031,13 @@ struct SQLDocumentPane: View {
                     Text(result.displayNotice ?? "Result truncated at 1000 rows or 8 MiB.")
                         .font(.caption).foregroundStyle(.orange).padding(8)
                 }
+                if document.table == nil, document.grid == nil, result.columns?.isEmpty == false {
+                    Text("Read only: " + (result.source?.readOnlyReason ?? "Source-row evidence is unavailable for this result."))
+                        .font(.caption).appSecondaryText().padding(8)
+                }
                 Divider()
                 if let columns = result.columns, !columns.isEmpty {
-                    if document.table != nil, let grid = document.grid {
+                    if let grid = document.grid {
                         DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
                         InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [],

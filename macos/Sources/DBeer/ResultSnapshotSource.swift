@@ -57,6 +57,7 @@ struct ResultSnapshotSource: Sendable {
             projected.affectedRowCountKnown = set.affectedRowCountKnown
             projected.nextCursor = set.nextCursor
             projected.storageTokens = set.storageTokens
+            projected.source = set.source
         } else if resultSetIndex != 0 { return nil }
         return projected
     }

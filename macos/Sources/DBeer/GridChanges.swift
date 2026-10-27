@@ -86,6 +86,9 @@ final class GridDraft: ObservableObject {
     let reference: TableReference
     let columns: [ResultColumn]
     let metadata: [[String: String]]
+    let querySource: SQLResultSource?
+    let querySessionID: String?
+    @Published var resultIsStale = false
     let partitionMarkers: [GridPartitionMarker?]?
     @Published var rows: [GridRow] {
         didSet { cachedPresentation = nil }
@@ -109,12 +112,17 @@ final class GridDraft: ObservableObject {
     var commitEditing: (() -> Void)?
     private var cachedPresentation: GridPresentation?
 
-    init(reference: TableReference, result: BackendMessage, metadata: [[String: String]]) {
+    init(reference: TableReference, result: BackendMessage, metadata: [[String: String]], querySource: SQLResultSource? = nil) {
+        self.querySource = querySource
+        querySessionID = querySource == nil ? nil : result.sessionId
         self.reference = reference
         let loadedColumns = result.columns ?? []
         columns = loadedColumns
         let byName = Dictionary(metadata.compactMap { record in record["name"].map { ($0, record) } }, uniquingKeysWith: { _, last in last })
-        let alignedMetadata = columns.map { byName[$0.name] ?? [:] }
+        let alignedMetadata = querySource.map { source in source.columns.map {
+            ["name": $0.name, "nativeType": $0.nativeType, "primaryKey": String($0.primaryKey),
+             "editable": $0.editable ? "true" : "false", "generated": $0.generated ? "generated" : "", "nullable": "true"]
+        } } ?? columns.map { byName[$0.name] ?? [:] }
         self.metadata = alignedMetadata
         let loadedRows = (result.rows ?? []).enumerated().map { rowIndex, row in
             let values = row.enumerated().map { index, value -> ChangeValue in
@@ -132,13 +140,15 @@ final class GridDraft: ObservableObject {
     }
 
     var isCassandra: Bool { columns.first?.engine == .cassandra }
-    var supportsRowInsertionAndDeletion: Bool { !isCassandra }
+    var supportsRowInsertionAndDeletion: Bool { !isCassandra && querySource == nil }
     var editingNotice: String? {
         guard isCassandra, supportsEditing else { return nil }
         return "Apply saves all pending rows atomically within one partition. If any original value changed, no rows are saved. Rows from different partitions cannot be applied together. A timeout can leave the whole batch outcome unknown. Updated cells use the table's default TTL; existing cell TTLs are not preserved."
     }
 
     var readOnlyReason: String? {
+        if resultIsStale { return "This result is stale. Discard pending changes and run the query explicitly to load current data." }
+        if let reason = querySource?.readOnlyReason, !reason.isEmpty { return reason }
         if !supportsEditing { return "Grid editing is not supported by this database engine." }
         if policyReadOnly { return "Readonly is enabled for this connection." }
         if reference.kind != "table" { return "Views are read only." }
@@ -212,6 +222,13 @@ final class GridDraft: ObservableObject {
         preview = nil
     }
 
+    func discardAfterSuccessfulApply() {
+        rows = rows.map { row in GridRow(original: row.values, values: row.values, originalStorageToken: nil) }
+        selectedRows = []
+        error = nil
+        preview = nil
+    }
+
     func discard() {
         guard !isApplying, !isReloading, !isClosing else { return }
         rows = rows.compactMap { row in row.original.map { GridRow(original: $0, values: $0, originalStorageToken: row.originalStorageToken) } }
@@ -221,19 +238,22 @@ final class GridDraft: ObservableObject {
     }
 
     func request() -> ChangesRequest {
-        ChangesRequest(schema: reference.schema, table: reference.name,
-            columns: columns.enumerated().map { index, column in
-                ChangeColumn(name: column.name, engine: column.engine, nativeType: metadata[index]["nativeType"] ?? column.nativeType)
+        let order = columns.indices.sorted { (querySource?.columns[$0].tableIndex ?? $0) < (querySource?.columns[$1].tableIndex ?? $1) }
+        func name(_ index: Int) -> String { querySource?.columns[index].name ?? columns[index].name }
+        return ChangesRequest(schema: reference.schema, table: reference.name,
+            columns: order.map { index in
+                ChangeColumn(name: name(index), engine: columns[index].engine, nativeType: metadata[index]["nativeType"] ?? columns[index].nativeType)
             }, changes: rows.compactMap { row in
                 if row.isInserted {
                     return RowChange(kind: "insert", values: row.assignments.keys.sorted().map {
-                        ColumnAssignment(column: columns[$0].name, value: row.assignments[$0]!)
+                        ColumnAssignment(column: name($0), value: row.assignments[$0]!)
                     })
                 }
-                if row.isDeleted { return RowChange(kind: "delete", original: row.original, storageToken: row.originalStorageToken) }
+                let original = row.original.map { original in order.map { original[$0] } }
+                if row.isDeleted { return RowChange(kind: "delete", original: original, storageToken: row.originalStorageToken) }
                 guard !row.assignments.isEmpty else { return nil }
-                return RowChange(kind: "update", original: row.original, values: row.assignments.keys.sorted().map {
-                    ColumnAssignment(column: columns[$0].name, value: row.assignments[$0]!)
+                return RowChange(kind: "update", original: original, values: row.assignments.keys.sorted().map {
+                    ColumnAssignment(column: name($0), value: row.assignments[$0]!)
                 }, storageToken: row.originalStorageToken)
             })
     }

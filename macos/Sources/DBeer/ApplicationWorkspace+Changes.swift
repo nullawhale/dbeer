@@ -19,7 +19,7 @@ extension ApplicationWorkspace {
         document.grid?.commitEditing?()
         guard canStartOperation(document, forClosing: forClosing), !document.isRunning,
               let grid = document.grid, grid.pendingCount > 0, !grid.isApplying,
-              !grid.outcomeUnknown, !grid.policyReadOnly else { return false }
+              !grid.outcomeUnknown, !grid.policyReadOnly, grid.readOnlyReason == nil else { return false }
         if let status = grid.partitionStatus, !status.allowsApply {
             grid.error = status.help
             return false
@@ -39,6 +39,13 @@ extension ApplicationWorkspace {
             if grid.isCassandra, reply.appliedChangeCount != request.changes.count {
                 throw BackendTransportError(.invalidMessage, outcomeUnknown: true)
             }
+            if grid.querySource != nil {
+                // The captured SELECT is never replayed by Apply, including while closing.
+                grid.discardAfterSuccessfulApply()
+                document.markQueryResultStale()
+                grid.notice = "Changes applied. This result is stale; run the query explicitly to refresh it."
+                return true
+            }
             document.attachGrid(nil)
             grid.isApplying = false
             if grid.isCassandra { document.resetTablePaging() }
@@ -48,6 +55,9 @@ extension ApplicationWorkspace {
         } catch {
             if let remote = error as? BackendRemoteError {
                 grid.outcomeUnknown = remote.reply.outcomeUnknown == true
+                if grid.querySource != nil, remote.reply.category == "conflict" {
+                    document.markQueryResultStale()
+                }
                 if grid.isCassandra {
                     grid.preview = nil
                     if let count = remote.reply.appliedChangeCount, count != 0 { grid.outcomeUnknown = true }
@@ -80,11 +90,14 @@ extension ApplicationWorkspace {
         let unknown = grid.outcomeUnknown
         grid.discard()
         grid.outcomeUnknown = unknown
-        await reloadTableAfterDiscard(document)
+        if grid.querySource != nil {
+            if unknown { document.markQueryResultStale() }
+        } else { await reloadTableAfterDiscard(document) }
     }
 
     func reviewGridData(_ document: SQLDocument) async {
-        guard let table = document.table, let profileID = document.profileID else { return }
+        guard let table = document.table ?? document.grid?.querySource.map({ TableReference(schema: $0.schema, name: $0.table, kind: "table") }),
+              let profileID = document.profileID else { return }
         let node = CatalogNode(profileID: profileID, name: table.name, kind: .object,
             schema: table.schema, object: table.name, objectKind: table.kind)
         await openData(node, inNewTab: true)
@@ -98,6 +111,9 @@ extension ApplicationWorkspace {
               let boundPort = Int(runtime.port) else {
             throw ChangesClientError(message: "Reconnect the profile and reload the table before previewing or applying changes.")
         }
+        guard grid.querySource == nil || (grid.querySessionID == boundSessionID && runtime.transactionStatus == .idle) else {
+            throw ChangesClientError(message: "The source session changed or has an active transaction. Discard local changes and run the query again before editing.")
+        }
         let boundSettings = ConnectionSettings(host: runtime.host, port: boundPort, database: runtime.database,
             user: runtime.user, password: "", sslMode: runtime.sslMode,
             sslRootCert: runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert, engine: runtime.engine, policy: runtime.policy,
@@ -107,6 +123,7 @@ extension ApplicationWorkspace {
             guard ownedSQLContext(for: document) != nil,
                   document.profileID == profileID, document.runtime === runtime, document.grid === grid,
                   runtime.connectionState == .connected, runtime.sessionId == boundSessionID,
+                  grid.querySource == nil || runtime.transactionStatus == .idle,
                   runtime.activeConnectionId == profileID,
                   profile.matches(boundSettings),
                   library.savedConnections.first(where: { $0.id == profileID })?.matches(boundSettings) == true,

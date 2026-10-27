@@ -31,6 +31,8 @@ type collector struct {
 	ended               bool
 	valueColumns        []protocol.Column
 	hiddenStorageFields int
+	originFields        []*wire.Field
+	sourceReadCompleted bool
 }
 
 type sinkDelivery struct {
@@ -54,6 +56,14 @@ func (collector *collector) columns(result *wire.Result) error {
 		return wire.ErrMalformPacket
 	}
 	fields := result.Fields[:len(result.Fields)-collector.hiddenStorageFields]
+	collector.originFields = make([]*wire.Field, len(fields))
+	for index, field := range fields {
+		copy := *field
+		copy.Schema = append([]byte(nil), field.Schema...)
+		copy.OrgTable = append([]byte(nil), field.OrgTable...)
+		copy.OrgName = append([]byte(nil), field.OrgName...)
+		collector.originFields[index] = &copy
+	}
 	collector.response.Columns = make([]protocol.Column, len(fields))
 	for index, field := range fields {
 		column := protocol.Column{Index: index, Name: string(field.Name), Engine: "mysql", NativeType: nativeType(field), TypeIdentity: mysqlWireTypeIdentity(field)}
@@ -180,7 +190,7 @@ func (collector *collector) finishSingle(result *wire.Result, elapsed time.Durat
 		if !collector.began {
 			collector.deliver(func(sink adapter.ResultSink) error { return sink.Begin(collector.resultIndex, []protocol.Column{}) })
 		}
-		summary := protocol.ResultSet{Columns: collector.valueColumns, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice, StorageTokens: response.StorageTokens}
+		summary := protocol.ResultSet{Columns: collector.valueColumns, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice, StorageTokens: response.StorageTokens, Source: response.Source}
 		collector.deliver(func(sink adapter.ResultSink) error { return sink.End(collector.resultIndex, summary) })
 	}
 	return response
@@ -198,6 +208,7 @@ func boundResultSets(response protocol.Response) protocol.Response {
 		set := response.ResultSets[primary]
 		response.Columns, response.Rows, response.CommandTag, response.RowCount = set.Columns, set.Rows, set.CommandTag, set.RowCount
 		response.StorageTokens = set.StorageTokens
+		response.Source = set.Source
 		response.DisplayedRowCount, response.Truncated = set.DisplayedRowCount, set.Truncated
 		if response.DisplayNotice == "" {
 			response.DisplayNotice = set.DisplayNotice
@@ -237,6 +248,7 @@ func boundResultSets(response protocol.Response) protocol.Response {
 			for index := range response.ResultSets {
 				if len(response.ResultSets[index].Columns) > 0 {
 					response.ResultSets[index].Columns = []protocol.Column{}
+					response.ResultSets[index].Source = nil
 					response.ResultSets[index].Truncated = true
 					changed = true
 				}
@@ -251,6 +263,25 @@ func boundResultSets(response protocol.Response) protocol.Response {
 }
 
 func (collector *collector) attachResults(response protocol.Response) protocol.Response {
+	if collector.sourceReadCompleted && response.Type == "error" {
+		// A failed supplemental metadata read cannot make the already drained
+		// SELECT uncertain or discard its original values.
+		if response.OutcomeUnknown {
+			response.Message = "The SELECT completed, but the connection was lost while reading its source metadata."
+		}
+		response.SQLCompleted, response.OutcomeUnknown = true, false
+		if len(collector.resultSets) == 0 {
+			collector.response.Source = mysqlReadOnlySource(mysqlSourceUnavailable)
+			result := wire.NewResult(nil)
+			completed := collector.finishSingle(result, 0, response.TransactionStatus)
+			result.Close()
+			collector.resultSets = []protocol.ResultSet{{Columns: completed.Columns, Rows: completed.Rows,
+				CommandTag: completed.CommandTag, RowCount: completed.RowCount,
+				DisplayedRowCount: completed.DisplayedRowCount, Truncated: completed.Truncated,
+				DisplayNotice: completed.DisplayNotice, StorageTokens: completed.StorageTokens,
+				Source: completed.Source}}
+		}
+	}
 	if len(collector.resultSets) > 0 {
 		response.ResultSets = collector.resultSets
 		return boundResultSets(response)

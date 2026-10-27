@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Supported PostgreSQL/MySQL SELECT results can open an exact source row in an
+  independent table tab using server-verified origins and the complete primary
+  key. Full, unambiguous single-table results support cell updates through the
+  existing Preview/Apply workflow, preserving aliases, column order and exact
+  original values. Apply never replays SELECT; successful results become stale,
+  and conflicts or unknown commits retain drafts while blocking repeated Apply.
+  Unsupported shapes and representations explain why they remain read-only. MySQL
+  source discovery and Apply retain owned copies of driver metadata so reused
+  network buffers cannot invalidate column names or native types. Result grids
+  reveal the complete first column beside row numbers on initial display while
+  preserving later horizontal scrolling and pane resizing.
+
 - Compare PostgreSQL range/multirange, array, composite, domain and extension
   type definitions, including their modifiers and dependencies. MySQL captures
   ENUM/SET labels, binary labels, spatial reference IDs and exact type modifiers.

@@ -46,6 +46,56 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var selection = NSRange(location: 0, length: 0)
     @Published var executions: [SQLExecution] = []
     @Published var selectedExecution = 0
+    private(set) var queryResultSelection: SQLResultSelection?
+    private var staleQueryResults: Set<SQLResultSelection> = []
+    var queryResultSelectionLocked: Bool {
+        guard table == nil, let grid else { return false }
+        return grid.pendingCount > 0 || grid.hasInlineDraft || grid.outcomeUnknown ||
+            grid.isApplying || grid.isPreviewing || grid.isClosing || grid.isReloading
+    }
+
+    @discardableResult
+    func selectSQLExecution(_ index: Int) -> Bool {
+        guard executions.indices.contains(index), !queryResultSelectionLocked else { return false }
+        selectedExecution = index
+        return selectQueryResult()
+    }
+
+    @discardableResult
+    func selectQueryResult(_ resultSetIndex: Int = 0) -> Bool {
+        guard isSQLDocument, executions.indices.contains(selectedExecution) else { return false }
+        let execution = executions[selectedExecution]
+        let selection = SQLResultSelection(executionID: execution.id, resultSetIndex: resultSetIndex)
+        if queryResultSelection == selection, grid != nil { return true }
+        guard !queryResultSelectionLocked else { return false }
+        attachGrid(nil)
+        queryResultSelection = selection
+        guard execution.failure == nil, let message = execution.result,
+              let result = ResultSnapshotSource.project(message, resultSetIndex: resultSetIndex),
+              result.outcomeUnknown != true, let source = result.source,
+              source.canOpenRow, source.valid(for: result.columns ?? []),
+              runtime?.connectionState == .connected, runtime?.transactionStatus == .idle,
+              runtime?.sessionId == result.sessionId, result.sessionId != nil else { return true }
+        let draft = GridDraft(reference: TableReference(schema: source.schema, name: source.table, kind: "table"),
+            result: result, metadata: [], querySource: source)
+        draft.policyReadOnly = runtime?.policy.readOnly ?? true
+        draft.supportsEditing = runtime?.supportsGridEditing == true
+        draft.resultIsStale = staleQueryResults.contains(selection)
+        attachGrid(draft)
+        return true
+    }
+
+    func markQueryResultStale() {
+        if let selection = queryResultSelection { staleQueryResults.insert(selection) }
+        grid?.resultIsStale = true
+    }
+
+    func clearQueryResultGrids() {
+        guard table == nil else { return }
+        attachGrid(nil)
+        queryResultSelection = nil
+        staleQueryResults = []
+    }
     @Published var localError: String?
     @Published var errorPosition: Int?
     @Published var fileURL: URL?
@@ -959,6 +1009,10 @@ final class ApplicationWorkspace: ObservableObject {
         guard canStartOperation(document), !document.isSnapshot, !document.isRunning,
               !document.isNavigatingTable, document.grid?.isApplying != true,
               document.grid?.isReloading != true, document.grid?.isClosing != true else { return nil }
+        if document.table == nil {
+            guard (document.grid?.pendingCount ?? 0) == 0, document.grid?.resultIsStale != true,
+                  document.grid?.outcomeUnknown != true, document.grid?.hasInlineDraft != true else { return nil }
+        }
         let source: ResultSnapshotSource?
         if document.table != nil {
             guard document.grid != nil else { return nil }
@@ -1290,6 +1344,22 @@ final class ApplicationWorkspace: ObservableObject {
         guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
         let libraryBinding = sqlLibraryExecutionBinding(document)
         let boundText = document.text
+        if document.table == nil {
+            document.grid?.commitEditing?()
+            guard document.grid?.isApplying != true, document.grid?.isPreviewing != true else { return }
+            if let grid = document.grid, grid.outcomeUnknown {
+                guard await closeDecision(.unknownApply(document.title)) == .discard else { return }
+            } else if let grid = document.grid, grid.pendingCount > 0 {
+                switch await closeDecision(.changes(document.title, count: grid.pendingCount)) {
+                case .apply: guard await applyGrid(document) else { return }
+                case .discard: break
+                default: return
+                }
+            }
+            guard canStartOperation(document), SQLFileDocument.sameBytes(document.text, boundText),
+                  document.profileID == profileID else { return }
+            document.clearQueryResultGrids()
+        }
         if !forNavigating { document.tableNavigationError = nil }
         document.clearExecutionSuccess()
         let executionRevision = document.executionRevision
@@ -1304,6 +1374,7 @@ final class ApplicationWorkspace: ObservableObject {
         defer {
             document.isRunning = false
             previousGrid?.isReloading = false
+            if document.table == nil { document.selectQueryResult() }
         }
         do {
             let client = try await ensureHelper()
@@ -2646,6 +2717,37 @@ final class ApplicationWorkspace: ObservableObject {
                   document.table == table, document.foreignKeysRequestID == requestID else { return }
             document.foreignKeysError = error.localizedDescription
         }
+    }
+
+    func openSQLSourceRow(_ document: SQLDocument, rowID: UUID) async {
+        document.grid?.commitEditing?()
+        guard canStartOperation(document), document.isSQLDocument, !document.isRunning,
+              !document.isNavigatingTable, let grid = document.grid, let source = grid.querySource,
+              !grid.resultIsStale, !grid.isApplying, !grid.isReloading, !grid.isClosing, !grid.hasInlineDraft,
+              let row = grid.rows.first(where: { $0.id == rowID }), let original = row.original,
+              let filters = source.filters(row: original),
+              let profileID = document.profileID, let runtime = document.runtime,
+              runtime.connectionState == .connected, runtime.transactionStatus == .idle,
+              runtime.sessionId == grid.querySessionID,
+              let profile = library.savedConnections.first(where: { $0.id == profileID }),
+              runtime.matchesResultSourceProfile(profile) else { return }
+        guard source.filters(row: row.values) == filters, !grid.outcomeUnknown else {
+            grid.error = "Apply or discard the changed primary-key values before opening the source row."
+            return
+        }
+        let context = capturePaneSelection(in: pane(containing: document.id))
+        let sessionID = runtime.sessionId
+        document.isNavigatingTable = true
+        defer { document.isNavigatingTable = false }
+        do {
+            let reference = grid.reference
+            let columns = try await navigationColumns(reference, profileID: profileID, required: Set(filters.map(\.column)))
+            guard canStartOperation(document, forNavigating: true), document.grid === grid,
+                  document.profileID == profileID, document.runtime === runtime, runtime.sessionId == sessionID,
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile else { return }
+            await openRelatedTable(TableViewLocation(reference: reference, profileID: profileID, filters: filters),
+                columns: columns, source: document, context: context)
+        } catch { if document.grid === grid { grid.error = error.localizedDescription } }
     }
 
     func followForeignKey(_ key: TableForeignKey, rowID: UUID, in document: SQLDocument, inNewTab: Bool = false) async {

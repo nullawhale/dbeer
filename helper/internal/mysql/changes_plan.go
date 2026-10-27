@@ -47,8 +47,9 @@ func (session *Session) editMetadata(request protocol.ChangesRequest) (editMetad
 	}
 	kind, _ := table.GetString(0, 0)
 	engine, _ := table.GetString(0, 1)
+	baseInnoDB := kind == "BASE TABLE" && engine == "InnoDB"
 	table.Close()
-	if kind != "BASE TABLE" || engine != "InnoDB" {
+	if !baseInnoDB {
 		return metadata, editFailure("validation", "Data editing requires an InnoDB table with a primary key.")
 	}
 	rows, err := session.work.client.Execute(`SELECT c.COLUMN_NAME,c.COLUMN_TYPE,c.DATA_TYPE,COALESCE(c.GENERATION_EXPRESSION,''),COALESCE(k.ORDINAL_POSITION,0),c.EXTRA,c.CHARACTER_SET_NAME FROM information_schema.COLUMNS c LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY' WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? ORDER BY c.ORDINAL_POSITION LIMIT 4097`, request.Schema, request.Table)
@@ -84,7 +85,7 @@ func (session *Session) editMetadata(request protocol.ChangesRequest) (editMetad
 			}
 			ambiguousValues = mysqlAmbiguousChoiceLabels(dataType, labels)
 		}
-		metadata.columns = append(metadata.columns, editColumn{name: name, nativeType: native, dataType: dataType, generated: generated, primary: int(primary), binary: binaryType(dataType) || charset == "binary" || (dataType == "enum" || dataType == "set") && charset == "", ambiguousEmptyEnum: ambiguousEmpty && dataType == "enum", ambiguousEnum: ambiguousValues && dataType == "enum", ambiguousSet: ambiguousValues && dataType == "set"})
+		metadata.columns = append(metadata.columns, editColumn{name: strings.Clone(name), nativeType: strings.Clone(native), dataType: strings.Clone(dataType), generated: strings.Clone(generated), primary: int(primary), binary: binaryType(dataType) || charset == "binary" || (dataType == "enum" || dataType == "set") && charset == "", ambiguousEmptyEnum: ambiguousEmpty && dataType == "enum", ambiguousEnum: ambiguousValues && dataType == "enum", ambiguousSet: ambiguousValues && dataType == "set"})
 		if primary > 0 {
 			metadata.primary = append(metadata.primary, index)
 		}

@@ -55,7 +55,7 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 		failure.Connected, failure.TransactionStatus = !conn.IsClosed(), transactionStatus(conn)
 		return failure
 	}
-	statement, columns, prepareErr := prepareQueryTypes(ctx, conn, sql)
+	statement, columns, sourceFields, prepareErr := prepareQueryTypes(ctx, conn, sql)
 	if prepareErr != nil {
 		failure := queryError(command, ctx, conn, prepareErr)
 		// Parse/coercion and catalog deparsing can call user type routines.
@@ -66,6 +66,10 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 			failure.Category, failure.Message = "result", "Result type metadata could not be read."
 		}
 		return failure
+	}
+	var source *protocol.ResultSource
+	if command.Type == "execute" && command.Catalog == nil && !storageProjection && len(values) == 0 {
+		source = preparePostgresResultSource(ctx, conn, sql, sourceFields)
 	}
 	defer releaseQueryTypes(conn, statement)
 	reader := conn.PgConn().ExecPrepared(ctx, statement, values, nil, nil)
@@ -82,6 +86,18 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 		}
 		collector.response.Columns = collector.response.Columns[:len(collector.response.Columns)-1]
 		collector.response.StorageTokens = []string{}
+	}
+	if source != nil {
+		actualFields := reader.FieldDescriptions()
+		if storageProjection && len(actualFields) > 0 {
+			actualFields = actualFields[:len(actualFields)-1]
+		}
+		if source.Table != "" && !samePostgresSourceFields(sourceFields, actualFields) {
+			source = readonlyPostgresSource("The result's source metadata changed before execution. Run the query again before editing.")
+		}
+		collector.response.Source = source
+		base, _ := json.Marshal(collector.response)
+		collector.baseSize = len(base)
 	}
 	sinkOK := sink != nil
 	if sinkOK && sink.Begin(0, collector.response.Columns) != nil {
@@ -140,7 +156,7 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 		return failure
 	}
 	if sinkOK {
-		_ = sink.End(0, protocol.ResultSet{Columns: response.Columns, Rows: [][]*string{}, StorageTokens: response.StorageTokens, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice})
+		_ = sink.End(0, protocol.ResultSet{Source: response.Source, Columns: response.Columns, Rows: [][]*string{}, StorageTokens: response.StorageTokens, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice})
 	}
 	return response
 }
@@ -275,6 +291,7 @@ func (collector *resultCollector) finish(tag pgconn.CommandTag, elapsed time.Dur
 		// PostgreSQL can complete successfully even when metadata cannot fit.
 		// Keep the actual outcome and use a compact, explicit display notice.
 		response.Columns = nil
+		response.Source = nil
 		response.DisplayNotice = "Column metadata exceeds the display limit; no data is shown. The command completed in full."
 		base, _ = json.Marshal(response)
 		if len(base) <= collector.limit {

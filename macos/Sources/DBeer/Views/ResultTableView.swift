@@ -422,6 +422,38 @@ private final class ResultGridHeaderView: NSTableHeaderView {
     }
 }
 
+/// A zero-sized SwiftUI scroll view can initially place its first column
+/// behind the row ruler. Wait for AppKit to finish the first inset layout, then
+/// reveal that column using its native scrolling rules. Later scrolling and
+/// pane resizing retain the user's chosen horizontal position.
+@MainActor
+private final class ResultGridScrollView: NSScrollView {
+    private var needsInitialHorizontalOrigin = true
+    private var initialOriginScheduled = false
+
+    override func tile() {
+        super.tile()
+        guard needsInitialHorizontalOrigin, !initialOriginScheduled,
+              window != nil, contentView.bounds.width > 0,
+              let table = documentView as? ResultGridTableView, table.numberOfColumns > 0 else { return }
+        initialOriginScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            defer { self.initialOriginScheduled = false }
+            guard self.needsInitialHorizontalOrigin, self.window != nil,
+                  self.contentView.bounds.width > 0,
+                  let table = self.documentView as? ResultGridTableView, table.numberOfColumns > 0 else { return }
+            self.layoutSubtreeIfNeeded()
+            self.needsInitialHorizontalOrigin = false
+            // Rulers can be represented by adjusted insets rather than a clip
+            // frame offset. A literal bounds.x = 0 still hides leading data.
+            table.scrollColumnToVisible(0)
+            self.reflectScrolledClipView(self.contentView)
+            table.copyCoordinator?.synchronizeHeaderScroll()
+        }
+    }
+}
+
 struct ResultTableView: NSViewRepresentable {
     static let clipboardType = NSPasteboard.PasteboardType("dev.dbeer.result-selection.json")
     static let nullMarker = ResultCopy.nullMarker
@@ -579,7 +611,7 @@ struct ResultTableView: NSViewRepresentable {
             tableView.rowHeight = 24
             tableView.setAccessibilityLabel("Query results")
 
-            let scrollView = NSScrollView(frame: .zero)
+            let scrollView = ResultGridScrollView(frame: .zero)
             scrollView.hasVerticalScroller = true
             scrollView.hasHorizontalScroller = true
             scrollView.autohidesScrollers = true

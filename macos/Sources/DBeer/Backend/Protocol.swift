@@ -194,12 +194,14 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     var affectedRowCountKnown: Bool?
     var nextCursor: String?
     var storageTokens: [String]?
+    var source: SQLResultSource?
 
     static func validCursor(_ value: String) -> Bool { BackendMessage.validID(value) && !value.contains("\0") }
 
     func valid(streamed: Bool = false) -> Bool {
         (nextCursor == nil || Self.validCursor(nextCursor!)) && rowCount >= 0 && displayedRowCount >= 0 &&
             Self.validStorageTokens(storageTokens, rowCount: displayedRowCount) &&
+            (source?.valid(for: columns) ?? true) &&
             (streamed ? rows.isEmpty : displayedRowCount == rows.count) &&
             columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
                 ($0.element.encoding == nil || $0.element.encoding == "base64") } &&
@@ -390,6 +392,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var columns: [ResultColumn]?
     var rows: [[String?]]?
     var storageTokens: [String]?
+    var source: SQLResultSource?
     var commandTag: String?
     var rowCount: Int64?
     var displayedRowCount: Int?
@@ -431,6 +434,11 @@ struct BackendMessage: Codable, Sendable, Equatable {
             throw BackendTransportError(.invalidMessage)
         }
         if let appliedChangeCount, !(0...1000).contains(appliedChangeCount) || !["query.result", "error"].contains(type) {
+            throw BackendTransportError(.invalidMessage)
+        }
+        let sourceColumns = streamed == true
+            ? (resultSets?.first(where: { !$0.columns.isEmpty })?.columns ?? columns ?? []) : (columns ?? [])
+        if let source, type != "query.result" || !source.valid(for: sourceColumns) {
             throw BackendTransportError(.invalidMessage)
         }
         let valid: Bool

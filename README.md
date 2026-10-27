@@ -17,7 +17,7 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
 - The tree loads on demand and provides search, Refresh, structure, definitions, Copy Name, and Generate SELECT. Double-click a table to select an existing data view or load its first 200 rows; Open in New Tab creates an independent view. Filtering and sorting run on the server; pagination uses the primary key for stable ordering without automatic COUNT queries.
 - Double-clicking an editable cell creates a local change. Insert Row, Delete Selected, Preview SQL, Apply, and Discard manage the batch. Apply uses a separate transaction and checks original rows under locks. A conflict or constraint error rolls back the entire batch. An unknown COMMIT outcome blocks another Apply until the outcome is checked and data is reloaded.
-- Arbitrary SQL, views, and tables without a primary key are read-only; MySQL editing requires InnoDB. Computed and unsupported types cannot be edited, with the reason shown in the interface.
+- Supported single-table SELECT results can open their source row by the complete primary key. Results containing every source column exactly once can stage cell updates through Preview/Apply; aliases and column order are preserved. JOIN, CTE, aggregate, UNION, computed or ambiguous results, views, and tables without a primary key stay read-only with a reason. MySQL editing requires InnoDB.
 - Copy cells, rows, and ranges with **⌘C** or the context menu. Export Loaded saves rows already received. The separate **Run to File** action executes one statement once and publishes the complete file only after successful completion.
 - **⌘O**, **⌘S**, and **⇧⌘S** open and save UTF-8 `.sql` files. Workspace changes are saved after one second of inactivity. History is enabled by default: 1,000 entries retained for 30 days. Query → SQL History can disable or clear history, or clear restored documents. Restoration never connects to a database or executes SQL.
 - Connections → Import/Export Connections transfers profiles without passwords or private keys. Import shows a preview, creates new UUIDs, and requires selecting any missing or foreign CA while preserving the TLS mode. Portable files accept POSIX, Windows drive and UNC CA hints; foreign hints require explicit local remapping.
@@ -26,6 +26,36 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. Version 1 excludes psql/mysql client commands, COPY streams, LOAD DATA LOCAL, SSH tunnels, and external plugins.
+
+## SQL result source rows and editing in the working branch
+
+For supported PostgreSQL/MySQL SELECT results, select one row and choose **Open
+Source Row** to load its complete row in a new, independent table tab. The helper
+verifies the table and column origins using server metadata and requires every
+primary-key column, including composite and binary keys. Display aliases never
+identify a source table or column. A projection containing the complete key can
+open its source row even when it omits other columns.
+
+A direct SELECT containing every table column exactly once can edit supported
+cells through the existing **Preview SQL**, **Apply**, and **Discard** controls.
+The original column order is reconstructed for conflict detection; NULL, empty
+text, exact numbers and binary retain their existing representations. SQL result
+editing supports cell updates; insert and delete remain table-tab operations.
+Apply uses a separate transaction with the existing locks, original-row checks
+and execution policy. It never reruns the captured SELECT. After success the
+result is marked stale; use Run explicitly to refresh. A conflict or unknown
+commit keeps local changes and blocks another Apply until they are discarded and
+a fresh result is loaded. Discard alone never executes SQL. Pin and export are
+unavailable while edits are pending or the result is stale.
+
+This first slice requires an idle source session and exact, roundtrippable
+original values. Temporary tables, PostgreSQL inherited/partitioned tables,
+missing or ambiguous keys, and unsupported query forms remain read-only. Types
+whose SQL output requires extra storage evidence (including contextual or lossy
+representations) use **Open Source Row** when their key is exact, then the table's
+existing safe editing workflow. An active SQL transaction is never reused or
+implicitly committed for these actions. Restored documents and offline snapshots
+do not retain source-row permissions or editing state.
 
 ## Workspace restoration in the working branch
 
@@ -863,6 +893,14 @@ scope. Applied runs record their selected paths in
 ./scripts/test-cassandra.sh  # Cassandra 4.1/5.0, plain and authentication/TLS
 ./scripts/test-cassandra.sh --version 5.0 --mode tls --multi-node  # replica failure profile
 ```
+
+The opt-in `./scripts/test-r22-ui.sh` runner checks SQL result source rows and
+editing in native windows against disposable PostgreSQL and MySQL servers. It
+exercises Run, inline cell editing, SQL preview, Apply, conflict handling and
+source-row navigation in both appearances, with exact typed fixture values.
+It requires explicitly requested UI verification, Docker and an interactive
+macOS session; screenshots are written to `build/r22-ui/`. Profiles, credentials,
+workspace state and database tables are isolated from normal application data.
 
 For small changes, select affected Swift suites or methods with `--filter` (a regular expression; the flag can be repeated). This mode skips Go tests. Theme and UI checks run only when selected by the filter. A complete Go race and Swift Testing run requires explicit `--all`; use it for cross-cutting changes and final verification. Without a mode, the script prints usage and exits without building or testing. CI runs the full suite.
 
