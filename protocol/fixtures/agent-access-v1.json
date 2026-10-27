@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "requests": [
+    {"id":"request-hello","method":"hello","clientName":"Fixture client"},
+    {"id":"request-list","method":"connections"},
+    {"id":"request-catalog","method":"catalog","profileId":"11111111-1111-4111-8111-111111111111","queryId":"22222222-2222-4222-8222-222222222222","kind":"columns","schema":"public","object":"fixture"},
+    {"id":"request-query","method":"query","profileId":"11111111-1111-4111-8111-111111111111","queryId":"33333333-3333-4333-8333-333333333333","sql":"SELECT NULL, '', 'NULL', 12345678901234567890.123456789","maxRows":100,"timeoutSeconds":30},
+    {"id":"request-cancel","method":"cancel","queryId":"33333333-3333-4333-8333-333333333333"}
+  ],
+  "responses": [
+    {"id":"request-list","ok":true,"connections":[{"id":"11111111-1111-4111-8111-111111111111","name":"Fixture","engine":"postgresql","readOnly":true}]},
+    {"id":"request-query","ok":true,"queryId":"33333333-3333-4333-8333-333333333333","results":[{"columns":[{"name":"null","type":"text"},{"name":"empty","type":"text"},{"name":"literal","type":"text"},{"name":"exact","type":"numeric"},{"name":"bytes","type":"bytea","encoding":"base64"}],"rows":[[null,"","NULL","12345678901234567890.123456789","AP8="]],"commandTag":"SELECT 1","rowCount":1,"truncated":false}]},
+    {"id":"request-cancel","ok":true,"queryId":"33333333-3333-4333-8333-333333333333"},
+    {"id":"request-denied","ok":false,"error":"This connection is not available to this agent."}
+  ]
+}

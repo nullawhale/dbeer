@@ -54,6 +54,8 @@ cp -f "$repo_root/helper/internal/mongodb/licenses/LICENSE.mongo-driver" "$app/C
 cp -f "$repo_root/helper/internal/mongodb/licenses/THIRD-PARTY-NOTICES.mongo-driver" "$app/Contents/Resources/NOTICE-mongo-driver.txt"
 cp "$repo_root/helper/third_party/cassandra-gocql-driver/LICENSE" "$app/Contents/Resources/LICENSE-cassandra-gocql-driver.txt"
 cp "$repo_root/helper/third_party/cassandra-gocql-driver/NOTICE" "$app/Contents/Resources/NOTICE-cassandra-gocql-driver.txt"
+mkdir -p "$app/Contents/Resources/MCP-Licenses"
+cp -f "$repo_root/helper/internal/mcpbridge/licenses/"* "$app/Contents/Resources/MCP-Licenses/"
 export GOCACHE="$build_root/.cache/go"
 export GOMODCACHE="$build_root/.cache/go-mod"
 export CLANG_MODULE_CACHE_PATH="$build_root/.cache/clang"

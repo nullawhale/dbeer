@@ -34,14 +34,16 @@ enum SSHConnectionReview {
         keys.forEach { cancel(profileId: $0) }
     }
 
-    static func prepare(_ settings: ConnectionSettings, client: BackendClient, ownerID: UUID? = nil) async throws {
+    static func prepare(_ settings: ConnectionSettings, client: BackendClient, ownerID: UUID? = nil, reviewID: String? = nil) async throws {
         guard let ssh = settings.ssh else { return }
-        if let review = pending[ssh.profileId], review.configuration == ssh.configuration {
+        // Agent operations isolate prompt ownership while preserving the saved profile trust identity.
+        let reviewKey = reviewID ?? ssh.profileId
+        if let review = pending[reviewKey], review.configuration == ssh.configuration {
             return try await review.task.value
         }
-        if pending[ssh.profileId] != nil {
+        if pending[reviewKey] != nil {
             if ownerID != nil { throw CancellationError() }
-            cancel(profileId: ssh.profileId)
+            cancel(profileId: reviewKey)
         }
         let reviewId = UUID()
         let task = Task { @MainActor in
@@ -61,8 +63,8 @@ enum SSHConnectionReview {
                     alert.alertStyle = .warning
                     alert.addButton(withTitle: "Cancel")
                     alert.addButton(withTitle: key.status == "changed" ? "Replace Key and Connect" : "Trust and Connect")
-                    alerts[ssh.profileId] = alert
-                    defer { if alerts[ssh.profileId] === alert { alerts[ssh.profileId] = nil } }
+                    alerts[reviewKey] = alert
+                    defer { if alerts[reviewKey] === alert { alerts[reviewKey] = nil } }
                     guard await present(alert) == .alertSecondButtonReturn else { throw CancellationError() }
                     try Task.checkCancellation()
                     reply = try await client.request(.sshTrust(settings, token: token, replace: key.status == "changed"))
@@ -71,8 +73,8 @@ enum SSHConnectionReview {
             }
             throw BackendTransportError(.invalidMessage)
         }
-        pending[ssh.profileId] = Review(id: reviewId, ownerID: ownerID, configuration: ssh.configuration, task: task)
-        defer { if pending[ssh.profileId]?.id == reviewId { pending[ssh.profileId] = nil } }
+        pending[reviewKey] = Review(id: reviewId, ownerID: ownerID, configuration: ssh.configuration, task: task)
+        defer { if pending[reviewKey]?.id == reviewId { pending[reviewKey] = nil } }
         try await task.value
     }
 

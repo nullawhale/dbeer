@@ -31,6 +31,12 @@ struct DBeerApp: App {
                 AppearanceSettingsView(appearance: appDelegate.appearance, editorThemes: appDelegate.editorThemes)
                     .tabItem { Label("Appearance", systemImage: "paintpalette") }
                 if let workspace = appDelegate.workspace {
+                    if let agents = appDelegate.agents {
+                        AgentAccessSettingsView(coordinator: agents, brokerError: appDelegate.agentBrokerError,
+                            revoke: { await appDelegate.revokeAgent($0) })
+                            .applicationTheme(appearance: appDelegate.appearance)
+                            .tabItem { Label("Agents", systemImage: "person.badge.key") }
+                    }
                     ResultCopySettingsView(settings: workspace.copySettings)
                         .applicationTheme(appearance: appDelegate.appearance)
                         .tabItem { Label("Copying", systemImage: "doc.on.doc") }
@@ -141,12 +147,15 @@ private struct WorkspaceCommands: Commands {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let appearance: AppAppearance
     let editorThemes: EditorThemeStore
     let buttonFocusPolicy = NativeButtonFocusPolicy()
     let model: WorkspaceModel
     let workspace: ApplicationWorkspace?
+    let agents: AgentAccessCoordinator?
+    @Published private(set) var agentBrokerError: String?
+    private var agentBroker: AgentSocketBroker?
     private let terminationReply: (@MainActor (Bool) -> Void)?
     private var hasStarted = false
     private var isTerminating = false
@@ -164,6 +173,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.editorThemes = workspace?.editorThemes ?? EditorThemeStore()
         self.appearance = workspace?.appearance ?? AppAppearance(editorThemes: self.editorThemes)
         self.terminationReply = terminationReply
+        if let workspace {
+            self.agents = AgentAccessCoordinator(profiles: { [weak workspace] in workspace?.library.savedConnections ?? [] },
+                settings: { [weak workspace] profile in try await workspace?.agentConnectionSettings(profile) },
+                approve: { name, profiles in await AgentAccessApproval.present(clientName: name, profiles: profiles) },
+                confirm: AgentAccessApproval.confirm)
+        } else { self.agents = nil }
         super.init()
     }
 
@@ -178,10 +193,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = await StartupConnection.load(arguments: CommandLine.arguments)
         if let workspace { await workspace.start(startupConnection: settings) }
         else { await model.start(startupConnection: settings) }
+        if let agents, !isTerminating {
+            let broker = AgentSocketBroker(onRequest: { [weak agents] id, request in
+                guard let agents else { return AgentResponse(id: request.id, ok: false, error: "DBeer is shutting down.") }
+                return await agents.handle(clientID: id, request: request)
+            }, onDisconnect: { [weak agents] id in await agents?.disconnect(clientID: id) })
+            do { try broker.start(); agentBroker = broker }
+            catch { agentBrokerError = "Local agent access could not start. Close other DBeer instances and restart the app." }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func revokeAgent(_ id: UUID) async {
+        agentBroker?.disconnect(clientID: id)
+        await agents?.revoke(clientID: id)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -195,6 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     else { sender.reply(toApplicationShouldTerminate: false) }
                     return
                 }
+                agentBroker?.stop(); agentBroker = nil
+                await agents?.shutdown()
                 await workspace.shutdown()
             }
             else { await model.shutdown() }

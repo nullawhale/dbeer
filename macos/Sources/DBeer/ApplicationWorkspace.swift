@@ -822,6 +822,24 @@ final class ApplicationWorkspace: ObservableObject {
         }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true })
     }
 
+    func agentConnectionSettings(_ profile: SavedConnection) async throws -> ConnectionSettings? {
+        guard profile.passwordCommand == nil,
+              library.savedConnections.contains(profile) else { return nil }
+        let password = try await credentialStore.password(for: profile.id) ?? ""
+        var settings = profile.settings(password: password)
+        if var ssh = settings.ssh {
+            if ssh.authMethod == .password {
+                guard let secret = try await credentialStore.secret(for: profile.id, purpose: .sshPassword) else { return nil }
+                ssh.password = secret
+            } else if ssh.authMethod == .privateKey {
+                ssh.passphrase = try await credentialStore.secret(for: profile.id, purpose: .sshPassphrase)
+            }
+            settings.ssh = ssh
+        }
+        guard library.savedConnections.contains(profile) else { return nil }
+        return settings
+    }
+
     func dismissDataComparison() {
         guard let model = dataComparison else { return }
         model.dismissPlan()

@@ -2,11 +2,35 @@
 
 ## Unreleased
 
+## 0.2.0 — build 9 — 2026-10-27
+
+This release targets the native macOS client and bundled Go helper. Earlier
+0.2.0 prerelease tags and archives remain unchanged; Windows/Linux GPUI candidates
+are outside this release.
+
+- Add padding and a Select All checkbox to agent profile approval. Bulk selection
+  selects profiles without enabling write permissions.
+
+- Keep the Agents settings tab available from application initialization, without
+  waiting for asynchronous workspace or helper startup.
+
+- Add local MCP agent access to approved PostgreSQL/MySQL profiles through the
+  official Go SDK and stdio. Approve each client in DBeer for its current session,
+  with reading as the default and separate write permission. Agent operations
+  use independent bounded sessions and existing readonly/production/confirmation
+  policies. Settings supports access revocation and a bounded session activity
+  journal containing identifiers and outcomes without SQL, results or secrets.
+  Cancellation and revocation remain available under result backpressure.
+  Permission dialogs distinguish duplicate profile names by server, database,
+  account, environment and profile identifier, keep long lists scrollable, and
+  refuse concurrent nested prompts. Native keyboard cancellation and accessible
+  per-client revocation are covered by PostgreSQL/MySQL UI acceptance.
+
 - Show a clear execution rejection when SQL or its connection changes during
   initial connection setup, marking the captured statements as not executed.
-- Distinguish the existing local build 8 archive from implemented working-branch
-  features in the product and installation documentation. User interviews are
-  optional research and do not block native macOS development or acceptance.
+- Document the complete 0.2.0/build 9 release and preserve the earlier build 8
+  prerelease as a separate immutable archive. User interviews are optional
+  research and do not block native macOS development or acceptance.
 - Add an opt-in archive-to-current-app update acceptance mode with immutable
   archive checks, signed candidate identity, migration backups, disconnected
   restoration and existing Keychain credential checks, without packaging a new ZIP.
@@ -302,8 +326,8 @@
   TLS continues verifying the original database identity. PostgreSQL/MySQL
   cancellation and Cassandra node connections use the same SSH transport;
   Cassandra SSH contact points currently require numeric IP addresses.
-- Native profile storage advances to v4, portable profiles to v3 and the native
-  app/helper protocol to v5. Existing profiles migrate with SSH disabled.
+- Native profile storage uses v5, portable profiles v3, workspace storage v10
+  and native app/helper protocol v5. Existing profiles migrate with SSH disabled.
   Windows/Linux GPUI compatibility remains deferred.
 
 ## 0.2.0 prerelease — build 8 — 2026-10-20

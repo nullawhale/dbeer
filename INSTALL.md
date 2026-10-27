@@ -1,21 +1,17 @@
-# Installing an internal DBeer build
+# Installing DBeer
 
 DBeer requires macOS 14+ on Apple Silicon. Running a packaged application does not require Go, Swift, or the source code.
 
-The existing prerelease is **0.2.0, build 8**, for the native macOS client
-and bundled Go helper. It includes PostgreSQL, MySQL and Apache Cassandra support.
-The numeric application version is 0.2.0; this archive remains a prerelease.
-Installed-archive update acceptance for this version is pending. The earlier
-0.1.0 acceptance results below apply only to those older archives.
-The full local Go race and native Swift runners completed successfully for build 8;
-native database integration cases without configured fixtures were skipped.
-Earlier intermittent editor completion and signature-help failures remain tracked.
+The current release is **0.2.0, build 9**, for the native macOS client and bundled
+Go helper. It supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0
+and MongoDB 8.0. It also includes local MCP access for PostgreSQL/MySQL. Earlier
+prerelease archives remain unchanged. Homebrew installation is not available.
 
-1. Obtain the ZIP archive and its `.sha256` file from [the build 8 prerelease](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8) or directly from the project owner. In Terminal, change to the download directory and run `shasum -a 256 -c DBeer-<version>-<build>-macos-arm64.zip.sha256`, substituting the downloaded filename. The result must be `OK`.
+1. Obtain the ZIP archive and its `.sha256` file from [the 0.2.0 release](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.9) or directly from the project owner. In Terminal, change to the download directory and run `shasum -a 256 -c DBeer-<version>-<build>-macos-arm64.zip.sha256`, substituting the downloaded filename. The result must be `OK`.
 2. Extract the ZIP and move `DBeer.app` to `Applications`. When updating, quit the running DBeer instance before replacing the application.
 3. Open DBeer. If macOS blocks a trusted internal build, attempt to open it once, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. Follow [Apple's official instructions](https://support.apple.com/en-us/102445). Do not disable application checks system-wide.
-4. Open **Connections → Import Connections…**, review the profiles, and select a local CA if needed; alternatively, create a profile with **⌘N**. PostgreSQL 16/17/18, MySQL 8.0/8.4 and Cassandra 4.1/5.0 are supported. Enter your password in the profile editor. Use `verify-full` and a trusted CA for certificate verification. The password is stored in the local Keychain and excluded from profile exports.
-5. Connect the profile, create a SQL tab (**⌘T**), and execute `SELECT 1` (**⌘Return**). Double-click a table to open its data. Grid changes reach the database only after **Apply**.
+4. Open **Connections → Import Connections…**, review the profiles, and select a local CA if needed; alternatively, create a profile with **⌘N**. PostgreSQL 16/17/18, MySQL 8.0/8.4, Cassandra 4.1/5.0 and MongoDB 8.0 are supported. Enter your password in the profile editor. Use `verify-full` and a trusted CA for certificate verification. The password is stored in the local Keychain and excluded from profile exports.
+5. For PostgreSQL/MySQL, connect the profile, create a SQL tab (**⌘T**), and execute `SELECT 1` (**⌘Return**). Double-click a table to open its data. Grid changes reach the database only after **Apply**. MongoDB uses JSON find/aggregation requests; see [the MongoDB guide](README.md#mongodb).
 
 Normal updates preserve profiles and passwords in the user directory and Keychain. Updates must come from the same owner with persistent application and helper signatures. A certificate change may cause macOS to request access to an existing password. Do not install temporarily signed CI builds over the working application.
 
@@ -32,23 +28,31 @@ content/signature verification. This mode creates no release ZIP and does not
 change the owner's installed app or existing archives. Details and commands are
 in [the acceptance guide](macos/AcceptanceTests/README.md).
 
-The 0.2.0 prerelease migrates profiles to format v3 with environment and readonly settings. The first load of v1/v2 creates `connections.json.v1.backup` or `connections.json.v2.backup` containing the original bytes, preserves UUIDs and access to the same Keychain entries, and replaces the file atomically. Unknown versions and corrupt files are not overwritten. Profile export v2 includes environment and readonly, while legacy v1 imports remain compatible. The application and bundled helper must both use protocol v4; incompatible helpers are rejected during the handshake. These changes do not rename or replace existing 0.1.0 archives.
+DBeer 0.2.0/build 9 uses profile format v5, portable profile format v3, workspace
+format v10 and native app/helper protocol v5. Install the complete application;
+mixing it with an older helper fails the handshake. Migration preserves profile
+UUIDs and access to the same database Keychain entries, writes exact private
+backups before replacing older storage, and refuses unknown versions or corrupt
+files. Profiles without SSH settings migrate with SSH disabled; existing SSH
+settings are preserved. SSH passwords and key passphrases have separate Keychain entries. Profile imports exclude secrets and
+SSH trust, and key authentication requires local key-file selection. Portable
+profiles also exclude local password commands. Restored SQL tabs, table views and
+investigation blocks remain disconnected until an explicit user action.
 
-The working branch uses profile format v5, portable profile format v3, workspace
-format v10 and native app/helper protocol v5. It adds optional SSH tunneling,
-dynamic password commands, MongoDB, expanded workspace persistence and result
-workflows. Rebuild the complete app;
-mixing it with an older helper fails the handshake. Existing profiles preserve
-their UUIDs and database Keychain credentials and default to SSH disabled. SSH
-passwords and key passphrases have separate Keychain entries. Profile imports
-exclude secrets and SSH trust, and key authentication requires local key-file
-selection. Portable profiles also exclude local password commands. Restored SQL,
-table views and investigation blocks remain disconnected until an explicit user
-action. These changes do not modify the existing build 8 release archive. MongoDB
-and the other working-branch additions require a current complete build and are
-not installation features of that older archive.
+For Codex/MCP, keep DBeer running and use
+`/Applications/DBeer.app/Contents/Helpers/dbeer-core` with argument `--mcp`
+(adjust the application location if needed). The first tool call requests
+profile-specific session permission in DBeer; reading is the default and writes
+require separate approval. **Settings → Agents** lists active clients, supports
+revocation and shows the bounded session activity journal. Password-command
+profiles are unavailable to agents. See [Codex setup and MCP limits](README.md#local-mcp-agent-access).
 
-Readonly in the 0.2.0 prerelease rejects writes and unknown SQL/CQL in the helper. PostgreSQL/MySQL also enable server-side read-only mode; Cassandra uses local assessment. Enforce strict write restrictions with database user permissions: read-only mode does not replace server restrictions and has exceptions for temporary tables. Changing environment or readonly in the profile editor requires the normal session shutdown workflow; active transactions are never silently completed.
+Readonly rejects writes and unknown SQL/CQL in the helper. PostgreSQL/MySQL also
+enable server-side read-only mode; Cassandra and MongoDB use local assessment.
+Enforce strict write restrictions with database user permissions: read-only mode
+does not replace server restrictions and has exceptions for temporary tables.
+Changing environment or readonly in the profile editor requires the normal
+session shutdown workflow; active transactions are never silently completed.
 
 Production confirmation uses a structural assessment of the operation. Views, overloaded built-in functions, custom casts, and operators can hide writes. The client does not promise to detect every such effect; restrict write access, temporary tables, and dangerous function execution in the database.
 

@@ -14,6 +14,7 @@ import (
 	"dbeer/helper/internal/cassandra"
 	"dbeer/helper/internal/comparisonjob"
 	"dbeer/helper/internal/datacomparisonjob"
+	"dbeer/helper/internal/mcpbridge"
 	"dbeer/helper/internal/mongodb"
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
@@ -555,6 +556,12 @@ func runCommand(args []string, input io.Reader, output io.Writer, rawIdentity, v
 		return err
 	}
 	for _, argument := range args {
+		if strings.HasPrefix(argument, "--mcp") {
+			if len(args) != 1 || argument != "--mcp" {
+				return errors.New("Use --mcp without additional arguments.")
+			}
+			return mcpbridge.Run(input, output)
+		}
 		if strings.HasPrefix(argument, "--build-info") {
 			if len(args) != 1 || argument != "--build-info" {
 				return productidentity.ErrInvalid

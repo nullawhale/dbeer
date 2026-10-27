@@ -1,14 +1,13 @@
 # DBeer
 
-A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0 in the working branch.
+A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0.
 
-This README describes the working branch. The existing **0.2.0/build 8** archive
-is an earlier prerelease; rebuilding with the same version metadata does
-not update that archive. MongoDB, SQL result editing, synchronization SQL plans,
-snapshots, investigations, and the expanded workspace are implemented in source
-and await a separate packaged release. The existing prerelease ZIP and SHA256 are
-available from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8).
-Homebrew installation is not available.
+The current macOS release is **0.2.0, build 9**. Download the signed application
+ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.9)
+and follow [the installation instructions](INSTALL.md). This release includes
+MongoDB, SQL result editing, synchronization SQL plans, snapshots, investigations,
+the expanded workspace, and local MCP agent access. Earlier prerelease archives,
+including build 8, remain unchanged. Homebrew installation is not available.
 
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
 
@@ -33,9 +32,9 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
-The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. The original version 1 scope excluded psql/mysql client commands, COPY streams, LOAD DATA LOCAL, SSH tunnels, and external plugins. SSH is now implemented in the working branch; the other exclusions remain.
+The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, and MySQL DELIMITER. SSH tunneling and local MCP agent access are supported. psql/mysql client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
-## SQL result source rows and editing in the working branch
+## SQL result source rows and editing
 
 For supported PostgreSQL/MySQL SELECT results, select one row and choose **Open
 Source Row** to load its complete row in a new, independent table tab. The helper
@@ -65,7 +64,7 @@ existing safe editing workflow. An active SQL transaction is never reused or
 implicitly committed for these actions. Restored documents and offline snapshots
 do not retain source-row permissions or editing state.
 
-## MongoDB in the working branch
+## MongoDB
 
 MongoDB uses the [official Go driver](https://www.mongodb.com/docs/drivers/go/current/).
 Choose MongoDB when creating a profile. General accepts comma-separated seed
@@ -116,7 +115,7 @@ Restored tabs remain disconnected and restart from their first page on explicit
 Load Data. MongoDB schema and live table-data comparison are not supported;
 saved BSON results can use exact snapshot comparison.
 
-## Workspace restoration in the working branch
+## Workspace restoration
 
 DBeer restores SQL, table/view, snapshot and investigation tabs in their saved
 panes and order, with each pane's selection, titles, SQL text and original
@@ -148,8 +147,7 @@ Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
 Unknown document kinds, malformed state and future workspace versions are left
-unchanged. These changes require rebuilding the native app and are not part of
-the existing build 8 archive.
+unchanged.
 
 **File → Reopen Closed Tab** (**⇧⌘T**) returns the most recently closed SQL,
 table/view, snapshot or investigation tab, including when no tabs remain open.
@@ -168,7 +166,7 @@ require choosing a replacement. Rebind or clear the shortcut in **Settings →
 Shortcuts**. The closed-tab list is cleared on application exit and by a successful
 **Clear Drafts** action; it is never written to workspace storage.
 
-## Split working panes in the working branch
+## Split working panes
 
 The workspace starts with one pane. A tab's context menu offers **Split Left**,
 **Split Right**, **Split Up** and **Split Down**. A fresh SQL tab opens in a new
@@ -210,7 +208,7 @@ document, and toolbar actions address the pane containing the clicked control.
 Previous/Next Tab cycles within the active pane. Pane placement, selections,
 active pane and divider width survive restart without reconnecting to a server.
 
-## Investigation documents in the working branch
+## Investigation documents
 
 Open **Investigations** from the left strip (**⌘4** by default) to create or
 reopen a local document in its own sidebar panel.
@@ -242,7 +240,7 @@ Storage accepts up to 4,096 documents and 4,096 blocks per document, with at mos
 SQL execution retains the normal query-size checks. Failed writes preserve the
 previous library and leave current edits available for retry.
 
-## PostgreSQL types in the working branch
+## PostgreSQL types
 
 Expand a connected PostgreSQL profile's schema to find separate **Enums** and
 **User-defined Types** groups. Open a type there or from search, or choose
@@ -274,7 +272,7 @@ SQL before execution and refresh metadata afterward. A newly added enum value
 cannot be used until its transaction commits. Enum value deletion and reordering
 are not generated; extension-owned or derived types can have further limits.
 
-## SQL folders and files in the working branch
+## SQL folders and files
 
 **Attach Folder…** in the SQL Folders sidebar adds an existing local folder.
 Directories load as expanded and show `.sql` files; search matches names,
@@ -302,7 +300,7 @@ destination stops the save. A failed race recovery reports any preserved
 external file and offers to open its bytes as a separate draft. These references
 survive workspace restoration. Cancelling or failing a save keeps the draft.
 
-## Shared SQL library in the working branch
+## Shared SQL library
 
 Choose **Library** beside **Files** in the SQL sidebar to index an existing
 `.sql` file. **Add to SQL Library…** is also available on file rows and in an
@@ -331,7 +329,7 @@ view. Workspace restoration keeps the index, groups and view bindings disconnect
 with an exact private backup before migrating v5. Restoring or editing library
 metadata does not connect or execute SQL.
 
-## Independent table views in the working branch
+## Independent table views
 
 **Open Data** selects an already open view of that table without resetting its
 filters, page or pending changes. **Open in New Tab**, available in the catalog
@@ -357,7 +355,7 @@ successfully. Navigation history stays in memory; workspace restoration saves th
 current location and remains disconnected until explicit Load Data. Cassandra
 supports independent views but has no foreign keys.
 
-## Table data comparison in the working branch
+## Table data comparison
 
 Use **Connections → Compare Table Data…** to select one source and target table
 on saved PostgreSQL, MySQL or Cassandra profiles with the same engine. Enter exact schema
@@ -408,7 +406,7 @@ Captures are transient and are not saved result snapshots. Comparison performs
 no database writes. PostgreSQL/MySQL captures can produce an explicitly requested
 synchronization SQL plan as described below.
 
-## Schema comparison in the working branch
+## Schema comparison
 
 Use **Connections → Compare Schema Structure…**, choose explicit source and
 target profiles with the same engine, and map their schema names. Opening or
@@ -449,7 +447,7 @@ captures fail explicitly at bounded node/member/scalar/storage limits. Only a
 complete comparison can say **Selected table structure matches**. SQL planning is
 a separate explicit action; comparison never applies migration SQL.
 
-## Synchronization SQL plans in the working branch
+## Synchronization SQL plans
 
 After a PostgreSQL or MySQL schema or table-data comparison finishes, choose
 **Generate SQL Plan**. Review the captured source → target direction, operation
@@ -494,7 +492,7 @@ Run the reviewed SQL explicitly through the ordinary editor and execution policy
 Captures are historical; concurrent changes can invalidate a plan. Execution can
 finish partially, and DDL has no portable global rollback.
 
-## Type coverage in the working branch
+## Type coverage
 
 Type support is checked separately for metadata, value capture and writes:
 
@@ -556,7 +554,7 @@ Generated columns, missing keys and permissions retain their existing limits.
 Cassandra conditional grid editing retains its scalar, single-partition limits;
 complex values, counters and durations remain available through explicit CQL.
 
-## Value inspector in the working branch
+## Value inspector
 
 SQL results and table grids include a resizable **Value Inspector** beside the
 grid. Select a cell and use the arrow keys to inspect adjacent values without
@@ -576,7 +574,7 @@ source text. Search highlights up to 10,000 matches. Inspection never executes
 SQL, connects to a server or changes pending grid edits; use the existing cell
 editor and Preview/Apply workflow to make changes.
 
-## Result copying in the working branch
+## Result copying
 
 Copy cells, rows or ranges as TSV, CSV, JSON, Markdown or SQL INSERT. Ordinary
 **⌘C** defaults to TSV without headers; **Settings → Copying** changes the default
@@ -605,10 +603,9 @@ are hexadecimal UTF-8 expressions independent of SQL mode. PostgreSQL rejects
 text containing a zero byte. INSERT copy is limited to 1,000 rows, 4,096 columns,
 100,000 cells and 8 MiB of input or generated SQL. Copying never fetches additional
 rows or reruns a query. Delayed work preserves a newer copy or external clipboard
-change. These changes require rebuilding the matching app and helper and are not
-included in the existing build 8 archive.
+change.
 
-## SQL history in the working branch
+## SQL history
 
 Query → SQL History records each executed statement once after it finishes,
 including individual script statements. Skipped statements and commands rejected
@@ -648,10 +645,9 @@ stops new history entries and keeps existing history and favorites.
 
 History uses versioned workspace storage, currently v10. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9 files
 receive exact backups before migration; older entries retain their original
-outcome text and show unavailable execution details rather than inferred values. These working-branch changes are
-not included in the existing build 8 archive.
+outcome text and show unavailable execution details rather than inferred values.
 
-## Result snapshot storage in the working branch
+## Result snapshot storage
 
 Use **Pin Result** on a completed result to retain the selected result set and
 its original SQL, capture time, profile, environment and outcome. Partial or
@@ -682,7 +678,7 @@ cleans incomplete temporary writes. Deletion requires confirmation, including
 notice of any investigation documents using the artifact. Credentials and
 connection secrets are excluded from snapshot metadata.
 
-## Result comparison in the working branch
+## Result comparison
 
 In **Query → Result Snapshots…**, choose **Compare Snapshots** and select two
 saved artifacts. Explicitly choose a key or saved row order, then map the columns
@@ -707,7 +703,7 @@ files. Each job has an **8 GiB** temporary limit; at most two jobs can be retain
 by a helper. Stop, closing the comparison and helper shutdown release temporary
 files. Disk or quota failures leave saved snapshots intact.
 
-## Dynamic database passwords in the working branch
+## Dynamic database passwords
 
 In **General → Authentication**, choose **CLI command** as the password source.
 Enter an absolute executable path and its arguments as a JSON array of strings,
@@ -741,7 +737,7 @@ imported profiles use Keychain until a local CLI is configured again. Existing
 profiles continue using Keychain. Connection-library v5 preserves private
 migration backups and prevents older clients from silently dropping CLI settings.
 
-## SSH tunnels in the working branch
+## SSH tunnels
 
 Enable **SSH Tunnel** in a connection profile and enter the bastion host, SSH
 port and SSH user. Choose **SSH Agent**, **Private Key**, or **Password**. Select
@@ -811,17 +807,16 @@ Profile export omits the local configuration path and all configuration contents
 an imported alias uses the receiving Mac's local configuration only after an
 explicit connection. Saving, importing and restoring do not evaluate that config.
 
-These working-branch features are not part of the existing build 8 archive.
-Rebuild the native app with its matching protocol v5 helper (`sshConfigV1` is
-required for configuration mode); Windows/Linux GPUI SSH support is deferred.
+The native app uses its matching protocol v5 helper (`sshConfigV1` is required
+for configuration mode); Windows/Linux GPUI SSH support is deferred.
 
-## Next release changes
+## Execution commands and safety
 
 The Query menu, execution buttons, and keyboard share a command registry for the active document. Default shortcuts are preserved: **⌘Return** runs the selection or current statement, and **⇧⌘Return** runs the entire script. The Run fragment is highlighted inside the editor and updates with cursor or selection changes. A cursor immediately after `;` still belongs to the completed statement.
 
 DBeer → Settings → Shortcuts configures connection creation, import/export and search; SQL tabs, files and folders; SQL history; execution; and Copy as commands. **⇧⌘[** and **⇧⌘]** select the previous and next tab, wrapping at either end. Existing New/Open/Save defaults are preserved. Close Tab, history, folder actions and connection import/export are initially unassigned; Close Tab uses the usual transaction and pending-edit review. Assignments can be cleared or restored and persist between launches; conflicts and protected editing shortcuts are rejected. Commands respect focus and the active tab; settings windows, dialogs, and typing in other text fields never launch SQL.
 
-The working branch adds unset, development, staging, and production environments and a separate readonly setting. These changes are not yet included in the published 0.1.0 archive. The environment appears as text and color in the profile, SQL tab, and confirmation. The profile editor first routes open sessions through normal transaction completion; Cancel preserves the previous context.
+Profiles support unset, development, staging, and production environments and a separate readonly setting. The environment appears as text and color in the profile, SQL tab, and confirmation. The profile editor first routes open sessions through normal transaction completion; Cancel preserves the previous context.
 
 Execute, scripts, Run to File, and Apply share one helper policy: destructive and unrecognized commands require confirmation in every environment, and production confirms every write. Multi-statement runs, including editor selections, show the entire batch before the first statement. Approval is tied to the exact SQL or typed changes and the current session; edits, errors, Stop, and reconnection prevent reusing any remaining approval.
 
@@ -829,13 +824,13 @@ Readonly rejects writes and unknown constructs before reaching the adapter and d
 
 Assessment follows SQL structure and a limited list of built-in functions for each engine. Production confirmation applies to operations classified as writes or unknown commands. Views, custom overloads of built-in names, casts, and operators can hide side effects; the client does not fully resolve server objects and types. Server-side readonly blocks ordinary writes to permanent tables, but database permissions must restrict server-allowed temporary-table exceptions and function execution.
 
-## SQL editor in the next release
+## SQL editor and completion
 
 Completion search matches parts of a name: `oi` finds `order_items` and `OrderItems`, while `items` matches the second word. Minor typos are tolerated: `ordres` finds `orders`. Among candidates of comparable match quality, columns in the current query and CTEs rank above general functions and keywords. Exact names take priority, and typo corrections follow ordinary matches. Typo correction is disabled for queries of one or two letters.
 
 Matching parts of each name are highlighted with bold text and theme colors: for `oi`, the `o` and `i` in `order_items` are highlighted. Highlighting follows the actual match, including typo alignment, and updates when the selected row or theme changes.
 
-The editor in the working branch has increased internal padding and line spacing, current-line highlighting, and line numbers with an active-line indicator. Syntax, cursor, and selection colors adapt to light and dark themes; execution highlighting is preserved.
+The editor has increased internal padding and line spacing, current-line highlighting, and line numbers with an active-line indicator. Syntax, cursor, and selection colors adapt to light and dark themes; execution highlighting is preserved.
 
 A green checkmark beside the first line number marks a successfully executed SQL statement. Scripts mark every completed statement; errors, cancellation, and unknown outcomes are not marked. Editing text, changing the connection profile, or starting another run clears previous marks.
 
@@ -849,7 +844,7 @@ Function signatures appear above the caret while typing inside a call, with para
 
 JSONC can contain comments and trailing commas. Local `include` files and `tokenColors` references to `.tmTheme` resolve within the selected scheme's directory and its subdirectories. Import saves a standalone local copy in `~/Library/Application Support/DBeer/EditorThemes/themes.json`; source files are no longer needed. Available VS Code UI colors style the application, with missing colors derived from the editor palette for readability. **Remove Theme** removes only imported schemes and returns the editor to automatic selection; if the scheme is selected for the application, it returns to the previous System/Lager/Porter appearance. Built-in schemes cannot be removed. Importing and switching themes never executes SQL or connects to a database. Format references: [VS Code](https://code.visualstudio.com/api/extension-guides/color-theme), [TextMate](https://www.sublimetext.com/docs/color_schemes_tmtheme.html), [JetBrains](https://www.jetbrains.com/help/idea/configuring-colors-and-fonts.html).
 
-After an explicit connection, a separate service session loads table, view, function, column, foreign-key, and function-signature metadata in background batches; tree expansion is optional. Profile Refresh replaces stale metadata. The completion engine never connects to a database or executes SQL; restored tabs remain disconnected. All SQL completion rules live in [`helper/internal/sqlcomplete`](helper/internal/sqlcomplete/README.md), while LSP transport and native presentation remain separate. Complex expression outputs need explicit aliases; completion does not infer types or foreign keys through arbitrary derived expressions. The helper ships with the application and needs no third-party tools. Diagnostics identify unclosed strings, comments, and parentheses; they do not replace server-side SQL validation. If the language server is unavailable, normal editing, execution, and basic completion remain available. These changes are not yet included in the published 0.1.0 archive.
+After an explicit connection, a separate service session loads table, view, function, column, foreign-key, and function-signature metadata in background batches; tree expansion is optional. Profile Refresh replaces stale metadata. The completion engine never connects to a database or executes SQL; restored tabs remain disconnected. All SQL completion rules live in [`helper/internal/sqlcomplete`](helper/internal/sqlcomplete/README.md), while LSP transport and native presentation remain separate. Complex expression outputs need explicit aliases; completion does not infer types or foreign keys through arbitrary derived expressions. The helper ships with the application and needs no third-party tools. Diagnostics identify unclosed strings, comments, and parentheses; they do not replace server-side SQL validation. If the language server is unavailable, normal editing, execution, and basic completion remain available.
 
 ## Apache Cassandra
 
@@ -1088,26 +1083,108 @@ even when version/build metadata match. It uses isolated data and new fixture
 credentials; it does not update the owner's installed app or certify a future
 release ZIP. See [acceptance details](macos/AcceptanceTests/README.md).
 
-## Internal release
+## Local MCP agent access
 
-After verification on the owner's machine, run `./scripts/package-release.sh`. It builds the application with the persistent signature, verifies signing, and creates `build/releases/DBeer-<version>-<build>-macos-arm64.zip` and .zip.sha256. The archive includes the [license](LICENSE), changelog and [installation instructions](INSTALL.md). Existing releases are not overwritten, CI signatures are rejected, and nothing is published.
+To connect Codex, keep DBeer running and register its local MCP server:
 
-The existing macOS prerelease is **0.2.0, build 8**, available with its checksum
-from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8).
-It uses the native SwiftUI/AppKit client and bundled Go helper; Windows/Linux GPUI
-candidates are outside this release. Packaging creates local files and does not
-publish a GitHub release.
+```sh
+codex mcp add dbeer -- /Applications/DBeer.app/Contents/Helpers/dbeer-core --mcp
+```
 
-The previous **0.1.0** internal release passed installation and update acceptance from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived that release's required second-Mac check. This evidence does not cover the 0.2.0 prerelease. Finder/Gatekeeper and installation on a clean second device have not been verified.
+Restart Codex, then ask: “Through DBeer, show the available connections.” Approve
+the profiles in DBeer; access defaults to read-only, with write permission selected
+separately. Revoke access in **Settings → Agents**. Adjust the application path if
+DBeer is installed elsewhere. Codex desktop and CLI share this configuration.
 
-The existing 0.2.0/build 8 archive includes execution safety, grid copying and
-editing, contextual SQL completion, themes, and native Cassandra support. The
-working branch additionally implements result snapshots, SQL folders and library,
-investigations, schema/data comparison, SQL result editing, PostgreSQL/MySQL
-synchronization SQL plans, and MongoDB. These additions do not modify the existing
-archive. Windows/Linux contributions are welcome outside the release roadmap.
-MCP and expanded CQL language assistance remain future work. Public overview
-sources: [dbeer-landing](https://github.com/nullawhale/dbeer-landing).
+DBeer uses the official [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
+over stdio. For other MCP clients, configure this executable and argument:
+
+```json
+{
+  "mcpServers": {
+    "dbeer": {
+      "command": "/Applications/DBeer.app/Contents/Helpers/dbeer-core",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+The first tool call asks for permission inside DBeer. Select individual
+PostgreSQL/MySQL profiles; all start unselected. Reading is the default. Each
+profile has a separate write checkbox, and a profile's existing readonly policy
+cannot be relaxed by an agent grant. Client names are self-reported labels.
+The dialog identifies each profile's server, database, account, environment and
+stable identifier. Return/Escape deny access, and another prompt cannot be nested
+inside an existing permission or operation review.
+Grants last for the current client connection and application session. Review
+active clients or revoke access in **Settings → Agents**. Restarting a client
+requires fresh approval; restored documents never establish an agent grant.
+
+The tools are `dbeer_connections` (approved profile identifiers and labels),
+`dbeer_catalog` (schemas, tables and columns), `dbeer_query` and `dbeer_cancel`.
+Queries use a fresh client-chosen `queryId` UUID so a concurrent cancel call can
+target them. Cancellation retires that identifier in the current client's
+namespace even if the query is still queued, preventing late execution. Repeated
+cancellation succeeds and reveals nothing about other clients' operations.
+Each operation opens an independent database session and closes it
+after completion; GUI tabs and their transactions are independent. Queries
+accept one assessed statement, return at most 1,000 rows (default 100), use a
+1–60 second deadline (default 30), and cap the encoded native broker payload at
+1 MiB. The MCP envelope also includes the SDK's text fallback and structured
+content, so its total encoded size is larger. The MCP
+SQL input limit is 96 KiB, subject to the 128 KiB encoded request limit. SQL NULL,
+empty strings, text `NULL`, exact numeric strings and base64 binary cells remain
+distinct. Omitted rows are marked truncated; individual cell values are never
+shortened. Catalog listings are bounded and do not offer arbitrary helper calls.
+
+Write grants retain the existing execution policy: dangerous/unknown operations
+and production writes require an exact operation preview and confirmation inside
+DBeer. Revocation rejects new work, cancels active operations and closes owned
+sessions. Cancellation or a lost connection can leave a submitted write with an
+unknown outcome; check it before retrying. Database permissions remain the strict
+boundary for hidden side effects and temporary objects, as with ordinary readonly
+profiles.
+
+The private owner-only Unix socket accepts only the same local user. MCP exposes
+no credentials, arbitrary filesystem access, exports, CLI providers or password
+commands. Configure SSH passwords/passphrases in DBeer first; agent operations do
+not prompt for missing secrets. **Settings → Agents** keeps the latest 200 session
+activity entries with client/profile identifiers, time, permission, outcome and
+response size. This in-memory journal resets on quit and contains no SQL, results
+or credentials. An app that is closed or unavailable produces a clear tool error.
+
+Explicit native UI acceptance with disposable PostgreSQL/MySQL fixtures runs via
+`./scripts/test-r04-ui.sh`. It exercises production permission/confirmation dialogs
+and Settings controls in both appearances, real stdio MCP cancellation/revocation
+under blocked output, and focused agent regressions. The runner opens and captures
+only its own test windows and requires the usual persistent signing identity.
+
+## Releases
+
+The current release is **0.2.0, build 9**, available with its checksum from
+[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.9).
+It contains the native macOS SwiftUI/AppKit client and bundled Go helper.
+Windows/Linux GPUI candidates are outside this release. Earlier prereleases,
+including [0.2.0/build 8](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8),
+retain their original tags, archives and checksums.
+
+After verification on the owner's machine, `./scripts/package-release.sh` builds
+with the persistent signing identity, verifies signatures, and creates
+`build/releases/DBeer-<version>-<build>-macos-arm64.zip` and `.zip.sha256`. The ZIP
+includes the [license](LICENSE), changelog and [installation instructions](INSTALL.md).
+The script creates local files; publishing a GitHub release is a separate step.
+Existing archives are never overwritten and temporary CI signatures are rejected.
+
+The previous **0.1.0** internal release passed installation and update acceptance
+from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived
+that release's required second-Mac check. These historical results do not certify
+the new build 9 archive. Finder/Gatekeeper and installation on a clean second
+device have not been verified. An Apple Development signature is not notarization.
+
+Expanded CQL language assistance remains future work. Windows/Linux contributions
+are welcome outside the release roadmap. Public overview sources:
+[dbeer-landing](https://github.com/nullawhale/dbeer-landing).
 
 ## License
 
