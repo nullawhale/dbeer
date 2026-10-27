@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Explicit R04 native UI acceptance with disposable local databases and owned windows.
+# Explicit R04 native UI acceptance with four disposable databases and owned windows.
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ "${DBEER_R04_UI_FIXTURE:-0}" != 1 ]]; then
     exec "$repo_root/scripts/test-postgres.sh" "$repo_root/scripts/test-mysql.sh" \
+        "$repo_root/scripts/test-cassandra.sh" --version 4.1 --mode plain -- \
+        "$repo_root/scripts/test-mongodb.sh" --mode plain \
         env DBEER_R04_UI_FIXTURE=1 DBEER_R04_UI_QA=1 DBEER_R04_UI_DISPOSABLE=1 "$0" "$@"
 fi
 [[ "${DBEER_R04_UI_QA:-0}" == 1 && "${DBEER_R04_UI_DISPOSABLE:-0}" == 1 &&
-   -n "${DBEER_TEST_DSN:-}" && -n "${DBEER_TEST_MYSQL_PORT:-}" ]] || {
-    printf 'R04 UI acceptance requires disposable PostgreSQL and MySQL fixtures.\n' >&2
+   -n "${DBEER_TEST_DSN:-}" && -n "${DBEER_TEST_MYSQL_PORT:-}" &&
+   -n "${DBEER_TEST_CASSANDRA_PORT:-}" && -n "${DBEER_TEST_MONGODB_PORT:-}" ]] || {
+    printf 'R04 UI acceptance requires disposable PostgreSQL, MySQL, Cassandra and MongoDB fixtures.\n' >&2
     exit 1
 }
 umask 077
@@ -30,5 +33,7 @@ else
     CONFIGURATION=debug "$repo_root/scripts/test.sh" \
         --filter AgentAccessWindowTests --filter AgentAccessUIIntegrationTests \
         --filter AgentAccessMCPUIIntegrationTests --filter AgentAccessTests \
-        --filter AgentSocketBrokerTests --filter AgentAccessDatabaseTests
+        --filter AgentSocketBrokerTests --filter AgentAccessDatabaseTests \
+        --filter AgentAccessExtendedDatabaseTests --filter AgentAccessExtendedUIIntegrationTests \
+        --filter AppDelegateStartupTests
 fi

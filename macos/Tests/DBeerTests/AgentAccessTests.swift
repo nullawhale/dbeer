@@ -296,12 +296,21 @@ struct AgentAccessTests {
         let data = try Data(contentsOf: root.appendingPathComponent("protocol/fixtures/agent-access-v1.json"))
         let fixture = try JSONDecoder().decode(WireFixture.self, from: data)
         #expect(fixture.version == 1)
-        #expect(fixture.requests.map(\.method) == ["hello", "connections", "catalog", "query", "cancel"])
-        let response = try #require(fixture.responses.first { $0.results != nil })
+        #expect(fixture.requests.prefix(5).map(\.method) == ["hello", "connections", "catalog", "query", "cancel"])
+        #expect(Set(fixture.requests.map(\.method)) == Set(["hello", "connections", "catalog", "query", "cancel"]))
+        let response = try #require(fixture.responses.first { $0.id == "request-query" })
         let result = try #require(response.results?.first)
         #expect(result.rows == [[nil, "", "NULL", "12345678901234567890.123456789", "AP8="]])
         #expect(result.columns.last?.encoding == "base64")
         #expect(try JSONDecoder().decode(AgentResponse.self, from: JSONEncoder().encode(response)).results?.first?.rows == result.rows)
+        let connections = try #require(fixture.responses.first { $0.id == "request-list-engines" }?.connections)
+        #expect(Set(connections.map(\.engine)) == Set(["postgresql", "mysql", "cassandra", "mongodb"]))
+        #expect(connections.first { $0.engine == "cassandra" }?.queryLanguage == "cql")
+        #expect(connections.first { $0.engine == "mongodb" }?.readOnlyEnforcement == "local")
+        let fields = try #require(fixture.responses.first { $0.id == "request-mongodb-fields" }?.results?.first)
+        #expect(fields.affectedRowCountKnown == false && fields.displayNotice?.contains("not a schema") == true)
+        let decoded = try JSONDecoder().decode(AgentResult.self, from: JSONEncoder().encode(fields))
+        #expect(decoded.affectedRowCountKnown == false && decoded.displayNotice == fields.displayNotice)
     }
 
     @Test func catalogTablesMapsToAllowlistedHelperObjectsRequest() async throws {

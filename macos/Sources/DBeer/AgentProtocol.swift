@@ -21,6 +21,8 @@ struct AgentConnection: Codable, Sendable {
     var name: String
     var engine: String
     var readOnly: Bool
+    var queryLanguage: String? = nil
+    var readOnlyEnforcement: String? = nil
 }
 
 struct AgentColumn: Codable, Sendable {
@@ -35,6 +37,8 @@ struct AgentResult: Codable, Sendable {
     var commandTag: String
     var rowCount: Int64
     var truncated: Bool
+    var displayNotice: String? = nil
+    var affectedRowCountKnown: Bool? = nil
 }
 
 struct AgentResponse: Codable, Sendable {

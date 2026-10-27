@@ -9,7 +9,7 @@ struct AgentAccessSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Agent Access").font(.title2.bold())
-            Text("Local MCP clients need your approval for specific PostgreSQL or MySQL profiles. Access lasts until the client disconnects or DBeer quits. Reading is the default; writes require a separate permission.")
+            Text("Local MCP clients need your approval for specific database profiles. Access lasts until the client disconnects or DBeer quits. Reading is the default; writes require a separate permission.")
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             if let brokerError { Text(brokerError).foregroundStyle(.red) }
             Text("MCP command").font(.headline)
@@ -51,7 +51,7 @@ struct AgentAccessSettingsView: View {
             .accessibilityIdentifier("agentActivity")
             }
             }
-            Text("Revoking access cancels active operations and closes the client's database sessions. An interrupted write may have an unknown outcome. Password-command profiles are unavailable to agents.")
+            Text("Revoking access cancels active operations and closes the client's database sessions. An interrupted write may have an unknown outcome. Cassandra and MongoDB readonly is enforced locally; database roles control server permissions. Password-command profiles are unavailable to agents.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(20).frame(width: 680, height: 470)
     }
@@ -93,7 +93,8 @@ enum AgentAccessApproval {
             }
             write.isEnabled = !profile.policy.readOnly
             selected.state = .off; write.state = .off
-            let details = NSTextField(wrappingLabelWithString: "\(profile.host):\(profile.port)/\(profile.database) · \(profile.user) · \(profile.policy.label)\nProfile \(profile.id.uuidString)")
+            let enforcement = [.cassandra, .mongodb].contains(profile.engine) ? " · Readonly enforcement is local; use restricted database roles" : ""
+            let details = NSTextField(wrappingLabelWithString: "\(profile.host):\(profile.port)/\(profile.database) · \(profile.user) · \(profile.policy.label)\(enforcement)\nProfile \(profile.id.uuidString)")
             details.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             details.textColor = .secondaryLabelColor
             details.setAccessibilityIdentifier("agentProfileDetails-\(profile.id.uuidString)")

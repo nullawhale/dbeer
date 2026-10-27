@@ -2,8 +2,8 @@
 
 A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0.
 
-The current macOS release is **0.2.0, build 9**. Download the signed application
-ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.9)
+The current macOS release is **0.2.0, build 10**. Download the signed application
+ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.10)
 and follow [the installation instructions](INSTALL.md). This release includes
 MongoDB, SQL result editing, synchronization SQL plans, snapshots, investigations,
 the expanded workspace, and local MCP agent access. Earlier prerelease archives,
@@ -1111,7 +1111,7 @@ over stdio. For other MCP clients, configure this executable and argument:
 ```
 
 The first tool call asks for permission inside DBeer. Select individual
-PostgreSQL/MySQL profiles; all start unselected. Reading is the default. Each
+PostgreSQL, MySQL, Cassandra or MongoDB profiles; all start unselected. Reading is the default. Each
 profile has a separate write checkbox, and a profile's existing readonly policy
 cannot be relaxed by an agent grant. Client names are self-reported labels.
 The dialog identifies each profile's server, database, account, environment and
@@ -1121,19 +1121,32 @@ Grants last for the current client connection and application session. Review
 active clients or revoke access in **Settings → Agents**. Restarting a client
 requires fresh approval; restored documents never establish an agent grant.
 
-The tools are `dbeer_connections` (approved profile identifiers and labels),
-`dbeer_catalog` (schemas, tables and columns), `dbeer_query` and `dbeer_cancel`.
+The tools are `dbeer_connections` (approved profile identifiers, engine, query
+language and readonly enforcement), `dbeer_catalog`, `dbeer_query` and
+`dbeer_cancel`. PostgreSQL/MySQL accept SQL, Cassandra accepts CQL, and MongoDB
+accepts the same single JSON find/aggregation request as the editor, all through
+the query tool's `sql` string argument. MongoDB writes are limited to supported
+`$out`/`$merge` aggregation stages; JavaScript, arbitrary CRUD and administrative
+commands are not exposed.
+
+Catalog kinds `schemas`, `tables` and `columns` remain available for every engine.
+Cassandra also accepts `keyspaces`; MongoDB accepts `databases`, `collections` and
+`fields`. Supply the SQL schema, Cassandra keyspace or MongoDB database in `schema`,
+and the table/collection in `object`. MongoDB fields are sampled from at most 32
+documents, rather than an exhaustive schema; `displayNotice` retains that warning.
+An explicit `affectedRowCountKnown: false` means that an affected count is unknown,
+including Cassandra writes. MongoDB documents retain Canonical Extended JSON.
 Queries use a fresh client-chosen `queryId` UUID so a concurrent cancel call can
 target them. Cancellation retires that identifier in the current client's
 namespace even if the query is still queued, preventing late execution. Repeated
 cancellation succeeds and reveals nothing about other clients' operations.
 Each operation opens an independent database session and closes it
 after completion; GUI tabs and their transactions are independent. Queries
-accept one assessed statement, return at most 1,000 rows (default 100), use a
-1–60 second deadline (default 30), and cap the encoded native broker payload at
+accept one assessed SQL/CQL statement or MongoDB JSON request, return at most
+1,000 rows (default 100), use a 1–60 second deadline (default 30), and cap the encoded native broker payload at
 1 MiB. The MCP envelope also includes the SDK's text fallback and structured
-content, so its total encoded size is larger. The MCP
-SQL input limit is 96 KiB, subject to the 128 KiB encoded request limit. SQL NULL,
+content, so its total encoded size is larger. Query text is limited to 96 KiB,
+subject to the 128 KiB encoded request limit. SQL NULL,
 empty strings, text `NULL`, exact numeric strings and base64 binary cells remain
 distinct. Omitted rows are marked truncated; individual cell values are never
 shortened. Catalog listings are bounded and do not offer arbitrary helper calls.
@@ -1144,7 +1157,14 @@ DBeer. Revocation rejects new work, cancels active operations and closes owned
 sessions. Cancellation or a lost connection can leave a submitted write with an
 unknown outcome; check it before retrying. Database permissions remain the strict
 boundary for hidden side effects and temporary objects, as with ordinary readonly
-profiles.
+profiles. Cassandra and MongoDB enforce readonly locally, as reported by
+`readOnlyEnforcement`; restricted database roles remain the server boundary.
+Cassandra keeps the profile's consistency level, does not add `ALLOW FILTERING`,
+and never retries uncertain writes. Each operation has its own session, so `USE`
+does not persist between calls and SQL transactions are unavailable on these
+engines. A grant selects a profile/credential context; server roles determine
+which databases or keyspaces that account can access. Cancellation stops waiting
+and reading; it does not guarantee that the server stopped an already sent write.
 
 The private owner-only Unix socket accepts only the same local user. MCP exposes
 no credentials, arbitrary filesystem access, exports, CLI providers or password
@@ -1154,7 +1174,8 @@ activity entries with client/profile identifiers, time, permission, outcome and
 response size. This in-memory journal resets on quit and contains no SQL, results
 or credentials. An app that is closed or unavailable produces a clear tool error.
 
-Explicit native UI acceptance with disposable PostgreSQL/MySQL fixtures runs via
+Explicit native UI acceptance with disposable PostgreSQL, MySQL, Cassandra and
+MongoDB fixtures runs via
 `./scripts/test-r04-ui.sh`. It exercises production permission/confirmation dialogs
 and Settings controls in both appearances, real stdio MCP cancellation/revocation
 under blocked output, and focused agent regressions. The runner opens and captures
@@ -1162,8 +1183,8 @@ only its own test windows and requires the usual persistent signing identity.
 
 ## Releases
 
-The current release is **0.2.0, build 9**, available with its checksum from
-[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.9).
+The current release is **0.2.0, build 10**, available with its checksum from
+[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.10).
 It contains the native macOS SwiftUI/AppKit client and bundled Go helper.
 Windows/Linux GPUI candidates are outside this release. Earlier prereleases,
 including [0.2.0/build 8](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8),
@@ -1179,7 +1200,7 @@ Existing archives are never overwritten and temporary CI signatures are rejected
 The previous **0.1.0** internal release passed installation and update acceptance
 from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived
 that release's required second-Mac check. These historical results do not certify
-the new build 9 archive. Finder/Gatekeeper and installation on a clean second
+the new build 10 archive. Finder/Gatekeeper and installation on a clean second
 device have not been verified. An Apple Development signature is not notarization.
 
 Expanded CQL language assistance remains future work. Windows/Linux contributions

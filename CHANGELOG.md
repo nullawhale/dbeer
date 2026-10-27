@@ -2,9 +2,26 @@
 
 ## Unreleased
 
-## 0.2.0 — build 9 — 2026-10-27
+## 0.2.0 — build 10 — 2026-10-27
 
-This release targets the native macOS client and bundled Go helper. Earlier
+- Extend local MCP to PostgreSQL, MySQL, Cassandra and MongoDB. Query tools accept
+  the profile's SQL, CQL or MongoDB JSON find/aggregation format. Catalog aliases
+  expose Cassandra keyspaces and MongoDB databases, collections and sampled fields.
+  Connection metadata identifies the query language and readonly enforcement;
+  result metadata preserves sampling warnings and unknown affected-row counts.
+- Keep readonly local for Cassandra/MongoDB and preserve database-role boundaries,
+  the saved consistency/topology settings and explicit write confirmation. MongoDB
+  supports aggregation output stages through its existing policy; arbitrary CRUD,
+  JavaScript and administrative commands remain unavailable. Cancellation stops
+  client work and closes owned sessions without promising server-side rollback.
+- Include the native workspace, MongoDB, comparison, editing and MCP features
+  described in the build 9 candidate below. Build 9 was not published; its archive
+  and tag remain unchanged. Build 10 is the published 0.2.0 release.
+
+## 0.2.0 release candidate — build 9 — 2026-10-27
+
+This unpublished candidate targets the native macOS client and bundled Go helper
+and provides PostgreSQL/MySQL MCP. It is superseded by build 10. Earlier
 0.2.0 prerelease tags and archives remain unchanged; Windows/Linux GPUI candidates
 are outside this release.
 
@@ -28,7 +45,7 @@ are outside this release.
 
 - Show a clear execution rejection when SQL or its connection changes during
   initial connection setup, marking the captured statements as not executed.
-- Document the complete 0.2.0/build 9 release and preserve the earlier build 8
+- Prepare the 0.2.0/build 9 candidate documentation and preserve the earlier build 8
   prerelease as a separate immutable archive. User interviews are optional
   research and do not block native macOS development or acceptance.
 - Add an opt-in archive-to-current-app update acceptance mode with immutable

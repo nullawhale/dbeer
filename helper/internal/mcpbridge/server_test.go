@@ -117,6 +117,81 @@ func TestSDKApprovalAndExactResultValues(t *testing.T) {
 	}
 }
 
+func TestSDKEngineCatalogAliasesAndCanonicalRequests(t *testing.T) {
+	profileID := uuid.NewString()
+	commands := make(chan request, 16)
+	canonical := `{"database":"fixture_db","collection":"items","find":{"n":{"$numberLong":"9007199254740993"}},"sort":{"label":1,"n":-1},"limit":100}`
+	client := connectTestServer(t, func(context.Context) (net.Conn, error) {
+		local, native := net.Pipe()
+		t.Cleanup(func() { _ = native.Close() })
+		go func() {
+			decoder, encoder := json.NewDecoder(native), json.NewEncoder(native)
+			for {
+				var command request
+				if decoder.Decode(&command) != nil {
+					return
+				}
+				commands <- command
+				reply := response{ID: command.ID, OK: true, QueryID: command.QueryID}
+				if command.Method == "connections" {
+					reply.Connections = []Connection{{ID: profileID, Name: "Document fixture", Engine: "mongodb", ReadOnly: true, QueryLanguage: "mongodb-json", ReadOnlyEnforcement: "local"}}
+				}
+				if command.Method == "query" || command.Method == "catalog" {
+					known, document := false, canonical
+					reply.Results = []Result{{Columns: []Column{{Name: "document", Type: "BSON document"}}, Rows: [][]*string{{&document}}, CommandTag: "FIND", RowCount: 1, DisplayNotice: "Fixture fields are sampled, not a schema.", AffectedRowCountKnown: &known}}
+				}
+				if encoder.Encode(reply) != nil {
+					return
+				}
+			}
+		}()
+		return local, nil
+	})
+	connections, err := client.CallTool(testContext(t), &mcp.CallToolParams{Name: "dbeer_connections", Arguments: map[string]any{}})
+	if err != nil || connections.IsError {
+		t.Fatalf("connections failed: %v", err)
+	}
+	encoded, _ := json.Marshal(connections.StructuredContent)
+	for _, expected := range []string{`"engine":"mongodb"`, `"queryLanguage":"mongodb-json"`, `"readOnlyEnforcement":"local"`} {
+		if !strings.Contains(string(encoded), expected) {
+			t.Fatalf("connection metadata lost: %s", encoded)
+		}
+	}
+	if first, second := <-commands, <-commands; first.Method != "hello" || second.Method != "connections" {
+		t.Fatal("connection did not require native approval")
+	}
+	for _, kind := range []string{"schemas", "keyspaces", "databases", "tables", "collections", "columns", "fields"} {
+		arguments := map[string]any{"profileId": profileID, "kind": kind}
+		switch kind {
+		case "tables", "collections":
+			arguments["schema"] = "fixture_db"
+		case "columns", "fields":
+			arguments["schema"], arguments["object"] = "fixture_db", "items"
+		}
+		result, err := client.CallTool(testContext(t), &mcp.CallToolParams{Name: "dbeer_catalog", Arguments: arguments})
+		if err != nil || result.IsError {
+			t.Fatalf("catalog alias %s rejected: %v", kind, err)
+		}
+		command := <-commands
+		if command.Method != "catalog" || command.Kind != kind || !validUUID(command.QueryID) {
+			t.Fatal("catalog alias or correlation changed")
+		}
+	}
+	result, err := client.CallTool(testContext(t), &mcp.CallToolParams{Name: "dbeer_query", Arguments: map[string]any{"profileId": profileID, "queryId": uuid.NewString(), "sql": canonical}})
+	if err != nil || result.IsError {
+		t.Fatalf("canonical query failed: %v", err)
+	}
+	command := <-commands
+	if command.SQL != canonical {
+		t.Fatal("MongoDB JSON request order or exact scalar text was changed")
+	}
+	encoded, _ = json.Marshal(result.StructuredContent)
+	var output toolOutput
+	if json.Unmarshal(encoded, &output) != nil || len(output.Results) != 1 || output.Results[0].AffectedRowCountKnown == nil || *output.Results[0].AffectedRowCountKnown || output.Results[0].DisplayNotice == "" || *output.Results[0].Rows[0][0] != canonical {
+		t.Fatal("typed SDK output lost canonical documents, sampled notice or explicit unknown affected count")
+	}
+}
+
 func TestSDKRejectsInvalidToolArgumentsBeforeApproval(t *testing.T) {
 	var dials atomic.Int32
 	client := connectTestServer(t, func(context.Context) (net.Conn, error) { dials.Add(1); return nil, errUnavailable })
@@ -125,6 +200,10 @@ func TestSDKRejectsInvalidToolArgumentsBeforeApproval(t *testing.T) {
 		{Name: "dbeer_query", Arguments: map[string]any{"profileId": uuid.NewString(), "queryId": uuid.NewString(), "sql": "SELECT 1", "timeoutSeconds": -1}},
 		{Name: "dbeer_query", Arguments: map[string]any{"profileId": "unknown", "queryId": uuid.NewString(), "sql": "SELECT 1"}},
 		{Name: "dbeer_catalog", Arguments: map[string]any{"profileId": uuid.NewString(), "kind": "arbitrary-file"}},
+		{Name: "dbeer_catalog", Arguments: map[string]any{"profileId": uuid.NewString(), "kind": "keyspaces", "schema": "unexpected"}},
+		{Name: "dbeer_catalog", Arguments: map[string]any{"profileId": uuid.NewString(), "kind": "databases", "object": "unexpected"}},
+		{Name: "dbeer_catalog", Arguments: map[string]any{"profileId": uuid.NewString(), "kind": "collections"}},
+		{Name: "dbeer_catalog", Arguments: map[string]any{"profileId": uuid.NewString(), "kind": "fields", "schema": "fixture_db"}},
 		{Name: "dbeer_cancel", Arguments: map[string]any{"queryId": "../file"}},
 	} {
 		result, err := client.CallTool(testContext(t), call)

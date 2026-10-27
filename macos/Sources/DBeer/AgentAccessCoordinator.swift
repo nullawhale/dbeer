@@ -154,14 +154,17 @@ final class AgentAccessCoordinator: ObservableObject {
     }
 
     private func eligible(_ profile: SavedConnection) -> Bool {
-        [.postgresql, .mysql].contains(profile.engine) && profile.passwordCommand == nil
+        DatabaseEngine.availableCases.contains(profile.engine) && profile.passwordCommand == nil
     }
 
     private func connections(_ clientID: UUID, _ request: AgentRequest) -> AgentResponse {
         guard let grant = grants[clientID] else { return failure(request, "Approve this agent in DBeer before using connections.") }
         let entries = grant.profiles.values.filter { valid(clientID, profile: $0) }.sorted { $0.name < $1.name }.map {
-            AgentConnection(id: $0.id.uuidString, name: $0.name, engine: $0.engine.rawValue,
-                readOnly: $0.policy.readOnly || grant.writes[$0.id] != true)
+            let readOnly = $0.policy.readOnly || grant.writes[$0.id] != true
+            return AgentConnection(id: $0.id.uuidString, name: $0.name, engine: $0.engine.rawValue,
+                readOnly: readOnly,
+                queryLanguage: $0.engine == .mongodb ? "mongodb-json" : $0.engine == .cassandra ? "cql" : "sql",
+                readOnlyEnforcement: readOnly ? ([.postgresql, .mysql].contains($0.engine) ? "localAndServer" : "local") : "off")
         }
         return AgentResponse(id: request.id, ok: true, connections: entries)
     }
@@ -187,13 +190,15 @@ final class AgentAccessCoordinator: ObservableObject {
         if request.method == "query" {
             guard let sql = request.sql, !sql.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   sql.utf8.count <= 128 * 1_024, !sql.contains("\0") else {
-                return failure(request, "A query must contain at most 128 KiB of SQL.")
+                return failure(request, "A query must contain at most 128 KiB of SQL, CQL or MongoDB JSON.")
             }
         } else {
-            guard let kind = request.kind, ["schemas", "tables", "columns"].contains(kind),
+            guard let requestedKind = request.kind,
                   [request.schema, request.object].allSatisfy({ $0 == nil || ($0!.utf8.count <= 1_024 && !$0!.contains("\0")) }),
-                  kind != "columns" || request.object?.isEmpty == false else {
-                return failure(request, "Choose schemas, tables or columns with bounded object names.")
+                  let kind = catalogKind(requestedKind, engine: profile.engine),
+                  kind == "schemas" ? request.schema == nil && request.object == nil :
+                    request.schema?.isEmpty == false && (kind == "columns" ? request.object?.isEmpty == false : request.object == nil) else {
+                return failure(request, "Choose a supported catalog listing with the required bounded schema, keyspace, database or object name.")
             }
             catalog = CatalogRequest(kind: kind == "tables" ? "objects" : kind, schema: request.schema, object: request.object,
                 objectKind: kind == "tables" ? "table" : nil)
@@ -237,7 +242,7 @@ final class AgentAccessCoordinator: ObservableObject {
                       assessment.policy == connection.policy, assessment.operations.count == 1,
                       assessment.operations[0].statements.count == 1, assessment.decision != "deny",
                       let authorization = assessment.authorization else { throw AgentFailure() }
-                // Readonly is enforced by the helper/server too; never trust client claims or SQL prefixes.
+                // The helper assesses every engine; PostgreSQL/MySQL also install server readonly.
                 if connection.policy.readOnly && assessment.operations[0].kind != "read" { throw AgentFailure() }
                 operation.mayWrite = assessment.operations[0].kind != "read"
                 if assessment.decision == "confirm" {
@@ -264,13 +269,26 @@ final class AgentAccessCoordinator: ObservableObject {
             return response
         } catch {
             await close(operation)
-            let knownFailure = (error as? BackendRemoteError)?.reply.outcomeUnknown == false || error is BackendRequestError
+            let remote = (error as? BackendRemoteError)?.reply
+            if remote?.sqlCompleted == true && remote?.outcomeUnknown != true { operation.completed = true }
+            let knownFailure = remote?.outcomeUnknown == false || error is BackendRequestError
             let unknown = operation.submitted && operation.mayWrite && !operation.completed && !knownFailure
             auditContext.outcome = operation.completed ? "completed" : unknown ? "unknown" : operation.cancelled ? "cancelled" : operation.submitted ? "failed" : "rejected"
-            let message = operation.completed ? "The database operation completed, but its response could not be returned within the current access and response limits." :
+            let message = operation.completed ? "The database operation completed, but its response is unavailable. Inspect its outcome before retrying." :
                 operation.cancelled ? "The agent operation was cancelled or timed out." :
                 "The agent operation could not complete. Review connection access and operation policy in DBeer."
             return failure(request, message + (unknown ? " A submitted write may have an unknown outcome." : ""))
+        }
+    }
+
+    private func catalogKind(_ kind: String, engine: DatabaseEngine) -> String? {
+        switch kind {
+        case "schemas", "tables", "columns": return kind
+        case "keyspaces" where engine == .cassandra: return "schemas"
+        case "databases" where engine == .mongodb: return "schemas"
+        case "collections" where engine == .mongodb: return "tables"
+        case "fields" where engine == .mongodb: return "columns"
+        default: return nil
         }
     }
 
@@ -313,14 +331,16 @@ final class AgentAccessCoordinator: ObservableObject {
     private func bounded(_ reply: BackendMessage, request: AgentRequest, limit: Int) throws -> AgentResponse {
         let sets = reply.resultSets ?? [QueryResultSet(columns: reply.columns ?? [], rows: reply.rows ?? [],
             commandTag: reply.commandTag ?? "", rowCount: reply.rowCount ?? 0,
-            displayedRowCount: reply.displayedRowCount ?? 0, truncated: reply.truncated ?? false)]
+            displayedRowCount: reply.displayedRowCount ?? 0, truncated: reply.truncated ?? false,
+            displayNotice: reply.displayNotice, affectedRowCountKnown: reply.affectedRowCountKnown)]
         var remaining = limit
         var results: [AgentResult] = []
         for set in sets.prefix(16) {
             let count = min(remaining, set.rows.count)
             let result = AgentResult(columns: set.columns.map { AgentColumn(name: $0.name, type: $0.nativeType, encoding: $0.encoding) },
                 rows: Array(set.rows.prefix(count)), commandTag: String(set.commandTag.prefix(128)), rowCount: set.rowCount,
-                truncated: set.truncated || count < set.rows.count || sets.count > 16)
+                truncated: set.truncated || count < set.rows.count || sets.count > 16,
+                displayNotice: set.displayNotice, affectedRowCountKnown: set.affectedRowCountKnown)
             remaining -= count; results.append(result)
         }
         let encoder = JSONEncoder()

@@ -36,10 +36,12 @@ type request struct {
 }
 
 type Connection struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Engine   string `json:"engine"`
-	ReadOnly bool   `json:"readOnly"`
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Engine              string `json:"engine"`
+	ReadOnly            bool   `json:"readOnly"`
+	QueryLanguage       string `json:"queryLanguage,omitempty"`
+	ReadOnlyEnforcement string `json:"readOnlyEnforcement,omitempty"`
 }
 
 type Column struct {
@@ -49,11 +51,13 @@ type Column struct {
 }
 
 type Result struct {
-	Columns    []Column    `json:"columns"`
-	Rows       [][]*string `json:"rows"`
-	CommandTag string      `json:"commandTag"`
-	RowCount   int64       `json:"rowCount"`
-	Truncated  bool        `json:"truncated"`
+	Columns               []Column    `json:"columns"`
+	Rows                  [][]*string `json:"rows"`
+	CommandTag            string      `json:"commandTag"`
+	RowCount              int64       `json:"rowCount"`
+	Truncated             bool        `json:"truncated"`
+	DisplayNotice         string      `json:"displayNotice,omitempty"`
+	AffectedRowCountKnown *bool       `json:"affectedRowCountKnown,omitempty"`
 }
 
 type response struct {
