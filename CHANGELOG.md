@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — build 12 — 2026-10-27
 
 - Prepare table filters and sorting as a local draft, then explicitly Apply one
   read. PostgreSQL, MySQL and MongoDB support nested AND/OR groups and ordered
