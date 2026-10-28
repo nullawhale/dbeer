@@ -3,7 +3,7 @@ import AppKit
 enum SQLToolCommand: String, CaseIterable, Identifiable {
     case find, replace, findNext, findPrevious, formatCurrent, formatSelection, formatDocument
     case indent, outdent, toggleLineComment, toggleBlockComment, duplicateLines, deleteLines, moveLinesUp, moveLinesDown
-    case selectNextOccurrence, selectAllOccurrences, addCursorAbove, addCursorBelow
+    case extendSelection, selectNextOccurrence, selectAllOccurrences, addCursorAbove, addCursorBelow
     case goToLine, previousStatement, nextStatement, outline, definition, showInformation
     case collapseCurrent, expandCurrent, collapseAll, expandAll
     var id: String { rawValue }
@@ -25,6 +25,7 @@ enum SQLToolCommand: String, CaseIterable, Identifiable {
         case .deleteLines: "Delete Lines"
         case .moveLinesUp: "Move Lines Up"
         case .moveLinesDown: "Move Lines Down"
+        case .extendSelection: "Extend Selection"
         case .selectNextOccurrence: "Select Next Occurrence"
         case .selectAllOccurrences: "Select All Occurrences"
         case .addCursorAbove: "Add Cursor Above"
@@ -51,6 +52,7 @@ enum SQLToolCommand: String, CaseIterable, Identifiable {
         case .toggleLineComment: .init(key: "/", modifiers: .command)
         case .toggleBlockComment: .init(key: "/", modifiers: [.command, .option])
         case .duplicateLines: .init(key: "d", modifiers: [.command, .shift])
+        case .extendSelection: .init(key: "w", modifiers: .command)
         case .selectNextOccurrence: .init(key: "d", modifiers: .command)
         case .selectAllOccurrences: .init(key: "g", modifiers: [.command, .control])
         case .addCursorAbove: .init(key: "upArrow", modifiers: [.control, .shift])
@@ -73,6 +75,7 @@ enum SQLToolCommand: String, CaseIterable, Identifiable {
         case .deleteLines: .deleteLines
         case .moveLinesUp: .moveLinesUp
         case .moveLinesDown: .moveLinesDown
+        case .extendSelection: .extendSelection
         case .selectNextOccurrence: .selectNextOccurrence
         case .selectAllOccurrences: .selectAllOccurrences
         case .addCursorAbove: .addCursorAbove

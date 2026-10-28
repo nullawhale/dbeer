@@ -113,6 +113,7 @@ import Combine
 
     func canPerform(_ command: SQLToolCommand) -> Bool {
         guard let editor, !editor.hasMarkedText() else { return false }
+        if command == .extendSelection { return !editor.string.isEmpty }
         if [.toggleLineComment, .toggleBlockComment].contains(command), engine == .mongodb { return false }
         if [.formatSelection].contains(command) { return editor.isEditable && editor.editorSelections.contains { $0.length > 0 } }
         if command == .formatCurrent { return editor.isEditable && !editor.hasMultipleEditorSelections }

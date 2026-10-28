@@ -9,7 +9,7 @@ struct SQLTextEdit: Equatable, Sendable {
 enum SQLTextEditorAction: String, CaseIterable, Sendable {
     case indent, outdent, toggleLineComment, toggleBlockComment
     case duplicateLines, deleteLines, moveLinesUp, moveLinesDown
-    case selectNextOccurrence, selectAllOccurrences, addCursorAbove, addCursorBelow
+    case extendSelection, selectNextOccurrence, selectAllOccurrences, addCursorAbove, addCursorBelow
 
     var undoTitle: String {
         switch self {

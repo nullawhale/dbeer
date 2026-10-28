@@ -863,6 +863,14 @@ controls the font and size, line wrapping, invisible characters, tabs/spaces,
 indent width, automatic indentation, matching brackets/quotes and formatter
 keyword case. Changes apply to open editors while retaining text and Undo.
 
+**⌘W** runs **Extend Selection**: repeated presses grow each selection through
+words, quoted text, nested brackets/blocks, function calls, statements and the
+whole document. Strings and comments keep their own boundaries. Change or clear
+the binding in **Settings → Shortcuts → Editor**; **⌃W** is also available for
+this command. **⌘Z** undoes an edit and **⇧⌘Z** redoes it; **⌃Z** and **⌃⇧Z**
+are supported too. Each document keeps its own history, including multi-cursor
+edits and their selections.
+
 With focus in an editor, **⌘F** opens local Find; **⌥⌘F** opens Find and Replace.
 Search supports case sensitivity, whole identifiers, regular expressions and
 selected ranges. **⌘G** and **⇧⌘G** move through matches. Regular-expression

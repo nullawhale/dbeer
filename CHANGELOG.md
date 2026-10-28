@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add customizable Extend Selection (Command-W by default) to grow editor
+  selections through words, quoted text, nested blocks and statements.
+- Fix editor Undo/Redo routing to each document's history, with Command-Z /
+  Command-Shift-Z and Control-Z / Control-Shift-Z shortcuts.
+
 ## 0.4.0 — build 13 — 2026-10-27
 
 - Expand the native editor with local find/replace, whole-word and regular-expression

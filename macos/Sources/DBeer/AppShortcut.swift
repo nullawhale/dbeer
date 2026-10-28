@@ -417,7 +417,8 @@ final class AppShortcutStore: ObservableObject {
                 return "This shortcut is reserved for a standard macOS or application command."
             }
         } else if modifiers.contains(.control) {
-            let nativeTextKeys: Set<String> = ["a", "b", "d", "e", "f", "h", "k", "l", "n", "o", "p", "t", "u", "v", "w", "y", " ", "'", "\"", "/"]
+            if command == SQLToolCommand.extendSelection.commandID, shortcut == AppShortcut(key: "w", modifiers: .control) { return nil }
+            let nativeTextKeys: Set<String> = ["a", "b", "d", "e", "f", "h", "k", "l", "n", "o", "p", "t", "u", "v", "w", "y", "z", " ", "'", "\"", "/"]
             if nativeTextKeys.contains(key) { return "This shortcut is reserved for native text editing." }
         } else if modifiers.contains(.option), key != "return", !shortcut.isFunctionKey {
             // Option-printable keys type accents and symbols in native fields.

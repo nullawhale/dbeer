@@ -894,6 +894,39 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     var focusOnAttach: (@MainActor () -> Bool)?
     override var undoManager: UndoManager? { documentUndo }
 
+    // Route native responder-chain actions to this document's history rather
+    // than the hosting window's undo manager.
+    @objc func undo(_ sender: Any?) {
+        guard isEditable, !hasMarkedText(), documentUndo.canUndo else { return }
+        dismissCompletion?()
+        editorTools?.prepareForEdit()
+        breakUndoCoalescing()
+        documentUndo.undo()
+        scrollRangeToVisible(selectedRange())
+    }
+
+    @objc func redo(_ sender: Any?) {
+        guard isEditable, !hasMarkedText(), documentUndo.canRedo else { return }
+        dismissCompletion?()
+        editorTools?.prepareForEdit()
+        breakUndoCoalescing()
+        documentUndo.redo()
+        scrollRangeToVisible(selectedRange())
+    }
+
+    override func validateUserInterfaceItem(_ item: any NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(undo(_:)) { return isEditable && !hasMarkedText() && documentUndo.canUndo }
+        if item.action == #selector(redo(_:)) { return isEditable && !hasMarkedText() && documentUndo.canRedo }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    override func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        if menuItem.action == #selector(undo(_:)) || menuItem.action == #selector(redo(_:)) {
+            return validateUserInterfaceItem(menuItem)
+        }
+        return super.validateMenuItem(menuItem)
+    }
+
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
         if accepted { WorkspacePaneContainerView.activatePane(containing: self) }
@@ -1059,6 +1092,10 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
     func performEditorAction(_ action: SQLTextEditorAction) {
         guard !hasMarkedText() else { return }
         switch action {
+        case .extendSelection:
+            let scopes = SQLSelectionExpansion(text: string, engine: editorEngine)
+            setEditorSelections(editorSelections.map { scopes.extending($0) })
+            scrollRangeToVisible(selectedRange())
         case .selectNextOccurrence: selectOccurrence(all: false)
         case .selectAllOccurrences: selectOccurrence(all: true)
         case .addCursorAbove: addEditorCursor(direction: -1)
@@ -1140,6 +1177,11 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
 
     private func handleCoreKeyEvent(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock)
+        if let shortcut = AppShortcut(event: event), shortcut.key == "z",
+           flags == .command || flags == .control || flags == [.command, .shift] || flags == [.control, .shift] {
+            if flags.contains(.shift) { redo(nil) } else { undo(nil) }
+            return true
+        }
         if event.keyCode == 53, hasMultipleEditorSelections { setEditorSelections([selectedRange()]); return true }
         if commandEvent == nil, flags == .command, event.charactersIgnoringModifiers?.lowercased() == "d" { performEditorAction(.selectNextOccurrence); return true }
         if commandEvent == nil, flags == [.command, .control], event.charactersIgnoringModifiers?.lowercased() == "g" { performEditorAction(.selectAllOccurrences); return true }
