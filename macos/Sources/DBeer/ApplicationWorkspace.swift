@@ -108,6 +108,8 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var fileRecoveryURL: URL?
     @Published private(set) var fileDocument: SQLFileDocument?
     @Published var sqlLibraryEntryID: UUID?
+    /// Standalone history drafts retain definitions only; entered values are never restored.
+    @Published var queryParameters: [SQLParameterDefinition] = []
     private var restoredFileDocumentID: UUID?
     private var fileObservations: [AnyCancellable] = []
     private var isSynchronizingFile = false
@@ -225,6 +227,7 @@ final class SQLDocument: ObservableObject, Identifiable {
             restoredFileDocumentID = stored.fileDocumentID
             fileRecoveryURL = stored.fileRecoveryURL
             sqlLibraryEntryID = stored.sqlLibraryEntryID
+            queryParameters = stored.queryParameters ?? []
             restoredFileBinding = stored.fileURL != nil
         }
     }
@@ -248,7 +251,8 @@ final class SQLDocument: ObservableObject, Identifiable {
             fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil,
             fileDocumentID: table == nil ? (fileDocument?.id ?? restoredFileDocumentID) : nil,
             fileRecoveryURL: table == nil ? fileRecoveryURL : nil,
-            sqlLibraryEntryID: table == nil ? sqlLibraryEntryID : nil)
+            sqlLibraryEntryID: table == nil ? sqlLibraryEntryID : nil,
+            queryParameters: table == nil && !queryParameters.isEmpty ? queryParameters : nil)
     }
 
     func attachFileDocument(_ file: SQLFileDocument) {
@@ -381,6 +385,24 @@ struct SQLExecution: Identifiable {
 }
 
 @MainActor
+final class QueryParameterPrompt: Identifiable {
+    let id = UUID()
+    let documentID: UUID
+    let definitions: [SQLParameterDefinition]
+    let context: String
+    let continuation: CheckedContinuation<[QueryParameterBinding]?, Never>
+    var result: [QueryParameterBinding]?
+
+    init(documentID: UUID, definitions: [SQLParameterDefinition], profile: SavedConnection,
+         continuation: CheckedContinuation<[QueryParameterBinding]?, Never>) {
+        self.documentID = documentID
+        self.definitions = definitions
+        context = "\(profile.name) · \(profile.engine.displayName) · \(profile.host):\(profile.port)/\(profile.database) · \(profile.policy.label)"
+        self.continuation = continuation
+    }
+}
+
+@MainActor
 final class ApplicationWorkspace: ObservableObject {
     let library: WorkspaceModel
     @Published private(set) var documents: [SQLDocument] = []
@@ -423,6 +445,8 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
     @Published var insertCopySelection: InsertCopySelection?
+    @Published private(set) var queryParameterPrompt: QueryParameterPrompt?
+    private var pendingQueryParameterPrompt: QueryParameterPrompt?
     @Published private(set) var isImportingProfiles = false
     let editorState = SQLEditorState()
     let editorThemes: EditorThemeStore
@@ -442,6 +466,7 @@ final class ApplicationWorkspace: ObservableObject {
     private let documentStore: any SQLDocumentStore
     private let closeDecision: @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision
     let executionDecision: @MainActor (OperationConfirmation) async -> Bool
+    private let queryParameterDecision: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)?
     private var autosave: Task<Void, Never>?
     private var documentSaveTask: Task<Bool, Never>?
     private var documentSaveID = UUID()
@@ -499,6 +524,7 @@ final class ApplicationWorkspace: ObservableObject {
          automaticallyWatchFiles: Bool = true,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
+         queryParameterDecision: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)? = nil,
          helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
         self.connectionStore = connectionStore
         self.credentialStore = credentialStore
@@ -518,6 +544,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.appearance = appearance ?? AppAppearance(editorThemes: themes)
         self.closeDecision = closeDecision
         self.executionDecision = executionDecision
+        self.queryParameterDecision = queryParameterDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         typeProfilesObservation = library.$savedConnections.sink { [weak self] profiles in
@@ -1055,6 +1082,7 @@ final class ApplicationWorkspace: ObservableObject {
     func openHistoryEntry(_ entry: SQLHistoryEntry) -> SQLDocument {
         let profileID = entry.profileID.flatMap { id in library.savedConnections.contains { $0.id == id } ? id : nil }
         let document = SQLDocument(title: "SQL \(documents.count + 1)", text: entry.sql, profileID: profileID)
+        document.queryParameters = entry.queryParameters ?? []
         if profileID == nil {
             document.historyConnectionNotice = entry.profileID == nil
                 ? "This history entry has no saved connection. Choose a connection above before running this SQL."
@@ -1420,9 +1448,46 @@ final class ApplicationWorkspace: ObservableObject {
         await execute(document, statements: fragment.statements, isScript: script, sourceSQL: fragment.sourceSQL)
     }
 
+    private func requestQueryParameters(_ definitions: [SQLParameterDefinition], document: SQLDocument,
+                                        profile: SavedConnection) async -> [QueryParameterBinding]? {
+        if let queryParameterDecision { return await queryParameterDecision(definitions, profile) }
+        guard pendingQueryParameterPrompt == nil, presentationWindow != nil else { return nil }
+        return await withCheckedContinuation { continuation in
+            let prompt = QueryParameterPrompt(documentID: document.id, definitions: definitions,
+                profile: profile, continuation: continuation)
+            pendingQueryParameterPrompt = prompt
+            queryParameterPrompt = prompt
+        }
+    }
+
+    func submitQueryParameters(id: UUID, values: [QueryParameterBinding]?) {
+        guard let prompt = queryParameterPrompt, prompt.id == id else { return }
+        prompt.result = values
+        queryParameterPrompt = nil
+        // Resume on sheet dismissal so a production confirmation cannot overlap it.
+    }
+
+    func queryParameterPromptDismissed() {
+        guard queryParameterPrompt == nil, let prompt = pendingQueryParameterPrompt else { return }
+        pendingQueryParameterPrompt = nil
+        prompt.continuation.resume(returning: prompt.result)
+    }
+
+    private func cancelQueryParameterPrompt(documentID: UUID? = nil) {
+        guard let prompt = pendingQueryParameterPrompt,
+              documentID == nil || documentID == prompt.documentID else { return }
+        pendingQueryParameterPrompt = nil
+        queryParameterPrompt = nil
+        prompt.continuation.resume(returning: nil)
+    }
+
     private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
                          isScript: Bool = false, sourceSQL: String? = nil, forNavigating: Bool = false) async {
         guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning else { return }
+        guard pendingQueryParameterPrompt == nil else {
+            document.localError = "Finish or cancel the current parameter entry before running another query."
+            return
+        }
         guard !document.isSnapshot, !document.isInvestigation, !document.isERDiagram else { return }
         if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
         guard let profileID = document.profileID else { return }
@@ -1461,10 +1526,35 @@ final class ApplicationWorkspace: ObservableObject {
         defer {
             document.isRunning = false
             previousGrid?.isReloading = false
+            for index in document.executions.indices where document.executions[index].status == "Pending" {
+                document.executions[index].status = "Not executed"
+            }
             if document.table == nil { document.selectQueryResult() }
         }
         do {
+            let definitions = libraryBinding?.parameters ?? []
+            let parameters: [QueryParameterBinding]?
+            if !definitions.isEmpty {
+                guard [.postgresql, .mysql].contains(profile.engine) else {
+                    throw ExecutionPolicyError(message: "Saved query parameters support PostgreSQL and MySQL connections.")
+                }
+                guard let values = await requestQueryParameters(definitions, document: document, profile: profile) else { return }
+                try QueryParameterBinding.validate(values)
+                guard values.map({ SQLParameterDefinition(name: $0.name, type: $0.type) }) == definitions else {
+                    throw ExecutionPolicyError(message: "The query parameter definitions changed. Review them and run again.")
+                }
+                parameters = values
+            } else { parameters = nil }
+            guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested,
+                  SQLFileDocument.sameBytes(document.text, boundText), document.profileID == profileID,
+                  hasSQLLibraryExecutionBinding(document, libraryBinding),
+                  library.savedConnections.first(where: { $0.id == profileID }) == profile else {
+                throw ExecutionPolicyError(message: "The SQL, connection or query parameters changed before execution. Review them and run again.")
+            }
             let client = try await ensureHelper()
+            if parameters != nil, !(await client.supportsQueryParameters()) {
+                throw BackendRequestError.unsupportedQueryParameters
+            }
             if export?.destination != nil, !(await client.supportsCapturedExport()) {
                 throw ExecutionPolicyError(message: "The helper does not support captured full export. SQL was not executed.")
             }
@@ -1566,7 +1656,10 @@ final class ApplicationWorkspace: ObservableObject {
                 }
             } else {
                 guard let sessionID = runtime.sessionId else { return }
-                let operations = statements.map { OperationRequest(type: "execute", sql: $0.sql, export: export) }
+                if parameters != nil, !runtime.capabilities.contains("queryParametersV1") {
+                    throw ExecutionPolicyError(message: "This connection does not support query parameters. Reconnect with the matching app and helper.")
+                }
+                let operations = statements.map { OperationRequest(type: "execute", sql: $0.sql, export: export, parameters: parameters) }
                 guard let authorization = try await authorizeOperations(operations, sessionID: sessionID,
                     profile: profile, client: client, isScript: isScript || statements.count > 1,
                     sourceSQL: isScript || statements.count > 1 ? (sourceSQL ?? statements.map(\.sql).joined(separator: ";\n")) : nil),
@@ -1591,11 +1684,13 @@ final class ApplicationWorkspace: ObservableObject {
                     document.selectedExecution = index
                     document.executions[index].status = "Running"
                     let historyProfile = SQLHistoryProfile(profile, currentKeyspace: runtime.currentKeyspace)
-                    let completion = await runtime.run(sql: statement.sql, export: export, authorization: authorization)
+                    let completion = await runtime.run(sql: statement.sql, export: export, authorization: authorization, parameters: parameters)
                     document.executions[index].result = runtime.result
                     document.executions[index].failure = runtime.queryFailure
                     document.executions[index].snapshotSource = completion.flatMap {
-                        ResultSnapshotSource(sql: statement.sql, profileID: profileID, profile: historyProfile, completion: $0)
+                        ResultSnapshotSource(sql: parameters == nil ? statement.sql :
+                            "/* Parameter values were supplied for this execution and are not stored. */\n" + statement.sql,
+                            profileID: profileID, profile: historyProfile, completion: $0)
                     }
                     document.executions[index].status = runtime.queryFailure?.title ?? (runtime.result == nil ? "Failed" : "Completed")
                     if runtime.queryFailure?.outcomeUnknown == true { document.executions[index].status = "Unknown outcome" }
@@ -1603,7 +1698,8 @@ final class ApplicationWorkspace: ObservableObject {
                         document.recordExecutionSuccess(statement, revision: executionRevision)
                     }
                     if let completion, let entry = SQLHistoryEntry(documentID: document.id, profileID: profileID,
-                        profile: historyProfile, sql: statement.sql, completion: completion) {
+                        profile: historyProfile, sql: statement.sql, completion: completion,
+                        queryParameters: definitions.isEmpty ? nil : definitions) {
                         recordHistory(entry)
                     }
                     if let position = runtime.queryErrorPosition {
@@ -1724,6 +1820,7 @@ final class ApplicationWorkspace: ObservableObject {
         if let model = document.erDiagramModel { stopERDiagram(model); return }
         if document.grid?.isApplying == true { await stopGridApply(document); return }
         document.stopRequested = true
+        cancelQueryParameterPrompt(documentID: document.id)
         if document.runtime?.isConnecting == true { document.runtime?.cancelConnection() }
         await document.runtime?.stop()
     }
@@ -2118,6 +2215,7 @@ final class ApplicationWorkspace: ObservableObject {
             document.$tableSort.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$sqlLibraryEntryID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$queryParameters.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileContentSHA256.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileRecoveryURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -2166,18 +2264,23 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private struct SQLLibraryExecutionBinding: Equatable {
-        let entryID: UUID
-        let fileURL: URL
-        let scope: SQLLibraryScope
+        let entryID: UUID?
+        let fileURL: URL?
+        let scope: SQLLibraryScope?
         let group: SQLProfileGroup?
+        let parameters: [SQLParameterDefinition]
     }
 
     private func sqlLibraryExecutionBinding(_ document: SQLDocument) -> SQLLibraryExecutionBinding? {
-        guard let entry = selectedSQLLibraryEntry(for: document) else { return nil }
+        guard let entry = selectedSQLLibraryEntry(for: document) else {
+            return document.queryParameters.isEmpty ? nil : SQLLibraryExecutionBinding(entryID: nil, fileURL: nil,
+                scope: nil, group: nil, parameters: document.queryParameters)
+        }
         let group: SQLProfileGroup?
         if case .group(let id) = entry.scope { group = sqlLibrary.snapshot.groups.first { $0.id == id } }
         else { group = nil }
-        return SQLLibraryExecutionBinding(entryID: entry.id, fileURL: entry.fileURL, scope: entry.scope, group: group)
+        return SQLLibraryExecutionBinding(entryID: entry.id, fileURL: entry.fileURL, scope: entry.scope, group: group,
+            parameters: entry.parameters)
     }
 
     private func hasSQLLibraryExecutionBinding(_ document: SQLDocument, _ expected: SQLLibraryExecutionBinding?) -> Bool {
@@ -3356,6 +3459,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func shutdown() async {
+        cancelQueryParameterPrompt()
         invalidateERDiagrams(reason: "The workspace is shutting down.")
         commands.shutdown()
         await dataComparison?.close(); dataComparison = nil

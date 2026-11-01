@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add typed named parameters to saved PostgreSQL/MySQL SQL queries. Library details
+  store parameter names and types; Run, Run Script and Run to File request fresh
+  values with explicit SQL NULL and bind them through the helper's drivers.
+  Execution approvals cover the exact values, and changes to SQL, connections or
+  definitions invalidate pending execution. History retains definitions for a
+  fresh prompt; entered values are excluded from restored documents, history and
+  snapshot SQL metadata. Explicit snapshots retain their normal result rows.
+
 - Round ER relationship bends while preserving straight arrow approaches and
   obstacle clearance around table cards.
 

@@ -63,6 +63,7 @@ type Command struct {
 	SessionID          string                   `json:"sessionId,omitempty"`
 	QueryID            string                   `json:"queryId,omitempty"`
 	SQL                string                   `json:"sql,omitempty"`
+	Parameters         []QueryParameter         `json:"parameters,omitempty"`
 	Catalog            *CatalogRequest          `json:"catalog,omitempty"`
 	Stream             bool                     `json:"stream,omitempty"`
 	Export             *ExportRequest           `json:"export,omitempty"`
@@ -445,6 +446,14 @@ func ParseCommand(frame []byte) (Command, error) {
 		}
 		if command.Type == "execute" {
 			allowed["sql"] = true
+			allowed["parameters"] = true
+			if raw, exists := fields["parameters"]; exists {
+				var ok bool
+				command.Parameters, ok = parseQueryParameters(raw)
+				if !ok {
+					return command, failure
+				}
+			}
 			if !stringField(fields, "sql", &command.SQL) {
 				return command, failure
 			}

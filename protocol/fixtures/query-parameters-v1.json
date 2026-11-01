@@ -1,0 +1,176 @@
+{
+  "capability": "queryParametersV1",
+  "execute": {
+    "type": "execute",
+    "requestId": "parameters-fixture",
+    "sessionId": "sql-session",
+    "queryId": "query",
+    "sql": "SELECT :label, :count, :amount, :enabled, :day, :at, :nothing, :label",
+    "parameters": [
+      {
+        "name": "label",
+        "type": "text",
+        "value": "O'Reilly :not_a_parameter"
+      },
+      {
+        "name": "count",
+        "type": "integer",
+        "value": "-9223372036854775808"
+      },
+      {
+        "name": "amount",
+        "type": "decimal",
+        "value": "12345678901234567890.123456789"
+      },
+      {
+        "name": "enabled",
+        "type": "boolean",
+        "value": "true"
+      },
+      {
+        "name": "day",
+        "type": "date",
+        "value": "2024-02-29"
+      },
+      {
+        "name": "at",
+        "type": "timestamp",
+        "value": "2026-11-01 12:30:59.123456"
+      },
+      {
+        "name": "nothing",
+        "type": "text",
+        "value": null
+      },
+      {
+        "name": "unused",
+        "type": "text",
+        "value": ""
+      }
+    ]
+  },
+  "invalidParameters": [
+    [
+      {
+        "name": "x",
+        "type": "text"
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "integer",
+        "value": "9223372036854775808"
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "decimal",
+        "value": "1e3"
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "date",
+        "value": "2025-02-29"
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "timestamp",
+        "value": "2026-11-01T12:30:00Z"
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "boolean",
+        "value": "TRUE"
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "text",
+        "value": 4
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "text",
+        "value": "a",
+        "extra": true
+      }
+    ],
+    [
+      {
+        "name": "x",
+        "type": "text",
+        "value": null
+      },
+      {
+        "name": "x",
+        "type": "text",
+        "value": ""
+      }
+    ]
+  ],
+  "assessment": {
+    "type": "operation.assess",
+    "requestId": "parameters-assessment",
+    "sessionId": "sql-session",
+    "queryId": "assessment",
+    "operations": [
+      {
+        "type": "execute",
+        "sql": "SELECT :label, :count, :amount, :enabled, :day, :at, :nothing, :label",
+        "parameters": [
+          {
+            "name": "label",
+            "type": "text",
+            "value": "O'Reilly :not_a_parameter"
+          },
+          {
+            "name": "count",
+            "type": "integer",
+            "value": "-9223372036854775808"
+          },
+          {
+            "name": "amount",
+            "type": "decimal",
+            "value": "12345678901234567890.123456789"
+          },
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "value": "true"
+          },
+          {
+            "name": "day",
+            "type": "date",
+            "value": "2024-02-29"
+          },
+          {
+            "name": "at",
+            "type": "timestamp",
+            "value": "2026-11-01 12:30:59.123456"
+          },
+          {
+            "name": "nothing",
+            "type": "text",
+            "value": null
+          },
+          {
+            "name": "unused",
+            "type": "text",
+            "value": ""
+          }
+        ]
+      }
+    ]
+  }
+}

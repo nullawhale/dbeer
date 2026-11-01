@@ -13,7 +13,7 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 	}
 	operations := make([]OperationRequest, 0, len(raws))
 	for _, item := range raws {
-		fields, ok := changesObject(item, "type|sql|export|changes|explain|structure", "type")
+		fields, ok := changesObject(item, "type|sql|parameters|export|changes|explain|structure", "type")
 		if !ok {
 			return nil, false
 		}
@@ -26,6 +26,16 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 		}
 		if _, present := fields["explain"]; present && operation.Type != "explain.run" {
 			return nil, false
+		}
+		if raw, present := fields["parameters"]; present {
+			if operation.Type != "execute" {
+				return nil, false
+			}
+			var ok bool
+			operation.Parameters, ok = parseQueryParameters(raw)
+			if !ok {
+				return nil, false
+			}
 		}
 		switch operation.Type {
 		case "structure.apply":
@@ -108,15 +118,19 @@ func (policy ExecutionPolicy) Valid() bool {
 }
 
 type OperationRequest struct {
-	Type      string           `json:"type"`
-	SQL       string           `json:"sql,omitempty"`
-	Export    *ExportRequest   `json:"export,omitempty"`
-	Changes   *ChangesRequest  `json:"changes,omitempty"`
-	Explain   *ExplainRequest  `json:"explain,omitempty"`
-	Structure *tableedit.Apply `json:"structure,omitempty"`
+	Type       string           `json:"type"`
+	Parameters []QueryParameter `json:"parameters,omitempty"`
+	SQL        string           `json:"sql,omitempty"`
+	Export     *ExportRequest   `json:"export,omitempty"`
+	Changes    *ChangesRequest  `json:"changes,omitempty"`
+	Explain    *ExplainRequest  `json:"explain,omitempty"`
+	Structure  *tableedit.Apply `json:"structure,omitempty"`
 }
 
 func (operation OperationRequest) Valid() bool {
+	if operation.Type != "execute" && operation.Parameters != nil || !QueryParametersValid(operation.Parameters) {
+		return false
+	}
 	switch operation.Type {
 	case "explain.run":
 		return operation.Explain != nil && operation.Explain.Valid() && operation.Structure == nil && operation.SQL == "" && operation.Export == nil && operation.Changes == nil

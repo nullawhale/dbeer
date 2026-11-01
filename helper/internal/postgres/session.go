@@ -51,7 +51,7 @@ func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Co
 	if startsWithCopy(command.SQL) {
 		return execute(ctx, session.conn, command)
 	}
-	return executeParamsSink(ctx, session.conn, command, command.SQL, nil, sink)
+	return executeNamedParameters(ctx, session.conn, command, sink)
 }
 
 func (session *Session) Close() {

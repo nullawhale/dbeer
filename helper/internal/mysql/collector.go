@@ -16,23 +16,24 @@ const MaxResultRows = 1000
 const MaxResultBytes = 8 * 1024 * 1024
 
 type collector struct {
-	response            protocol.Response
-	bytes               int
-	count               int64
-	stopped             bool
-	maxRows             int
-	maxBytes            int
-	resultSets          []protocol.ResultSet
-	needsStatusProbe    bool
-	omittedResults      bool
-	delivery            *sinkDelivery
-	resultIndex         int
-	began               bool
-	ended               bool
-	valueColumns        []protocol.Column
-	hiddenStorageFields int
-	originFields        []*wire.Field
-	sourceReadCompleted bool
+	response               protocol.Response
+	bytes                  int
+	count                  int64
+	stopped                bool
+	maxRows                int
+	maxBytes               int
+	resultSets             []protocol.ResultSet
+	needsStatusProbe       bool
+	omittedResults         bool
+	delivery               *sinkDelivery
+	resultIndex            int
+	began                  bool
+	ended                  bool
+	valueColumns           []protocol.Column
+	hiddenStorageFields    int
+	originFields           []*wire.Field
+	sourceReadCompleted    bool
+	statementCleanupFailed bool
 }
 
 type sinkDelivery struct {

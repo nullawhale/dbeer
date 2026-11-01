@@ -122,6 +122,16 @@ struct ApplicationWorkspaceView: View {
             InsertCopyView(workspace: workspace, selection: selection)
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: Binding(get: { workspace.queryParameterPrompt }, set: { value in
+            if value == nil, let prompt = workspace.queryParameterPrompt {
+                workspace.submitQueryParameters(id: prompt.id, values: nil)
+            }
+        }), onDismiss: { workspace.queryParameterPromptDismissed() }) { prompt in
+            QueryParametersView(definitions: prompt.definitions, context: prompt.context) { values in
+                workspace.submitQueryParameters(id: prompt.id, values: values)
+            }
+            .applicationTheme(appearance: appearance)
+        }
         .sheet(isPresented: Binding(get: { workspace.importPreview != nil },
             set: { if !$0 { workspace.importPreview = nil } })) {
             ProfileImportView(workspace: workspace)

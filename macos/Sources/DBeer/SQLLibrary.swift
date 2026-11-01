@@ -74,14 +74,16 @@ struct SQLLibraryEntry: Identifiable, Equatable, Sendable, Codable {
     var folder: String
     var tags: [String]
     var scope: SQLLibraryScope
+    var parameters: [SQLParameterDefinition]
 
     init(id: UUID = UUID(), fileURL: URL, folder: String = "", tags: [String] = [],
-         scope: SQLLibraryScope = .allConnections) {
+         scope: SQLLibraryScope = .allConnections, parameters: [SQLParameterDefinition] = []) {
         self.id = id
         self.fileURL = fileURL.standardizedFileURL
         self.folder = folder
         self.tags = tags
         self.scope = scope
+        self.parameters = parameters
     }
 
     var isValid: Bool {
@@ -90,24 +92,41 @@ struct SQLLibraryEntry: Identifiable, Equatable, Sendable, Codable {
               fileURL == fileURL.standardizedFileURL,
               folder.utf8.count <= 1_024, folder == normalizedSQLLibraryFolder(folder),
               tags.count <= 32, tags.allSatisfy({ validSQLLibraryLabel($0, maximumBytes: 128) }),
-              Set(tags.map(sqlLibraryKey)).count == tags.count else { return false }
+              Set(tags.map(sqlLibraryKey)).count == tags.count,
+              (try? SQLParameterDefinition.validate(parameters)) != nil else { return false }
         let parts = folder.split(separator: "/")
         return parts.count <= 16 && parts.allSatisfy {
             $0 != "." && $0 != ".." && validSQLLibraryLabel(String($0), maximumBytes: 256)
         }
     }
 
-    private enum CodingKeys: String, CodingKey { case id, fileURL, folder, tags, scope }
+    private enum CodingKeys: String, CodingKey { case id, fileURL, folder, tags, scope, parameters }
 
     init(from decoder: Decoder) throws {
-        try requireSQLLibraryKeys(decoder, exactly: ["id", "fileURL", "folder", "tags", "scope"])
+        let keys = try decoder.container(keyedBy: SQLLibraryCodingKey.self)
+        let names = Set(keys.allKeys.map(\.stringValue))
+        let originalKeys: Set<String> = ["id", "fileURL", "folder", "tags", "scope"]
+        guard names == originalKeys || names == originalKeys.union(["parameters"]) else {
+            throw SQLLibraryError.invalidEntry
+        }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         fileURL = try values.decode(URL.self, forKey: .fileURL)
         folder = try values.decode(String.self, forKey: .folder)
         tags = try values.decode([String].self, forKey: .tags)
         scope = try values.decode(SQLLibraryScope.self, forKey: .scope)
+        parameters = values.contains(.parameters) ? try values.decode([SQLParameterDefinition].self, forKey: .parameters) : []
         guard isValid else { throw SQLLibraryError.invalidEntry }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(fileURL, forKey: .fileURL)
+        try values.encode(folder, forKey: .folder)
+        try values.encode(tags, forKey: .tags)
+        try values.encode(scope, forKey: .scope)
+        if !parameters.isEmpty { try values.encode(parameters, forKey: .parameters) }
     }
 }
 
@@ -142,7 +161,7 @@ enum SQLLibraryError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEntry: "Choose a local .sql file and valid folder and tags for the SQL library."
+        case .invalidEntry: "Choose a local .sql file and valid folder, tags and parameter definitions for the SQL library."
         case .invalidGroup: "Enter a group name and unique connection references within the group limits."
         case .invalidSnapshot: "The SQL library metadata is invalid or exceeds its limits. Existing metadata has been kept."
         case .duplicateFile: "This SQL file already has a library entry. Edit its existing metadata."
@@ -208,14 +227,16 @@ final class SQLLibrary: ObservableObject {
 
     @discardableResult
     func upsertEntry(id: UUID? = nil, fileURL: URL, folder: String = "", tags: [String] = [],
-                     scope: SQLLibraryScope = .allConnections) throws -> SQLLibraryEntry {
+                     scope: SQLLibraryScope = .allConnections, parameters: [SQLParameterDefinition]? = nil) throws -> SQLLibraryEntry {
         do {
             if let id, !snapshot.entries.contains(where: { $0.id == id }) { throw SQLLibraryError.missingEntry }
             var seen: Set<String> = []
             let tags = tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty && seen.insert(sqlLibraryKey($0)).inserted }
             let entry = SQLLibraryEntry(id: id ?? UUID(), fileURL: fileURL,
-                folder: normalizedSQLLibraryFolder(folder), tags: tags, scope: scope)
+                folder: normalizedSQLLibraryFolder(folder), tags: tags, scope: scope,
+                parameters: parameters ?? id.flatMap { self.entry(id: $0)?.parameters } ?? [])
+            try SQLParameterDefinition.validate(entry.parameters)
             guard entry.isValid else { throw SQLLibraryError.invalidEntry }
             guard !snapshot.entries.contains(where: { $0.id != entry.id && $0.fileURL == entry.fileURL }) else {
                 throw SQLLibraryError.duplicateFile

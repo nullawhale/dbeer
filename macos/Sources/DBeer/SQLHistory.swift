@@ -77,6 +77,7 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
     var errorMessage: String?
     var sqlCompleted: Bool?
     var isFavorite: Bool = false
+    var queryParameters: [SQLParameterDefinition]?
 
     // Kept for legacy fixtures and migration: a display string proves no typed outcome.
     init(id: UUID = UUID(), date: Date = .now, documentID: UUID? = nil, profileID: UUID? = nil,
@@ -92,7 +93,7 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
 
     @MainActor
     init?(documentID: UUID, profileID: UUID, profile: SQLHistoryProfile, sql: String,
-          completion: WorkspaceModel.QueryCompletion) {
+          completion: WorkspaceModel.QueryCompletion, queryParameters: [SQLParameterDefinition]? = nil) {
         guard completion.failure?.sqlNotExecuted != true else { return nil }
         id = UUID()
         date = completion.finishedAt
@@ -100,6 +101,7 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
         self.profileID = profileID
         self.profile = profile
         self.sql = sql
+        self.queryParameters = queryParameters
         startedAt = completion.startedAt
         finishedAt = completion.finishedAt
         durationMs = completion.durationMs
@@ -186,7 +188,8 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
     }
 
     var isValid: Bool {
-        date.timeIntervalSince1970.isFinite &&
+        guard (try? SQLParameterDefinition.validate(queryParameters ?? [])) != nil else { return false }
+        return date.timeIntervalSince1970.isFinite &&
             [startedAt, finishedAt].allSatisfy { $0?.timeIntervalSince1970.isFinite != false } &&
             (durationMs.map { $0.isFinite && $0 >= 0 } ?? true) &&
             [loadedRowCount, affectedRowCount, exportedRowCount].allSatisfy { $0.map { $0 >= 0 } ?? true }
@@ -195,7 +198,7 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, date, documentID, profileID, sql, outcome, legacyOutcome, profile, startedAt, finishedAt, durationMs
         case loadedRowCount, affectedRowCount, exportedRowCount, truncated, countsArePartial, sqlState, errorMessage, sqlCompleted
-        case isFavorite
+        case isFavorite, queryParameters
     }
 
     init(from decoder: Decoder) throws {
@@ -218,6 +221,8 @@ struct SQLHistoryEntry: Identifiable, Codable, Equatable, Sendable {
         errorMessage = try values.decodeIfPresent(String.self, forKey: .errorMessage)
         sqlCompleted = try values.decodeIfPresent(Bool.self, forKey: .sqlCompleted)
         isFavorite = try values.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        queryParameters = values.contains(.queryParameters) ? try values.decode([SQLParameterDefinition].self, forKey: .queryParameters) : nil
+        try SQLParameterDefinition.validate(queryParameters ?? [])
         let stored = try values.decode(String.self, forKey: .outcome)
         legacyOutcome = try values.decodeIfPresent(String.self, forKey: .legacyOutcome)
         if let typed = SQLHistoryOutcome(rawValue: stored) { outcome = typed }

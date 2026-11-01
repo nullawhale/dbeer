@@ -20,13 +20,17 @@ import (
 // Parse/Describe obtains result types before Execute. Metadata reads use the
 // owning connection, including its uncommitted types and temporary schema.
 // The named statement survives those reads and is executed exactly once.
-func prepareQueryTypes(ctx context.Context, conn *pgx.Conn, sql string) (string, []protocol.Column, []pgconn.FieldDescription, error) {
+func prepareQueryTypes(ctx context.Context, conn *pgx.Conn, sql string, parameterOIDs ...[]uint32) (string, []protocol.Column, []pgconn.FieldDescription, error) {
 	var token [16]byte
 	if _, err := rand.Read(token[:]); err != nil {
 		return "", nil, nil, err
 	}
 	name := "dbeer_types_" + hex.EncodeToString(token[:])
-	description, err := conn.PgConn().Prepare(ctx, name, sql, nil)
+	var oids []uint32
+	if len(parameterOIDs) != 0 {
+		oids = parameterOIDs[0]
+	}
+	description, err := conn.PgConn().Prepare(ctx, name, sql, oids)
 	if err != nil {
 		releaseQueryTypes(conn, name)
 		return "", nil, nil, err

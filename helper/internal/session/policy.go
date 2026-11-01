@@ -8,6 +8,7 @@ import (
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	"dbeer/helper/internal/safety"
 )
 
@@ -41,6 +42,14 @@ func assessOperation(engine string, operation protocol.OperationRequest) protoco
 		return result
 	}
 	sql := operation.SQL
+	if operation.Type == "execute" && len(operation.Parameters) > 0 {
+		bound, err := queryparams.Bind(engine, sql, operation.Parameters)
+		if err != nil {
+			result.Kind = "unknown"
+			return result
+		}
+		sql = bound.AssessmentSQL
+	}
 	if operation.Type == "explain.run" && operation.Explain != nil {
 		sql = operation.Explain.SQL
 	}
@@ -76,6 +85,11 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 	preparedSQL := []string{}
 	assessment := &protocol.OperationAssessment{Decision: "allow", Policy: policy, Operations: []protocol.AssessedOperation{}}
 	for _, operation := range command.Operations {
+		if operation.Type == "execute" {
+			if _, err := queryparams.Bind(engine, operation.SQL, operation.Parameters); err != nil {
+				return protocol.ErrorResponse(command, "validation", err.Error())
+			}
+		}
 		if !operation.Valid() {
 			return protocol.ErrorResponse(command, "protocol", "Invalid operation assessment.")
 		}
@@ -128,7 +142,10 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 			return protocol.ErrorResponse(command, "policy", "Cannot prepare execution authorization.")
 		}
 		assessment.Authorization = hex.EncodeToString(random[:])
-		owner.grant = &operationGrant{token: assessment.Authorization, operations: command.Operations, preparedSQL: preparedSQL}
+		encoded, _ := json.Marshal(command.Operations)
+		var retained []protocol.OperationRequest
+		_ = json.Unmarshal(encoded, &retained)
+		owner.grant = &operationGrant{token: assessment.Authorization, operations: retained, preparedSQL: preparedSQL}
 	}
 	return protocol.Response{Type: "operation.assessment", RequestID: command.RequestID, SessionID: owner.id, QueryID: command.QueryID, Assessment: assessment}
 }
@@ -141,7 +158,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		owner.invalidateGrant()
 		return false
 	}
-	operation := protocol.OperationRequest{Type: command.Type, SQL: command.SQL, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
+	operation := protocol.OperationRequest{Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
 	if command.Type == "structure.apply" {
 		if !owner.structureOnly || command.Structure == nil || !command.Structure.Valid(command.Type) || command.Structure.Apply == nil {
 			owner.invalidateGrant()
@@ -149,6 +166,12 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		}
 		operation.Structure = command.Structure.Apply
 		if _, err := owner.structure.Resolve(*operation.Structure); err != nil {
+			owner.invalidateGrant()
+			return false
+		}
+	}
+	if operation.Type == "execute" {
+		if _, err := queryparams.Bind(engine, operation.SQL, operation.Parameters); err != nil {
 			owner.invalidateGrant()
 			return false
 		}

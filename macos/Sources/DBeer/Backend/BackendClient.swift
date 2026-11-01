@@ -4,7 +4,7 @@ import Foundation
 /// Local command rejection before a request is registered or written to stdin.
 /// Keep this distinct from a malformed or oversized reply from the helper.
 enum BackendRequestError: LocalizedError, Sendable, Equatable {
-    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand
+    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand, unsupportedQueryParameters
 
     var errorDescription: String? {
         let explanation: String
@@ -15,6 +15,7 @@ enum BackendRequestError: LocalizedError, Sendable, Equatable {
         case .encodingFailed: explanation = "The command could not be encoded."
         case .unsupportedSSHConfiguration: explanation = "This helper does not support OpenSSH configuration. Rebuild the matching app and helper."
         case .unsupportedPasswordCommand: explanation = "This helper does not support password commands. Rebuild the matching app and helper."
+        case .unsupportedQueryParameters: explanation = "This helper does not support query parameters. Rebuild the matching app and helper."
         }
         return explanation + " The command was not sent."
     }
@@ -89,6 +90,7 @@ actor BackendClient {
     private var schemaComparisonSupported = false
     private var dataComparisonSupported = false
     private var synchronizationPlanSupported = false
+    private var queryParametersSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -190,9 +192,28 @@ actor BackendClient {
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
+    func supportsQueryParameters() -> Bool { queryParametersSupported }
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if let parameters = command.parameters {
+            guard queryParametersSupported else { throw BackendRequestError.unsupportedQueryParameters }
+            guard command.type == "execute", command.catalog == nil, command.changes == nil,
+                  command.explain == nil, command.structure == nil else { throw BackendRequestError.invalidCommand }
+            do { try QueryParameterBinding.validate(parameters) }
+            catch { throw BackendRequestError.invalidCommand }
+        }
+        for operation in command.operations ?? [] {
+            if let parameters = operation.parameters {
+                guard queryParametersSupported else { throw BackendRequestError.unsupportedQueryParameters }
+                guard command.type == "operation.assess", operation.type == "execute",
+                      operation.changes == nil, operation.explain == nil, operation.structure == nil else {
+                    throw BackendRequestError.invalidCommand
+                }
+                do { try QueryParameterBinding.validate(parameters) }
+                catch { throw BackendRequestError.invalidCommand }
+            }
+        }
         if command.type == "explain.run" {
             guard command.explain?.valid == true, command.sessionId.map(BackendMessage.validID) == true,
                   command.queryId.map(BackendMessage.validID) == true, command.sql == nil, command.catalog == nil,
@@ -403,6 +424,7 @@ actor BackendClient {
             schemaComparisonSupported = reply.capabilities?.contains("schemaComparisonV1") == true
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
+            queryParametersSupported = reply.capabilities?.contains("queryParametersV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))

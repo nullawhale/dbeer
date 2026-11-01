@@ -594,7 +594,8 @@ final class WorkspaceModel: ObservableObject {
 
     @discardableResult
     func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil,
-             authorization: String? = nil, explain: ExplainRequest? = nil) async -> QueryCompletion? {
+             authorization: String? = nil, explain: ExplainRequest? = nil,
+             parameters: [QueryParameterBinding]? = nil) async -> QueryCompletion? {
         guard canRun, let sessionId, let helper else { return nil }
         let queryId = UUID().uuidString
         let generation = helperGeneration
@@ -604,6 +605,7 @@ final class WorkspaceModel: ObservableObject {
         else if let export { command = .runToFile(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql, export: export) }
         else { command = .execute(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql) }
         command.authorization = authorization
+        command.parameters = parameters
         let previousResult = result
         clearQueryFeedback()
         if explain != nil { result = previousResult }

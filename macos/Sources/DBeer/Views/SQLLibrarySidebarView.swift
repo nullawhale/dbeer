@@ -124,6 +124,9 @@ struct SQLLibrarySidebarView: View {
                 if !entry.tags.isEmpty {
                     Text(entry.tags.map { "#" + $0 }.joined(separator: " ")).font(.caption).appSecondaryText().lineLimit(1)
                 }
+                if !entry.parameters.isEmpty {
+                    Text("\(entry.parameters.count) parameters").font(.caption).appSecondaryText()
+                }
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }.buttonStyle(.plain).controlHover().help(entry.fileURL.path)
             .accessibilityIdentifier("openSQLLibrary-\(entry.id.uuidString)")
@@ -152,6 +155,7 @@ struct SQLLibraryEntryEditor: View {
     private var scopeKind: SwiftUI.State<String>
     private var profileID: SwiftUI.State<UUID?>
     private var groupID: SwiftUI.State<UUID?>
+    private var parameters: SwiftUI.State<[SQLParameterDefinition]>
     private var error = SwiftUI.State<String?>(initialValue: nil)
 
     init(workspace: ApplicationWorkspace, fileURL: URL) {
@@ -175,6 +179,7 @@ struct SQLLibraryEntryEditor: View {
         scopeKind = SwiftUI.State(initialValue: kind)
         profileID = SwiftUI.State(initialValue: profile)
         groupID = SwiftUI.State(initialValue: group)
+        parameters = SwiftUI.State(initialValue: entry?.parameters ?? [])
     }
 
     var body: some View {
@@ -207,6 +212,7 @@ struct SQLLibraryEntryEditor: View {
                 if scopeKind.wrappedValue == "profile" { profilePicker }
                 if scopeKind.wrappedValue == "group" { groupPicker }
             }
+            parameterDefinitions
             if let error = error.wrappedValue {
                 Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
             }
@@ -243,6 +249,46 @@ struct SQLLibraryEntryEditor: View {
         }.controlHover()
     }
 
+    private var parameterDefinitions: some View {
+        GroupBox("Query parameters") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Use :name placeholders in this SQL file. Only names and types are saved; values are entered for each run.")
+                    .font(.caption).appSecondaryText()
+                if !parameters.wrappedValue.isEmpty {
+                    ScrollView {
+                        VStack(spacing: 6) {
+                            ForEach(parameters.wrappedValue.indices, id: \.self) { index in
+                                HStack(spacing: 8) {
+                                    TextField("Parameter name", text: Binding(
+                                        get: { parameters.wrappedValue.indices.contains(index) ? parameters.wrappedValue[index].name : "" },
+                                        set: { if parameters.wrappedValue.indices.contains(index) { parameters.wrappedValue[index].name = $0 } }))
+                                        .textFieldStyle(.roundedBorder)
+                                        .accessibilityLabel("Parameter \(index + 1) name")
+                                        .accessibilityIdentifier("sqlLibraryParameterName-\(index)")
+                                    Picker("Type", selection: Binding(
+                                        get: { parameters.wrappedValue.indices.contains(index) ? parameters.wrappedValue[index].type : .text },
+                                        set: { if parameters.wrappedValue.indices.contains(index) { parameters.wrappedValue[index].type = $0 } })) {
+                                        ForEach(QueryParameterType.allCases, id: \.self) { type in
+                                            Text(type.label).tag(type)
+                                        }
+                                    }.labelsHidden().controlHover().frame(width: 130)
+                                        .accessibilityLabel("Parameter \(index + 1) type")
+                                    ControlIconButton(systemName: "minus.circle") {
+                                        if parameters.wrappedValue.indices.contains(index) { parameters.wrappedValue.remove(at: index) }
+                                    }.help("Remove parameter").accessibilityLabel("Remove parameter \(index + 1)")
+                                }
+                            }
+                        }.padding(.trailing, 8)
+                    }.frame(height: min(CGFloat(parameters.wrappedValue.count) * 34, 170))
+                }
+                Button("Add Parameter") {
+                    parameters.wrappedValue.append(SQLParameterDefinition(name: "", type: .text))
+                }.controlHover().disabled(parameters.wrappedValue.count >= SQLParameterDefinition.maximumCount)
+                    .accessibilityIdentifier("sqlLibraryAddParameter")
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private func save() {
         let scope: SQLLibraryScope
         switch scopeKind.wrappedValue {
@@ -256,7 +302,8 @@ struct SQLLibraryEntryEditor: View {
         }
         do {
             _ = try library.upsertEntry(id: entryID, fileURL: fileURL.wrappedValue, folder: folder.wrappedValue,
-                tags: tags.wrappedValue.components(separatedBy: .newlines), scope: scope)
+                tags: tags.wrappedValue.components(separatedBy: .newlines), scope: scope,
+                parameters: parameters.wrappedValue)
             dismiss()
         } catch { self.error.wrappedValue = error.localizedDescription }
     }

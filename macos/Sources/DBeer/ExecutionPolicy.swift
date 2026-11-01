@@ -44,6 +44,7 @@ struct OperationRequest: Codable, Equatable, Sendable {
     var changes: ChangesRequest?
     var explain: ExplainRequest?
     var structure: StructureApply?
+    var parameters: [QueryParameterBinding]?
 }
 
 struct StatementAssessment: Codable, Equatable, Sendable {
@@ -166,6 +167,11 @@ enum ExecutionConfirmation {
             }
             content.append(displayed)
             content.append(NSAttributedString(string: "\n"))
+            if let parameters = operation.parameters, !parameters.isEmpty,
+               let data = try? encoder.encode(parameters), let preview = String(data: data, encoding: .utf8) {
+                content.append(NSAttributedString(string: "Bound parameters\n" + preview + "\n",
+                    attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))
+            }
         }
         text.textStorage?.setAttributedString(content)
         text.setAccessibilityLabel("Entire operation preview")

@@ -13,6 +13,7 @@ import (
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	"dbeer/helper/internal/tableedit"
 )
 
@@ -629,6 +630,10 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else if owner.structureOnly && !isStructure(command.Type) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "This session is reserved for the table structure editor.")
+				} else if command.Type == "execute" && queryParameterError(engine, command) != nil {
+					owner.manager.forgetPending(command)
+					owner.invalidateGrant()
+					response = rejectedCommand(command, "validation", queryParameterError(engine, command).Error())
 				} else if !owner.authorize(command, engine, policy) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
@@ -712,4 +717,9 @@ func (manager *Manager) pendingWasCancelled(command protocol.Command) bool {
 	manager.controlMu.RLock()
 	defer manager.controlMu.RUnlock()
 	return manager.pendingQueries[command.QueryID].canceled
+}
+
+func queryParameterError(engine string, command protocol.Command) error {
+	_, err := queryparams.Bind(engine, command.SQL, command.Parameters)
+	return err
 }

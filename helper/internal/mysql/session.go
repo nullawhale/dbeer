@@ -12,6 +12,7 @@ import (
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	wire "github.com/go-mysql-org/go-mysql/mysql"
 )
 
@@ -137,7 +138,16 @@ func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Co
 		response.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
 		return response
 	}
+	bound, err := queryparams.Bind("mysql", command.SQL, command.Parameters)
+	if err != nil {
+		response := protocol.ErrorResponse(command, "validation", err.Error())
+		response.Connected, response.TransactionStatus, response.SQLNotExecuted = !session.closed.Load(), session.TransactionStatus(), true
+		return response
+	}
 	return session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
+		if len(bound.Parameters) > 0 {
+			return session.executeBoundResults(bound, collector, result)
+		}
 		if err := session.executeResults(command.SQL, collector, result); err != nil {
 			return err
 		}
@@ -243,6 +253,22 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 	gate.Unlock()
 	close(done)
 	cancelled := <-watcher
+	if collector.statementCleanupFailed && err == nil {
+		session.updateTransaction()
+		completed := collector.finish(result, time.Since(started), session.TransactionStatus())
+		session.Close()
+		failure := protocol.ErrorResponse(command, "connection", "SQL completed, but the connection closed while releasing its prepared statement. Do not rerun the SQL to reconnect.")
+		failure.SQLCompleted, failure.Connected, failure.TransactionStatus = true, false, "unknown"
+		failure.ResultSets = completed.ResultSets
+		if len(failure.ResultSets) == 0 {
+			failure.ResultSets = []protocol.ResultSet{{Columns: completed.Columns, Rows: completed.Rows, CommandTag: completed.CommandTag, RowCount: completed.RowCount, DisplayedRowCount: completed.DisplayedRowCount, Truncated: completed.Truncated, DisplayNotice: completed.DisplayNotice}}
+		}
+		if command.Export != nil {
+			failure.ExportPublication = "notPublished"
+			failure.Message += " No final export file was saved."
+		}
+		return failure
+	}
 	if session.closed.Load() || cancelled.err != nil {
 		return collector.attachResults(session.unknown(command))
 	}

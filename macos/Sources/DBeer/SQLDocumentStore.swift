@@ -80,12 +80,13 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     var fileDocumentID: UUID?
     var fileRecoveryURL: URL?
     var sqlLibraryEntryID: UUID?
+    var queryParameters: [SQLParameterDefinition]?
 
     init(id: UUID = UUID(), title: String, text: String, profileID: UUID? = nil,
          kind: StoredWorkspaceDocumentKind = .sql, table: StoredTableDocument? = nil,
          snapshotID: UUID? = nil, investigationID: UUID? = nil, erDiagram: StoredERDiagram? = nil,
          fileURL: URL? = nil, fileContentSHA256: String? = nil, fileDocumentID: UUID? = nil, fileRecoveryURL: URL? = nil,
-         sqlLibraryEntryID: UUID? = nil) {
+         sqlLibraryEntryID: UUID? = nil, queryParameters: [SQLParameterDefinition]? = nil) {
         self.id = id
         self.title = title
         self.text = text
@@ -100,9 +101,12 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         self.fileDocumentID = fileURL.map { _ in fileDocumentID ?? id }
         self.fileRecoveryURL = fileRecoveryURL
         self.sqlLibraryEntryID = sqlLibraryEntryID
+        self.queryParameters = queryParameters
     }
 
     var isValid: Bool {
+        guard (queryParameters == nil || kind == .sql),
+              (try? SQLParameterDefinition.validate(queryParameters ?? [])) != nil else { return false }
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         guard kind == .erDiagram || erDiagram == nil else { return false }
         switch kind {
@@ -147,11 +151,11 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, profileID, kind, table, snapshotID, investigationID, erDiagram, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID
+        case id, title, text, profileID, kind, table, snapshotID, investigationID, erDiagram, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID, queryParameters
     }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "investigationID", "erDiagram", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID"])
+        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "investigationID", "erDiagram", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID", "queryParameters"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         title = try values.decode(String.self, forKey: .title)
@@ -176,6 +180,9 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         fileDocumentID = try values.decodeIfPresent(UUID.self, forKey: .fileDocumentID) ?? fileURL.map { _ in id }
         fileRecoveryURL = try values.decodeIfPresent(URL.self, forKey: .fileRecoveryURL)
         sqlLibraryEntryID = try values.decodeIfPresent(UUID.self, forKey: .sqlLibraryEntryID)
+        queryParameters = values.contains(.queryParameters) ? try values.decode([SQLParameterDefinition].self, forKey: .queryParameters) : nil
+        guard queryParameters == nil || kind == .sql else { throw SQLDocumentStoreError.read }
+        try SQLParameterDefinition.validate(queryParameters ?? [])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -204,6 +211,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         try values.encodeIfPresent(fileDocumentID, forKey: .fileDocumentID)
         try values.encodeIfPresent(fileRecoveryURL, forKey: .fileRecoveryURL)
         try values.encodeIfPresent(sqlLibraryEntryID, forKey: .sqlLibraryEntryID)
+        try values.encodeIfPresent(queryParameters, forKey: .queryParameters)
     }
 }
 

@@ -456,6 +456,40 @@ view. Workspace restoration keeps the index, groups and view bindings disconnect
 with an exact private backup before migrating v5. Restoring or editing library
 metadata does not connect or execute SQL.
 
+### Saved query parameters (unreleased)
+
+In **SQL Library → Edit Library Details…**, add names and types under
+**Parameters**. Use `:name` placeholders for values in the SQL file, for example:
+
+```sql
+SELECT * FROM orders
+WHERE customer_id = :customer_id AND created_at >= :since;
+```
+
+Define `customer_id` as **Integer** and `since` as **Timestamp**. **Run**,
+**Run Script**, and **Run to File** ask for values before connecting or executing
+SQL. Each row has a separate **NULL** checkbox; an empty Text value is an empty
+string. Values are bound by the PostgreSQL/MySQL driver, never inserted into SQL
+text. Names are case-sensitive ASCII identifiers, up to 64 characters, with at
+most 128 definitions. Placeholders represent values, not table or column names.
+Repeated placeholders reuse the entered value; definitions unused by a selected
+statement are allowed. Native `$1` and `?` placeholders cannot be mixed with named
+parameters. Quoted strings, identifiers and comments do not contain placeholders.
+
+Supported types are **Text**, signed 64-bit **Integer**, exact **Decimal** without
+an exponent, **Boolean** (`true` or `false`), **Date** (`YYYY-MM-DD`), and
+**Timestamp** (`YYYY-MM-DD HH:mm:ss` with up to six fractional digits and no time
+zone). MySQL decimals support at most 65 total digits and 30 fractional digits.
+Entered values must total at most 1 MiB and cannot contain NUL characters.
+
+Values last for one run only. History retains the original SQL and definitions,
+and reopening it asks for fresh values. Restored tabs remain disconnected and
+never retain entered values. Snapshots retain the template with an explicit note
+that parameter values were omitted. Production and destructive-operation previews
+show SQL and bound values separately; changing the SQL, connection or parameter
+definitions invalidates a pending run. Parameterized query results currently
+remain read-only. Cassandra, MongoDB and Explain do not use saved query parameters.
+
 ## Independent table views
 
 **Open Data** selects an already open view of that table without resetting its

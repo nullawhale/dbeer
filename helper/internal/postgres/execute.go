@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -32,7 +33,31 @@ func execute(ctx context.Context, conn *pgx.Conn, command protocol.Command) prot
 		response.SQLNotExecuted = true
 		return response
 	}
-	return executeParams(ctx, conn, command, command.SQL, nil)
+	return executeNamedParameters(ctx, conn, command, nil)
+}
+
+func executeNamedParameters(ctx context.Context, conn *pgx.Conn, command protocol.Command, sink adapter.ResultSink) protocol.Response {
+	bound, err := queryparams.Bind("postgresql", command.SQL, command.Parameters)
+	if err != nil {
+		failure := protocol.ErrorResponse(command, "validation", err.Error())
+		failure.Connected, failure.TransactionStatus, failure.SQLNotExecuted = !conn.IsClosed(), transactionStatus(conn), true
+		return failure
+	}
+	var values [][]byte
+	var oids []uint32
+	for _, parameter := range bound.Parameters {
+		var value []byte
+		if parameter.Value != nil {
+			value = []byte(*parameter.Value)
+		}
+		values = append(values, value)
+		oids = append(oids, map[string]uint32{"text": 25, "integer": 20, "decimal": 1700, "boolean": 16, "date": 1082, "timestamp": 1114}[parameter.Type])
+	}
+	response := executeParamsSinkWithStorageOIDs(ctx, conn, command, bound.SQL, values, sink, false, oids)
+	if len(bound.Parameters) > 0 {
+		response.ErrorPosition = 0
+	}
+	return response
 }
 
 func executeParams(ctx context.Context, conn *pgx.Conn, command protocol.Command, sql string, values [][]byte) protocol.Response {
@@ -44,6 +69,10 @@ func executeParamsSink(ctx context.Context, conn *pgx.Conn, command protocol.Com
 }
 
 func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command protocol.Command, sql string, values [][]byte, sink adapter.ResultSink, storageProjection bool) protocol.Response {
+	return executeParamsSinkWithStorageOIDs(ctx, conn, command, sql, values, sink, storageProjection, nil)
+}
+
+func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, command protocol.Command, sql string, values [][]byte, sink adapter.ResultSink, storageProjection bool, oids []uint32) protocol.Response {
 	started := time.Now()
 	if ctx.Err() != nil {
 		category, message := "cancelled", "Execution was cancelled before it started."
@@ -55,7 +84,7 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 		failure.Connected, failure.TransactionStatus = !conn.IsClosed(), transactionStatus(conn)
 		return failure
 	}
-	statement, columns, sourceFields, prepareErr := prepareQueryTypes(ctx, conn, sql)
+	statement, columns, sourceFields, prepareErr := prepareQueryTypes(ctx, conn, sql, oids)
 	if prepareErr != nil {
 		failure := queryError(command, ctx, conn, prepareErr)
 		// Parse/coercion and catalog deparsing can call user type routines.
@@ -72,6 +101,9 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 		source = preparePostgresResultSource(ctx, conn, sql, sourceFields)
 	}
 	defer releaseQueryTypes(conn, statement)
+	// Reuse the exact Parse/Describe result, including its explicit parameter
+	// OIDs. A second Parse could repeat custom type input routines and change
+	// result metadata before execution.
 	reader := conn.PgConn().ExecPrepared(ctx, statement, values, nil, nil)
 	collector := newResultCollector(command, reader.FieldDescriptions(), MaxResultBytes)
 	// Explain has its own bounded capture; never retain a duplicate grid result.

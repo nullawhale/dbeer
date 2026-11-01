@@ -267,6 +267,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var dataComparison: DataComparisonRequest?
     var explain: ExplainRequest?
     var structure: StructureRequest?
+    var parameters: [QueryParameterBinding]?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -284,16 +285,20 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "connect", requestId: UUID().uuidString, connection: connection)
     }
 
-    static func execute(sessionId: String, queryId: String = UUID().uuidString, sql: String) -> Self {
-        Self(type: "execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, sql: sql, stream: true)
+    static func execute(sessionId: String, queryId: String = UUID().uuidString, sql: String,
+                        parameters: [QueryParameterBinding]? = nil) -> Self {
+        Self(type: "execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, sql: sql, stream: true,
+            parameters: parameters)
     }
 
     static func catalog(sessionId: String, queryId: String = UUID().uuidString, request: CatalogRequest) -> Self {
         Self(type: "catalog", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, catalog: request, stream: true)
     }
 
-    static func runToFile(sessionId: String, queryId: String = UUID().uuidString, sql: String, export: ExportRequest) -> Self {
-        Self(type: "execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, sql: sql, stream: true, export: export)
+    static func runToFile(sessionId: String, queryId: String = UUID().uuidString, sql: String, export: ExportRequest,
+                          parameters: [QueryParameterBinding]? = nil) -> Self {
+        Self(type: "execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, sql: sql, stream: true, export: export,
+            parameters: parameters)
     }
 
     static func previewChanges(sessionId: String, queryId: String = UUID().uuidString, request: ChangesRequest) -> Self {

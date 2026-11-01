@@ -1,13 +1,14 @@
 package adapter
 
 import (
+	"dbeer/helper/internal/protocol"
 	"slices"
 	"testing"
 )
 
 func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 	cassandra := Capabilities("cassandra")
-	for _, unsupported := range []string{"transactions", "serverReadOnly"} {
+	for _, unsupported := range []string{"transactions", "serverReadOnly", protocol.QueryParametersCapability} {
 		if slices.Contains(cassandra, unsupported) {
 			t.Fatalf("Cassandra advertises unsupported %s", unsupported)
 		}
@@ -18,7 +19,7 @@ func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 		}
 	}
 	for _, engine := range []string{"postgresql", "mysql"} {
-		for _, supported := range []string{"transactions", "gridEditing", "serverReadOnly"} {
+		for _, supported := range []string{"transactions", "gridEditing", "serverReadOnly", protocol.QueryParametersCapability} {
 			if !slices.Contains(Capabilities(engine), supported) {
 				t.Fatalf("%s lacks %s", engine, supported)
 			}

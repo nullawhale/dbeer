@@ -2,9 +2,11 @@ package mysql
 
 import (
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	wire "github.com/go-mysql-org/go-mysql/mysql"
 )
@@ -22,6 +24,51 @@ func (session *Session) executeResults(sql string, parent *collector, target *wi
 	if err != nil {
 		return err
 	}
+	return session.drainResults(parent, target, false)
+}
+
+func (session *Session) executeBoundResults(bound queryparams.Bound, parent *collector, target *wire.Result) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = wire.ErrMalformPacket
+		}
+	}()
+	statement, err := session.work.client.Prepare(bound.SQL)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if statement.Close() != nil {
+			// COM_STMT_CLOSE is cleanup after the terminal SQL response. Its
+			// transport failure must not erase an acknowledged SQL outcome.
+			parent.statementCleanupFailed = true
+		}
+	}()
+	arguments := make([]any, len(bound.Parameters))
+	for index, p := range bound.Parameters {
+		if p.Value == nil {
+			continue
+		}
+		switch p.Type {
+		case "integer":
+			arguments[index], _ = strconv.ParseInt(*p.Value, 10, 64)
+		case "boolean":
+			if *p.Value == "true" {
+				arguments[index] = int64(1)
+			} else {
+				arguments[index] = int64(0)
+			}
+		default:
+			arguments[index] = *p.Value
+		}
+	}
+	if err = statement.ExecuteSelectStreaming(target, parent.row, parent.columns, arguments...); err != nil {
+		return err
+	}
+	return session.drainResults(parent, target, true)
+}
+
+func (session *Session) drainResults(parent *collector, target *wire.Result, binaryRows bool) error {
 	if target.Status&wire.SERVER_MORE_RESULTS_EXISTS == 0 {
 		return nil
 	}
@@ -57,7 +104,7 @@ func (session *Session) executeResults(sql string, parent *collector, target *wi
 			current.maxRows, current.maxBytes = 0, 0
 		}
 		next := wire.NewResult(nil)
-		err = session.readNextResult(current, next)
+		err := session.readNextResult(current, next, binaryRows)
 		status = next.Status
 		if err == nil {
 			capture(current, next)
@@ -73,7 +120,7 @@ func (session *Session) executeResults(sql string, parent *collector, target *wi
 // Subsequent CALL results have no public streaming reader in go-mysql v1.16.
 // Read them through its exported packet API, retaining one row at a time.
 // DEPRECATE_EOF is disabled during handshake so EOF is exactly five bytes.
-func (session *Session) readNextResult(collector *collector, target *wire.Result) (err error) {
+func (session *Session) readNextResult(collector *collector, target *wire.Result, binaryRows bool) (err error) {
 	defer func() {
 		if recover() != nil {
 			err = wire.ErrMalformPacket
@@ -165,7 +212,7 @@ func (session *Session) readNextResult(collector *collector, target *wire.Result
 			}
 			return session.work.client.HandleErrorPacket(data)
 		}
-		values, err = wire.RowData(data).Parse(fields, false, values)
+		values, err = wire.RowData(data).Parse(fields, binaryRows, values)
 		if err != nil {
 			return err
 		}
