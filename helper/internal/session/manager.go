@@ -13,6 +13,7 @@ import (
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/tableedit"
 )
 
 const MaxSessions = 64
@@ -20,21 +21,23 @@ const ConnectTimeout = 5 * time.Second
 const QueryTimeout = 30 * time.Second
 
 type Manager struct {
-	commands         chan protocol.Command
-	responses        chan protocol.Response
-	events           chan event
-	stop             chan struct{}
-	done             chan struct{}
-	once             sync.Once
-	workers          sync.WaitGroup
-	opener           adapter.OpenFunc
-	timeout          time.Duration
-	controlMu        sync.RWMutex
-	owners           map[string]*owner
-	shutdownRequests chan protocol.Command
-	shutdownOnce     sync.Once
-	pendingQueries   map[string]pendingQuery
-	quiescing        bool
+	commands                chan protocol.Command
+	responses               chan protocol.Response
+	events                  chan event
+	stop                    chan struct{}
+	done                    chan struct{}
+	once                    sync.Once
+	workers                 sync.WaitGroup
+	opener                  adapter.OpenFunc
+	timeout                 time.Duration
+	controlMu               sync.RWMutex
+	owners                  map[string]*owner
+	shutdownRequests        chan protocol.Command
+	shutdownOnce            sync.Once
+	pendingQueries          map[string]pendingQuery
+	closedStructureSessions map[string]bool
+	closedStructureOrder    []string
+	quiescing               bool
 }
 
 type pendingQuery struct {
@@ -52,7 +55,7 @@ func New(opener adapter.OpenFunc) *Manager { return newWithTimeout(opener, Query
 
 func newWithTimeout(opener adapter.OpenFunc, timeout time.Duration) *Manager {
 	manager := &Manager{commands: make(chan protocol.Command, 256), responses: make(chan protocol.Response, 8), events: make(chan event, 8),
-		stop: make(chan struct{}), done: make(chan struct{}), opener: opener, timeout: timeout, owners: make(map[string]*owner), shutdownRequests: make(chan protocol.Command, 1), pendingQueries: make(map[string]pendingQuery)}
+		stop: make(chan struct{}), done: make(chan struct{}), opener: opener, timeout: timeout, owners: make(map[string]*owner), shutdownRequests: make(chan protocol.Command, 1), pendingQueries: make(map[string]pendingQuery), closedStructureSessions: make(map[string]bool)}
 	go manager.run()
 	return manager
 }
@@ -76,7 +79,7 @@ func (manager *Manager) Submit(command protocol.Command) bool {
 }
 
 func (manager *Manager) markPending(command protocol.Command) {
-	if command.Type == "execute" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" {
+	if command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) {
 		manager.controlMu.Lock()
 		manager.pendingQueries[command.QueryID] = pendingQuery{sessionID: command.SessionID}
 		manager.controlMu.Unlock()
@@ -110,7 +113,7 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 // Keep them distinct from terminal failures of dispatched database commands.
 func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
 	response := protocol.ErrorResponse(command, category, message)
-	response.SQLNotExecuted = command.Type == "execute"
+	response.SQLNotExecuted = command.Type == "execute" || command.Type == "explain.run" || command.Type == "structure.apply"
 	return response
 }
 
@@ -164,6 +167,15 @@ func (manager *Manager) run() {
 		case result := <-manager.events:
 			if result.closed {
 				manager.controlMu.Lock()
+				if closedOwner := owners[result.sessionID]; closedOwner != nil && closedOwner.structureOnly {
+					manager.closedStructureSessions[result.sessionID] = true
+					manager.closedStructureOrder = append(manager.closedStructureOrder, result.sessionID)
+					if len(manager.closedStructureOrder) > 256 {
+						old := manager.closedStructureOrder[0]
+						manager.closedStructureOrder = manager.closedStructureOrder[1:]
+						delete(manager.closedStructureSessions, old)
+					}
+				}
 				delete(owners, result.sessionID)
 				manager.controlMu.Unlock()
 			} else if !emit(result.response) {
@@ -210,7 +222,7 @@ func (manager *Manager) run() {
 					continue
 				}
 				id := hex.EncodeToString(randomID[:])
-				owner := &owner{id: id, manager: manager, commands: make(chan protocol.Command, 1), shutdown: make(chan struct{})}
+				owner := &owner{id: id, structureOnly: command.Connection.SessionPurpose == "structure", manager: manager, commands: make(chan protocol.Command, 1), shutdown: make(chan struct{})}
 				manager.controlMu.Lock()
 				owners[id] = owner
 				manager.controlMu.Unlock()
@@ -245,6 +257,8 @@ type operation struct {
 }
 
 type owner struct {
+	structure          tableedit.Store
+	structureOnly      bool
 	id                 string
 	manager            *Manager
 	commands           chan protocol.Command
@@ -258,8 +272,10 @@ type owner struct {
 	stopOnce           sync.Once
 	externalDisconnect *protocol.Command
 	stopRequested      bool
+	closedPhysical     bool
 	authMu             sync.Mutex
 	grant              *operationGrant
+	approvedExplainSQL string
 }
 
 // Control is deliberately separate from ordinary routing and result queues.
@@ -299,8 +315,13 @@ func (manager *Manager) Control(command protocol.Command) *protocol.Response {
 	}
 	manager.controlMu.RLock()
 	owner := manager.owners[command.SessionID]
+	knownStructureClosed := manager.closedStructureSessions[command.SessionID]
 	manager.controlMu.RUnlock()
 	if owner == nil {
+		if command.Type == "disconnect" && knownStructureClosed {
+			response := protocol.Response{Type: "disconnect.ack", RequestID: command.RequestID, SessionID: command.SessionID}
+			return &response
+		}
 		if command.Type == "stream.ack" {
 			return nil
 		}
@@ -310,6 +331,13 @@ func (manager *Manager) Control(command protocol.Command) *protocol.Response {
 	if command.Type == "disconnect" {
 		if owner.requestStop(&command) {
 			return nil
+		}
+		owner.controlMu.Lock()
+		closed := owner.structureOnly && owner.closedPhysical
+		owner.controlMu.Unlock()
+		if closed {
+			response := protocol.Response{Type: "disconnect.ack", RequestID: command.RequestID, SessionID: command.SessionID}
+			return &response
 		}
 		response := protocol.ErrorResponse(command, "connection", "Session is closing.")
 		return &response
@@ -337,6 +365,10 @@ func (manager *Manager) Control(command protocol.Command) *protocol.Response {
 
 func (owner *owner) requestStop(disconnect *protocol.Command) bool {
 	owner.controlMu.Lock()
+	if disconnect != nil && owner.structureOnly && owner.closedPhysical {
+		owner.controlMu.Unlock()
+		return false
+	}
 	if disconnect != nil && owner.stopRequested {
 		owner.controlMu.Unlock()
 		return false
@@ -450,6 +482,15 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				physical.Close()
 				physical = nil
 			}
+			if owner.structureOnly {
+				owner.controlMu.Lock()
+				owner.closedPhysical = true
+				if disconnect == nil && owner.externalDisconnect != nil {
+					copy := *owner.externalDisconnect
+					disconnect = &copy
+				}
+				owner.controlMu.Unlock()
+			}
 			closed = true
 			if disconnect != nil {
 				outgoing = append(outgoing, protocol.Response{Type: "disconnect.ack", RequestID: disconnect.RequestID, SessionID: owner.id})
@@ -529,6 +570,11 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					outgoing = append(outgoing, protocol.ErrorResponse(pending, "cancelled", "Connection attempt was cancelled."))
 				} else {
 					response := protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id, Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus}
+					if explain, ok := physical.(adapter.ExplainSession); ok {
+						support := explain.ExplainSupport()
+						response.ExplainSupport = &support
+						response.Capabilities = append(response.Capabilities, protocol.VisualExplainCapability)
+					}
 					if current, ok := physical.(interface{ CurrentKeyspace() string }); ok {
 						keyspace := current.CurrentKeyspace()
 						response.CurrentKeyspace = &keyspace
@@ -571,16 +617,23 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				if active != nil || len(outgoing) != 0 {
 					response = protocol.ErrorResponse(command, "busy", "Another operation is in progress in this session.")
 				} else {
-					response = owner.assess(command, engine, policy)
+					response = owner.assess(command, engine, policy, physical)
 				}
-			case "execute", "catalog", "changes.preview", "changes.apply":
+			case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
+				} else if owner.manager.pendingWasCancelled(command) {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "cancelled", "Execution was cancelled before it started.")
+				} else if owner.structureOnly && !isStructure(command.Type) {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "policy", "This session is reserved for the table structure editor.")
 				} else if !owner.authorize(command, engine, policy) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
 				} else {
+					command.PreparedExplainSQL = owner.takeApprovedExplainSQL()
 					ctx, cancel = context.WithTimeout(context.Background(), owner.manager.timeout)
 					pending = command
 					credit := newCreditState(owner, command)
@@ -610,13 +663,17 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						case <-begin:
 						case <-ctx.Done():
 						}
-						result <- operation{response: runExecution(ctx, physical, command, credit)}
+						if isStructure(command.Type) {
+							result <- operation{response: owner.runStructure(ctx, physical, command)}
+						} else {
+							result <- operation{response: runExecution(ctx, physical, command, credit)}
+						}
 					}()
 					continue
 				}
 			case "cancel":
 				status := "alreadyFinished"
-				if active != nil && (pending.Type == "execute" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply") && pending.QueryID == command.QueryID {
+				if active != nil && (pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type)) && pending.QueryID == command.QueryID {
 					cancel()
 					status = "accepted"
 				}
@@ -649,4 +706,10 @@ func connectError(command protocol.Command, err error) protocol.Response {
 		response.Category, response.Message = "cancelled", "Connection attempt was cancelled."
 	}
 	return response
+}
+
+func (manager *Manager) pendingWasCancelled(command protocol.Command) bool {
+	manager.controlMu.RLock()
+	defer manager.controlMu.RUnlock()
+	return manager.pendingQueries[command.QueryID].canceled
 }

@@ -145,7 +145,7 @@ struct WorkspacePanePersistenceTests {
                 "documentID": sql.id.uuidString, "profileID": try #require(sql.profileID).uuidString,
                 "sql": favorite.sql, "outcome": "Completed"]]
         }
-        let bytes = try JSONSerialization.data(withJSONObject: legacy, options: [.prettyPrinted, .sortedKeys])
+        let bytes = try JSONSerialization.data(withJSONObject: try workspaceLegacyFilterFixture(legacy), options: [.prettyPrinted, .sortedKeys])
         let url = directory.appendingPathComponent("workspace.json")
         try bytes.write(to: url)
         let store = FileSQLDocumentStore(fileURL: url)
@@ -169,7 +169,7 @@ struct WorkspacePanePersistenceTests {
         var legacy = try object(snapshot)
         legacy["version"] = 7
         legacy["paneLayout"] = nil
-        let bytes = try JSONSerialization.data(withJSONObject: legacy, options: [.prettyPrinted, .sortedKeys])
+        let bytes = try JSONSerialization.data(withJSONObject: try workspaceLegacyFilterFixture(legacy), options: [.prettyPrinted, .sortedKeys])
         let url = directory.appendingPathComponent("workspace.json")
         try bytes.write(to: url)
         let existingBackup = url.appendingPathExtension("v7.backup")
@@ -197,7 +197,7 @@ struct WorkspacePanePersistenceTests {
         var legacy = try object(snapshot)
         legacy["version"] = 7
         legacy["paneLayout"] = nil
-        let bytes = try JSONSerialization.data(withJSONObject: legacy, options: [.prettyPrinted, .sortedKeys])
+        let bytes = try JSONSerialization.data(withJSONObject: try workspaceLegacyFilterFixture(legacy), options: [.prettyPrinted, .sortedKeys])
         let url = directory.appendingPathComponent("workspace.json")
         try bytes.write(to: url)
         // This is an actual filesystem fault: the source stays readable but a
@@ -223,7 +223,7 @@ struct WorkspacePanePersistenceTests {
             if version >= 3 { legacy["historySettings"] = ["maxEntries": 17, "retentionDays": 6] }
             if version >= 5 { legacy["sqlFolders"] = [] }
             if version >= 6 { legacy["sqlLibrary"] = ["entries": [], "groups": []] }
-            let bytes = try JSONSerialization.data(withJSONObject: legacy, options: [.sortedKeys])
+            let bytes = try JSONSerialization.data(withJSONObject: try workspaceLegacyFilterFixture(legacy), options: [.sortedKeys])
             let url = directory.appendingPathComponent("workspace.json")
             try bytes.write(to: url)
             let store = FileSQLDocumentStore(fileURL: url)

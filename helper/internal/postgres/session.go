@@ -14,7 +14,10 @@ func PrepareEnvironment() { clearPostgresEnvironment() }
 
 type Session struct {
 	adapter.TransportBinding
-	conn *pgx.Conn
+	conn                    *pgx.Conn
+	explainIdentity         string
+	afterStructureStep      func(int)
+	structureCommitOverride func(func() error) error
 }
 
 func Open(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
@@ -23,7 +26,9 @@ func Open(ctx context.Context, connection protocol.Connection) (adapter.Session,
 		response := connectionError(protocol.Command{}, err)
 		return nil, &adapter.ConnectionError{Category: response.Category, Message: response.Message, SQLState: response.SQLState}
 	}
-	return &Session{conn: conn, TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
+	var identity string
+	_ = conn.QueryRow(ctx, "SELECT pg_catalog.version()").Scan(&identity)
+	return &Session{conn: conn, explainIdentity: identity, TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
 }
 
 func (session *Session) Execute(ctx context.Context, command protocol.Command) protocol.Response {

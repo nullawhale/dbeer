@@ -62,6 +62,8 @@ final class PostgresTypeTestFixture {
             request=command['catalog']; kind=request['kind']; name=request.get('object','status')
             oid=request.get('identity','40001'); object_kind=request.get('objectKind','enum')
             if kind=='schemas': return result(command,['name'],[['public']])
+            if kind=='columns' and name.startswith('er_'):
+                return result(command,['name','nativeType','nullable','primaryKey'],[['id','integer','false','1'],['parent','integer','true','0']])
             if kind in ['completion','foreignKeys']: return result(command,[],[])
             if kind in ['objects','search']:
                 rows=[['status','enum','public','40001','enum'],['account_code','type','public','40002','domain']]
@@ -136,6 +138,7 @@ final class PostgresTypeTestFixture {
                 request=command['catalog']; change=request.get('typeChange',{})
                 hold=request['kind']=='typeDetails' and request.get('object','').startswith('hold-details')
                 hold=hold or request['kind']=='typeDDL' and (change.get('newName')=='hold-preview' or change.get('value')=='hold-preview')
+                hold=hold or request['kind']=='columns' and request.get('object','').startswith('er_hold')
                 hold=hold or request['kind']=='objects' and request.get('schema')=='hold-objects'
                 hold=hold or request['kind']=='search' and request.get('search')=='hold-search'
                 send(dict(type='query.started',requestId=command['requestId'],sessionId=command['sessionId'],queryId=command['queryId']))

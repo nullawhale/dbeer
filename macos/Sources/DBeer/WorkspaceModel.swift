@@ -94,6 +94,7 @@ final class WorkspaceModel: ObservableObject {
     var isConnecting: Bool { connectionState == .connecting || connectionPreparationId != nil }
     @Published private(set) var currentKeyspace: String?
     @Published private(set) var capabilities: Set<String> = []
+    @Published private(set) var explainSupport: ExplainSupport?
     @Published var sql = "SELECT 1 AS id, 'hello'::text AS name;"
 
     @Published private(set) var state: HelperState = .starting
@@ -264,6 +265,7 @@ final class WorkspaceModel: ObservableObject {
             sessionId = reply.sessionId
             transactionStatus = reply.transactionStatus
             capabilities = Set(reply.capabilities ?? [])
+            explainSupport = reply.explainSupport
             currentKeyspace = reply.currentKeyspace ?? (engine == .cassandra ? database : nil)
             connectionState = .connected
             let connectedSession = reply.sessionId
@@ -592,16 +594,19 @@ final class WorkspaceModel: ObservableObject {
 
     @discardableResult
     func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil,
-             authorization: String? = nil) async -> QueryCompletion? {
+             authorization: String? = nil, explain: ExplainRequest? = nil) async -> QueryCompletion? {
         guard canRun, let sessionId, let helper else { return nil }
         let queryId = UUID().uuidString
         let generation = helperGeneration
         var command: BackendCommand
-        if let catalog { command = .catalog(sessionId: sessionId, queryId: queryId, request: catalog) }
+        if let explain { command = .explain(sessionId: sessionId, queryId: queryId, request: explain) }
+        else if let catalog { command = .catalog(sessionId: sessionId, queryId: queryId, request: catalog) }
         else if let export { command = .runToFile(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql, export: export) }
         else { command = .execute(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql) }
         command.authorization = authorization
+        let previousResult = result
         clearQueryFeedback()
+        if explain != nil { result = previousResult }
         latestQueryId = queryId
         activeQueryId = queryId
         let startedAt = Date.now
@@ -626,7 +631,7 @@ final class WorkspaceModel: ObservableObject {
             }
             let terminal = completion(reply: reply)
             guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
-            result = reply
+            if explain == nil { result = reply }
             if let keyspace = reply.currentKeyspace { currentKeyspace = keyspace }
             queryFailure = nil
             if case .ready = state { transactionStatus = reply.transactionStatus }
@@ -745,6 +750,7 @@ final class WorkspaceModel: ObservableObject {
         transactionStatus = nil
         currentKeyspace = nil
         capabilities = []
+        explainSupport = nil
         connectionState = .disconnected
     }
 

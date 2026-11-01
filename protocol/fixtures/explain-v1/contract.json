@@ -1,0 +1,777 @@
+{
+  "version": 1,
+  "commands": [
+    {
+      "type": "explain.run",
+      "requestId": "explain-plan",
+      "sessionId": "sql-tab",
+      "queryId": "plan-1",
+      "explain": {
+        "sql": "SELECT '🍺; not a second statement'",
+        "mode": "plan"
+      },
+      "authorization": "single-use-plan"
+    },
+    {
+      "type": "explain.run",
+      "requestId": "explain-analyze",
+      "sessionId": "sql-tab",
+      "queryId": "analyze-1",
+      "explain": {
+        "sql": "WITH sample AS (SELECT 1) SELECT * FROM sample",
+        "mode": "analyze"
+      },
+      "authorization": "single-use-analyze"
+    },
+    {
+      "type": "operation.assess",
+      "requestId": "explain-assess",
+      "sessionId": "sql-tab",
+      "queryId": "review-1",
+      "operations": [
+        {
+          "type": "explain.run",
+          "explain": {
+            "sql": "SELECT 1",
+            "mode": "analyze"
+          }
+        }
+      ]
+    }
+  ],
+  "invalidCommands": [
+    {
+      "id": "missing-mode",
+      "command": {
+        "type": "explain.run",
+        "requestId": "explain-plan",
+        "sessionId": "sql-tab",
+        "queryId": "plan-1",
+        "explain": {
+          "sql": "SELECT '🍺; not a second statement'"
+        },
+        "authorization": "single-use-plan"
+      }
+    },
+    {
+      "id": "unknown-mode",
+      "command": {
+        "type": "explain.run",
+        "requestId": "explain-plan",
+        "sessionId": "sql-tab",
+        "queryId": "plan-1",
+        "explain": {
+          "sql": "SELECT '🍺; not a second statement'",
+          "mode": "auto"
+        },
+        "authorization": "single-use-plan"
+      }
+    },
+    {
+      "id": "client-wrapper",
+      "command": {
+        "type": "explain.run",
+        "requestId": "explain-plan",
+        "sessionId": "sql-tab",
+        "queryId": "plan-1",
+        "explain": {
+          "sql": "SELECT '🍺; not a second statement'",
+          "mode": "plan"
+        },
+        "authorization": "single-use-plan",
+        "sql": "EXPLAIN ANALYZE SELECT 1"
+      }
+    },
+    {
+      "id": "unknown-option",
+      "command": {
+        "type": "explain.run",
+        "requestId": "explain-plan",
+        "sessionId": "sql-tab",
+        "queryId": "plan-1",
+        "explain": {
+          "sql": "SELECT '🍺; not a second statement'",
+          "mode": "plan",
+          "analyze": true
+        },
+        "authorization": "single-use-plan"
+      }
+    },
+    {
+      "id": "stream",
+      "command": {
+        "type": "explain.run",
+        "requestId": "explain-plan",
+        "sessionId": "sql-tab",
+        "queryId": "plan-1",
+        "explain": {
+          "sql": "SELECT '🍺; not a second statement'",
+          "mode": "plan"
+        },
+        "authorization": "single-use-plan",
+        "stream": true
+      }
+    },
+    {
+      "id": "null-request",
+      "command": {
+        "type": "explain.run",
+        "requestId": "explain-plan",
+        "sessionId": "sql-tab",
+        "queryId": "plan-1",
+        "explain": null,
+        "authorization": "single-use-plan"
+      }
+    }
+  ],
+  "results": [
+    {
+      "support": {
+        "engine": "postgresql",
+        "serverVersion": "17.6",
+        "format": "json",
+        "modes": [
+          "plan",
+          "analyze"
+        ]
+      },
+      "mode": "plan",
+      "status": "tree",
+      "raw": "synthetic exact server output",
+      "complete": true,
+      "roots": [
+        "0"
+      ],
+      "nodes": [
+        {
+          "id": "0",
+          "children": [],
+          "operation": "Unknown Native Operation (predicate)",
+          "details": {
+            "Parent Relationship": "InitPlan",
+            "Parallel Aware": "true"
+          },
+          "execution": "estimated",
+          "metrics": {
+            "totalCost": {
+              "unit": "cost",
+              "basis": "inclusive",
+              "value": "9007199254740993.125"
+            },
+            "actualRows": {
+              "unit": "rows",
+              "basis": "perInvocation",
+              "unavailableReason": "notCollected"
+            }
+          }
+        }
+      ],
+      "metrics": {}
+    },
+    {
+      "support": {
+        "engine": "mysql",
+        "serverVersion": "8.4.6",
+        "format": "tree",
+        "modes": [
+          "plan",
+          "analyze"
+        ]
+      },
+      "mode": "analyze",
+      "status": "tree",
+      "raw": "synthetic exact server output",
+      "complete": true,
+      "roots": [
+        "0"
+      ],
+      "nodes": [
+        {
+          "id": "0",
+          "children": [
+            "1"
+          ],
+          "operation": "Unknown Native Operation (predicate)",
+          "details": {
+            "Parent Relationship": "InitPlan",
+            "Parallel Aware": "true"
+          },
+          "execution": "executed",
+          "metrics": {
+            "totalTime": {
+              "unit": "ms",
+              "basis": "perInvocation",
+              "value": "1.2e+3"
+            },
+            "loops": {
+              "unit": "count",
+              "basis": "total",
+              "value": "2"
+            }
+          }
+        },
+        {
+          "id": "1",
+          "children": [],
+          "operation": "Unknown Native Operation (predicate)",
+          "details": {
+            "Parent Relationship": "InitPlan",
+            "Parallel Aware": "true"
+          },
+          "execution": "notExecuted",
+          "metrics": {
+            "totalCost": {
+              "unit": "cost",
+              "basis": "inclusive",
+              "value": "0.5"
+            },
+            "actualRows": {
+              "unit": "rows",
+              "basis": "perInvocation",
+              "unavailableReason": "notExecuted"
+            }
+          }
+        }
+      ],
+      "metrics": {}
+    },
+    {
+      "support": {
+        "engine": "postgresql",
+        "serverVersion": "17.6",
+        "format": "json",
+        "modes": [
+          "plan",
+          "analyze"
+        ]
+      },
+      "mode": "analyze",
+      "status": "rawOnly",
+      "raw": "synthetic exact server output",
+      "complete": true,
+      "roots": [],
+      "nodes": [],
+      "metrics": {},
+      "diagnostic": "The SQL completed, but the format is unfamiliar."
+    },
+    {
+      "support": {
+        "engine": "mysql",
+        "serverVersion": "8.4.6",
+        "format": "tree",
+        "modes": [
+          "plan",
+          "analyze"
+        ]
+      },
+      "mode": "plan",
+      "status": "limited",
+      "raw": "synthetic exact server output",
+      "complete": false,
+      "roots": [],
+      "nodes": [],
+      "metrics": {},
+      "diagnostic": "Plan capture limit exceeded."
+    }
+  ],
+  "invalidResults": [
+    {
+      "id": "cycle",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [
+              "0"
+            ],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "9007199254740993.125"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "missing-child",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [
+              "absent"
+            ],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "9007199254740993.125"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "duplicate-root",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0",
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "9007199254740993.125"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "negative",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "-1"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "metric-null-and-reason",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "9007199254740993.125",
+                "unavailableReason": "notReported"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "limited-complete",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "limited",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "9007199254740993.125"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {},
+        "diagnostic": "limit"
+      }
+    },
+    {
+      "id": "wrong-engine-format",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "tree",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "9007199254740993.125"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "empty-tree",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [],
+        "nodes": [],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "extra-root",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "9007199254740993.125"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          },
+          {
+            "id": "unowned",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {}
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "decimal-newline",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.6",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "plan",
+        "status": "tree",
+        "raw": "synthetic exact server output",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Unknown Native Operation (predicate)",
+            "details": {
+              "Parent Relationship": "InitPlan",
+              "Parallel Aware": "true"
+            },
+            "execution": "estimated",
+            "metrics": {
+              "totalCost": {
+                "unit": "cost",
+                "basis": "inclusive",
+                "value": "1\n"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "unavailableReason": "notCollected"
+              }
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    }
+  ],
+  "plans": [
+    {
+      "id": "pg-estimates",
+      "engine": "postgresql",
+      "mode": "plan",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Nested Loop\",\"Startup Cost\":0.01,\"Total Cost\":20.125,\"Plan Rows\":9007199254740993,\"Parallel Aware\":true,\"Plans\":[{\"Node Type\":\"Custom Scan\",\"Parent Relationship\":\"InitPlan\",\"Total Cost\":1.2e3,\"Plan Rows\":0.5}]}}]",
+      "nodes": 2,
+      "rootCost": "20.125"
+    },
+    {
+      "id": "pg-zero-loops",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Result\",\"Actual Loops\":0,\"Actual Rows\":0,\"Actual Total Time\":0,\"Workers\":[{\"Worker Number\":0,\"Actual Loops\":0}]},\"Planning Time\":0.25,\"Execution Time\":1.25}]",
+      "nodes": 1,
+      "execution": "notExecuted",
+      "loops": "0"
+    },
+    {
+      "id": "mysql-range-scientific",
+      "engine": "mysql",
+      "mode": "analyze",
+      "raw": "-> Nested loop (cost=1.2..3.4 rows=5) (actual time=1.2e-3..2.5e+1 rows=0.5 loops=2)\n    -> Filter: (a = 1) (cost=0.1 rows=1) (never executed)\n",
+      "nodes": 2,
+      "rootCost": "3.4",
+      "loops": "2"
+    },
+    {
+      "id": "mysql-continuation",
+      "engine": "mysql",
+      "mode": "plan",
+      "raw": "-> Sort: sample.a (cost=1.25 rows=2)\n    -> Table scan on sample (predicate (nested))\n        extra descriptive line\n",
+      "nodes": 2,
+      "rootCost": "1.25"
+    },
+    {
+      "id": "mysql-wrapped-metrics",
+      "engine": "mysql",
+      "mode": "analyze",
+      "raw": "-> Filter: (sample.id >\n    0) (cost=1.25 rows=2) (actual time=0.1..0.5 rows=2 loops=1)\n",
+      "nodes": 1,
+      "rootCost": "1.25",
+      "loops": "1"
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+package postgres
+
+import (
+	"context"
+	sc "dbeer/helper/internal/schemacompare"
+	"dbeer/helper/internal/tableedit"
+	"encoding/json"
+	"strconv"
+)
+
+func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Target, oid uint32) (*tableedit.Facts, error) {
+	limits := sc.Limits{Nodes: 256, Members: 2048, Bytes: 2 << 20, Scalar: 65536}
+	sink := sc.NewCollector(ctx, limits)
+	var version int
+	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::int").Scan(&version) != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	r := &schemaCapture{ctx: ctx, tx: q, sink: sink, spec: sc.CaptureSpec{Schemas: []string{t.Schema}, Limits: limits}, version: version, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}}
+	ref := sc.Ref{Kind: "table", Schema: t.Schema, Name: t.Table}
+	id := strconv.FormatUint(uint64(oid), 10)
+	columns, e := r.columns(ref, id)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	keys, e := r.constraints(ref, "conrelid", id)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	indexes, e := r.indexes(ref, id)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	var defaultOID string
+	if q.QueryRow(ctx, "SELECT oid::text FROM pg_catalog.pg_collation WHERE collname='default' AND collnamespace='pg_catalog'::pg_catalog.regnamespace").Scan(&defaultOID) != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	defaultProperties, e := r.typeCollation(defaultOID)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	storage, e := structureTypeStorage(ctx, q)
+	if e != nil {
+		return nil, e
+	}
+	f := &tableedit.Facts{TypeStorage: storage, DefaultCollationProperties: defaultProperties, Table: sc.Table{Ref: ref, Kind: sc.Known("r"), Storage: sc.Known("p"), Columns: sc.Complete(columns), Constraints: sc.Complete(keys), Indexes: sc.Complete(indexes)}, Types: sink.Capture.Types, Proof: true, Dependents: map[string][]string{}}
+	incoming, e := q.Query(ctx, `SELECT n.nspname,c.relname,k.conname,COALESCE((SELECT json_agg(a.attname ORDER BY x.ord)::text FROM pg_catalog.unnest(k.confkey) WITH ORDINALITY x(num,ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.num),'[]') FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE k.confrelid=$1 AND k.contype='f' ORDER BY n.nspname,c.relname,k.conname LIMIT 257`, oid)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	for incoming.Next() {
+		var x tableedit.Incoming
+		var names string
+		if incoming.Scan(&x.Schema, &x.Table, &x.Name, &names) != nil {
+			return nil, tableedit.ErrUnsupported
+		}
+		if json.Unmarshal([]byte(names), &x.Columns) != nil {
+			return nil, tableedit.ErrUnsupported
+		}
+		f.Incoming = append(f.Incoming, x)
+	}
+	e = incoming.Err()
+	incoming.Close()
+	if e != nil || len(f.Incoming) > 256 {
+		return nil, tableedit.ErrUnsupported
+	}
+	rows, e := q.Query(ctx, `SELECT COALESCE(a.attname,''),pg_catalog.pg_describe_object(d.classid,d.objid,d.objsubid) FROM pg_catalog.pg_depend d LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid WHERE d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND d.refobjid=$1 AND d.deptype<>'i' AND NOT (d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND d.objid IN (SELECT indexrelid FROM pg_catalog.pg_index WHERE indrelid=$1)) AND NOT (d.classid='pg_catalog.pg_constraint'::pg_catalog.regclass AND d.objid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE conrelid=$1 OR confrelid=$1)) AND NOT (d.classid='pg_catalog.pg_attrdef'::pg_catalog.regclass AND d.objid IN (SELECT oid FROM pg_catalog.pg_attrdef WHERE adrelid=$1)) ORDER BY d.classid,d.objid,d.objsubid LIMIT 2049`, oid)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	count := 0
+	for rows.Next() {
+		var name, label string
+		if rows.Scan(&name, &label) != nil {
+			return nil, tableedit.ErrUnsupported
+		}
+		f.Dependents[name] = append(f.Dependents[name], label)
+		count++
+	}
+	e = rows.Err()
+	rows.Close()
+	if e != nil || count > 2048 {
+		return nil, tableedit.ErrUnsupported
+	}
+	// A trigger may refer dynamically to fields, so any user trigger blocks widening.
+	var triggers int
+	if q.QueryRow(ctx, "SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgrelid=$1 AND NOT tgisinternal", oid).Scan(&triggers) != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	if triggers > 0 {
+		f.Dependents[""] = append(f.Dependents[""], "user triggers")
+	}
+	encoded, _ := json.Marshal(f)
+	if len(encoded) > 2<<20 {
+		return nil, tableedit.ErrUnsupported
+	}
+	return f, nil
+}
+
+func readStructureDefaults(ctx context.Context, q structureReader, t tableedit.Target) (*tableedit.Facts, error) {
+	limits := sc.Limits{Nodes: 32, Members: 128, Bytes: 65536, Scalar: 4096}
+	r := &schemaCapture{ctx: ctx, tx: q, sink: sc.NewCollector(ctx, limits), spec: sc.CaptureSpec{Limits: limits}, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}}
+	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::int").Scan(&r.version) != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	var oid string
+	if q.QueryRow(ctx, "SELECT oid::text FROM pg_catalog.pg_collation WHERE collname='default' AND collnamespace='pg_catalog'::pg_catalog.regnamespace").Scan(&oid) != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	properties, e := r.typeCollation(oid)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	storage, e := structureTypeStorage(ctx, q)
+	if e != nil {
+		return nil, e
+	}
+	return &tableedit.Facts{TypeStorage: storage, Proof: true, DefaultCollationProperties: properties, Table: sc.Table{Ref: sc.Ref{Kind: "table", Schema: t.Schema, Name: t.Table}, Columns: sc.Complete[sc.Column](nil), Constraints: sc.Complete[sc.Constraint](nil), Indexes: sc.Complete[sc.Index](nil)}, Dependents: map[string][]string{}}, nil
+}
+
+func structureTypeStorage(ctx context.Context, q structureReader) (map[string]string, error) {
+	rows, e := q.Query(ctx, "SELECT typname,typstorage::text FROM pg_catalog.pg_type WHERE typnamespace='pg_catalog'::pg_catalog.regnamespace AND typname IN ('int4','int8','bool','numeric','varchar','text')")
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var name, storage string
+		if rows.Scan(&name, &storage) != nil {
+			return nil, tableedit.ErrUnsupported
+		}
+		kind := map[string]string{"int4": "integer", "int8": "bigint", "bool": "boolean", "numeric": "numeric", "varchar": "varchar", "text": "text"}[name]
+		out[kind] = storage
+	}
+	if rows.Err() != nil || len(out) != 6 {
+		return nil, tableedit.ErrUnsupported
+	}
+	return out, nil
+}

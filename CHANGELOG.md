@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Add native PostgreSQL/MySQL ER diagram tabs with explicit bounded table
+  selection, declared composite/self/parallel/cross-schema foreign keys, PK
+  positions, metadata completeness states, deterministic layout, manual placement,
+  pan/zoom and existing data/structure navigation. Workspace v12 restores only
+  presentation placeholders until an explicit Build; metadata loading uses the
+  profile service session and never reads data rows or connects on restoration.
+
+- Add Visual Explain and separately confirmed Explain Analyze for one selected/current
+  SELECT on PostgreSQL 14+ and recognized Oracle MySQL 8.0.21+. Plans use the
+  SQL tab’s own session, retain ordinary results, and show a tree, reported metrics,
+  inclusive expensive-operation ranking and the original server plan. Unknown formats,
+  capture limits, missing measurements and changed source are explicit. Analyze
+  requires a single-use helper authorization and never adds an automatic rollback.
+
+- Add PostgreSQL/MySQL table structure drafts with reviewed SQL and explicit
+  Apply, supported column widening/nullability/literal defaults, ordered indexes
+  and primary/unique/foreign keys. Dedicated sessions, dependency checks and
+  per-step reports preserve partial and unknown outcomes without automatic replay.
+
 - Add customizable Extend Selection (Command-W by default) to grow editor
   selections through words, quoted text, nested blocks and statements.
 - Fix editor Undo/Redo routing to each document's history, with Command-Z /

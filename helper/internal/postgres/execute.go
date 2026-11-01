@@ -51,7 +51,7 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 			category, message = "timeout", "Execution timed out before it started."
 		}
 		failure := protocol.ErrorResponse(command, category, message)
-		failure.SQLNotExecuted = command.Type == "execute"
+		failure.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
 		failure.Connected, failure.TransactionStatus = !conn.IsClosed(), transactionStatus(conn)
 		return failure
 	}
@@ -74,6 +74,10 @@ func executeParamsSinkWithStorage(ctx context.Context, conn *pgx.Conn, command p
 	defer releaseQueryTypes(conn, statement)
 	reader := conn.PgConn().ExecPrepared(ctx, statement, values, nil, nil)
 	collector := newResultCollector(command, reader.FieldDescriptions(), MaxResultBytes)
+	// Explain has its own bounded capture; never retain a duplicate grid result.
+	if command.Type == "explain.run" {
+		collector.stopped = true
+	}
 	if assignQueryTypes(columns, reader.FieldDescriptions()) {
 		collector.response.Columns = columns
 	}

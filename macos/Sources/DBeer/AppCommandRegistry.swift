@@ -39,11 +39,16 @@ struct AppCommandInvocation {
     let documentID: UUID
     let documentText: String
     let profile: SavedConnection?
+    let explainProfileBinding: ExplainProfileBinding?
     let fragment: SQLExecutionFragment?
     let parentDocumentID: UUID
     let investigationID: UUID?
     let blockID: UUID?
     let paneID: WorkspacePaneID
+
+    func matchesExplainProfile(_ profile: SavedConnection?) -> Bool {
+        explainProfileBinding?.matches(profile) == true
+    }
 }
 
 /// Menus, toolbar controls and native key events all enter here. A synchronous
@@ -217,15 +222,20 @@ struct AppCommandInvocation {
             }
             return gridHandlers[command] != nil
         }
-        if [.runCurrent, .runToJSON, .runToCSV].contains(command),
+        if [.runCurrent, .runToJSON, .runToCSV, .explain, .explainAnalyze].contains(command),
            workspace.editorState.hasMultipleSelections(for: document.id) { return false }
-        if command == .stop { return document.isRunning || document.grid?.isApplying == true }
+        if command == .stop { return document.isRunning || document.grid?.isApplying == true || document.erDiagramModel?.isLoading == true }
         guard !context.isComposingText else { return false }
-        guard !document.isSnapshot, !document.isInvestigation else { return false }
+        guard !document.isSnapshot, !document.isInvestigation, !document.isERDiagram else { return false }
         guard !document.isNavigatingTable else { return false }
         guard context.focus != .textInput else { return false }
         guard workspace.canStartOperation(document), !document.isRunning, document.grid?.isApplying != true,
               let profileID = document.profileID, workspace.library.savedConnections.contains(where: { $0.id == profileID }) else { return false }
+        if [.explain, .explainAnalyze].contains(command) {
+            guard document.isSQLDocument, !document.queryResultSelectionLocked,
+                  let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
+                  [.postgresql, .mysql].contains(profile.engine) else { return false }
+        }
         if descriptor.scope == .sqlDocument, document.table != nil { return false }
         if document.table != nil { return command == .runCurrent }
         guard workspace.sqlLibraryExecutionNotice(for: document) == nil else { return false }
@@ -314,12 +324,16 @@ struct AppCommandInvocation {
                 await operation()
             }
         }
+        let capturedProfile = workspace.library.savedConnections.first { $0.id == document.profileID }
+        let capturedExplainBinding = [.explain, .explainAnalyze].contains(command) ? capturedProfile.flatMap(ExplainProfileBinding.init) : nil
         let invocation = AppCommandInvocation(command: command, documentID: document.id, documentText: document.text,
-            profile: workspace.library.savedConnections.first { $0.id == document.profileID },
+            profile: capturedProfile, explainProfileBinding: capturedExplainBinding,
             fragment: document.table == nil && command != .stop ? workspace.executionFragment(document, script: command == .runScript) : nil,
             parentDocumentID: tab.id, investigationID: owner.investigationID, blockID: owner.blockID, paneID: pane)
         let handler = gridHandlers[command]
         return Task { [workspace, invocationHandler] in
+            if [.explain, .explainAnalyze].contains(command),
+               !invocation.matchesExplainProfile(workspace.library.savedConnections.first { $0.id == document.profileID }) { return }
             if let invocationHandler { await invocationHandler(invocation); return }
             // Tab switches after the click do not retarget the operation.
             guard let currentOwner = workspace.ownedSQLContext(for: document), currentOwner.tab === tab,
@@ -335,6 +349,9 @@ struct AppCommandInvocation {
                     await workspace.run(document)
                 }
                 else if let fragment = invocation.fragment { await workspace.runResolved(document, fragment: fragment) }
+            } else if [.explain, .explainAnalyze].contains(command), let fragment = invocation.fragment {
+                await workspace.explainResolved(document, fragment: fragment, mode: command == .explainAnalyze ? .analyze : .plan,
+                    profileBinding: invocation.explainProfileBinding)
             } else if command == .runScript, let fragment = invocation.fragment {
                 await workspace.runResolved(document, fragment: fragment, script: true)
             } else if command == .runToJSON || command == .runToCSV {

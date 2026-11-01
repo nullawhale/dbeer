@@ -24,6 +24,7 @@ enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
 }
 
 struct ConnectionSettings: Codable, Sendable, Equatable {
+    var sessionPurpose: String?
     var engine: DatabaseEngine
     var host: String
     var port: Int
@@ -63,11 +64,12 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case engine, host, port, database, user, password, passwordCommand, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, mongodb
+        case sessionPurpose, engine, host, port, database, user, password, passwordCommand, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, mongodb
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
+        sessionPurpose = try values.decodeIfPresent(String.self, forKey: .sessionPurpose)
         mongodb = try values.decodeIfPresent(MongoDBSettings.self, forKey: .mongodb)
         ssh = try values.decodeIfPresent(SSHSettings.self, forKey: .ssh)
         engine = try values.decodeIfPresent(DatabaseEngine.self, forKey: .engine) ?? .postgresql
@@ -263,6 +265,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var comparison: ResultComparisonRequest?
     var schemaComparison: SchemaComparisonRequest?
     var dataComparison: DataComparisonRequest?
+    var explain: ExplainRequest?
+    var structure: StructureRequest?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -298,6 +302,10 @@ struct BackendCommand: Codable, Sendable, Equatable {
 
     static func applyChanges(sessionId: String, queryId: String = UUID().uuidString, request: ChangesRequest) -> Self {
         Self(type: "changes.apply", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, changes: request)
+    }
+
+    static func explain(sessionId: String, queryId: String = UUID().uuidString, request: ExplainRequest) -> Self {
+        Self(type: "explain.run", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, explain: request)
     }
 
     static func cancel(sessionId: String, queryId: String) -> Self {
@@ -340,6 +348,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "ssh.trust": "ssh.trust.result"
         case "connect": "connect.result"
         case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
+        case "explain.run": "explain.result"
+        case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close": type + ".result"
         case "cancel": "cancel.ack"
         case "disconnect": "disconnect.ack"
         case "shutdown": "shutdown.ack"
@@ -448,9 +458,12 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var assessment: OperationAssessment?
     var ssh: SSHHostKey?
     var sql: String?
-    var comparison: ResultComparisonResponse?
-    var schemaComparison: SchemaComparisonResponse?
-    var dataComparison: DataComparisonResponse?
+    @OptionalTransportPayload var comparison: ResultComparisonResponse? = nil
+    @OptionalTransportPayload var schemaComparison: SchemaComparisonResponse? = nil
+    @OptionalTransportPayload var dataComparison: DataComparisonResponse? = nil
+    @OptionalTransportPayload var explain: ExplainResult? = nil
+    @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
+    var structure: StructureReply?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -471,6 +484,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.status.result", "structure.close.result":
+            valid = sessionId != nil && queryId != nil && connected != nil &&
+                (transactionStatus != nil || connected == false) && columns == nil && rows == nil &&
+                resultSets == nil && streamed == nil && source == nil && structure?.valid(for: type) == true
         case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && dataComparison?.valid(for: type) == true
         case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.plan.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
@@ -485,6 +502,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
         case "ssh.probe.result", "ssh.trust.result": valid = ssh?.isValid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
         case "query.progress": valid = (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
+        case "explain.result":
+            valid = sessionId != nil && queryId != nil && transactionStatus != nil && sqlCompleted == true &&
+                durationMs.map { $0.isFinite && $0 >= 0 } == true && explain?.valid == true &&
+                columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
         case "query.started": valid = sessionId != nil && queryId != nil
         case "query.chunk":
             valid = sessionId != nil && queryId != nil && (sequence ?? 0) > 0 &&
@@ -511,14 +532,17 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard dataComparison == nil || type.hasPrefix("data."),
+        guard structure == nil || type.hasPrefix("structure."),
+              explain == nil || type == "explain.result",
+              explainSupport == nil || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,
+              dataComparison == nil || type.hasPrefix("data."),
               schemaComparison == nil || type.hasPrefix("schema."),
               comparison == nil || type.hasPrefix("compare."),
               sql == nil || (type == "insertSQL" || type == "query.result") &&
                 sql?.isEmpty == false && (sql?.utf8.count ?? Int.max) <= BackendProtocol.maxFrameBytes / 2 &&
                 sql?.contains("\0") == false,
               sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
-              sqlCompleted != true || (type == "error" && outcomeUnknown != true),
+              sqlCompleted != true || ((type == "error" || type == "explain.result") && outcomeUnknown != true),
               exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }
     }
 

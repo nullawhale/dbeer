@@ -42,6 +42,8 @@ struct OperationRequest: Codable, Equatable, Sendable {
     var sql: String?
     var export: ExportRequest?
     var changes: ChangesRequest?
+    var explain: ExplainRequest?
+    var structure: StructureApply?
 }
 
 struct StatementAssessment: Codable, Equatable, Sendable {
@@ -54,6 +56,7 @@ struct StatementAssessment: Codable, Equatable, Sendable {
 struct AssessedOperation: Codable, Equatable, Sendable {
     var kind: String
     var statements: [StatementAssessment]
+    var explain: ExplainPreview?
 }
 
 struct OperationAssessment: Codable, Equatable, Sendable {
@@ -65,6 +68,7 @@ struct OperationAssessment: Codable, Equatable, Sendable {
         ["allow", "confirm", "deny"].contains(decision) && !operations.isEmpty && operations.count <= 1024 &&
             operations.allSatisfy { operation in
                 ["read", "write", "destructive", "unknown"].contains(operation.kind) &&
+                (operation.explain == nil || operation.explain?.valid == true) &&
                 operation.statements.allSatisfy { $0.start >= 0 && $0.end >= $0.start &&
                     ["read", "write", "destructive", "unknown"].contains($0.kind) }
             } && (decision == "deny" ? authorization == nil : authorization.map(BackendMessage.validID) == true)
@@ -106,9 +110,11 @@ enum ExecutionConfirmation {
     @MainActor static func makeAlert(_ confirmation: OperationConfirmation) -> NSAlert {
         let alert = NSAlert()
         alert.alertStyle = confirmation.assessment.decision == "confirm" ? .warning : .informational
-        alert.messageText = confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
+        let isAnalyze = confirmation.operations.contains { $0.explain?.mode == .analyze }
+        alert.messageText = isAnalyze ? "Run Explain Analyze?" : confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
         let profile = confirmation.profile
         alert.informativeText = "\(profile.name) · \(profile.engine.displayName) · \(profile.host):\(profile.port)/\(profile.database)\n\(profile.policy.label)\nDestructive and unknown commands require confirmation. Production confirms every evaluated write. Functions and database objects can hide side effects; use restricted database privileges for strict protection."
+        if isAnalyze { alert.informativeText += "\nExplain Analyze executes this query, consumes server resources, and may have side effects. It is not automatically rolled back." }
         alert.addButton(withTitle: "Execute")
         alert.addButton(withTitle: "Cancel")
         // Cancel is the default key action; Return must not accidentally approve.
@@ -133,7 +139,7 @@ enum ExecutionConfirmation {
         content.append(NSAttributedString(string: profile.policy.label + "\n\n",
             attributes: [.font: NSFont.boldSystemFont(ofSize: 14), .foregroundColor: profile.policy.environment.nativeColor]))
         if let source = confirmation.sourceSQL {
-            content.append(NSAttributedString(string: "Entire script source\n" + source + "\n\nCommands sent to the server follow below.\n",
+            content.append(NSAttributedString(string: (confirmation.isScript ? "Entire script source\n" : "Original SQL source\n") + source + "\n\nCommands sent to the server follow below.\n",
                 attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))
         }
         if let preview = confirmation.generatedPreview {
@@ -146,7 +152,7 @@ enum ExecutionConfirmation {
                 attributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: assessed.kind == "read" ? NSColor.secondaryLabelColor : NSColor.systemRed]))
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let sql = operation.sql ?? (operation.changes.flatMap { try? encoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) } ?? "")
+            let sql = assessed.explain?.sql ?? operation.sql ?? (operation.changes.flatMap { try? encoder.encode($0) }.flatMap { String(data: $0, encoding: .utf8) } ?? "")
             let displayed = NSMutableAttributedString(string: sql, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor])
             if operation.sql != nil {
                 let bytes = Array(sql.utf8)

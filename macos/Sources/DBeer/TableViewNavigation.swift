@@ -12,7 +12,7 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
     let target: TableReference
     let columns: [TableForeignKeyColumn]
 
-    var id: String { name + "\0" + target.schema + "\0" + target.name }
+    var id: String { [name, target.schema, target.name].map { Data($0.utf8).base64EncodedString() }.joined(separator: ":") }
     var displayLabel: String { name + " → " + target.schema + "." + target.name }
 
     static func parse(_ result: BackendMessage) throws -> [Self] {
@@ -28,7 +28,7 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
                 throw TableNavigationFailure("The foreign-key metadata columns are incomplete or ambiguous.")
             }
         }
-        var keys: [String: Self] = [:]
+        var keys: [Data: Self] = [:]
         for record in records {
             guard let name = record["name"], validName(name),
                   let schema = record["targetSchema"], validName(schema),
@@ -40,15 +40,16 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
             }
             let reference = TableReference(schema: schema, name: table, kind: "table")
             let pair = TableForeignKeyColumn(source: source, target: target, position: position)
-            if let existing = keys[name] {
-                guard existing.target == reference else {
+            if let existing = keys[Data(name.utf8)] {
+                guard Data(existing.target.schema.utf8) == Data(reference.schema.utf8),
+                      Data(existing.target.name.utf8) == Data(reference.name.utf8) else {
                     throw TableNavigationFailure("A foreign key has inconsistent target metadata.")
                 }
-                keys[name] = Self(name: name, target: reference, columns: existing.columns + [pair])
-            } else { keys[name] = Self(name: name, target: reference, columns: [pair]) }
+                keys[Data(name.utf8)] = Self(name: name, target: reference, columns: existing.columns + [pair])
+            } else { keys[Data(name.utf8)] = Self(name: name, target: reference, columns: [pair]) }
         }
         guard keys.count <= 64 else { throw TableNavigationFailure("Too many foreign keys were returned. Narrow the metadata request and retry.") }
-        return try keys.values.sorted { $0.name < $1.name }.map { key in
+        return try keys.values.sorted { Data($0.name.utf8).lexicographicallyPrecedes(Data($1.name.utf8)) }.map { key in
             let ordered = key.columns.sorted { $0.position < $1.position }
             let result = Self(name: key.name, target: key.target, columns: ordered)
             guard result.isValid else { throw TableNavigationFailure("A foreign key has incomplete or duplicate column mappings.") }
@@ -60,7 +61,7 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
         Self.validName(name) && Self.validName(target.schema) && Self.validName(target.name) && target.kind == "table" &&
             !columns.isEmpty && columns.count <= 32 && columns.map(\.position) == Array(1...columns.count) &&
             columns.allSatisfy { Self.validName($0.source) && Self.validName($0.target) } &&
-            Set(columns.map(\.source)).count == columns.count && Set(columns.map(\.target)).count == columns.count
+            Set(columns.map { Data($0.source.utf8) }).count == columns.count && Set(columns.map { Data($0.target.utf8) }).count == columns.count
     }
 
     /// A composite key always becomes one equality filter per mapped column.
@@ -69,7 +70,7 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
     func filters(sourceColumns: [ResultColumn], values: [ChangeValue]) throws -> [CatalogFilter] {
         guard isValid else { throw TableNavigationFailure("The foreign-key column mapping is invalid.") }
         return try columns.map { pair in
-            let matches = sourceColumns.indices.filter { sourceColumns[$0].name == pair.source }
+            let matches = sourceColumns.indices.filter { Data(sourceColumns[$0].name.utf8) == Data(pair.source.utf8) }
             guard matches.count == 1, let index = matches.first, values.indices.contains(index) else {
                 throw TableNavigationFailure("The source row does not contain an unambiguous value for every foreign-key column. Reload the table.")
             }

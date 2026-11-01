@@ -39,6 +39,102 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
+## ER diagrams
+
+Choose **Open ER Diagram…** on a PostgreSQL or MySQL table or schema in the
+catalog. Add tables by schema-filtered search or by separate exact schema and
+table names, then choose **Build / Update** or **Connect and Build**. Selecting
+an area is a local draft; opening or restoring the diagram never connects or
+loads metadata. Multiple visible schemas/databases on the same profile may
+participate; the saved connection's database context remains fixed.
+
+Cards preserve catalog column order, native types, nullability and explicit PK
+positions. One arrow represents one declared FK, directed toward its referenced
+table. Relationship details retain every ordered pair in a composite key;
+self-references, parallel keys and cross-schema targets stay separate. References
+to tables outside the area offer **Add to Diagram**. Incoming FKs from unselected
+tables are outside discovery scope; cardinality and PK membership are not inferred.
+
+Drag cards to preserve manual positions, drag or scroll the background to pan,
+and pinch, Option-scroll or use the toolbar to zoom. **Fit All**, **Focus** and
+**Auto Layout** help navigate the graph; **Reset Layout** clears manual placement.
+The table list and relationship details provide keyboard-accessible navigation.
+**Open Data**, **Open Data in New Tab** and **Show Structure** reuse the existing
+catalog actions; diagram loading itself never reads table rows.
+
+Diagrams retain at most 100 selected tables, 10,000 columns, 1,000 complete FKs
+and 16 MiB of normalized metadata. Existing per-response catalog limits still
+apply. Missing, denied, truncated and stale metadata remain visible limitations;
+failed collections never become an assertion of no relationships. Metadata is a
+best-effort read rather than a transactionally consistent schema snapshot.
+Workspace v12 saves table selections, placement, collapse and viewport state with
+private migration backups. Live metadata and session identifiers are not saved;
+restored diagrams require an explicit rebuild. Diagrams do not edit structure or
+relationships and cannot run SQL, edit result grids or export query results.
+
+## Visual execution plans (unreleased)
+
+In a PostgreSQL or Oracle MySQL SQL tab, choose **Query → Explain** for the
+selection or current statement. **Explain Analyze…** is a separate action that
+executes the query after reviewing the exact helper-generated SQL and target.
+It can consume resources and have side effects; no automatic transaction or
+rollback is added. Supported servers are PostgreSQL 14+ and recognized Oracle
+MySQL 8.0.21+; unknown vendors and unsupported versions show a reason.
+
+**Execution Plan** keeps an expandable tree, selected-operation details, up to
+three expensive operations and selectable/copyable **Raw Plan** output alongside
+the last ordinary query result. Ranking uses inclusive planner cost or measured
+time × loops, with an explicit estimated-cost fallback. Parent and child values
+overlap; work estimates are not wall time. Missing metrics and never-executed
+operations remain explicit. A source or profile change marks the retained plan
+as belonging to an earlier query. Viewing a plan never runs SQL.
+
+The commands accept one unwrapped SELECT or read CTE. Multiple statements,
+parameters, known writes/side effects and locking queries are rejected; unknown
+functions still follow readonly/confirmation policy. Resolve pending grid edits
+before Explain. The tab retains its physical session, temporary tables and
+transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
+confirmed SQL completion, and a lost completion is never retried. Plans stay in
+memory and are excluded from restored documents, SQL history and snapshots.
+
+## Table structure drafts
+
+In a connected PostgreSQL/MySQL catalog, use **Create Table…** on a schema or
+**Edit Structure…** on a table. Prepare a local draft, choose **Preview SQL**, then
+explicitly **Apply** the reviewed plan. Preview reads metadata and never runs DDL.
+Readonly profiles can inspect and preview; the helper rejects Apply. Production
+writes and explicit key/index removals or replacements require confirmation.
+
+Supported operations include ordinary permanent table creation, one nullable
+appended column per existing-table plan, scalar literal defaults, nullability,
+integer-to-bigint widening and increased varchar length. Ordinary ordered BTREE
+indexes and supported primary/unique/foreign keys can be added, explicitly
+removed or replaced. Foreign keys preserve composite order, require a supported
+referenced primary/unique key and matching types/collations, and include any
+required MySQL supporting index in the SQL preview. Advanced index options,
+identity/generated columns, arbitrary expressions, renames, column/table deletion
+and lossy conversions remain outside the editor.
+
+Editing requires PostgreSQL 14+ or Oracle MySQL 8.0.30+. Unsupported table
+properties or incomplete dependency visibility block the affected operation.
+MySQL type widening and referenced-key removal require direct global SELECT
+metadata visibility without active roles or partial revokes; narrower accounts
+retain eligible additive and narrow column operations. Catalogs cannot prove the
+absence of dynamic SQL dependencies.
+
+Apply uses a dedicated session and bounded lock waits. Every displayed statement
+is an independent execution unit: the entire plan is not atomic, and MySQL DDL
+can implicitly commit. Stop and Discard do not undo acknowledged changes. A later
+failure retains earlier applied steps and leaves later steps unstarted. Lost
+acknowledgements stay unknown even when a subsequent read finds matching schema;
+DBeer never retries them automatically. Reconcile explicitly before a new plan.
+
+Reviewed drafts, SQL and execution/observation reports remain in memory for the
+workspace session, including after reconciliation or reopening a table. Closing
+the application warns before forgetting unresolved evidence. Schema changes mark
+loaded data and completion metadata stale without replaying queries or discarding
+staged row edits.
+
 ## Table filters, sorting and saved views
 
 Open **Filter** above a loaded table to prepare conditions and sorting

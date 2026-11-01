@@ -161,6 +161,17 @@ struct CatalogBranchView: View {
 
     private var contextMenu: NSMenu {
         let menu = NSMenu()
+        if (node.kind == .schema || (node.kind == .object && node.objectKind == "table")),
+           workspace.library.savedConnections.contains(where: { $0.id == node.profileID && [.postgresql, .mysql].contains($0.engine) }) {
+            menu.addCatalogAction("Open ER Diagram…") { workspace.openERDiagram(node) }
+        }
+        if workspace.canEditTableStructure(node) {
+            if node.kind == .schema || node.kind == .group {
+                menu.addCatalogAction("Create Table…") { Task { await workspace.openTableStructure(node, create: true) } }
+            } else {
+                menu.addCatalogAction("Edit Structure…") { Task { await workspace.openTableStructure(node, create: false) } }
+            }
+        }
         if node.kind == .object {
             menu.addCatalogAction(node.isPostgresType ? "Inspect Type…" : "Structure and Definition…") {
                 Task { await workspace.inspect(node) }

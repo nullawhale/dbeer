@@ -80,6 +80,10 @@ struct ApplicationWorkspaceView: View {
             }
             .applicationTheme(appearance: appearance)
         }
+        .sheet(item: $workspace.structureEditor) { model in
+            TableStructureEditorView(model: model) { Task { await workspace.closeTableStructure() } }
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(item: $workspace.inspection) { inspection in
             CatalogInspectionView(inspection: inspection) { workspace.inspection = nil }
                 .applicationTheme(appearance: appearance)
@@ -292,7 +296,9 @@ struct ApplicationWorkspaceView: View {
             Divider()
             Group {
                 if let document = workspace.selectedDocument(in: pane) {
-                    if document.isInvestigation, let model = document.investigationModel {
+                    if let model = document.erDiagramModel {
+                        ERDiagramView(document: document, model: model, workspace: workspace).id(document.id)
+                    } else if document.isInvestigation, let model = document.investigationModel {
                         InvestigationDocumentView(document: document, model: model, workspace: workspace)
                             .id(document.id)
                     } else if document.isSnapshot {
@@ -433,6 +439,9 @@ struct DocumentTab: View {
                     }
                     if document.investigationModel?.isDirty == true {
                         Image(systemName: "circle.fill").font(.system(size: 5)).accessibilityHidden(true)
+                    }
+                    if document.isERDiagram {
+                        Image(systemName: "point.3.connected.trianglepath.dotted").font(.caption).accessibilityLabel("ER diagram")
                     }
                     if document.isInvestigation {
                         Image(systemName: "doc.richtext").font(.caption).accessibilityLabel("Investigation")
@@ -635,7 +644,15 @@ struct SQLDocumentPane: View {
                         .frame(minHeight: 160, idealHeight: 240)
                     VStack(spacing: 0) {
                         executionBar
-                        result
+                        if document.explainPlan != nil {
+                            Picker("Result presentation", selection: $document.showsExecutionPlan) {
+                                Text("Query Results").tag(false)
+                                Text("Execution Plan").tag(true)
+                            }.pickerStyle(.segmented).padding(6)
+                        }
+                        if document.showsExecutionPlan, let plan = document.explainPlan {
+                            ExplainPlanView(plan: plan, stale: plan.isStale(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID })).id(plan.id)
+                        } else { result }
                     }.frame(minHeight: 180, maxHeight: .infinity)
                 }
             } else {
@@ -720,6 +737,8 @@ struct SQLDocumentPane: View {
                             Button("Run Statement") { perform(.runCurrent) }.disabled(!canPerform(.runCurrent))
                         } else {
                             Button("Run Script") { perform(.runScript) }.disabled(!canPerform(.runScript))
+                            Button("Explain") { perform(.explain) }.disabled(!canPerform(.explain))
+                            Button("Explain Analyze…") { perform(.explainAnalyze) }.disabled(!canPerform(.explainAnalyze))
                         }
                         Menu("Run to File") {
                             Button("JSON…") { perform(.runToJSON) }.disabled(!canPerform(.runToJSON))

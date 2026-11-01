@@ -59,3 +59,50 @@ func TestMySQLForeignKeyCatalogCompositeOrderAndUnavailableTarget(t *testing.T) 
 	}
 	assertPairs(catalogRequest(t, session, request))
 }
+
+func TestMySQLERDiagramCatalogSelfParallelKeysAndPhysicalPKOrder(t *testing.T) {
+	session := integrationSession(t)
+	schema := integrationSettings(t).Database
+	base := fmt.Sprintf("dbeer_er_%x_", session.connectionID)
+	parent, child := base+"parent.with.dots", base+"child.with.dots"
+	q := func(name string) string { return QuoteIdentifier(schema) + "." + QuoteIdentifier(name) }
+	t.Cleanup(func() {
+		for _, name := range []string{child, parent} {
+			session.Execute(context.Background(), protocol.Command{RequestID: "cleanup", SQL: "DROP TABLE IF EXISTS " + q(name)})
+		}
+	})
+	run(t, session, "CREATE TABLE "+q(parent)+" (second INT, first INT, alternate INT UNIQUE, PRIMARY KEY(first,second)) ENGINE=InnoDB")
+	run(t, session, "CREATE TABLE "+q(child)+" (id INT PRIMARY KEY, a INT, b INT, alt INT, parent INT, CONSTRAINT "+QuoteIdentifier(base+"ordered")+" FOREIGN KEY(a,b) REFERENCES "+q(parent)+"(first,second), CONSTRAINT "+QuoteIdentifier(base+"parallel")+" FOREIGN KEY(a,b) REFERENCES "+q(parent)+"(first,second), CONSTRAINT "+QuoteIdentifier(base+"non_primary")+" FOREIGN KEY(alt) REFERENCES "+q(parent)+"(alternate), CONSTRAINT "+QuoteIdentifier(base+"self")+" FOREIGN KEY(parent) REFERENCES "+q(child)+"(id)) ENGINE=InnoDB")
+	columns := catalogRequest(t, session, protocol.CatalogRequest{Kind: "columns", Schema: schema, Object: parent, ObjectKind: "table"})
+	if len(columns.Rows) != 3 {
+		t.Fatal("ER column metadata is incomplete")
+	}
+	for i, want := range []string{"2", "1", "0"} {
+		found := false
+		for j, column := range columns.Columns {
+			if column.Name == "primaryKey" && columns.Rows[i][j] != nil && *columns.Rows[i][j] == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("ER column metadata lost physical order or primary-key ordinals")
+		}
+	}
+	keys := catalogRequest(t, session, protocol.CatalogRequest{Kind: "foreignKeys", Schema: schema, Object: child, ObjectKind: "table"})
+	if keys.Truncated || len(keys.Rows) != 6 {
+		t.Fatal("ER self/parallel relationships were merged or truncated")
+	}
+	counts := map[string]int{}
+	for _, row := range keys.Rows {
+		if len(row) != 6 || row[0] == nil || row[1] == nil || *row[1] != schema || row[2] == nil {
+			t.Fatal("ER target identity was unavailable")
+		}
+		counts[*row[0]]++
+		if *row[0] == base+"self" && *row[2] != child {
+			t.Fatal("ER self-reference retargeted")
+		}
+	}
+	if counts[base+"ordered"] != 2 || counts[base+"parallel"] != 2 || counts[base+"self"] != 1 || counts[base+"non_primary"] != 1 {
+		t.Fatal("ER constraints lost atomic identity")
+	}
+}

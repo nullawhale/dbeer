@@ -17,6 +17,11 @@ extension ApplicationWorkspace {
         }
         typeProfileFingerprints = fingerprints
         typeProfileRevisions = revisions
+        for document in documents {
+            if let model = document.erDiagramModel, let context = model.context, revisions[context.profileID] != context.settingsRevision {
+                stopERDiagram(model, reason: "The saved connection or policy changed. Rebuild explicitly with the current connection.")
+            }
+        }
         if let model = typeInspection, revisions[model.reference.profileID] != model.reference.settingsRevision {
             invalidatePostgresTypeModel(model, reason: "The saved connection or its policy changed. Reopen the type with the current connection.")
         }
@@ -28,6 +33,7 @@ extension ApplicationWorkspace {
             service.$sessionId.dropFirst().sink { [weak self] sessionID in
                 guard let self else { return }
                 self.typeServiceGenerations[profileID] = UUID()
+                self.invalidateERDiagrams(profileID: profileID, reason: "The service session changed. Build explicitly to reload metadata.")
                 if let model = self.typeInspection, model.reference.profileID == profileID,
                    sessionID != model.reference.serviceSessionID || self.typeServiceGenerations[profileID] != model.reference.serviceGeneration {
                     self.invalidatePostgresTypeModel(model, reason: "The service session changed. Reopen this type with the current connection.")
@@ -36,6 +42,8 @@ extension ApplicationWorkspace {
             service.$connectionState.dropFirst().sink { [weak self] state in
                 guard let self, state != .connected else { return }
                 self.typeServiceGenerations[profileID] = UUID()
+                self.invalidateERDiagrams(profileID: profileID, reason: "The service session changed. Build explicitly to reload metadata.")
+                self.invalidateERDiagrams(profileID: profileID, reason: "The connection ended. Connect and Build explicitly to reload metadata.")
                 self.invalidatePostgresTypeInspection(profileID: profileID,
                     reason: "The service session ended. Reopen this type after connecting again.")
             }
@@ -255,7 +263,7 @@ extension ApplicationWorkspace {
         defer { if model.activeRequest === pending { model.activeRequest = nil } }
         return try await withTaskCancellationHandler {
             let reply = try await catalog(request, profileID: model.reference.profileID,
-                connectedSessionID: model.reference.serviceSessionID, typeRequest: pending)
+                connectedSessionID: model.reference.serviceSessionID, metadataRequest: pending)
             guard reply.sessionId == model.reference.serviceSessionID, reply.queryId == pending.queryID else {
                 throw PostgresTypeCatalogFailure.malformed
             }

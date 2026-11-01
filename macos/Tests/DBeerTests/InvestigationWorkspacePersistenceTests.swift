@@ -58,7 +58,7 @@ struct InvestigationWorkspacePersistenceTests {
         let expected = SQLWorkspaceSnapshot(documents: [first, second, offline, table], historyEnabled: false, paneLayout: layout)
         var old = try object(expected)
         old["version"] = 8
-        let bytes = try JSONSerialization.data(withJSONObject: old, options: [.prettyPrinted, .sortedKeys])
+        let bytes = try JSONSerialization.data(withJSONObject: try workspaceLegacyFilterFixture(old), options: [.prettyPrinted, .sortedKeys])
         let url = directory.appendingPathComponent("workspace.json")
         try bytes.write(to: url)
         let store = FileSQLDocumentStore(fileURL: url)
@@ -90,7 +90,7 @@ struct InvestigationWorkspacePersistenceTests {
                 legacy["paneLayout"] = ["left": ["documentIDs": [id.uuidString], "selectedDocumentID": id.uuidString],
                     "right": ["documentIDs": []], "activePaneID": "left", "splitFraction": 0.5]
             }
-            let bytes = try JSONSerialization.data(withJSONObject: legacy, options: [.sortedKeys])
+            let bytes = try JSONSerialization.data(withJSONObject: try workspaceLegacyFilterFixture(legacy), options: [.sortedKeys])
             try bytes.write(to: url)
             let store = FileSQLDocumentStore(fileURL: url)
             await #expect(throws: SQLDocumentStoreError.self) { _ = try await store.load() }

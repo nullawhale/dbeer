@@ -67,6 +67,11 @@ for ((attempt = 0; attempt < 120; attempt++)); do
     sleep 1
 done
 if [[ "$ready" != 1 ]]; then printf 'MySQL test container did not become ready.\n' >&2; exit 1; fi
+if [[ "${DBEER_TEST_MYSQL_STRUCTURE_PRIVILEGES:-0}" == 1 ]]; then
+    docker exec "$container_id" sh -ec '
+        MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --execute="GRANT SELECT ON *.* TO '\''dbeer'\''@'\''%'\'';"
+    '
+fi
 if [[ "${DBEER_TEST_MYSQL_SETUP_R27:-0}" == 1 ]]; then
     # Only this runner's disposable container is eligible for extra UI schemas.
     docker exec "$container_id" sh -ec '

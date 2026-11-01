@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"dbeer/helper/internal/productidentity"
+	"dbeer/helper/internal/tableedit"
 )
 
 const Version = 5
@@ -19,6 +20,7 @@ const MaxFrameBytes = 16 * 1024 * 1024
 const MaxIDBytes = 128
 
 type Connection struct {
+	SessionPurpose  string           `json:"sessionPurpose,omitempty"`
 	MongoDB         *MongoDBSettings `json:"mongodb,omitempty"`
 	PasswordCommand *PasswordCommand `json:"passwordCommand,omitempty"`
 	SSH             *SSHSettings     `json:"ssh,omitempty"`
@@ -46,25 +48,28 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
-	DataComparison   *DataComparisonRequest   `json:"dataComparison,omitempty"`
-	SchemaComparison *SchemaComparisonRequest `json:"schemaComparison,omitempty"`
-	Comparison       *ComparisonRequest       `json:"comparison,omitempty"`
-	SSHTrust         *SSHTrust                `json:"sshTrust,omitempty"`
-	Insert           *InsertFormatRequest     `json:"insert,omitempty"`
-	Type             string                   `json:"type"`
-	RequestID        string                   `json:"requestId"`
-	ProtocolVersion  int                      `json:"protocolVersion,omitempty"`
-	Connection       *Connection              `json:"connection,omitempty"`
-	SessionID        string                   `json:"sessionId,omitempty"`
-	QueryID          string                   `json:"queryId,omitempty"`
-	SQL              string                   `json:"sql,omitempty"`
-	Catalog          *CatalogRequest          `json:"catalog,omitempty"`
-	Stream           bool                     `json:"stream,omitempty"`
-	Export           *ExportRequest           `json:"export,omitempty"`
-	Sequence         int                      `json:"sequence,omitempty"`
-	Changes          *ChangesRequest          `json:"changes,omitempty"`
-	Operations       []OperationRequest       `json:"operations,omitempty"`
-	Authorization    string                   `json:"authorization,omitempty"`
+	Structure          *tableedit.Request       `json:"structure,omitempty"`
+	PreparedExplainSQL string                   `json:"-"`
+	Explain            *ExplainRequest          `json:"explain,omitempty"`
+	DataComparison     *DataComparisonRequest   `json:"dataComparison,omitempty"`
+	SchemaComparison   *SchemaComparisonRequest `json:"schemaComparison,omitempty"`
+	Comparison         *ComparisonRequest       `json:"comparison,omitempty"`
+	SSHTrust           *SSHTrust                `json:"sshTrust,omitempty"`
+	Insert             *InsertFormatRequest     `json:"insert,omitempty"`
+	Type               string                   `json:"type"`
+	RequestID          string                   `json:"requestId"`
+	ProtocolVersion    int                      `json:"protocolVersion,omitempty"`
+	Connection         *Connection              `json:"connection,omitempty"`
+	SessionID          string                   `json:"sessionId,omitempty"`
+	QueryID            string                   `json:"queryId,omitempty"`
+	SQL                string                   `json:"sql,omitempty"`
+	Catalog            *CatalogRequest          `json:"catalog,omitempty"`
+	Stream             bool                     `json:"stream,omitempty"`
+	Export             *ExportRequest           `json:"export,omitempty"`
+	Sequence           int                      `json:"sequence,omitempty"`
+	Changes            *ChangesRequest          `json:"changes,omitempty"`
+	Operations         []OperationRequest       `json:"operations,omitempty"`
+	Authorization      string                   `json:"authorization,omitempty"`
 }
 
 type ExportRequest struct {
@@ -383,7 +388,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "execute", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -400,6 +405,14 @@ func ParseCommand(frame []byte) (Command, error) {
 				return command, failure
 			}
 		}
+		if strings.HasPrefix(command.Type, "structure.") {
+			allowed["structure"] = true
+			request, ok := parseStructure(fields["structure"], command.Type)
+			if !ok {
+				return command, failure
+			}
+			command.Structure = &request
+		}
 		if command.Type == "changes.preview" || command.Type == "changes.apply" {
 			allowed["changes"] = true
 			request, ok := parseChanges(fields["changes"])
@@ -408,11 +421,19 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.Changes = &request
 		}
-		if command.Type == "execute" || command.Type == "changes.apply" {
+		if command.Type == "execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" {
 			allowed["authorization"] = true
 			if _, exists := fields["authorization"]; exists && (!stringField(fields, "authorization", &command.Authorization) || !ValidID(command.Authorization)) {
 				return command, failure
 			}
+		}
+		if command.Type == "explain.run" {
+			allowed["explain"] = true
+			request, ok := parseExplain(fields["explain"])
+			if !ok {
+				return command, failure
+			}
+			command.Explain = request
 		}
 		if command.Type == "operation.assess" {
 			allowed["operations"] = true
@@ -611,6 +632,11 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 	if _, exists := fields["engine"]; exists && !stringField(fields, "engine", &connection.Engine) {
 		return connection, false
 	}
+	if _, exists := fields["sessionPurpose"]; exists {
+		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || connection.SessionPurpose != "structure" || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql") {
+			return connection, false
+		}
+	}
 	if raw, exists := fields["policy"]; exists {
 		var policy ExecutionPolicy
 		if _, ok := changesObject(raw, "environment|readOnly", "environment", "readOnly"); !ok {
@@ -660,7 +686,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 	}
 	for name := range fields {
 		switch name {
-		case "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "passwordCommand", "mongodb":
+		case "sessionPurpose", "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "passwordCommand", "mongodb":
 		default:
 			return connection, false
 		}
@@ -761,6 +787,9 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	Structure             *tableedit.Reply
+	Explain               *ExplainResult
+	ExplainSupport        *ExplainSupport
 	Source                *ResultSource
 	StorageTokens         []string
 	DataComparison        *DataComparisonResponse
@@ -824,6 +853,12 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
+	case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.status.result", "structure.close.result":
+		fields["structure"] = response.Structure
+		fields["connected"] = response.Connected
+		if response.TransactionStatus != "" && response.TransactionStatus != "unknown" {
+			fields["transactionStatus"] = response.TransactionStatus
+		}
 	case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
 		fields["dataComparison"] = response.DataComparison
 	case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.plan.result", "schema.cancel.result", "schema.close.result":
@@ -842,9 +877,17 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		if response.Capabilities != nil {
 			fields["capabilities"] = response.Capabilities
 		}
+	case "explain.result":
+		fields["explain"] = response.Explain
+		fields["transactionStatus"] = response.TransactionStatus
+		fields["durationMs"] = response.DurationMS
+		fields["sqlCompleted"] = true
 	case "operation.assessment":
 		fields["assessment"] = response.Assessment
 	case "connect.result":
+		if response.ExplainSupport != nil {
+			fields["explainSupport"] = response.ExplainSupport
+		}
 		fields["transactionStatus"] = response.TransactionStatus
 		fields["engine"] = response.Engine
 		capabilities := response.Capabilities

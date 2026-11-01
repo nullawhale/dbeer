@@ -1,0 +1,269 @@
+{
+  "version": 1,
+  "valid": [
+    {
+      "type": "structure.load",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "target": {
+          "schema": "public",
+          "table": "samples",
+          "create": true
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "columns": [
+            {
+              "name": "label",
+              "type": {
+                "kind": "varchar",
+                "length": 100
+              },
+              "nullable": true,
+              "default": {
+                "kind": "text",
+                "value": "NULL"
+              }
+            },
+            {
+              "name": "value",
+              "type": {
+                "kind": "numeric",
+                "precision": 30,
+                "scale": 10
+              },
+              "nullable": true,
+              "default": {
+                "kind": "numeric",
+                "value": "12345678901234567890.1234567890"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.apply",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "authorization": "grant",
+      "structure": {
+        "apply": {
+          "planId": "plan",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "executionId": "execution"
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "columns": [],
+          "changes": [
+            {
+              "name": "counter",
+              "type": {
+                "kind": "bigint"
+              },
+              "nullable": false,
+              "default": {
+                "kind": "numeric",
+                "value": "1234567890123456789"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "columns": [],
+          "allowDestructive": true,
+          "indexes": [
+            {
+              "action": "replace",
+              "name": "ordered_index",
+              "columns": [
+                "first",
+                "second"
+              ]
+            }
+          ],
+          "keys": [
+            {
+              "action": "add",
+              "kind": "foreign",
+              "name": "related_key",
+              "columns": [
+                "first",
+                "second"
+              ],
+              "reference": {
+                "schema": "public",
+                "table": "parent",
+                "create": false
+              },
+              "referenceColumns": [
+                "id",
+                "code"
+              ],
+              "onUpdate": "NO ACTION",
+              "onDelete": "RESTRICT"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "columns": [
+            {
+              "name": "é",
+              "type": {
+                "kind": "integer"
+              },
+              "nullable": true,
+              "default": {
+                "kind": "none"
+              }
+            },
+            {
+              "name": "é",
+              "type": {
+                "kind": "integer"
+              },
+              "nullable": true,
+              "default": {
+                "kind": "none"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\": \"structure.load\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"target\": {\"schema\": \"public\", \"table\": \"samples\"}}}",
+    "{\"type\": \"structure.load\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"target\": {\"schema\": \"public\", \"table\": \"samples\", \"create\": null}}}",
+    "{\"type\": \"structure.load\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"target\": {\"schema\": \"public\", \"table\": \"samples\", \"create\": true, \"sql\": \"DROP TABLE samples\"}}}",
+    "{\"type\": \"structure.load\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"target\": {\"schema\": \"public\", \"table\": \"a\\u0000b\", \"create\": true}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [{\"name\": \"label\", \"type\": {\"kind\": \"varchar\", \"length\": 100}, \"default\": {\"kind\": \"text\", \"value\": \"NULL\"}}, {\"name\": \"value\", \"type\": {\"kind\": \"numeric\", \"precision\": 30, \"scale\": 10}, \"nullable\": true, \"default\": {\"kind\": \"numeric\", \"value\": \"12345678901234567890.1234567890\"}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [{\"name\": \"label\", \"type\": {\"kind\": \"varchar\", \"length\": 100}, \"nullable\": true, \"default\": {\"kind\": \"expression\", \"value\": \"now()\"}}, {\"name\": \"value\", \"type\": {\"kind\": \"numeric\", \"precision\": 30, \"scale\": 10}, \"nullable\": true, \"default\": {\"kind\": \"numeric\", \"value\": \"12345678901234567890.1234567890\"}}]}}}",
+    "{\"type\": \"structure.load\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"target\": {\"schema\": \"public\", \"table\": \"samples\", \"create\": true, \"create\": false}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [], \"indexes\": [{\"action\": \"drop\", \"name\": \"idx\"}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [], \"changes\": [{\"name\": \"x\", \"nullable\": null}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [{\"name\": \"x\", \"type\": {\"kind\": \"integer\"}, \"nullable\": true, \"default\": {\"kind\": \"none\", \"value\": null}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [], \"keys\": [{\"action\": \"add\", \"kind\": \"foreign\", \"name\": \"fk\", \"columns\": [\"a\"], \"reference\": {\"schema\": \"public\", \"table\": \"parent\", \"create\": false}, \"referenceColumns\": [\"x\", \"y\"], \"onUpdate\": \"NO ACTION\", \"onDelete\": \"RESTRICT\"}]}}}"
+  ],
+  "responses": [
+    {
+      "type": "structure.preview.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "transactionStatus": "idle",
+      "structure": {
+        "plan": {
+          "id": "plan",
+          "baselineId": "baseline",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "schema": "public",
+            "table": "samples",
+            "create": false
+          },
+          "sql": [
+            "ALTER TABLE \"public\".\"samples\" ADD COLUMN \"added\" pg_catalog.int4;",
+            "CREATE INDEX \"ordered_index\" ON \"public\".\"samples\" (\"added\");"
+          ],
+          "risks": [
+            "Independent statement execution units; earlier acknowledged steps remain applied."
+          ],
+          "destructive": false
+        }
+      },
+      "connected": true
+    },
+    {
+      "type": "structure.apply.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "outcome": {
+          "executionId": "execution",
+          "planId": "plan",
+          "state": "outcomeUnknown",
+          "steps": [
+            {
+              "state": "applied"
+            },
+            {
+              "state": "unknown",
+              "message": "Acknowledgement was lost."
+            },
+            {
+              "state": "notStarted"
+            }
+          ],
+          "refreshError": "Reconcile explicitly."
+        }
+      },
+      "connected": false
+    },
+    {
+      "type": "structure.apply.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "transactionStatus": "idle",
+      "structure": {
+        "outcome": {
+          "executionId": "execution",
+          "planId": "plan",
+          "state": "partiallyApplied",
+          "steps": [
+            {
+              "state": "applied"
+            },
+            {
+              "state": "failed"
+            },
+            {
+              "state": "notStarted"
+            }
+          ]
+        }
+      },
+      "connected": true
+    }
+  ]
+}

@@ -113,6 +113,8 @@ private struct WorkspaceCommands: Commands {
         CommandMenu("Query") {
             commandItem(.runCurrent)
             commandItem(.runScript)
+            commandItem(.explain)
+            commandItem(.explainAnalyze)
             Menu("Run to File") {
                 commandItem(.runToJSON)
                 commandItem(.runToCSV)

@@ -37,6 +37,8 @@ struct AppCommandID: RawRepresentable, Codable, Hashable, Identifiable, Sendable
     static let showSQLHistory = Self(rawValue: "workspace.showSQLHistory")
     static let runCurrent = Self(rawValue: "query.runCurrent")
     static let runScript = Self(rawValue: "query.runScript")
+    static let explain = Self(rawValue: "query.explain")
+    static let explainAnalyze = Self(rawValue: "query.explainAnalyze")
     static let stop = Self(rawValue: "query.stop")
     static let runToJSON = Self(rawValue: "query.runToJSON")
     static let runToCSV = Self(rawValue: "query.runToCSV")
@@ -141,6 +143,8 @@ struct AppCommandDescriptor: Identifiable, Hashable, Sendable {
             defaultShortcut: AppShortcut(key: "return", modifiers: .command)),
         .init(id: .runScript, title: "Run Script", scope: .sqlDocument,
             defaultShortcut: AppShortcut(key: "return", modifiers: [.command, .shift])),
+        .init(id: .explain, title: "Explain", scope: .sqlDocument),
+        .init(id: .explainAnalyze, title: "Explain Analyze…", scope: .sqlDocument),
         .init(id: .stop, title: "Stop", scope: .document),
         .init(id: .runToJSON, title: "Run to JSON File…", scope: .sqlDocument),
         .init(id: .runToCSV, title: "Run to CSV File…", scope: .sqlDocument),

@@ -10,6 +10,8 @@ enum WorkspaceCloseIssue: Equatable {
     case transaction(String, failed: Bool)
     case changes(String, count: Int)
     case unknownApply(String)
+    case structureDraft(String)
+    case unknownStructure(String)
 }
 
 enum WorkspaceCloseDecision: Equatable { case stop, commit, rollback, apply, discard, cancel }
@@ -41,6 +43,18 @@ enum WorkspaceCloseConfirmation {
             alert.addButton(withTitle: "Discard")
             alert.addButton(withTitle: "Cancel")
             decisions = [.apply, .discard, .cancel]
+        case .structureDraft(let title):
+            alert.messageText = "Unapplied Structure Draft in “\(title)”"
+            alert.informativeText = "Discard the local structure draft before closing. This sends no DDL and cannot undo earlier applied changes."
+            alert.addButton(withTitle: "Keep Editing")
+            alert.addButton(withTitle: "Discard Draft")
+            decisions = [.cancel, .discard]
+        case .unknownStructure(let title):
+            alert.messageText = "Unknown DDL Outcome in “\(title)”"
+            alert.informativeText = "The server may have applied the reviewed DDL. Reconcile the actual structure before preparing another plan. This report is retained only for this workspace session; closing the application will forget it. Closing never retries or undoes DDL."
+            alert.addButton(withTitle: "Keep Report Open")
+            alert.addButton(withTitle: "Close and Forget Report")
+            decisions = [.cancel, .discard]
         case .unknownApply(let title):
             alert.messageText = "Unconfirmed Changes in “\(title)”"
             alert.informativeText = "The commit outcome is unknown. Check the database before applying these changes again. Discard the local changes to continue."

@@ -323,6 +323,15 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 		failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
 		return failure
 	}
+	if command.Type == "explain.run" {
+		if explain, ok := physical.(adapter.ExplainSession); ok {
+			return explain.ExecuteExplain(ctx, command)
+		}
+		failure := rejectedCommand(command, "capability", "Visual Explain is unavailable for this adapter.")
+		failure.Connected = true
+		failure.TransactionStatus = physical.TransactionStatus()
+		return failure
+	}
 	if !command.Stream && command.Export == nil {
 		return physical.Execute(ctx, command)
 	}

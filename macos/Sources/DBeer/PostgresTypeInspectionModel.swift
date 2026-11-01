@@ -114,17 +114,7 @@ struct PostgresCatalogObject: Sendable {
     let typeKind: String?
 }
 
-/// The lifecycle belongs to one inspector, profile revision and service session.
-/// Task cancellation only stops queued work. Submitted work is explicitly
-/// cancelled by its correlated catalog query ID through ApplicationWorkspace.
-@MainActor
-final class PostgresTypeCatalogRequest {
-    let queryID = UUID().uuidString
-    var task: Task<BackendMessage, Error>?
-    var submitted = false
-    var finished = false
-    var cancelled = false
-}
+typealias PostgresTypeCatalogRequest = CatalogMetadataRequest
 
 @MainActor
 final class PostgresTypeInspectionModel: ObservableObject, Identifiable {

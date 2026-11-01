@@ -193,6 +193,23 @@ actor BackendClient {
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type == "explain.run" {
+            guard command.explain?.valid == true, command.sessionId.map(BackendMessage.validID) == true,
+                  command.queryId.map(BackendMessage.validID) == true, command.sql == nil, command.catalog == nil,
+                  command.stream == nil, command.export == nil, command.changes == nil, command.operations == nil,
+                  command.connection == nil, command.comparison == nil, command.schemaComparison == nil, command.dataComparison == nil,
+                  command.structure == nil, command.protocolVersion == nil, command.sequence == nil,
+                  command.insert == nil, command.sshTrust == nil else { throw BackendRequestError.invalidCommand }
+        } else if command.explain != nil { throw BackendRequestError.invalidCommand }
+        if command.type.hasPrefix("structure.") {
+            guard command.structure?.valid(for: command.type) == true,
+                  command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
+                  command.sql == nil, command.catalog == nil, command.connection == nil, command.stream == nil,
+                  command.changes == nil, command.export == nil, command.operations == nil,
+                  command.comparison == nil, command.schemaComparison == nil, command.dataComparison == nil,
+                  command.protocolVersion == nil, command.sequence == nil, command.insert == nil, command.sshTrust == nil, command.explain == nil,
+                  command.type == "structure.apply" || command.authorization == nil else { throw BackendRequestError.invalidCommand }
+        } else if command.structure != nil { throw BackendRequestError.invalidCommand }
         if command.type == "data.plan" || command.type == "schema.plan" {
             guard synchronizationPlanSupported else { throw BackendRequestError.invalidCommand }
         }
@@ -227,6 +244,12 @@ actor BackendClient {
                   command.operations == nil, command.authorization == nil, command.sequence == nil,
                   command.sshTrust == nil, command.insert == nil else { throw BackendRequestError.invalidCommand }
         } else if command.comparison != nil { throw BackendRequestError.invalidCommand }
+        if let purpose = command.connection?.sessionPurpose {
+            guard purpose == "structure", ["connect", "ssh.probe", "ssh.trust"].contains(command.type),
+                  command.connection.map({ [.postgresql, .mysql].contains($0.engine) }) == true else {
+                throw BackendRequestError.invalidCommand
+            }
+        }
         if command.connection?.passwordCommand != nil, !passwordCommandSupported {
             throw BackendRequestError.unsupportedPasswordCommand
         }
@@ -252,6 +275,8 @@ actor BackendClient {
         if shuttingDown { return BackendTransportError(.notReady) }
         return await withCheckedContinuation { failureWaiters.append($0) }
     }
+
+    func hasExited() -> Bool { exit != nil }
 
     func waitForExit() async -> Exit {
         if let exit { return exit }
@@ -339,7 +364,7 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
-        if reply.type == "query.started", ["execute", "catalog", "changes.preview", "changes.apply"].contains(command.type), !request.started {
+        if reply.type == "query.started", (["execute", "explain.run", "catalog", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.")), !request.started {
             request.started = true
             pending[reply.requestId] = request
             request.onEvent?(reply)
@@ -383,8 +408,23 @@ actor BackendClient {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
             return
         }
+        if command.type == "explain.run", reply.type == "explain.result",
+           !request.started || reply.explain?.mode != command.explain?.mode {
+            fail(BackendTransportError(.invalidMessage)); return
+        }
         let terminal: BackendMessage
         do {
+            if reply.type != "error", command.type.hasPrefix("structure.") {
+                guard request.started, reply.structure?.valid(for: reply.type) == true else { throw BackendTransportError(.invalidMessage) }
+                if let target = command.structure?.target {
+                    guard let observed = reply.structure?.baseline?.target else { throw BackendTransportError(.invalidMessage) }
+                    if target.reconcile == true {
+                        guard target.create, StructureTarget.sameIdentifier(observed.schema, target.schema), StructureTarget.sameIdentifier(observed.table, target.table), observed.reconcile != true else { throw BackendTransportError(.invalidMessage) }
+                    } else if observed != target { throw BackendTransportError(.invalidMessage) }
+                }
+                if let baselineID = command.structure?.baselineId, reply.structure?.plan?.baselineId != baselineID { throw BackendTransportError(.invalidMessage) }
+                if let apply = command.structure?.apply, reply.structure?.outcome?.executionId != apply.executionId || reply.structure?.outcome?.planId != apply.planId { throw BackendTransportError(.invalidMessage) }
+            }
             try validateDataComparison(reply, command: command)
             try validateSchemaComparison(reply, command: command)
             try validateComparison(reply, command: command)
@@ -577,7 +617,7 @@ actor BackendClient {
         pending.removeAll()
         for request in requests {
             var contextualError = error
-            contextualError.outcomeUnknown = ["execute", "catalog", "changes.apply"].contains(request.command.type)
+            contextualError.outcomeUnknown = ["execute", "explain.run", "catalog", "changes.apply", "structure.apply"].contains(request.command.type)
             request.continuation.resume(throwing: contextualError)
         }
     }

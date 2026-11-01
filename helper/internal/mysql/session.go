@@ -17,15 +17,18 @@ import (
 
 type Session struct {
 	adapter.TransportBinding
-	mu             sync.Mutex
-	work           *connection
-	serverUUID     string
-	connectionID   uint32
-	openControl    func(context.Context) (*connection, error)
-	closed         atomic.Bool
-	transaction    atomic.Value
-	commitOverride func(func() error) error
-	afterRowLock   func(int)
+	mu                       sync.Mutex
+	work                     *connection
+	serverUUID               string
+	explainVendor            string
+	connectionID             uint32
+	openControl              func(context.Context) (*connection, error)
+	closed                   atomic.Bool
+	transaction              atomic.Value
+	commitOverride           func(func() error) error
+	afterRowLock             func(int)
+	afterStructureStep       func(int)
+	structureExecuteOverride func(func() error) error
 }
 
 func Open(ctx context.Context, settings protocol.Connection) (adapter.Session, error) {
@@ -46,6 +49,13 @@ func Open(ctx context.Context, settings protocol.Connection) (adapter.Session, e
 		return nil, &adapter.ConnectionError{Category: "connection", Message: "MySQL server identity could not be verified."}
 	}
 	session.serverUUID = uuid
+	if result, err := work.client.Execute("SELECT @@version_comment"); err == nil {
+		if result.RowNumber() == 1 {
+			session.explainVendor, _ = result.GetString(0, 0)
+			session.explainVendor = strings.Clone(session.explainVendor)
+		}
+		result.Close()
+	}
 	_ = work.transport.SetDeadline(time.Time{})
 	session.updateTransaction()
 	return session, nil
@@ -80,7 +90,8 @@ func serverIdentity(conn *connection) (string, error) {
 	if err != nil || id != int64(conn.client.GetConnectionID()) {
 		return "", errors.New("connection identity mismatch")
 	}
-	return uuid, nil
+	// GetString borrows a pooled result buffer that Close releases.
+	return strings.Clone(uuid), nil
 }
 
 func (session *Session) Close() {
@@ -123,7 +134,7 @@ func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Co
 	if unsupportedStatement(command.SQL) {
 		response := protocol.ErrorResponse(command, "validation", "MySQL client commands, COPY and LOAD DATA LOCAL are not supported. Submit SQL statements directly.")
 		response.Connected, response.TransactionStatus = !session.closed.Load(), session.TransactionStatus()
-		response.SQLNotExecuted = command.Type == "execute"
+		response.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
 		return response
 	}
 	return session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
@@ -141,14 +152,14 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 	defer session.mu.Unlock()
 	if session.closed.Load() {
 		response := protocol.ErrorResponse(command, "connection", "The MySQL session is closed. SQL was not executed.")
-		response.SQLNotExecuted = command.Type == "execute"
+		response.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
 		return response
 	}
 	ctx, cancel := context.WithTimeout(ctx, ExecuteTimeout)
 	defer cancel()
 	if ctx.Err() != nil {
 		response := session.queryError(command, ctx, ctx.Err())
-		response.SQLNotExecuted = command.Type == "execute"
+		response.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
 		return response
 	}
 	if deadline, ok := ctx.Deadline(); ok {
@@ -217,6 +228,10 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 		watcher <- result
 	}()
 	collector := newCollector(command)
+	// Explain uses the bounded plan sink while draining the same SQL lifecycle.
+	if command.Type == "explain.run" {
+		collector.stopped = true
+	}
 	if len(sinks) > 0 && sinks[0] != nil {
 		collector.delivery = &sinkDelivery{sink: sinks[0]}
 	}

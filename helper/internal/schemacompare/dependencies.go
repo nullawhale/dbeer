@@ -72,3 +72,13 @@ func linkDependencies(table *Table) {
 		table.Dependencies.Items = append(table.Dependencies.Items, edges[key])
 	}
 }
+
+// DerivedDependencies computes only the catalog-reference graph of the supplied
+// frozen facts. It does not preserve unrelated declared edges from an old graph.
+// Editors use it after validating/masking an explicitly intended transition;
+// incoming/external dependency evidence remains independently guarded.
+func DerivedDependencies(table Table) Collection[Dependency] {
+	table.Dependencies = Complete[Dependency](nil)
+	linkDependencies(&table)
+	return table.Dependencies
+}

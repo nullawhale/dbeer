@@ -6,7 +6,12 @@ extension ApplicationWorkspace {
                              generatedPreview: String? = nil) async throws -> String? {
         let reply = try await client.request(.assess(sessionId: sessionID, operations: operations))
         guard let assessment = reply.assessment, assessment.operations.count == operations.count,
-              assessment.policy == profile.policy, reply.sessionId == sessionID else {
+              assessment.policy == profile.policy, reply.sessionId == sessionID,
+              zip(operations, assessment.operations).allSatisfy({ operation, assessed in
+                  if let explain = operation.explain { return assessed.explain?.mode == explain.mode && assessed.explain?.valid == true && assessed.explain?.support.engine == profile.engine }
+                  return assessed.explain == nil
+              }),
+              !operations.contains(where: { $0.explain?.mode == .analyze }) || assessment.decision != "allow" else {
             throw ExecutionPolicyError(message: "The execution context changed. Review the operation again.")
         }
         if assessment.decision == "deny" {

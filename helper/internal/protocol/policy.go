@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"dbeer/helper/internal/tableedit"
 	"encoding/json"
 )
 
@@ -12,7 +13,7 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 	}
 	operations := make([]OperationRequest, 0, len(raws))
 	for _, item := range raws {
-		fields, ok := changesObject(item, "type|sql|export|changes", "type")
+		fields, ok := changesObject(item, "type|sql|export|changes|explain|structure", "type")
 		if !ok {
 			return nil, false
 		}
@@ -20,9 +21,29 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 		if !stringField(fields, "type", &operation.Type) {
 			return nil, false
 		}
+		if _, present := fields["structure"]; present && operation.Type != "structure.apply" {
+			return nil, false
+		}
+		if _, present := fields["explain"]; present && operation.Type != "explain.run" {
+			return nil, false
+		}
 		switch operation.Type {
+		case "structure.apply":
+			if len(fields) != 2 {
+				return nil, false
+			}
+			if _, ok := changesObject(fields["structure"], "planId|digest|executionId", "planId", "digest", "executionId"); !ok {
+				return nil, false
+			}
+			var request tableedit.Apply
+			decoder := json.NewDecoder(bytes.NewReader(fields["structure"]))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(&request) != nil || !request.Valid() {
+				return nil, false
+			}
+			operation.Structure = &request
 		case "execute":
-			if _, exists := fields["changes"]; exists || !stringField(fields, "sql", &operation.SQL) {
+			if _, exists := fields["changes"]; exists || fields["explain"] != nil || !stringField(fields, "sql", &operation.SQL) {
 				return nil, false
 			}
 			if raw, exists := fields["export"]; exists {
@@ -37,7 +58,19 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 				}
 				operation.Export = &request
 			}
+		case "explain.run":
+			if len(fields) != 2 {
+				return nil, false
+			}
+			request, ok := parseExplain(fields["explain"])
+			if !ok {
+				return nil, false
+			}
+			operation.Explain = request
 		case "changes.apply":
+			if fields["explain"] != nil {
+				return nil, false
+			}
 			if _, exists := fields["sql"]; exists {
 				return nil, false
 			}
@@ -75,18 +108,24 @@ func (policy ExecutionPolicy) Valid() bool {
 }
 
 type OperationRequest struct {
-	Type    string          `json:"type"`
-	SQL     string          `json:"sql,omitempty"`
-	Export  *ExportRequest  `json:"export,omitempty"`
-	Changes *ChangesRequest `json:"changes,omitempty"`
+	Type      string           `json:"type"`
+	SQL       string           `json:"sql,omitempty"`
+	Export    *ExportRequest   `json:"export,omitempty"`
+	Changes   *ChangesRequest  `json:"changes,omitempty"`
+	Explain   *ExplainRequest  `json:"explain,omitempty"`
+	Structure *tableedit.Apply `json:"structure,omitempty"`
 }
 
 func (operation OperationRequest) Valid() bool {
 	switch operation.Type {
+	case "explain.run":
+		return operation.Explain != nil && operation.Explain.Valid() && operation.Structure == nil && operation.SQL == "" && operation.Export == nil && operation.Changes == nil
+	case "structure.apply":
+		return operation.Structure != nil && operation.Structure.Valid() && operation.Explain == nil && operation.SQL == "" && operation.Export == nil && operation.Changes == nil
 	case "execute":
-		return operation.SQL != "" && operation.Changes == nil && (operation.Export == nil || operation.Export.Valid())
+		return operation.Explain == nil && operation.Structure == nil && operation.SQL != "" && operation.Changes == nil && (operation.Export == nil || operation.Export.Valid())
 	case "changes.apply":
-		return operation.SQL == "" && operation.Export == nil && operation.Changes != nil && operation.Changes.Valid()
+		return operation.Explain == nil && operation.Structure == nil && operation.SQL == "" && operation.Export == nil && operation.Changes != nil && operation.Changes.Valid()
 	}
 	return false
 }
@@ -99,6 +138,7 @@ type StatementAssessment struct {
 }
 
 type AssessedOperation struct {
+	Explain    *ExplainPreview       `json:"explain,omitempty"`
 	Kind       string                `json:"kind"`
 	Statements []StatementAssessment `json:"statements"`
 }

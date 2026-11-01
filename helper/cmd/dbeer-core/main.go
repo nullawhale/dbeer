@@ -356,7 +356,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			}(command)
 			continue
 		}
-		if command.Type == "execute" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" {
+		if command.Type == "execute" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || strings.HasPrefix(command.Type, "structure.") {
 			if queries[command.QueryID] != "" {
 				if !emit(protocol.ErrorResponse(command, "protocol", "Query identifier has already been used.")) {
 					return
