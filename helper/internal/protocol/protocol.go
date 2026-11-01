@@ -48,6 +48,7 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
+	TableImport        *TableImportRequest      `json:"tableImport,omitempty"`
 	Structure          *tableedit.Request       `json:"structure,omitempty"`
 	PreparedExplainSQL string                   `json:"-"`
 	Explain            *ExplainRequest          `json:"explain,omitempty"`
@@ -389,7 +390,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -405,6 +406,14 @@ func ParseCommand(frame []byte) (Command, error) {
 			if !required(fields, "sequence") || json.Unmarshal(fields["sequence"], &command.Sequence) != nil || command.Sequence < 1 {
 				return command, failure
 			}
+		}
+		if strings.HasPrefix(command.Type, "import.") {
+			allowed["tableImport"] = true
+			request, ok := parseTableImport(fields["tableImport"], command.Type)
+			if !ok {
+				return command, failure
+			}
+			command.TableImport = request
 		}
 		if strings.HasPrefix(command.Type, "structure.") {
 			allowed["structure"] = true
@@ -422,7 +431,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.Changes = &request
 		}
-		if command.Type == "execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" {
+		if command.Type == "execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "import.apply" {
 			allowed["authorization"] = true
 			if _, exists := fields["authorization"]; exists && (!stringField(fields, "authorization", &command.Authorization) || !ValidID(command.Authorization)) {
 				return command, failure
@@ -642,7 +651,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 		return connection, false
 	}
 	if _, exists := fields["sessionPurpose"]; exists {
-		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || connection.SessionPurpose != "structure" || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql") {
+		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql") {
 			return connection, false
 		}
 	}
@@ -796,6 +805,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	TableImport           *TableImportReply
 	Structure             *tableedit.Reply
 	Explain               *ExplainResult
 	ExplainSupport        *ExplainSupport
@@ -862,6 +872,10 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
 	switch response.Type {
+	case "import.describe.result", "import.preview.result", "import.apply.result":
+		fields["tableImport"] = response.TableImport
+		fields["connected"] = response.Connected
+		fields["transactionStatus"] = response.TransactionStatus
 	case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.status.result", "structure.close.result":
 		fields["structure"] = response.Structure
 		fields["connected"] = response.Connected
@@ -959,6 +973,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	case "cancel.ack":
 		fields["status"] = response.Status
 	case "error":
+		if response.TableImport != nil {
+			fields["tableImport"] = response.TableImport
+		}
 		fields["category"], fields["message"] = response.Category, response.Message
 		fields["connected"], fields["outcomeUnknown"] = response.Connected, response.OutcomeUnknown
 		if response.SQLNotExecuted {

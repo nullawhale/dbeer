@@ -4,7 +4,7 @@ import Foundation
 /// Local command rejection before a request is registered or written to stdin.
 /// Keep this distinct from a malformed or oversized reply from the helper.
 enum BackendRequestError: LocalizedError, Sendable, Equatable {
-    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand, unsupportedQueryParameters
+    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand, unsupportedQueryParameters, unsupportedTableImport
 
     var errorDescription: String? {
         let explanation: String
@@ -16,6 +16,7 @@ enum BackendRequestError: LocalizedError, Sendable, Equatable {
         case .unsupportedSSHConfiguration: explanation = "This helper does not support OpenSSH configuration. Rebuild the matching app and helper."
         case .unsupportedPasswordCommand: explanation = "This helper does not support password commands. Rebuild the matching app and helper."
         case .unsupportedQueryParameters: explanation = "This helper does not support query parameters. Rebuild the matching app and helper."
+        case .unsupportedTableImport: explanation = "This helper does not support table import. Rebuild the matching app and helper."
         }
         return explanation + " The command was not sent."
     }
@@ -91,6 +92,7 @@ actor BackendClient {
     private var dataComparisonSupported = false
     private var synchronizationPlanSupported = false
     private var queryParametersSupported = false
+    private var tableImportSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -193,9 +195,28 @@ actor BackendClient {
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
     func supportsQueryParameters() -> Bool { queryParametersSupported }
+    func supportsTableImport() -> Bool { tableImportSupported }
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type.hasPrefix("import.") {
+            guard tableImportSupported else { throw BackendRequestError.unsupportedTableImport }
+            guard command.tableImport?.valid(for: command.type) == true,
+                  command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
+                  command.sql == nil, command.parameters == nil, command.catalog == nil, command.connection == nil,
+                  command.stream == nil, command.export == nil, command.changes == nil, command.operations == nil,
+                  command.explain == nil, command.structure == nil, command.comparison == nil,
+                  command.schemaComparison == nil, command.dataComparison == nil, command.insert == nil,
+                  command.protocolVersion == nil, command.sequence == nil, command.sshTrust == nil,
+                  command.type == "import.apply" || command.authorization == nil else { throw BackendRequestError.invalidCommand }
+        } else if command.tableImport != nil { throw BackendRequestError.invalidCommand }
+        for operation in command.operations ?? [] where operation.type == "import.apply" || operation.tableImport != nil {
+            guard tableImportSupported else { throw BackendRequestError.unsupportedTableImport }
+            guard command.type == "operation.assess", operation.type == "import.apply",
+                  operation.tableImport?.valid(for: "import.apply") == true, operation.sql == nil,
+                  operation.parameters == nil, operation.export == nil, operation.changes == nil,
+                  operation.structure == nil, operation.explain == nil else { throw BackendRequestError.invalidCommand }
+        }
         if let parameters = command.parameters {
             guard queryParametersSupported else { throw BackendRequestError.unsupportedQueryParameters }
             guard command.type == "execute", command.catalog == nil, command.changes == nil,
@@ -266,10 +287,11 @@ actor BackendClient {
                   command.sshTrust == nil, command.insert == nil else { throw BackendRequestError.invalidCommand }
         } else if command.comparison != nil { throw BackendRequestError.invalidCommand }
         if let purpose = command.connection?.sessionPurpose {
-            guard purpose == "structure", ["connect", "ssh.probe", "ssh.trust"].contains(command.type),
+            guard ["structure", "import"].contains(purpose), ["connect", "ssh.probe", "ssh.trust"].contains(command.type),
                   command.connection.map({ [.postgresql, .mysql].contains($0.engine) }) == true else {
                 throw BackendRequestError.invalidCommand
             }
+            if purpose == "import", !tableImportSupported { throw BackendRequestError.unsupportedTableImport }
         }
         if command.connection?.passwordCommand != nil, !passwordCommandSupported {
             throw BackendRequestError.unsupportedPasswordCommand
@@ -385,7 +407,7 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
-        if reply.type == "query.started", (["execute", "explain.run", "catalog", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.")), !request.started {
+        if reply.type == "query.started", (["execute", "explain.run", "catalog", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
             request.started = true
             pending[reply.requestId] = request
             request.onEvent?(reply)
@@ -425,6 +447,7 @@ actor BackendClient {
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
             queryParametersSupported = reply.capabilities?.contains("queryParametersV1") == true
+            tableImportSupported = reply.capabilities?.contains("tableImportV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
@@ -436,6 +459,16 @@ actor BackendClient {
         }
         let terminal: BackendMessage
         do {
+            if let imported = reply.tableImport {
+                guard command.type.hasPrefix("import."), request.started,
+                      reply.sessionId == command.sessionId, reply.queryId == command.queryId else { throw BackendTransportError(.invalidMessage) }
+                if reply.type == "import.preview.result" {
+                    guard imported.fingerprint == command.tableImport?.fingerprint,
+                          imported.rowCount == command.tableImport?.rows?.count else { throw BackendTransportError(.invalidMessage) }
+                }
+                if reply.type == "import.apply.result", imported.rowCount != command.tableImport?.rows?.count { throw BackendTransportError(.invalidMessage) }
+                if let row = imported.row, row > (command.tableImport?.rows?.count ?? 0) { throw BackendTransportError(.invalidMessage) }
+            }
             if reply.type != "error", command.type.hasPrefix("structure.") {
                 guard request.started, reply.structure?.valid(for: reply.type) == true else { throw BackendTransportError(.invalidMessage) }
                 if let target = command.structure?.target {
@@ -639,7 +672,7 @@ actor BackendClient {
         pending.removeAll()
         for request in requests {
             var contextualError = error
-            contextualError.outcomeUnknown = ["execute", "explain.run", "catalog", "changes.apply", "structure.apply"].contains(request.command.type)
+            contextualError.outcomeUnknown = ["execute", "explain.run", "catalog", "changes.apply", "structure.apply", "import.apply"].contains(request.command.type)
             request.continuation.resume(throwing: contextualError)
         }
     }

@@ -268,6 +268,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var explain: ExplainRequest?
     var structure: StructureRequest?
     var parameters: [QueryParameterBinding]?
+    var tableImport: TableImportRequest?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -346,6 +347,12 @@ struct BackendCommand: Codable, Sendable, Equatable {
             queryId: UUID().uuidString, operations: operations)
     }
 
+    static func tableImport(_ operation: String, sessionId: String, queryId: String = UUID().uuidString,
+                            request: TableImportRequest) -> Self {
+        Self(type: "import." + operation, requestId: UUID().uuidString, sessionId: sessionId,
+            queryId: queryId, tableImport: request)
+    }
+
     var terminalType: String? {
         switch type {
         case "hello": "hello.ack"
@@ -355,6 +362,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
         case "explain.run": "explain.result"
         case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close": type + ".result"
+        case "import.describe", "import.preview", "import.apply": type + ".result"
         case "cancel": "cancel.ack"
         case "disconnect": "disconnect.ack"
         case "shutdown": "shutdown.ack"
@@ -469,6 +477,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var explain: ExplainResult? = nil
     @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
     var structure: StructureReply?
+    var tableImport: TableImportReply?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -489,6 +498,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "import.describe.result", "import.preview.result", "import.apply.result":
+            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
+                tableImport?.valid(for: type) == true && (durationMs.map { $0.isFinite && $0 >= 0 } ?? true)
         case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.status.result", "structure.close.result":
             valid = sessionId != nil && queryId != nil && connected != nil &&
                 (transactionStatus != nil || connected == false) && columns == nil && rows == nil &&
@@ -537,7 +550,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
         default: valid = false
         }
-        guard structure == nil || type.hasPrefix("structure."),
+        guard tableImport == nil || (type.hasPrefix("import.") || type == "error") && tableImport?.valid(for: type) == true,
+              structure == nil || type.hasPrefix("structure."),
               explain == nil || type == "explain.result",
               explainSupport == nil || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,
               dataComparison == nil || type.hasPrefix("data."),

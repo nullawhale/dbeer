@@ -8,7 +8,7 @@ import (
 
 func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 	cassandra := Capabilities("cassandra")
-	for _, unsupported := range []string{"transactions", "serverReadOnly", protocol.QueryParametersCapability} {
+	for _, unsupported := range []string{"transactions", "serverReadOnly", protocol.QueryParametersCapability, protocol.TableImportCapability} {
 		if slices.Contains(cassandra, unsupported) {
 			t.Fatalf("Cassandra advertises unsupported %s", unsupported)
 		}
@@ -19,7 +19,7 @@ func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 		}
 	}
 	for _, engine := range []string{"postgresql", "mysql"} {
-		for _, supported := range []string{"transactions", "gridEditing", "serverReadOnly", protocol.QueryParametersCapability} {
+		for _, supported := range []string{"transactions", "gridEditing", "serverReadOnly", protocol.QueryParametersCapability, protocol.TableImportCapability} {
 			if !slices.Contains(Capabilities(engine), supported) {
 				t.Fatalf("%s lacks %s", engine, supported)
 			}

@@ -126,6 +126,9 @@ func (session *Session) Execute(ctx context.Context, command protocol.Command) p
 }
 
 func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Command, sink adapter.ResultSink) protocol.Response {
+	if strings.HasPrefix(command.Type, "import.") {
+		return session.executeTableImport(ctx, command)
+	}
 	if command.Changes != nil {
 		return session.ExecuteChanges(ctx, command)
 	}

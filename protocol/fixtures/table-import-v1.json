@@ -1,0 +1,247 @@
+{
+  "capability": "tableImportV1",
+  "describe": {
+    "type": "import.describe",
+    "requestId": "import-describe",
+    "sessionId": "import-session",
+    "queryId": "describe",
+    "tableImport": {
+      "schema": "public",
+      "table": "orders"
+    }
+  },
+  "preview": {
+    "type": "import.preview",
+    "requestId": "import-preview",
+    "sessionId": "import-session",
+    "queryId": "preview",
+    "tableImport": {
+      "schema": "public",
+      "table": "orders",
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "columns": [
+        "label",
+        "payload",
+        "note"
+      ],
+      "rows": [
+        [
+          {
+            "kind": "text",
+            "value": "NULL"
+          },
+          {
+            "kind": "binary",
+            "value": "AP+A"
+          },
+          {
+            "kind": "null"
+          }
+        ],
+        [
+          {
+            "kind": "text",
+            "value": ""
+          },
+          {
+            "kind": "binary",
+            "value": ""
+          },
+          {
+            "kind": "text",
+            "value": "quoted, value"
+          }
+        ]
+      ]
+    }
+  },
+  "apply": {
+    "type": "import.apply",
+    "requestId": "import-apply",
+    "sessionId": "import-session",
+    "queryId": "apply",
+    "authorization": "reviewed-import",
+    "tableImport": {
+      "schema": "public",
+      "table": "orders",
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "columns": [
+        "label",
+        "payload",
+        "note"
+      ],
+      "rows": [
+        [
+          {
+            "kind": "text",
+            "value": "NULL"
+          },
+          {
+            "kind": "binary",
+            "value": "AP+A"
+          },
+          {
+            "kind": "null"
+          }
+        ],
+        [
+          {
+            "kind": "text",
+            "value": ""
+          },
+          {
+            "kind": "binary",
+            "value": ""
+          },
+          {
+            "kind": "text",
+            "value": "quoted, value"
+          }
+        ]
+      ]
+    }
+  },
+  "assessment": {
+    "type": "operation.assess",
+    "requestId": "import-assess",
+    "sessionId": "import-session",
+    "queryId": "assessment",
+    "operations": [
+      {
+        "type": "import.apply",
+        "tableImport": {
+          "schema": "public",
+          "table": "orders",
+          "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "columns": [
+            "label",
+            "payload",
+            "note"
+          ],
+          "rows": [
+            [
+              {
+                "kind": "text",
+                "value": "NULL"
+              },
+              {
+                "kind": "binary",
+                "value": "AP+A"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            [
+              {
+                "kind": "text",
+                "value": ""
+              },
+              {
+                "kind": "binary",
+                "value": ""
+              },
+              {
+                "kind": "text",
+                "value": "quoted, value"
+              }
+            ]
+          ]
+        }
+      }
+    ]
+  },
+  "describeResult": {
+    "type": "import.describe.result",
+    "requestId": "import-describe",
+    "sessionId": "import-session",
+    "queryId": "describe",
+    "connected": true,
+    "transactionStatus": "idle",
+    "tableImport": {
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "columns": [
+        {
+          "name": "id",
+          "nativeType": "bigint",
+          "nullable": false,
+          "hasDefault": true,
+          "generated": false,
+          "binary": false
+        },
+        {
+          "name": "label",
+          "nativeType": "text",
+          "nullable": false,
+          "hasDefault": false,
+          "generated": false,
+          "binary": false
+        },
+        {
+          "name": "payload",
+          "nativeType": "bytea",
+          "nullable": true,
+          "hasDefault": false,
+          "generated": false,
+          "binary": true
+        },
+        {
+          "name": "note",
+          "nativeType": "text",
+          "nullable": true,
+          "hasDefault": false,
+          "generated": false,
+          "binary": false
+        }
+      ]
+    }
+  },
+  "previewResult": {
+    "type": "import.preview.result",
+    "requestId": "import-preview",
+    "sessionId": "import-session",
+    "queryId": "preview",
+    "connected": true,
+    "transactionStatus": "idle",
+    "tableImport": {
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "rowCount": 2,
+      "sql": "INSERT INTO \"public\".\"orders\" (\"label\",\"payload\",\"note\") VALUES ($1,$2,$3)"
+    }
+  },
+  "applyResult": {
+    "type": "import.apply.result",
+    "requestId": "import-apply",
+    "sessionId": "import-session",
+    "queryId": "apply",
+    "connected": true,
+    "transactionStatus": "idle",
+    "tableImport": {
+      "rowCount": 2
+    }
+  },
+  "rowError": {
+    "type": "error",
+    "requestId": "import-apply",
+    "sessionId": "import-session",
+    "queryId": "apply",
+    "category": "sql",
+    "message": "No imported rows were committed.",
+    "connected": true,
+    "transactionStatus": "idle",
+    "outcomeUnknown": false,
+    "tableImport": {
+      "row": 2
+    }
+  },
+  "unknownCommit": {
+    "type": "error",
+    "requestId": "import-apply",
+    "sessionId": "import-session",
+    "queryId": "apply",
+    "category": "connection",
+    "message": "The import COMMIT outcome is unknown. Verify the table before importing again.",
+    "connected": false,
+    "outcomeUnknown": true
+  }
+}

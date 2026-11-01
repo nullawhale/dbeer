@@ -13,7 +13,7 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 	}
 	operations := make([]OperationRequest, 0, len(raws))
 	for _, item := range raws {
-		fields, ok := changesObject(item, "type|sql|parameters|export|changes|explain|structure", "type")
+		fields, ok := changesObject(item, "type|sql|parameters|export|changes|explain|structure|tableImport", "type")
 		if !ok {
 			return nil, false
 		}
@@ -27,6 +27,9 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 		if _, present := fields["explain"]; present && operation.Type != "explain.run" {
 			return nil, false
 		}
+		if _, present := fields["tableImport"]; present && operation.Type != "import.apply" {
+			return nil, false
+		}
 		if raw, present := fields["parameters"]; present {
 			if operation.Type != "execute" {
 				return nil, false
@@ -38,6 +41,15 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 			}
 		}
 		switch operation.Type {
+		case "import.apply":
+			if len(fields) != 2 {
+				return nil, false
+			}
+			request, ok := parseTableImport(fields["tableImport"], operation.Type)
+			if !ok {
+				return nil, false
+			}
+			operation.TableImport = request
 		case "structure.apply":
 			if len(fields) != 2 {
 				return nil, false
@@ -118,16 +130,23 @@ func (policy ExecutionPolicy) Valid() bool {
 }
 
 type OperationRequest struct {
-	Type       string           `json:"type"`
-	Parameters []QueryParameter `json:"parameters,omitempty"`
-	SQL        string           `json:"sql,omitempty"`
-	Export     *ExportRequest   `json:"export,omitempty"`
-	Changes    *ChangesRequest  `json:"changes,omitempty"`
-	Explain    *ExplainRequest  `json:"explain,omitempty"`
-	Structure  *tableedit.Apply `json:"structure,omitempty"`
+	TableImport *TableImportRequest `json:"tableImport,omitempty"`
+	Type        string              `json:"type"`
+	Parameters  []QueryParameter    `json:"parameters,omitempty"`
+	SQL         string              `json:"sql,omitempty"`
+	Export      *ExportRequest      `json:"export,omitempty"`
+	Changes     *ChangesRequest     `json:"changes,omitempty"`
+	Explain     *ExplainRequest     `json:"explain,omitempty"`
+	Structure   *tableedit.Apply    `json:"structure,omitempty"`
 }
 
 func (operation OperationRequest) Valid() bool {
+	if operation.Type == "import.apply" {
+		return operation.TableImport != nil && operation.TableImport.Valid(operation.Type) && operation.Parameters == nil && operation.Explain == nil && operation.Structure == nil && operation.SQL == "" && operation.Export == nil && operation.Changes == nil
+	}
+	if operation.TableImport != nil {
+		return false
+	}
 	if operation.Type != "execute" && operation.Parameters != nil || !QueryParametersValid(operation.Parameters) {
 		return false
 	}

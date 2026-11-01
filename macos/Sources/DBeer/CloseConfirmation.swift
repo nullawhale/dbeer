@@ -11,6 +11,7 @@ enum WorkspaceCloseIssue: Equatable {
     case changes(String, count: Int)
     case unknownApply(String)
     case structureDraft(String)
+    case importDraft(String)
     case unknownStructure(String)
 }
 
@@ -48,6 +49,12 @@ enum WorkspaceCloseConfirmation {
             alert.informativeText = "Discard the local structure draft before closing. This sends no DDL and cannot undo earlier applied changes."
             alert.addButton(withTitle: "Keep Editing")
             alert.addButton(withTitle: "Discard Draft")
+            decisions = [.cancel, .discard]
+        case .importDraft(let title):
+            alert.messageText = "Unapplied Import in “\(title)”"
+            alert.informativeText = "Discard this local import draft before closing. No rows are inserted by closing or discarding it."
+            alert.addButton(withTitle: "Keep Editing")
+            alert.addButton(withTitle: "Discard Import")
             decisions = [.cancel, .discard]
         case .unknownStructure(let title):
             alert.messageText = "Unknown DDL Outcome in “\(title)”"

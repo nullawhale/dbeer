@@ -84,6 +84,11 @@ struct ApplicationWorkspaceView: View {
             TableStructureEditorView(model: model) { Task { await workspace.closeTableStructure() } }
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: $workspace.tableImporter) { model in
+            TableImportView(model: model) { Task { await workspace.closeTableImport() } }
+                .applicationTheme(appearance: appearance)
+                .interactiveDismissDisabled()
+        }
         .sheet(item: $workspace.inspection) { inspection in
             CatalogInspectionView(inspection: inspection) { workspace.inspection = nil }
                 .applicationTheme(appearance: appearance)
@@ -731,6 +736,18 @@ struct SQLDocumentPane: View {
                     .popover(isPresented: showingFilters.projectedValue) {
                         TableBrowseControls(document: document, workspace: workspace)
                     }
+            }
+            if let node = workspace.importNode(for: document) {
+                Button {
+                    Task { await workspace.openTableImport(node) }
+                } label: {
+                    if compact { Image(systemName: "square.and.arrow.down") }
+                    else { Label("Import…", systemImage: "square.and.arrow.down") }
+                }.controlHover().controlSize(.small)
+                    .disabled(!workspace.canImportTableData(node))
+                    .help("Import CSV or TSV into this table")
+                    .accessibilityLabel("Import CSV or TSV")
+                    .accessibilityIdentifier("importTableDataToolbar")
             }
             Spacer(minLength: 0)
             Button { perform(.stop) } label: {

@@ -80,7 +80,7 @@ func (manager *Manager) Submit(command protocol.Command) bool {
 }
 
 func (manager *Manager) markPending(command protocol.Command) {
-	if command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) {
+	if command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
 		manager.controlMu.Lock()
 		manager.pendingQueries[command.QueryID] = pendingQuery{sessionID: command.SessionID}
 		manager.controlMu.Unlock()
@@ -114,7 +114,7 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 // Keep them distinct from terminal failures of dispatched database commands.
 func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
 	response := protocol.ErrorResponse(command, category, message)
-	response.SQLNotExecuted = command.Type == "execute" || command.Type == "explain.run" || command.Type == "structure.apply"
+	response.SQLNotExecuted = command.Type == "execute" || command.Type == "explain.run" || command.Type == "structure.apply" || isImport(command.Type)
 	return response
 }
 
@@ -223,7 +223,7 @@ func (manager *Manager) run() {
 					continue
 				}
 				id := hex.EncodeToString(randomID[:])
-				owner := &owner{id: id, structureOnly: command.Connection.SessionPurpose == "structure", manager: manager, commands: make(chan protocol.Command, 1), shutdown: make(chan struct{})}
+				owner := &owner{id: id, structureOnly: command.Connection.SessionPurpose == "structure", importOnly: command.Connection.SessionPurpose == "import", manager: manager, commands: make(chan protocol.Command, 1), shutdown: make(chan struct{})}
 				manager.controlMu.Lock()
 				owners[id] = owner
 				manager.controlMu.Unlock()
@@ -260,6 +260,7 @@ type operation struct {
 type owner struct {
 	structure          tableedit.Store
 	structureOnly      bool
+	importOnly         bool
 	id                 string
 	manager            *Manager
 	commands           chan protocol.Command
@@ -620,13 +621,16 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else {
 					response = owner.assess(command, engine, policy, physical)
 				}
-			case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "changes.preview", "changes.apply":
+			case "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
 				} else if owner.manager.pendingWasCancelled(command) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "cancelled", "Execution was cancelled before it started.")
+				} else if owner.importOnly && !isImport(command.Type) || !owner.importOnly && isImport(command.Type) {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "policy", "Open a dedicated import session to import table data.")
 				} else if owner.structureOnly && !isStructure(command.Type) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "This session is reserved for the table structure editor.")
@@ -678,7 +682,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			case "cancel":
 				status := "alreadyFinished"
-				if active != nil && (pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type)) && pending.QueryID == command.QueryID {
+				if active != nil && (pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
 					cancel()
 					status = "accepted"
 				}
@@ -722,4 +726,8 @@ func (manager *Manager) pendingWasCancelled(command protocol.Command) bool {
 func queryParameterError(engine string, command protocol.Command) error {
 	_, err := queryparams.Bind(engine, command.SQL, command.Parameters)
 	return err
+}
+
+func isImport(kind string) bool {
+	return kind == "import.describe" || kind == "import.preview" || kind == "import.apply"
 }

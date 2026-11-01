@@ -516,6 +516,50 @@ successfully. Navigation history stays in memory; workspace restoration saves th
 current location and remains disconnected until explicit Load Data. Cassandra
 supports independent views but has no foreign keys.
 
+## CSV/TSV table import (unreleased)
+
+On a connected PostgreSQL or MySQL table, choose **Import CSV/TSV…** in the catalog
+context menu, or **Import…** in its table toolbar. Choose a UTF-8 CSV/TSV file
+(an optional UTF-8 BOM is accepted), select comma or tab, and choose whether the
+first record contains headers. Quoted fields support doubled quotes and embedded
+line breaks. Whitespace and exact numeric text are preserved; malformed quoting,
+inconsistent field counts and exceeded limits are rejected without truncation.
+
+Map source columns to existing destination columns or skip them. Exact, unique
+header matches are proposed automatically; duplicate headers remain separate
+source positions. Generated columns cannot be mapped. Unmapped destination
+columns use their server defaults or NULL where permitted; missing required
+values fail the import. Binary destinations require canonical Base64 text.
+
+The default unquoted NULL marker is `\N`; a quoted `"\N"` remains text. An empty
+field remains an empty string unless **Empty fields are NULL** is explicitly
+enabled, and quoted empty text remains an empty string. The text `NULL` is an
+ordinary value unless selected as the marker. Disable the marker to import all
+unquoted values as text.
+
+The local preview shows sample rows, the destination mapping and the total row
+count. **Preview SQL** reads metadata and prepares a bound INSERT template without
+inserting rows. Changing the file, format, NULL rules or mapping requires a new
+preview. Server conversion and constraint checks occur during **Apply**.
+
+**Apply** appends the captured rows in one dedicated transaction, using bound
+values and rechecking the target identity and column metadata under locks. PostgreSQL tables do not
+need a primary key; MySQL requires InnoDB. A row failure rolls back the batch and
+identifies the source row when available. Stop waits for the final outcome;
+an uncertain COMMIT blocks another Apply until the outcome is reviewed. Successful
+imports cannot be applied again from the same draft. Existing table data is
+refreshed only on an explicit reload, preserving independent SQL sessions and
+pending grid changes. Imported files and rows are not stored in the workspace or
+SQL history, and restoration never imports automatically.
+
+This first version accepts at most 8 MiB of UTF-8 input, 10,000 data rows,
+256 source columns, 100,000 data cells, and 4 MiB of mapped text/Base64 values.
+Mapped PostgreSQL columns currently support built-in scalar and `bytea` types;
+user-defined, enum and array columns must be skipped. MySQL spatial/vector
+columns are also outside the mapped type set.
+It appends to existing tables only; table creation, upsert, duplicate skipping,
+other encodings, views, Cassandra and MongoDB are outside this workflow.
+
 ## Table data comparison
 
 Use **Connections → Compare Table Data…** to select one source and target table

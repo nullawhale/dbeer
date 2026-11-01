@@ -15,6 +15,9 @@ func (connection Connection) CassandraConsistency() string {
 }
 
 func (connection Connection) Valid() bool {
+	if connection.SessionPurpose != "" && (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" || connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql") {
+		return false
+	}
 	if connection.PasswordCommand != nil && (!connection.PasswordCommand.Valid() || connection.Password != "" || connection.User == "") {
 		return false
 	}

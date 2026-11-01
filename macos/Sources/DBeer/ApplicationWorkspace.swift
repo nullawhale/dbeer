@@ -417,6 +417,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private var completionCatalog = SQLCompletionCatalog()
     @Published var inspection: CatalogInspection?
     @Published var structureEditor: TableStructureEditorModel?
+    @Published var tableImporter: TableImportModel?
     @Published private(set) var structureOutcomeReports: [TableStructureOutcomeRecord] = []
     @Published var clusterInspection: CassandraClusterInspection?
     @Published var typeInspection: PostgresTypeInspectionModel? {
@@ -1949,7 +1950,7 @@ final class ApplicationWorkspace: ObservableObject {
             guard closingDocuments.isEmpty || isClearingDocuments else { return false }
             affected = allOwnedRuntimeDocuments
         }
-        guard await prepareToClose(affected), await prepareStructureToClose(scope) else { return false }
+        guard await prepareToClose(affected), await prepareStructureToClose(scope), await prepareTableImportToClose(scope) else { return false }
         if case .application = scope {
             isClosing = true
             defer { isClosing = false }
@@ -1960,6 +1961,38 @@ final class ApplicationWorkspace: ObservableObject {
             }
             if draftsLoaded { guard await persistDocuments() else { return false } }
         }
+        return true
+    }
+
+    func closeTableImport() async {
+        guard let model = tableImporter else { return }
+        _ = await prepareTableImportToClose(.profile(model.profile.id))
+    }
+
+    private func prepareTableImportToClose(_ scope: WorkspaceCloseScope) async -> Bool {
+        guard let model = tableImporter else { return true }
+        switch scope {
+        case .document: return true
+        case .profile(let id): if model.profile.id != id { return true }
+        case .application: break
+        }
+        guard model.beginClosing() else { return false }
+        defer { if tableImporter === model { model.cancelClosing() } }
+        let title = "Import: " + model.schema + "." + model.table
+        if model.isBusy {
+            guard await closeDecision(.runningQuery(title)) == .stop else { return false }
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while model.isBusy, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            guard !model.isBusy else { return false }
+        }
+        if model.outcomeUnknown {
+            guard await closeDecision(.unknownApply(title)) == .discard else { return false }
+        } else if model.hasDraft {
+            guard await closeDecision(.importDraft(title)) == .discard else { return false }
+        }
+        guard tableImporter === model, await model.close() else { return false }
+        tableImporter = nil
         return true
     }
 
@@ -2773,6 +2806,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func invalidateStructureMetadata(_ profileID: UUID) {
+        if tableImporter?.profile.id == profileID { tableImporter?.invalidate() }
         invalidateERDiagrams(profileID: profileID,
             reason: "The table structure may have changed. Build explicitly to refresh metadata.")
         completionLoads.removeValue(forKey: profileID)?.task.cancel()
@@ -2834,7 +2868,11 @@ final class ApplicationWorkspace: ObservableObject {
 
     func loadSchemas(_ profileID: UUID, refresh: Bool = false) async {
         guard refresh || catalogRoots[profileID] == nil else { return }
-        if refresh { structureEditor?.invalidate(); invalidatePostgresTypeInspection(profileID: profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.") }
+        if refresh {
+            structureEditor?.invalidate()
+            if tableImporter?.profile.id == profileID { tableImporter?.invalidate() }
+            invalidatePostgresTypeInspection(profileID: profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.")
+        }
         do {
             let result = try await catalog(CatalogRequest(kind: "schemas"), profileID: profileID)
             catalogRoots[profileID] = result.catalogRecords.compactMap { record in
@@ -2881,7 +2919,11 @@ final class ApplicationWorkspace: ObservableObject {
 
     func expand(_ node: CatalogNode, refresh: Bool = false) async {
         guard !node.isLoading, refresh || node.children == nil else { return }
-        if refresh { structureEditor?.invalidate(); invalidatePostgresTypeInspection(profileID: node.profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.") }
+        if refresh {
+            structureEditor?.invalidate()
+            if tableImporter?.profile.id == node.profileID { tableImporter?.invalidate() }
+            invalidatePostgresTypeInspection(profileID: node.profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.")
+        }
         node.isLoading = true
         node.error = nil
         defer { node.isLoading = false }
@@ -3460,6 +3502,13 @@ final class ApplicationWorkspace: ObservableObject {
 
     func shutdown() async {
         cancelQueryParameterPrompt()
+        if let model = tableImporter {
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while model.isBusy, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            _ = await model.close()
+            tableImporter = nil
+        }
         invalidateERDiagrams(reason: "The workspace is shutting down.")
         commands.shutdown()
         await dataComparison?.close(); dataComparison = nil

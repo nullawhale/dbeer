@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Import bounded UTF-8 CSV/TSV files into existing PostgreSQL/MySQL tables through
+  explicit column mapping, separate unquoted NULL/empty-field rules, local data
+  previews and a helper-generated SQL preview. Apply binds all rows in one
+  dedicated transaction and rechecks the target schema. Errors roll back the
+  batch; unknown COMMIT outcomes block another Apply. Import leaves SQL-tab
+  sessions and pending grid edits intact and never runs on workspace restoration.
+
 - Add typed named parameters to saved PostgreSQL/MySQL SQL queries. Library details
   store parameter names and types; Run, Run Script and Run to File request fresh
   values with explicit SQL NULL and bind them through the helper's drivers.

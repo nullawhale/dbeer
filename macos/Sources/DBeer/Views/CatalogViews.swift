@@ -172,6 +172,9 @@ struct CatalogBranchView: View {
                 menu.addCatalogAction("Edit Structure…") { Task { await workspace.openTableStructure(node, create: false) } }
             }
         }
+        if workspace.canImportTableData(node) {
+            menu.addCatalogAction("Import CSV/TSV…", identifier: "importTableData") { Task { await workspace.openTableImport(node) } }
+        }
         if node.kind == .object {
             menu.addCatalogAction(node.isPostgresType ? "Inspect Type…" : "Structure and Definition…") {
                 Task { await workspace.inspect(node) }

@@ -28,7 +28,7 @@ func (owner *owner) invalidateGrant() {
 
 func assessOperation(engine string, operation protocol.OperationRequest) protocol.AssessedOperation {
 	result := protocol.AssessedOperation{Kind: "read", Statements: []protocol.StatementAssessment{}}
-	if operation.Type == "structure.apply" {
+	if operation.Type == "structure.apply" || operation.Type == "import.apply" {
 		result.Kind = "write"
 		return result
 	}
@@ -93,6 +93,9 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 		if !operation.Valid() {
 			return protocol.ErrorResponse(command, "protocol", "Invalid operation assessment.")
 		}
+		if owner.importOnly && operation.Type != "import.apply" || !owner.importOnly && operation.Type == "import.apply" {
+			return protocol.ErrorResponse(command, "policy", "Open a dedicated import session to review table imports.")
+		}
 		if owner.structureOnly && operation.Type != "structure.apply" {
 			return protocol.ErrorResponse(command, "policy", "This session is reserved for the table structure editor.")
 		}
@@ -151,14 +154,18 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 }
 
 func (owner *owner) authorize(command protocol.Command, engine string, policy protocol.ExecutionPolicy) bool {
-	if command.Type != "execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" {
+	if command.Type != "execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "import.apply" {
 		return true
 	}
 	if owner.structureOnly && command.Type != "structure.apply" || command.Type != "structure.apply" && command.Structure != nil {
 		owner.invalidateGrant()
 		return false
 	}
-	operation := protocol.OperationRequest{Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
+	if owner.importOnly && command.Type != "import.apply" || !owner.importOnly && command.Type == "import.apply" {
+		owner.invalidateGrant()
+		return false
+	}
+	operation := protocol.OperationRequest{TableImport: command.TableImport, Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
 	if command.Type == "structure.apply" {
 		if !owner.structureOnly || command.Structure == nil || !command.Structure.Valid(command.Type) || command.Structure.Apply == nil {
 			owner.invalidateGrant()

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"strings"
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
@@ -32,6 +33,9 @@ func Open(ctx context.Context, connection protocol.Connection) (adapter.Session,
 }
 
 func (session *Session) Execute(ctx context.Context, command protocol.Command) protocol.Response {
+	if strings.HasPrefix(command.Type, "import.") {
+		return tableImport(ctx, session.conn, command)
+	}
 	if command.Changes != nil {
 		return changes(ctx, session.conn, command)
 	}
@@ -42,6 +46,9 @@ func (session *Session) Execute(ctx context.Context, command protocol.Command) p
 }
 
 func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Command, sink adapter.ResultSink) protocol.Response {
+	if strings.HasPrefix(command.Type, "import.") {
+		return tableImport(ctx, session.conn, command)
+	}
 	if command.Changes != nil {
 		return changes(ctx, session.conn, command)
 	}
