@@ -201,6 +201,72 @@ struct ERDiagramLoaderTests {
 }
 
 struct ERDiagramLayoutTests {
+    private func rect(_ placement: ERPlacement, metadata: [ERTableID: ERTableMetadata], collapsed: Set<ERTableID>) -> CGRect {
+        CGRect(x: placement.point.x, y: placement.point.y, width: ERDiagramLayout.width,
+               height: ERDiagramLayout.height(metadata[placement.table], collapsed: collapsed.contains(placement.table)))
+    }
+    private func hasConnectorSpace(_ a: CGRect, _ b: CGRect) -> Bool {
+        let horizontal = max(a.minX - b.maxX, b.minX - a.maxX)
+        let vertical = max(a.minY - b.maxY, b.minY - a.maxY)
+        return horizontal >= ERDiagramLayout.horizontalGap || vertical >= ERDiagramLayout.verticalGap
+    }
+
+    @Test func generatedCardsReserveConnectorSpaceAcrossRanksAndRows() {
+        let profile = UUID()
+        let tables = (0..<6).map { ERTableID(profileID: profile, schema: "fixture", name: "table_\($0)") }
+        let relationships = [(1, 0), (2, 0), (3, 1), (4, 1)].map {
+            ERRelationship(source: tables[$0.0], key: erKey(target: tables[$0.1]))
+        }
+        let counts = [1, 5, 2, 8, 4, 0]
+        let metadata = Dictionary(uniqueKeysWithValues: tables.enumerated().map { index, table in
+            (table, ERTableMetadata(table: table, columns: (0..<counts[index]).map {
+                ERColumn(name: "column_\($0)", nativeType: "integer", nullable: true, primaryKeyPosition: nil)
+            }, columnState: .available))
+        })
+        let placements = ERDiagramLayout.positions(tables: tables, relationships: relationships, metadata: metadata, preserving: [], collapsed: [])
+        #expect(placements.count == tables.count)
+        var adjacentRanks = false, adjacentRows = false
+        for (index, placement) in placements.enumerated() {
+            let a = rect(placement, metadata: metadata, collapsed: [])
+            for other in placements.dropFirst(index + 1) {
+                let b = rect(other, metadata: metadata, collapsed: [])
+                #expect(hasConnectorSpace(a, b))
+                if max(a.minX - b.maxX, b.minX - a.maxX) == ERDiagramLayout.horizontalGap { adjacentRanks = true }
+                if a.minX == b.minX, max(a.minY - b.maxY, b.minY - a.maxY) == ERDiagramLayout.verticalGap { adjacentRows = true }
+            }
+        }
+        #expect(adjacentRanks && adjacentRows)
+        #expect(placements == ERDiagramLayout.positions(tables: tables.reversed(), relationships: relationships.reversed(),
+            metadata: metadata, preserving: [], collapsed: []))
+    }
+
+    @Test func generatedCardsKeepTheirDistanceFromUnchangedManualPlacements() {
+        let profile = UUID()
+        let tables = (0..<7).map { ERTableID(profileID: profile, schema: "fixture", name: "table_\($0)") }
+        // Existing manual cards may overlap; the layout preserves their exact positions.
+        let manual = [ERPlacement(table: tables[0], point: .init(x: 100, y: 40), manual: true),
+                      ERPlacement(table: tables[1], point: .init(x: 270, y: 180), manual: true)]
+        let metadata = Dictionary(uniqueKeysWithValues: tables.enumerated().map { index, table in
+            (table, ERTableMetadata(table: table, columns: (0..<(index == 4 ? 20 : index + 2)).map {
+                ERColumn(name: "column_\($0)", nativeType: "text", nullable: true, primaryKeyPosition: nil)
+            }, columnState: .available))
+        })
+        let collapsed: Set<ERTableID> = [tables[4]]
+        let relationships = [ERRelationship(source: tables[2], key: erKey(target: tables[3]))]
+        let placements = ERDiagramLayout.positions(tables: tables, relationships: relationships, metadata: metadata,
+            preserving: manual, collapsed: collapsed)
+        #expect(placements.count == tables.count)
+        for preserved in manual { #expect(placements.first { $0.table == preserved.table } == preserved) }
+        for placement in placements where !manual.contains(where: { $0.table == placement.table }) {
+            let a = rect(placement, metadata: metadata, collapsed: collapsed)
+            for other in placements where other.table != placement.table {
+                #expect(hasConnectorSpace(a, rect(other, metadata: metadata, collapsed: collapsed)))
+            }
+        }
+        #expect(placements == ERDiagramLayout.positions(tables: tables.reversed(), relationships: relationships.reversed(),
+            metadata: metadata, preserving: manual.reversed(), collapsed: collapsed))
+    }
+
     @Test func cyclicDisconnectedSelfAndParallelEdgesHaveStableNonoverlappingGeometry() throws {
         let profile = UUID()
         let tables = (0..<8).map { ERTableID(profileID: profile, schema: "s", name: "t\($0)") }

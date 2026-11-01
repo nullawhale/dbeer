@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Round ER relationship bends while preserving straight arrow approaches and
+  obstacle clearance around table cards.
+
+- Increase ER auto-layout spacing and reserve straight terminal segments for
+  relationship arrows, keeping arrowheads clear of bends at every zoom level.
+
+- Refine ER diagrams with distinct table headers, aligned fields and key badges,
+  subtle canvas guides, focused relationship highlighting, and compact collapsible
+  Tables and Inspector panels. Keep metadata warnings available in the inspector.
+
+- Route ER diagram relationships around table cards, clip drawing to the canvas,
+  and include connection routes when fitting the diagram to the window. Use filled,
+  screen-sized arrowheads above card borders to keep relationship directions visible.
+
 - Add native PostgreSQL/MySQL ER diagram tabs with explicit bounded table
   selection, declared composite/self/parallel/cross-schema foreign keys, PK
   positions, metadata completeness states, deterministic layout, manual placement,

@@ -167,8 +167,19 @@ final class ERDiagramModel: ObservableObject {
     var searchRequest: CatalogMetadataRequest?
     var context: ERDiagramLoadContext?
     var changed: (() -> Void)?
+    private var routedGeometry: ERDiagramRouting.Geometry?
+    private var cachedRoutes: [ERDiagramRoute] = []
 
     init(stored: StoredERDiagram) { self.stored = stored }
+    var relationshipRoutes: [ERDiagramRoute] {
+        let geometry = ERDiagramRouting.Geometry(tables: stored.tables, placements: stored.placements,
+            metadata: metadata, collapsed: Set(stored.collapsed))
+        if geometry != routedGeometry {
+            cachedRoutes = ERDiagramRouting.routes(geometry, relationships: relationships)
+            routedGeometry = geometry
+        }
+        return cachedRoutes
+    }
     var relationships: [ERRelationship] {
         stored.tables.flatMap { source in
             guard let facts = metadata[source], facts.relationshipState.isAvailable else { return [ERRelationship]() }
@@ -186,9 +197,15 @@ final class ERDiagramModel: ObservableObject {
         stored.tables.removeAll { $0 == table }; stored.placements.removeAll { $0.table == table }
         stored.collapsed.removeAll { $0 == table }
         if stored.selected == table { stored.selected = nil }
+        selectedRelationshipID = nil
         changed?()
     }
-    func setMetadata(_ facts: ERTableMetadata) { metadata[facts.table] = facts }
+    func setMetadata(_ facts: ERTableMetadata) {
+        metadata[facts.table] = facts
+        // Identifier matching uses exact UTF-8, while synthesized metadata
+        // equality treats canonically equivalent Swift strings as equal.
+        routedGeometry = nil
+    }
     func beginLoad(retryingFailures: Bool = false) {
         generation &+= 1; isLoading = true; progress = 0; selectedRelationshipID = nil
         metadata = metadata.filter { stored.tables.contains($0.key) }
