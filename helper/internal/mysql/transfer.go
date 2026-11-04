@@ -18,6 +18,24 @@ import (
 
 var transferDecimalType = regexp.MustCompile(`^(?:decimal|numeric)\(([0-9]+),([0-9]+)\)$`)
 
+func transferDecimalBounds(native string) (int, int, bool) {
+	native = strings.TrimSuffix(native, " zerofill")
+	native = strings.TrimSuffix(native, " unsigned")
+	match := transferDecimalType.FindStringSubmatch(native)
+	if len(match) != 3 {
+		return 0, 0, false
+	}
+	precision, err := strconv.Atoi(match[1])
+	if err != nil {
+		return 0, 0, false
+	}
+	scale, err := strconv.Atoi(match[2])
+	if err != nil {
+		return 0, 0, false
+	}
+	return precision, scale, precision >= 1 && precision <= 65 && scale >= 0 && scale <= 30 && scale <= precision
+}
+
 type transferSink struct {
 	columns []protocol.TransferColumn
 	consume func([]protocol.CellValue) error
@@ -86,13 +104,12 @@ func (s *Session) transferDescription(execution *changeExecution, schema, table 
 				c.Precision = 20
 			}
 		case "decimal", "numeric":
-			match := transferDecimalType.FindStringSubmatch(native)
-			if len(match) != 3 {
+			precision, scale, ok := transferDecimalBounds(native)
+			if !ok {
 				return d, dt.ErrInvalid
 			}
 			c.Type = "decimal"
-			c.Precision, _ = strconv.Atoi(match[1])
-			c.Scale, _ = strconv.Atoi(match[2])
+			c.Precision, c.Scale = precision, scale
 		case "float", "double", "real":
 			c.Type = "real"
 		case "date":

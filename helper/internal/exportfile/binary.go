@@ -15,7 +15,10 @@ import (
 type BinaryWriter struct{ writer *Writer }
 
 func NewBinaryWriter(path string, expected protocol.ExportDestination) (*BinaryWriter, error) {
-	d, err := captureDestination(path)
+	return NewBinaryWriterContext(context.Background(), path, expected)
+}
+func NewBinaryWriterContext(ctx context.Context, path string, expected protocol.ExportDestination) (*BinaryWriter, error) {
+	d, err := captureDestinationContext(ctx, path)
 	if err != nil {
 		return nil, ErrIO
 	}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -194,6 +195,9 @@ func TestDatabaseToolsCredentialAndEnvironmentIsolation(t *testing.T) {
 	args, env, err := utilityArguments(protocol.DatabaseToolsRequest{Operation: "dump", Format: "custom"}, PreparedConnection{Connection: c, Host: c.Host, Port: c.Port}, dir)
 	if err != nil {
 		t.Fatal("cannot construct private utility credentials")
+	}
+	if !slices.Contains(env, "PGGSSENCMODE=disable") {
+		t.Fatal("ambient Kerberos transport can bypass the reviewed TLS mode")
 	}
 	for _, value := range append(args, env...) {
 		if strings.Contains(value, c.Password) {

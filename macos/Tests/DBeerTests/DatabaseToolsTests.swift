@@ -2,6 +2,18 @@ import Foundation
 import Testing
 @testable import DBeer
 
+@Suite struct StandaloneOperationConfirmationTests {
+    @Test func confirmationShowsTheReviewedDatabaseWithoutChangingTheSavedProfile() {
+        let profile = SavedConnection(name: "Review", settings: .init(host: "fixture.invalid", port: 5432,
+            database: "original", user: "reader", password: "", sslMode: "disable"))
+        let confirmation = OperationConfirmation.standalone(profile: profile, database: "selected_database", preview: "Reviewed operation")
+        #expect(confirmation.profile.database == "selected_database")
+        #expect(confirmation.profile.endpointDescription.hasSuffix("/selected_database"))
+        #expect(profile.database == "original" && confirmation.profile.id == profile.id)
+        #expect(confirmation.generatedPreview == "Reviewed operation" && confirmation.assessment.authorization == nil)
+    }
+}
+
 /// Protocol and model coverage only; no windows, file panels or utilities run.
 @MainActor
 struct DatabaseToolsTests {

@@ -8,7 +8,8 @@
   MySQL DDL boundaries and uncertain outcomes without replaying writes.
 - Add PostgreSQL SQL/custom/tar and MySQL SQL dump/restore workflows using explicit
   version-compatible native utilities, reviewed restore plans, private credentials,
-  atomic dump publication, cancellation and process-group cleanup. Keep operation
+  frozen explicit TLS CA settings, atomic dump publication, cancellation and
+  process-group cleanup. Keep operation
   state and data outside restored workspace state.
 
 - Add a read-only PostgreSQL/MySQL session and blocking monitor with a dedicated

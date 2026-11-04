@@ -1,6 +1,7 @@
 package exportfile
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -15,6 +16,7 @@ import (
 
 // Destination contains retained identities, never diagnostic or result data.
 type destination struct {
+	ctx        context.Context
 	path       string
 	parent     *os.File
 	parentInfo os.FileInfo
@@ -25,7 +27,10 @@ type destination struct {
 }
 
 func CaptureDestination(path string) (protocol.ExportDestination, error) {
-	d, err := captureDestination(path)
+	return CaptureDestinationContext(context.Background(), path)
+}
+func CaptureDestinationContext(ctx context.Context, path string) (protocol.ExportDestination, error) {
+	d, err := captureDestinationContext(ctx, path)
 	if err != nil {
 		return protocol.ExportDestination{}, err
 	}
@@ -33,6 +38,12 @@ func CaptureDestination(path string) (protocol.ExportDestination, error) {
 	return d.stamp, nil
 }
 func captureDestination(path string) (*destination, error) {
+	return captureDestinationContext(context.Background(), path)
+}
+func captureDestinationContext(ctx context.Context, path string) (*destination, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if !filepath.IsAbs(path) {
 		return nil, ErrIO
 	}
@@ -41,11 +52,11 @@ func captureDestination(path string) (*destination, error) {
 	if err != nil {
 		return nil, ErrIO
 	}
-	parent, err := os.Open(parentPath)
+	parent, err := openDestinationParent(parentPath)
 	if err != nil {
 		return nil, ErrIO
 	}
-	d := &destination{path: path, parent: parent, parentReal: real}
+	d := &destination{ctx: ctx, path: path, parent: parent, parentReal: real}
 	d.parentInfo, err = parent.Stat()
 	if err != nil || !d.parentInfo.IsDir() {
 		d.close()
@@ -59,6 +70,10 @@ func captureDestination(path string) (*destination, error) {
 	d.stamp.ParentIdentity = &parentIdentity
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
+		if err := ctx.Err(); err != nil {
+			d.close()
+			return nil, err
+		}
 		return d, nil
 	}
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
@@ -76,9 +91,16 @@ func captureDestination(path string) (*destination, error) {
 		return nil, ErrIO
 	}
 	hash := sha256.New()
-	if _, err = io.Copy(hash, d.file); err != nil {
+	if _, err = io.Copy(hash, destinationReader{ctx: ctx, in: d.file}); err != nil {
 		d.close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, ErrIO
+	}
+	if err := ctx.Err(); err != nil {
+		d.close()
+		return nil, err
 	}
 	after, err := d.file.Stat()
 	named, nameErr := os.Lstat(path)
@@ -99,6 +121,9 @@ func stampsMatch(a, b protocol.ExportDestination) bool {
 	return (b.Identity == nil || a.Identity != nil && *a.Identity == *b.Identity) && (b.ParentIdentity == nil || a.ParentIdentity != nil && *a.ParentIdentity == *b.ParentIdentity) && a.Exists == b.Exists && a.Size == b.Size && a.SHA256 == b.SHA256 && (b.ModifiedNanoseconds == nil || a.ModifiedNanoseconds != nil && *a.ModifiedNanoseconds == *b.ModifiedNanoseconds)
 }
 func (d *destination) valid() bool {
+	if d.ctx.Err() != nil {
+		return false
+	}
 	parent, err := os.Stat(filepath.Dir(d.path))
 	if err != nil || !os.SameFile(parent, d.parentInfo) {
 		return false
@@ -108,7 +133,7 @@ func (d *destination) valid() bool {
 	if err != nil || !samePath(real, d.parentReal) {
 		return false
 	}
-	current, err := captureDestinationUnlocked(d.path)
+	current, err := captureDestinationContext(d.ctx, d.path)
 	if err != nil {
 		return false
 	}
@@ -119,8 +144,22 @@ func (d *destination) valid() bool {
 	return stampsMatch(current.stamp, d.stamp)
 }
 
-// Revalidation uses a normal read handle while the retained writer lock remains held.
-func captureDestinationUnlocked(path string) (*destination, error) { return captureDestination(path) }
+// Hashes remain cancellable while the retained writer lock is held.
+type destinationReader struct {
+	ctx context.Context
+	in  io.Reader
+}
+
+func (reader destinationReader) Read(data []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	n, err := reader.in.Read(data)
+	if cancellation := reader.ctx.Err(); cancellation != nil {
+		return n, cancellation
+	}
+	return n, err
+}
 func (d *destination) close() {
 	if d.file != nil {
 		_ = d.file.Close()

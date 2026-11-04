@@ -17,15 +17,11 @@ var dumpRestriction = regexp.MustCompile(`^\\(?:unrestrict|restrict)[ \t]+[A-Za-
 // symlink retarget or in-place edit of the selected input cannot change the
 // approved restore. Plain dumps are wrapped in a fresh restricted psql session.
 func freezeInput(ctx context.Context, path, dir string, plainPostgres bool) (string, error) {
-	source, err := os.Open(path)
+	source, before, err := openReadonlyRegular(path)
 	if err != nil {
 		return "", safe("The selected restore file is unavailable.")
 	}
 	defer source.Close()
-	before, err := source.Stat()
-	if err != nil || !before.Mode().IsRegular() {
-		return "", safe("Choose a regular backup file.")
-	}
 	if before.Size() == 0 {
 		return "", safe("The selected restore file is empty.")
 	}

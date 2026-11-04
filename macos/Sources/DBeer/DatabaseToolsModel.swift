@@ -37,8 +37,15 @@ actor DatabaseToolsHelperBackend: DatabaseToolsBackend {
         guard !closed else { throw CancellationError() }
         guard await client.supportsDatabaseTools() else { throw BackendRequestError.invalidCommand }
         if let settings = request.connection, settings.ssh != nil {
-            try await SSHConnectionReview.prepare(settings, client: client, ownerID: ownerID)
-            try Task.checkCancellation()
+            var trusted = false
+            for _ in 0..<17 {
+                try Task.checkCancellation()
+                guard !closed else { throw CancellationError() }
+                try await SSHConnectionReview.prepare(settings, client: client, ownerID: ownerID)
+                let ownProbe = try await client.request(.sshProbe(settings))
+                if ownProbe.ssh?.status == "trusted" { trusted = true; break }
+            }
+            guard trusted else { throw BackendTransportError(.invalidMessage) }
         }
         return try await self.request("preview", request)
     }
@@ -185,7 +192,10 @@ final class DatabaseToolsModel: ObservableObject, Identifiable {
                   reply.path?.utf8.elementsEqual(path.utf8) == true else { throw BackendTransportError(.invalidMessage) }
             preview = reply; preparedBinding = binding; planID = reply.planId
         } catch {
-            if generation == token, !isClosing { self.error = error is CancellationError ? "Preparation stopped." : "Preparation failed. Check the selected database, file, utility and connection settings." }
+            if generation == token, !isClosing {
+                self.error = error is CancellationError ? "Preparation stopped." :
+                    safeRemoteDiagnostic(error) ?? "Preparation failed. Check the selected database, file, utility and connection settings."
+            }
             await retire(service, plan: nil, job: nil)
             if generation == token { backend = nil; planID = nil }
         }
@@ -216,7 +226,8 @@ final class DatabaseToolsModel: ObservableObject, Identifiable {
             guard generation == token, !isClosing else { return }
             // A restore could have begun before a terminal reply was lost.
             if error is BackendRequestError || error is BackendRemoteError {
-                self.error = "The operation did not start. Preview it again to check the current utility, file and connection."
+                self.error = safeRemoteDiagnostic(error).map { "The operation did not start. " + $0 } ??
+                    "The operation did not start. Preview it again to check the current utility, file and connection."
             } else if capturedOperation == .restore {
                 result = uncertainResult("The restore could not be observed. The destination may have changed. Inspect it before starting another restore.")
             } else { self.error = "The dump could not start or its outcome could not be observed. Inspect the selected output before retrying." }
@@ -254,6 +265,12 @@ final class DatabaseToolsModel: ObservableObject, Identifiable {
         return reply.engine == expected.engine && same(reply.operation, expected.operation) && same(reply.format, expected.format) &&
             same(reply.database, expected.database) && same(reply.path, expected.path) && same(reply.toolName, expected.toolName) &&
             same(reply.toolVersion, expected.toolVersion) && same(reply.serverVersion, expected.serverVersion)
+    }
+
+    private func safeRemoteDiagnostic(_ error: Error) -> String? {
+        guard let reply = (error as? BackendRemoteError)?.reply, let message = reply.message,
+              DatabaseToolsRequest.text(message, maximum: 2_048, required: true) else { return nil }
+        return message
     }
 
     func stop() async {

@@ -18,7 +18,12 @@ func (d *destination) lock() error {
 func createTemporary(parent string) (*os.File, error) {
 	return os.CreateTemp(parent, ".dbeer-export-*")
 }
-func openDestination(path string) (*os.File, error) { return os.Open(path) }
+func openDestination(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+}
+func openDestinationParent(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NONBLOCK, 0)
+}
 func (d *destination) publish(temporary string) error {
 	if !d.valid() {
 		return ErrIO

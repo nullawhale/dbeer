@@ -933,7 +933,8 @@ final class ApplicationWorkspace: ObservableObject {
             return ExplainProfileBinding(profile)?.matches(self.library.savedConnections.first { $0.id == profile.id }) == true
         }, authorize: { [weak self] target, review in
             guard let self, self.shutdownTask == nil, review.state == "ready", !target.policy.readOnly else { return false }
-            return await self.confirmStandaloneOperation(target, preview: (review.notices.joined(separator: "\n") + "\n\n" + (review.sql ?? "")))
+            return await self.confirmStandaloneOperation(target,
+                preview: "Reviewed rows: \(review.rowsRead)\n\n" + review.notices.joined(separator: "\n") + "\n\n" + (review.sql ?? ""))
         }, cancelPreparation: { profile, attempt in
             SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, attempt))
         }, changed: { [weak self] target in
@@ -966,7 +967,7 @@ final class ApplicationWorkspace: ObservableObject {
             resolve: { profile, attempt in try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt) },
             authorize: { [weak self] target, review in
                 guard let self, self.shutdownTask == nil, !target.policy.readOnly else { return false }
-                return await self.confirmStandaloneOperation(target,
+                return await self.confirmStandaloneOperation(target, database: review.database,
                     preview: "Restore database: \(review.database ?? "")\nFile: \(review.path ?? "")\nUtility: \(review.toolName ?? "") \(review.toolVersion ?? "")\n\n" + review.warnings.joined(separator: "\n"))
             }, bindingIsCurrent: { [weak self] profile in
                 guard let self, self.shutdownTask == nil else { return false }
@@ -983,13 +984,9 @@ final class ApplicationWorkspace: ObservableObject {
         Task { await model.close(); if databaseTools?.id == model.id { databaseTools = nil } }
     }
 
-    private func confirmStandaloneOperation(_ profile: SavedConnection, preview: String) async -> Bool {
+    private func confirmStandaloneOperation(_ profile: SavedConnection, database: String? = nil, preview: String) async -> Bool {
         guard ExplainProfileBinding(profile)?.matches(library.savedConnections.first { $0.id == profile.id }) == true else { return false }
-        let confirmation = OperationConfirmation(profile: profile, operations: [.init(type: "execute")],
-            assessment: .init(decision: "confirm", policy: profile.policy,
-                operations: [.init(kind: "write", statements: [])], authorization: nil),
-            isScript: false, generatedPreview: preview)
-        return await ExecutionConfirmation.present(confirmation)
+        return await ExecutionConfirmation.present(.standalone(profile: profile, database: database, preview: preview))
     }
 
     func canShowSessionMonitor(_ profile: SavedConnection) -> Bool {

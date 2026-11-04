@@ -104,6 +104,9 @@ func (s *Session) transferDescription(ctx context.Context, tx pgx.Tx, schema, ta
 	return d, nil
 }
 func (s *Session) TransferDescribe(ctx context.Context, schema, table string) (dt.Description, error) {
+	if s.conn.IsClosed() || s.TransactionStatus() != "idle" {
+		return dt.Description{}, dt.ErrInvalid
+	}
 	tx, err := s.dataTransaction(ctx)
 	if err != nil {
 		return dt.Description{}, err
@@ -112,6 +115,9 @@ func (s *Session) TransferDescribe(ctx context.Context, schema, table string) (d
 	return s.transferDescription(ctx, tx, schema, table)
 }
 func (s *Session) TransferCapture(ctx context.Context, schema, table, digest string, sink func([]protocol.CellValue) error) (dt.Description, error) {
+	if s.conn.IsClosed() || s.TransactionStatus() != "idle" {
+		return dt.Description{}, dt.ErrInvalid
+	}
 	tx, err := s.dataTransaction(ctx)
 	if err != nil {
 		return dt.Description{}, err
@@ -218,6 +224,9 @@ func transferPostgresDDL(schema, table string, columns []protocol.TransferColumn
 	return "CREATE TABLE " + pgx.Identifier{schema, table}.Sanitize() + " (\n  " + strings.Join(parts, ",\n  ") + "\n);", nil
 }
 func (s *Session) TransferPreview(ctx context.Context, schema, table string, columns []protocol.TransferColumn) (string, string, error) {
+	if s.conn.IsClosed() || s.TransactionStatus() != "idle" {
+		return "", "", dt.ErrInvalid
+	}
 	statement, err := transferPostgresDDL(schema, table, columns)
 	if err != nil {
 		return "", "", err
@@ -328,10 +337,10 @@ func (s *Session) TransferApply(ctx context.Context, schema, table, expectedIden
 		return out, ctx.Err()
 	}
 	if err = tx.Commit(ctx); err != nil {
-		var server *pgconn.PgError
-		if !errors.As(err, &server) || server.Severity == "FATAL" || strings.HasPrefix(server.Code, "08") {
+		if transferCommitOutcomeUnknown(err) {
 			out.OutcomeUnknown = true
 			out.Rows = count
+			closeConnection(s.conn)
 			return out, err
 		}
 		return out, err
@@ -340,6 +349,11 @@ func (s *Session) TransferApply(ctx context.Context, schema, table, expectedIden
 	out.TableCreated = true
 	progress(count)
 	return out, nil
+}
+
+func transferCommitOutcomeUnknown(err error) bool {
+	var server *pgconn.PgError
+	return !errors.As(err, &server) || server.Severity == "FATAL" || server.Severity == "PANIC" || server.SeverityUnlocalized == "FATAL" || server.SeverityUnlocalized == "PANIC" || strings.HasPrefix(server.Code, "08") || server.Code == "40003" || server.Code == "57P01"
 }
 
 var _ dt.Database = (*Session)(nil)

@@ -29,6 +29,7 @@ type operationJobs struct {
 	done      chan struct{}
 	workers   sync.WaitGroup
 	slots     chan struct{}
+	controls  chan struct{}
 }
 
 func newOperationJobs(open adapter.OpenFunc, tunnels *sshtunnel.Manager) (*operationJobs, error) {
@@ -41,7 +42,7 @@ func newOperationJobs(open adapter.OpenFunc, tunnels *sshtunnel.Manager) (*opera
 		transfers.Close()
 		return nil, err
 	}
-	return &operationJobs{transfer: transfers, tools: tools, slots: make(chan struct{}, 4), done: make(chan struct{})}, nil
+	return &operationJobs{transfer: transfers, tools: tools, slots: make(chan struct{}, 4), controls: make(chan struct{}, 4), done: make(chan struct{})}, nil
 }
 func (jobs *operationJobs) Close() {
 	jobs.closeOnce.Do(func() {
@@ -60,15 +61,20 @@ func (jobs *operationJobs) dispatch(command protocol.Command, output chan<- prot
 	if jobs.closed {
 		return false
 	}
+	slots := jobs.slots
+	switch command.Type {
+	case "transfer.status", "transfer.cancel", "transfer.close", "dbtools.status", "dbtools.cancel", "dbtools.close":
+		slots = jobs.controls
+	}
 	select {
-	case jobs.slots <- struct{}{}:
+	case slots <- struct{}{}:
 	default:
 		return false
 	}
 	jobs.workers.Add(1)
 	go func() {
 		defer jobs.workers.Done()
-		defer func() { <-jobs.slots }()
+		defer func() { <-slots }()
 		var response protocol.Response
 		if strings.HasPrefix(command.Type, "transfer.") {
 			response = jobs.transfer.Handle(command)
@@ -150,6 +156,9 @@ func (forward *toolForward) close() {
 		forward.mu.Unlock()
 		forward.lease.Close()
 	})
+	// accept owns a worker until it has stopped adding connection workers.
+	// Close is only called by owners and the lease watcher, never a worker.
+	forward.workers.Wait()
 }
 func (forward *toolForward) accept(ctx context.Context, target string) {
 	defer forward.workers.Done()

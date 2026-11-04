@@ -86,3 +86,31 @@ func TestPostgresTransferSnapshotCapturesNoPrimaryKeyAndRejectsSchemaDrift(t *te
 		t.Fatal("source column mapping accepted changed metadata")
 	}
 }
+
+func TestPostgresTransferRefusesAnExistingSQLTransaction(t *testing.T) {
+	fixture := newChangeFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	fixture.exec("CREATE TABLE " + fixture.table("source") + " (id BIGINT)")
+	if _, err := fixture.conn.Exec(ctx, "BEGIN"); err != nil {
+		t.Fatal("cannot open SQL transaction fixture")
+	}
+	defer fixture.conn.Exec(context.Background(), "ROLLBACK")
+	session := &Session{conn: fixture.conn}
+	columns := []protocol.TransferColumn{{SourceIndex: 0, Name: "id", Type: "integer"}}
+	if _, err := session.TransferDescribe(ctx, fixture.schema, "source"); err == nil {
+		t.Fatal("transfer description accepted a SQL-tab transaction")
+	}
+	if _, err := session.TransferCapture(ctx, fixture.schema, "source", "unused", func([]protocol.CellValue) error { return nil }); err == nil {
+		t.Fatal("transfer capture accepted a SQL-tab transaction")
+	}
+	if _, _, err := session.TransferPreview(ctx, fixture.schema, "target", columns); err == nil {
+		t.Fatal("transfer preview accepted a SQL-tab transaction")
+	}
+	if _, err := session.TransferApply(ctx, fixture.schema, "target", "unused", columns, transferRows(nil), func(int64) {}); err == nil {
+		t.Fatal("transfer apply accepted a SQL-tab transaction")
+	}
+	if session.TransactionStatus() != "transaction" {
+		t.Fatal("transfer committed or rolled back the independent SQL transaction")
+	}
+}

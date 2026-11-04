@@ -63,17 +63,21 @@ and validates all mapped values before creating the destination. Apply uses this
 immutable snapshot; subsequent source changes do not change the reviewed input.
 Copying has no display-row or primary-key requirement. The workspace is limited
 to 4 GiB, individual rows to 16 MiB and each operation to 15 minutes; limits stop
-the operation explicitly. CSV creation retains the 8 MiB input, 10,000-row,
-256-column, 100,000-cell and 4 MiB mapped-value limits of local CSV import.
+the operation explicitly. CSV creation allows an 8 MiB input file, 10,000 rows,
+256 columns, 100,000 cells and 4 MiB of field values sent for validation.
 
 The destination contains the reviewed columns and data. Source keys, indexes,
 foreign keys, defaults, identity/sequence behavior, generated expressions,
 triggers and grants are not cloned. These omissions appear in the preview.
 MySQL receives portable JSON as validated text to preserve exact numeric and
 text representation; timezone-aware timestamps become explicitly UTC
-`DATETIME(6)`, and unsupported sub-microsecond precision is rejected. PostgreSQL
-uses native reviewed types. Unsupported conversions require an explicit mapping
+`DATETIME(6)`. Both engines reject timestamps beyond microsecond precision or
+their supported year ranges. PostgreSQL uses native reviewed types.
+Unsupported conversions require an explicit mapping
 change rather than silent truncation.
+PostgreSQL user-defined source types and non-InnoDB MySQL source tables are
+rejected. Some other built-in source types use a TEXT proposal with a preview
+notice; this workflow copies portable columns and values.
 
 PostgreSQL creates and loads the table in one transaction. MySQL DDL commits
 independently: an import failure can leave a newly created empty table, and the
@@ -108,6 +112,9 @@ Credentials use private temporary client configuration instead of command-line
 passwords. Client startup configuration and local file commands are restricted;
 utility diagnostics are drained without recording SQL, results or credentials.
 SSH forwarding retains the original PostgreSQL TLS verification identity.
+PostgreSQL utility connections using `verify-ca` or `verify-full` require an
+explicit PEM CA file in the connection profile. Preview privately retains the
+reviewed CA bytes because utility startup uses an isolated home directory.
 MySQL's verify-identity mode cannot be preserved by its command-line client over
 the local SSH endpoint and requires a direct verified connection; verification
 is never downgraded. Closing the operation cleans its private workspace and

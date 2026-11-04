@@ -24,9 +24,9 @@ struct DataTransferView: View {
                     Text("Create a table from a file or copy a table between connections").font(.caption).appSecondaryText()
                 }
                 Spacer()
-                if model.isBusy || readingFile { ProgressView().controlSize(.small) }
+                if model.isBusy || model.isStopping || readingFile { ProgressView().controlSize(.small) }
                 Button("Close", action: close).keyboardShortcut(.cancelAction)
-                    .disabled(model.isBusy || readingFile).controlHover()
+                    .disabled(model.isBusy || model.isStopping || readingFile).controlHover()
             }.padding(20)
             Divider()
             ScrollView {
@@ -45,8 +45,9 @@ struct DataTransferView: View {
             }
             Divider()
             HStack(spacing: 12) {
-                if model.isBusy {
+                if model.isBusy || model.isStopping {
                     Button("Stop") { Task { await model.stop() } }.controlHover().accessibilityIdentifier("dataTransferStop")
+                        .disabled(model.isStopping)
                 }
                 Spacer()
                 Button(model.mode == "csv" ? "Suggest Types" : "Read Source Columns") { Task { await model.describe() } }
@@ -59,7 +60,7 @@ struct DataTransferView: View {
         }
         .frame(minWidth: 980, idealWidth: 1_160, minHeight: 650, idealHeight: 820)
         .background(AppPalette.panel).tint(AppPalette.accent).focusEffectDisabled()
-        .interactiveDismissDisabled(model.isBusy || readingFile)
+        .interactiveDismissDisabled(model.isBusy || model.isStopping || readingFile)
         .accessibilityElement(children: .contain).accessibilityIdentifier("dataTransfer")
     }
 

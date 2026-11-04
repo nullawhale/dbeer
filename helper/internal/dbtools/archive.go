@@ -2,7 +2,6 @@ package dbtools
 
 import (
 	"context"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -27,7 +26,7 @@ var archiveSourceVersion = regexp.MustCompile(`(?m)^;[ \t]*Dumped from database 
 // Listing validates utility/archive compatibility before a restore is approved.
 // Only fixed header metadata is inspected; object names and SQL are discarded.
 func verifyArchive(ctx context.Context, p *plan, serverVersion string) error {
-	input, err := os.Open(p.input)
+	input, _, err := openReadonlyRegular(p.input)
 	if err != nil {
 		return err
 	}

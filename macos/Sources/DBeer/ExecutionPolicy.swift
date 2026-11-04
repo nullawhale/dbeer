@@ -86,6 +86,15 @@ struct OperationConfirmation: Sendable {
     let isScript: Bool
     var sourceSQL: String? = nil
     var generatedPreview: String? = nil
+
+    static func standalone(profile: SavedConnection, database: String? = nil, preview: String) -> Self {
+        var destination = profile
+        if let database { destination.database = database }
+        return Self(profile: destination, operations: [.init(type: "execute")],
+            assessment: .init(decision: "confirm", policy: profile.policy,
+                operations: [.init(kind: "write", statements: [])], authorization: nil),
+            isScript: false, generatedPreview: preview)
+    }
 }
 
 /// The displayed SQL is the exact batch evaluated by the helper. No execution

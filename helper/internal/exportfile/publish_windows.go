@@ -16,8 +16,9 @@ import (
 var replaceFile = syscall.NewLazyDLL("kernel32.dll").NewProc("ReplaceFileW")
 var moveFileEx = syscall.NewLazyDLL("kernel32.dll").NewProc("MoveFileExW")
 
-func (d *destination) lock() error                  { return nil }
-func openDestination(path string) (*os.File, error) { return os.Open(path) }
+func (d *destination) lock() error                        { return nil }
+func openDestination(path string) (*os.File, error)       { return os.Open(path) }
+func openDestinationParent(path string) (*os.File, error) { return os.Open(path) }
 func (d *destination) publish(temporary string) error {
 	if !d.valid() {
 		return ErrIO

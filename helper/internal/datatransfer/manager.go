@@ -196,8 +196,9 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		}
 		active := j.active
 		if !active {
-			j.reply.State = "closed"
-			if c.Type == "transfer.cancel" {
+			if c.Type == "transfer.close" {
+				j.reply.State = "closed"
+			} else if j.reply.State == "ready" || j.reply.State == "described" {
 				j.reply.State = "cancelled"
 			}
 			j.plan = nil
@@ -348,6 +349,9 @@ func (m *Manager) prepare(j *job, r protocol.TransferRequest, describe bool) {
 	j.reply.Columns = columns
 	j.reply.SourceDigest = description.Digest
 	j.reply.Notices = append(j.reply.Notices, description.Notices...)
+	if r.Target.Connection.DatabaseEngine() == "mysql" {
+		j.reply.Notices = append(j.reply.Notices, "MySQL commits CREATE TABLE separately from inserted rows. A cancelled or failed transfer can leave an empty destination table; uncertain outcomes require inspecting that table before retrying.")
+	}
 	if r.Mode == "csv" {
 		j.reply.Notices = append(j.reply.Notices, "Numeric, boolean and temporal destination types use canonical value representations. Choose TEXT when the original CSV spelling is significant.")
 	}

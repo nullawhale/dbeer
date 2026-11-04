@@ -39,17 +39,17 @@ func captureTool(path, name string) (*toolIdentity, error) {
 	if err != nil {
 		return nil, errTool
 	}
-	f, err := os.Open(resolved)
+	f, info, err := openReadonlyRegular(resolved)
 	if err != nil {
 		return nil, errTool
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
+	const maxToolSize = 512 * 1024 * 1024
+	if info.Mode().Perm()&0111 == 0 || info.Size() > maxToolSize {
 		return nil, errTool
 	}
 	h := sha256.New()
-	if _, err = io.Copy(h, f); err != nil {
+	if count, err := io.Copy(h, io.LimitReader(f, maxToolSize+1)); err != nil || count > maxToolSize {
 		return nil, errTool
 	}
 	after, err := f.Stat()

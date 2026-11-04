@@ -24,6 +24,8 @@ actor DataTransferHelperBackend: DataTransferBackend {
     private let scratch: URL
     private var started = false
     private var closed = false
+    private var startup: Task<Void, Error>?
+    private var shutdownTask: Task<Void, Never>?
     init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = []) {
         scratch = FileManager.default.temporaryDirectory.appendingPathComponent("dbeer-transfer-\(UUID())")
         client = BackendClient(executableURL: executableURL, arguments: arguments,
@@ -32,13 +34,25 @@ actor DataTransferHelperBackend: DataTransferBackend {
     func begin(_ operation: String, _ request: DataTransferRequest) async throws -> DataTransferReply {
         guard !closed else { throw CancellationError() }
         if !started {
-            try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-            try await client.start(); started = true
+            if startup == nil {
+                try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+                startup = Task { try await client.start() }
+            }
+            try await startup?.value; started = true
         }
+        guard !closed else { throw CancellationError() }
+        try Task.checkCancellation()
         guard await client.supportsDataTransfer() else { throw BackendRequestError.invalidCommand }
         for settings in request.transportConnections where settings.ssh != nil {
-            try Task.checkCancellation()
-            try await SSHConnectionReview.prepare(settings, client: client, ownerID: owner)
+            var trusted = false
+            for _ in 0..<17 {
+                try Task.checkCancellation()
+                guard !closed else { throw CancellationError() }
+                try await SSHConnectionReview.prepare(settings, client: client, ownerID: owner)
+                let ownProbe = try await client.request(.sshProbe(settings))
+                if ownProbe.ssh?.status == "trusted" { trusted = true; break }
+            }
+            guard trusted else { throw BackendTransportError(.invalidMessage) }
         }
         return try await self.request(operation, request)
     }
@@ -49,8 +63,13 @@ actor DataTransferHelperBackend: DataTransferBackend {
         return transfer
     }
     func shutdown() async {
+        if let shutdownTask { await shutdownTask.value; return }
         closed = true
+        let task = Task { await self.finishShutdown() }; shutdownTask = task; await task.value
+    }
+    private func finishShutdown() async {
         await SSHConnectionReview.cancel(ownerID: owner)
+        _ = try? await startup?.value
         _ = await client.shutdown()
         try? FileManager.default.removeItem(at: scratch)
     }
@@ -74,6 +93,7 @@ final class DataTransferModel: ObservableObject, Identifiable {
     @Published private(set) var parsed: DelimitedImportDocument?
     @Published private(set) var reply: DataTransferReply?
     @Published private(set) var isBusy = false
+    @Published private(set) var isStopping = false
     @Published private(set) var closing = false
     @Published private(set) var error: String?
     private var fileData: Data?
@@ -86,6 +106,10 @@ final class DataTransferModel: ObservableObject, Identifiable {
     private var task: Task<Void, Never>?
     private var applying = false
     private var uncertain = false
+    private var operationID = UUID()
+    private var closingTask: Task<Void, Never>?
+    private var stopTask: Task<Void, Never>?
+    private var activeTarget: SavedConnection?
     private let resolve: @MainActor (SavedConnection, UUID) async throws -> ConnectionSettings
     private let current: @MainActor (SavedConnection) -> Bool
     private let authorize: @MainActor (SavedConnection, DataTransferReply) async -> Bool
@@ -107,13 +131,19 @@ final class DataTransferModel: ObservableObject, Identifiable {
     }
     var sourceProfile: SavedConnection? { profiles.first { $0.id == sourceID } }
     var targetProfile: SavedConnection? { profiles.first { $0.id == targetID } }
-    var canEdit: Bool { !isBusy && !closing && !uncertain && reply?.state != "completed" }
-    var canDescribe: Bool { canEdit && targetProfile != nil && !targetTable.isEmpty && (mode == "csv" ? fileData != nil : sourceProfile != nil && !sourceTable.isEmpty) }
+    var canEdit: Bool { !isBusy && !isStopping && !closing && !uncertain && reply?.state != "completed" }
+    var canDescribe: Bool {
+        guard canEdit, let target = targetProfile, current(target), !targetTable.isEmpty else { return false }
+        return mode == "csv" ? fileData != nil : sourceProfile.map { current($0) } == true && !sourceTable.isEmpty
+    }
     var canPreview: Bool { canDescribe && !columns.isEmpty && columns.allSatisfy(\.valid) }
-    var canApply: Bool { canEdit && reply?.state == "ready" && reviewedRevision == revision && targetProfile?.policy.readOnly == false }
+    var canApply: Bool { canEdit && reply?.state == "ready" && reviewedRevision == revision && targetProfile?.policy.readOnly == false && targetProfile.map { current($0) } == true }
     var headers: [String] { mode == "csv" ? parsed?.headers ?? [] : sourceHeaders }
     var hasUnknownOutcome: Bool { uncertain }
-    private func invalidate() { revision &+= 1; reviewedRevision = nil }
+    private func invalidate() {
+        revision &+= 1; reviewedRevision = nil
+        if !isBusy && !isStopping { reply = nil }
+    }
     private func invalidateSource() { invalidate(); sourceDigest = nil; sourceHeaders = []; columns = [] }
 
     func loadCSV(_ data: Data, name: String) async {
@@ -163,7 +193,7 @@ final class DataTransferModel: ObservableObject, Identifiable {
         if mode == "csv", parsed == nil { await parseCSV() }
         guard !isBusy else { return }
         isBusy = true; error = nil; reviewedRevision = nil
-        let token = revision
+        let token = revision, identity = UUID(); operationID = identity
         let work = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.isBusy = false }
@@ -176,9 +206,12 @@ final class DataTransferModel: ObservableObject, Identifiable {
                 if backend == nil { backend = factory() }
                 guard let backend else { return }
                 let started = try await backend.begin(operation, request)
+                guard operationID == identity, !closing, !Task.isCancelled else {
+                    _ = try? await backend.request("close", .init(jobId: started.jobId)); return
+                }
                 jobID = started.jobId
-                let final = try await observe(started, backend: backend)
-                guard !closing, token == revision else { return }
+                let final = try await observe(started, backend: backend, identity: identity)
+                guard !closing, token == revision, operationID == identity else { return }
                 reply = final
                 if operation == "describe", final.state == "described" {
                     sourceHeaders = final.columns?.map(\.name) ?? []
@@ -187,58 +220,108 @@ final class DataTransferModel: ObservableObject, Identifiable {
                 }
                 if final.state == "ready" { reviewedRevision = revision }
                 if final.state == "failed" { error = final.message ?? "The transfer could not be prepared." }
-            } catch let failure { if !self.closing { self.error = failure.localizedDescription } }
+            } catch let failure {
+                guard !self.closing, self.operationID == identity else { return }
+                self.error = failure.localizedDescription
+                if failure is BackendTransportError, let backend {
+                    await backend.shutdown(); self.backend = nil; jobID = nil
+                }
+            }
         }
         task = work; await work.value; task = nil
     }
-    private func observe(_ initial: DataTransferReply, backend: any DataTransferBackend) async throws -> DataTransferReply {
+    private func observe(_ initial: DataTransferReply, backend: any DataTransferBackend, identity: UUID) async throws -> DataTransferReply {
         var latest = initial
         while ["pending", "running"].contains(latest.state) {
+            try Task.checkCancellation()
+            guard operationID == identity else { throw CancellationError() }
             reply = latest
             try await Task.sleep(for: .milliseconds(150))
             latest = try await backend.request("status", .init(jobId: latest.jobId))
+            try Task.checkCancellation()
+            guard operationID == identity else { throw CancellationError() }
             guard latest.valid, latest.jobId == initial.jobId else { throw BackendTransportError(.invalidMessage, outcomeUnknown: applying) }
         }
         return latest
     }
     func apply() async {
         guard canApply, let reviewed = reply, let target = targetProfile, let digest = reviewed.planDigest, let backend else { return }
-        let token = revision
+        let token = revision, identity = UUID(); operationID = identity
         isBusy = true
         let work = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.performApply(reviewed, target: target, digest: digest, backend: backend, token: token)
+            await self.performApply(reviewed, target: target, digest: digest, backend: backend, token: token, identity: identity)
         }
         task = work; await work.value; task = nil
     }
-    private func performApply(_ reviewed: DataTransferReply, target: SavedConnection, digest: String, backend: any DataTransferBackend, token: UInt64) async {
+    private func performApply(_ reviewed: DataTransferReply, target: SavedConnection, digest: String, backend: any DataTransferBackend, token: UInt64, identity: UUID) async {
         defer { isBusy = false; applying = false }
-        guard await authorize(target, reviewed), token == revision, current(target), !closing else { return }
-        applying = true; error = nil
+        guard await authorize(target, reviewed), token == revision, current(target), !closing, operationID == identity, !Task.isCancelled else { return }
+        applying = true; activeTarget = target; error = nil
+        var accepted = false
         do {
             let started = try await backend.request("apply", .init(jobId: reviewed.jobId, planDigest: digest, confirmed: true))
-            let final = try await observe(started, backend: backend)
+            accepted = true
+            let final = try await observe(started, backend: backend, identity: identity)
+            guard operationID == identity, !closing else { return }
             reply = final; uncertain = final.outcomeUnknown
             reviewedRevision = nil
-            if final.state == "completed" || final.tableCreated { changed(target) }
-        } catch {
-            uncertain = true
-            self.error = "The transfer response was lost. Inspect the destination before attempting another transfer."
+            if final.state == "completed" || final.tableCreated || uncertain { changed(target) }
+        } catch let failure {
+            guard operationID == identity, !closing else { return }
+            if !accepted && (failure is BackendRequestError || failure is BackendRemoteError) {
+                self.error = "The transfer did not start. Review the destination and Preview again."
+                reviewedRevision = nil
+            } else {
+                uncertain = true
+                self.error = "The transfer response was lost. Inspect the destination before attempting another transfer."
+                changed(target)
+            }
         }
     }
     func stop() async {
         guard !closing else { return }
+        if let stopTask { await stopTask.value; return }
+        let task = Task { @MainActor in await self.performStop() }; stopTask = task; await task.value; stopTask = nil
+    }
+    private func performStop() async {
+        isStopping = true
+        defer { isStopping = false }
+        let writeStarted = applying, target = activeTarget, identity = UUID()
+        operationID = identity; invalidate(); task?.cancel()
         cancelCredentials()
-        reviewedRevision = nil
-        if let jobID, let backend { _ = try? await backend.request("cancel", .init(jobId: jobID)) }
-        else { task?.cancel(); await backend?.shutdown(); backend = nil }
+        if let jobID, let backend {
+            let deadline = Task { do { try await Task.sleep(for: .seconds(2)) } catch { return }; await backend.shutdown() }
+            defer { deadline.cancel() }
+            do {
+                let cancelled = try await backend.request("cancel", .init(jobId: jobID))
+                guard cancelled.valid, cancelled.jobId == jobID else { throw BackendTransportError(.invalidMessage) }
+                let final = try await observe(cancelled, backend: backend, identity: identity)
+                reply = final; uncertain = final.outcomeUnknown
+                if writeStarted, (final.state == "completed" || final.tableCreated || uncertain), let target { changed(target) }
+            } catch {
+                if writeStarted {
+                    uncertain = true; self.error = "Cancellation could not be confirmed. Inspect the destination before another transfer."
+                    if let target { changed(target) }
+                }
+                else { self.error = "Preparation stopped." }
+                await backend.shutdown(); self.backend = nil; self.jobID = nil
+            }
+        } else {
+            await backend?.shutdown(); backend = nil
+        }
     }
     func close() async {
-        guard !closing else { await task?.value; return }
+        if let closingTask { await closingTask.value; return }
+        let task = Task { @MainActor in await self.finishClosing() }; closingTask = task; await task.value
+    }
+    private func finishClosing() async {
         closing = true; reviewedRevision = nil
+        operationID = UUID()
+        await stopTask?.value
         await stopOwnedJob()
-        await task?.value
         await backend?.shutdown(); backend = nil
+        await task?.value
         fileData = nil; parsed = nil
     }
     private func stopOwnedJob() async {

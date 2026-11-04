@@ -79,7 +79,9 @@ func utilityArguments(r protocol.DatabaseToolsRequest, p PreparedConnection, dir
 		if os.WriteFile(passfile, []byte(entry), 0600) != nil {
 			return nil, nil, errTool
 		}
-		env = append(env, "PGPASSFILE="+passfile, "PGHOST="+host, "PGPORT="+strconv.Itoa(port), "PGUSER="+connection.User, "PGDATABASE="+connection.Database, "PGSSLMODE="+connection.SSLMode, "PGAPPNAME=DBeer database tools", "PGCONNECT_TIMEOUT=10")
+		// libpq otherwise prefers GSS encryption when ambient Kerberos tickets
+		// are available, bypassing the explicitly reviewed TLS verification.
+		env = append(env, "PGPASSFILE="+passfile, "PGHOST="+host, "PGPORT="+strconv.Itoa(port), "PGUSER="+connection.User, "PGDATABASE="+connection.Database, "PGSSLMODE="+connection.SSLMode, "PGGSSENCMODE=disable", "PGAPPNAME=DBeer database tools", "PGCONNECT_TIMEOUT=10")
 		if p.HostAddr != "" {
 			env = append(env, "PGHOSTADDR="+p.HostAddr)
 		}

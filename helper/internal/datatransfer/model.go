@@ -146,7 +146,11 @@ func Normalize(value protocol.CellValue, column protocol.TransferColumn, engine 
 		text = strconv.FormatInt(n, 10)
 	case "decimal":
 		canonical, p, s, err := Decimal(text)
-		if err != nil || s > column.Scale || p-s > column.Precision-column.Scale || engine == "mysql" && (column.Precision > 65 || column.Scale > 30) {
+		whole := p - s
+		if canonical == "0" {
+			whole = 0
+		}
+		if err != nil || s > column.Scale || whole > column.Precision-column.Scale || engine == "mysql" && (column.Precision > 65 || column.Scale > 30) {
 			return value, ErrInvalid
 		}
 		text = canonical
@@ -155,7 +159,15 @@ func Normalize(value protocol.CellValue, column protocol.TransferColumn, engine 
 		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
 			return value, ErrInvalid
 		}
+		canonical, _, _, err := Decimal(text)
+		if err != nil {
+			return value, ErrInvalid
+		}
 		text = strconv.FormatFloat(n, 'g', -1, 64)
+		rendered, _, _, err := Decimal(text)
+		if err != nil || rendered != canonical {
+			return value, ErrInvalid
+		}
 	case "boolean":
 		switch strings.ToLower(text) {
 		case "true", "t", "1":
@@ -172,16 +184,17 @@ func Normalize(value protocol.CellValue, column protocol.TransferColumn, engine 
 		}
 	case "timestamp":
 		parsed, err := time.Parse("2006-01-02 15:04:05.999999999", strings.Replace(text, "T", " ", 1))
-		if err != nil || parsed.Year() < 1 || engine == "mysql" && (parsed.Year() < 1000 || parsed.Nanosecond()%1000 != 0) {
+		if err != nil || parsed.Year() < 1 || parsed.Nanosecond()%1000 != 0 || engine == "mysql" && parsed.Year() < 1000 {
 			return value, ErrInvalid
 		}
 		text = parsed.Format("2006-01-02 15:04:05.999999999")
 	case "timestampTZ":
 		parsed, err := time.Parse(time.RFC3339Nano, text)
-		if err != nil || parsed.Year() < 1 || engine == "mysql" && (parsed.Year() < 1000 || parsed.Nanosecond()%1000 != 0) {
+		utc := parsed.UTC()
+		if err != nil || utc.Year() < 1 || utc.Year() > 9999 || parsed.Nanosecond()%1000 != 0 || engine == "mysql" && utc.Year() < 1000 {
 			return value, ErrInvalid
 		}
-		text = parsed.UTC().Format(time.RFC3339Nano)
+		text = utc.Format(time.RFC3339Nano)
 	case "json":
 		if !json.Valid([]byte(text)) {
 			return value, ErrInvalid

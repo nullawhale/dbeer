@@ -36,7 +36,7 @@ private final class ImportModelBackend {
     ]
     let fingerprint = String(repeating: "a", count: 64)
 
-    func model() -> TableImportModel {
+    func model(presets: TransferMappingPresetStore? = nil) -> TableImportModel {
         TableImportModel(profile: SavedConnection(name: "Fixture", settings: .init(
             host: "fixture.invalid", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable",
             policy: .init(environment: .development, readOnly: readonly))),
@@ -50,6 +50,7 @@ private final class ImportModelBackend {
             },
             bindingIsCurrent: { self.current }, operationsAllowed: { self.allowed },
             sessionIsKnownClosed: { self.sessionKnownClosed },
+            mappingPresets: presets,
             changed: { self.changedCount += 1 })
     }
 
@@ -115,6 +116,31 @@ struct TableImportModelTests {
         await model.load()
         await model.loadFile(data: Data(csv.utf8), name: "fixture.csv")
         return model
+    }
+
+    @Test func savedMappingReparsesOptionsAndRequiresFreshReview() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("dbeer-append-mapping-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let presets = TransferMappingPresetStore(url: root.appendingPathComponent("library.json"))
+        await presets.load()
+        let backend = ImportModelBackend(), model = backend.model(presets: presets)
+        await model.load(); await model.loadFile(data: Data("source\nNA\n".utf8), name: "fixture.csv")
+        model.setMapping(source: 0, target: "label")
+        model.options.nullMarker = "NA"
+        try await eventually { !model.isParsing }
+        await model.saveMapping(name: "Reusable append")
+        let saved = try #require(presets.presets.first)
+        await model.preparePreview()
+        #expect(model.canApply && backend.previewRequest?.rows == [[.null]])
+        model.options.nullMarker = "\\N"
+        try await eventually { !model.isParsing }
+        model.setMapping(source: 0, target: nil)
+        await model.applyMapping(saved)
+        #expect(model.mapping == ["label"] && model.options.nullMarker == "NA")
+        #expect(model.canPreview && !model.canApply && backend.applyCount == 0)
+        await model.preparePreview()
+        #expect(model.canApply && backend.previewRequest?.rows == [[.null]])
+        #expect(await model.close())
     }
 
     @Test func constructingAndParsingOnlyKeepTheDraftLocalUntilExplicitMetadataLoad() async {

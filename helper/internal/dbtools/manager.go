@@ -269,6 +269,10 @@ func (m *Manager) prepare(ctx context.Context, r protocol.DatabaseToolsRequest) 
 			owned.cleanup()
 		}
 	}()
+	connection := *r.Connection
+	if err = freezeRootCertificate(&connection, dir); err != nil {
+		return nil, err
+	}
 	prepare := m.options.PrepareConnection
 	if prepare == nil {
 		prepare = func(ctx context.Context, c protocol.Connection) (PreparedConnection, error) {
@@ -283,7 +287,7 @@ func (m *Manager) prepare(ctx context.Context, r protocol.DatabaseToolsRequest) 
 			return PreparedConnection{Connection: c, Host: c.Host, Port: c.Port}, nil
 		}
 	}
-	p.connection, err = prepare(ctx, *r.Connection)
+	p.connection, err = prepare(ctx, connection)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +333,7 @@ func (m *Manager) prepare(ctx context.Context, r protocol.DatabaseToolsRequest) 
 			}
 		}
 	} else {
-		p.destination, err = exportfile.CaptureDestination(r.Path)
+		p.destination, err = exportfile.CaptureDestinationContext(ctx, r.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -402,22 +406,19 @@ func (m *Manager) run(j *job) {
 	phase := "dumping"
 	if p.request.Operation == "restore" {
 		phase = "restoring"
-		input, err = os.Open(p.input)
-		if err == nil {
-			info, e := input.(*os.File).Stat()
-			err = e
-			if e == nil {
-				size := info.Size()
-				j.mu.Lock()
-				j.reply.TotalBytes = &size
-				j.mu.Unlock()
-			}
+		file, info, openErr := openReadonlyRegular(p.input)
+		input, err = file, openErr
+		if openErr == nil {
+			size := info.Size()
+			j.mu.Lock()
+			j.reply.TotalBytes = &size
+			j.mu.Unlock()
 		}
 		if input != nil {
 			defer input.Close()
 		}
 	} else {
-		output, err = exportfile.NewBinaryWriter(p.request.Path, p.destination)
+		output, err = exportfile.NewBinaryWriterContext(ctx, p.request.Path, p.destination)
 		if output != nil {
 			defer output.Abort()
 		}

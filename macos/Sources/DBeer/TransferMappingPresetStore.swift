@@ -41,6 +41,7 @@ struct TransferMappingPreset: Codable, Identifiable, Equatable, Sendable {
         [.postgresql, .mysql, .sqlite].contains(engine) && ["append", "create", "table"].contains(purpose) &&
         Self.nameValid(name) && !headers.isEmpty && headers.count <= 256 && headers.allSatisfy(Self.fieldValid) &&
         columns.count == headers.count && Set(columns.map(\.sourceIndex)) == Set(headers.indices) &&
+        columns.contains(where: { $0.targetName != nil }) && columns.allSatisfy(columnValid) &&
         columns.allSatisfy { column in
             (column.targetName.map(Self.nameValid) ?? true) && (column.type.map(Self.fieldValid) ?? true) &&
             (column.precision.map { (0...1_000).contains($0) } ?? true) &&
@@ -50,6 +51,17 @@ struct TransferMappingPreset: Codable, Identifiable, Equatable, Sendable {
     }
     func matches(headers: [String], engine: DatabaseEngine, purpose: String) -> Bool {
         self.engine == engine && self.purpose == purpose && self.headers.map { Data($0.utf8) } == headers.map { Data($0.utf8) }
+    }
+    private func columnValid(_ column: Column) -> Bool {
+        if purpose == "append" || column.targetName == nil {
+            return column.type == nil && column.nullable == nil && column.precision == nil && column.scale == nil
+        }
+        guard [.postgresql, .mysql].contains(engine), let name = column.targetName,
+              let type = column.type, let nullable = column.nullable else { return false }
+        let mapped = DataTransferColumn(sourceIndex: column.sourceIndex, name: name, type: type,
+            nullable: nullable, precision: column.precision, scale: column.scale)
+        return mapped.valid && (engine != .mysql || type != "decimal" ||
+            (column.precision ?? 0) <= 65 && (column.scale ?? 0) <= 30)
     }
     private static func fieldValid(_ value: String) -> Bool { value.utf8.count <= 1_024 && !value.contains("\0") }
     private static func nameValid(_ value: String) -> Bool { fieldValid(value) && !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -74,6 +86,30 @@ private struct StoredTransferPresets: Codable {
         Set(presets.map(\.id)).count == presets.count &&
         Set(presets.map { Data($0.name.utf8) }).count == presets.count
     }
+
+    // Preserve libraries containing newer metadata instead of decoding and
+    // silently dropping fields when this version next saves the file.
+    static func decode(_ data: Data) throws -> Self {
+        func object(_ value: Any?, keys: Set<String>) throws -> [String: Any] {
+            guard let value = value as? [String: Any], Set(value.keys).isSubset(of: keys) else {
+                throw TransferPresetError.unavailable
+            }
+            return value
+        }
+        let root = try object(JSONSerialization.jsonObject(with: data), keys: ["version", "presets"])
+        guard let presets = root["presets"] as? [Any], presets.count <= 256 else { throw TransferPresetError.unavailable }
+        for preset in presets {
+            let item = try object(preset, keys: ["id", "name", "engine", "purpose", "headers", "columns", "fileOptions"])
+            _ = try object(item["fileOptions"], keys: ["delimiter", "hasHeader", "nullMarker", "emptyFieldsAreNull"])
+            guard let columns = item["columns"] as? [Any], columns.count <= 256 else { throw TransferPresetError.unavailable }
+            for column in columns {
+                _ = try object(column, keys: ["sourceIndex", "targetName", "type", "nullable", "precision", "scale"])
+            }
+        }
+        let stored = try JSONDecoder().decode(Self.self, from: data)
+        guard stored.valid else { throw TransferPresetError.unavailable }
+        return stored
+    }
 }
 
 private actor TransferPresetFile {
@@ -83,6 +119,10 @@ private actor TransferPresetFile {
 
     func read() throws -> (Data?, [TransferMappingPreset]) {
         let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        return try read(fd)
+    }
+
+    private func read(_ fd: Int32) throws -> (Data?, [TransferMappingPreset]) {
         if fd < 0 {
             guard errno == ENOENT else { throw TransferPresetError.unavailable }
             return (nil, [])
@@ -92,7 +132,7 @@ private actor TransferPresetFile {
         var info = stat()
         guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG, info.st_size >= 0, info.st_size <= Self.limit else { throw TransferPresetError.unavailable }
         let data = try handle.read(upToCount: Self.limit + 1) ?? Data()
-        guard data.count <= Self.limit, let stored = try? JSONDecoder().decode(StoredTransferPresets.self, from: data), stored.valid else { throw TransferPresetError.unavailable }
+        guard data.count <= Self.limit, let stored = try? StoredTransferPresets.decode(data) else { throw TransferPresetError.unavailable }
         return (data, stored.presets)
     }
 
@@ -112,7 +152,9 @@ private actor TransferPresetFile {
         defer { flock(lock, LOCK_UN); close(lock) }
         var info = stat()
         guard fstat(lock, &info) == 0, info.st_mode & S_IFMT == S_IFREG, flock(lock, LOCK_EX) == 0 else { throw TransferPresetError.unavailable }
-        guard try read().0 == expected else { throw TransferPresetError.changed }
+        // Compare and publish through the same pinned directory descriptor.
+        let existing = openat(directoryFD, url.lastPathComponent, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard try read(existing).0 == expected else { throw TransferPresetError.changed }
         let temporary = ".mapping-\(UUID()).tmp"
         let fd = openat(directoryFD, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
         guard fd >= 0 else { throw TransferPresetError.unavailable }
