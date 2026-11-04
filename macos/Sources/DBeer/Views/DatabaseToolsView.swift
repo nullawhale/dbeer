@@ -82,7 +82,7 @@ struct DatabaseToolsView: View {
                     .textFieldStyle(.roundedBorder).accessibilityIdentifier("databaseToolsUtility")
                 Button("Choose \(model.expectedToolName)…", action: chooseUtility).controlHover()
             }
-            Text("Preview checks the utility and server versions and binds the selected file. The destination of a dump must not already exist.")
+            Text("Preview checks the utility and server versions and binds the selected file. An existing dump destination is replaced only after a successful operation.")
                 .font(.caption).appSecondaryText().textSelection(.enabled)
             if model.operation == .restore {
                 Label("Restore executes the selected file and can change existing database objects. Use a trusted dump. Failed or stopped restores can leave partial changes.", systemImage: "exclamationmark.triangle")

@@ -19,60 +19,25 @@ protocol DataTransferBackend: Sendable {
 }
 
 actor DataTransferHelperBackend: DataTransferBackend {
-    private let client: BackendClient
-    private let owner = UUID()
-    private let scratch: URL
-    private var started = false
-    private var closed = false
-    private var startup: Task<Void, Error>?
-    private var shutdownTask: Task<Void, Never>?
-    init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = []) {
-        scratch = FileManager.default.temporaryDirectory.appendingPathComponent("dbeer-transfer-\(UUID())")
-        client = BackendClient(executableURL: executableURL, arguments: arguments,
-            environment: ["DBEER_TRANSFER_ROOT": scratch.path])
+    private let helper: StandaloneOperationHelper
+
+    init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = [],
+         scratchParentURL: URL = FileManager.default.temporaryDirectory) {
+        helper = StandaloneOperationHelper(feature: .dataTransfer, executableURL: executableURL,
+            arguments: arguments, scratchParentURL: scratchParentURL)
     }
     func begin(_ operation: String, _ request: DataTransferRequest) async throws -> DataTransferReply {
-        guard !closed else { throw CancellationError() }
-        if !started {
-            if startup == nil {
-                try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-                startup = Task { try await client.start() }
-            }
-            try await startup?.value; started = true
-        }
-        guard !closed else { throw CancellationError() }
-        try Task.checkCancellation()
-        guard await client.supportsDataTransfer() else { throw BackendRequestError.invalidCommand }
-        for settings in request.transportConnections where settings.ssh != nil {
-            var trusted = false
-            for _ in 0..<17 {
-                try Task.checkCancellation()
-                guard !closed else { throw CancellationError() }
-                try await SSHConnectionReview.prepare(settings, client: client, ownerID: owner)
-                let ownProbe = try await client.request(.sshProbe(settings))
-                if ownProbe.ssh?.status == "trusted" { trusted = true; break }
-            }
-            guard trusted else { throw BackendTransportError(.invalidMessage) }
-        }
+        try await helper.prepare(connections: request.transportConnections)
         return try await self.request(operation, request)
     }
     func request(_ operation: String, _ request: DataTransferRequest) async throws -> DataTransferReply {
-        guard !closed else { throw CancellationError() }
-        let reply = try await client.request(.dataTransfer(operation, request))
-        guard let transfer = reply.transfer, transfer.valid else { throw BackendTransportError(.invalidMessage, outcomeUnknown: operation == "apply") }
+        let reply = try await helper.request(.dataTransfer(operation, request))
+        guard let transfer = reply.transfer, transfer.valid else {
+            throw BackendTransportError(.invalidMessage, outcomeUnknown: operation == "apply")
+        }
         return transfer
     }
-    func shutdown() async {
-        if let shutdownTask { await shutdownTask.value; return }
-        closed = true
-        let task = Task { await self.finishShutdown() }; shutdownTask = task; await task.value
-    }
-    private func finishShutdown() async {
-        await SSHConnectionReview.cancel(ownerID: owner)
-        _ = try? await startup?.value
-        _ = await client.shutdown()
-        try? FileManager.default.removeItem(at: scratch)
-    }
+    func shutdown() async { await helper.shutdown() }
 }
 
 @MainActor

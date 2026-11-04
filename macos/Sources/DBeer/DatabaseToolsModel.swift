@@ -8,70 +8,25 @@ protocol DatabaseToolsBackend: Sendable {
 }
 
 actor DatabaseToolsHelperBackend: DatabaseToolsBackend {
-    private let client: BackendClient
-    private let ownerID = UUID()
-    private let scratchURL: URL
-    private var started = false
-    private var closed = false
-    private var startup: Task<Void, Error>?
-    private var shutdownTask: Task<Void, Never>?
+    private let helper: StandaloneOperationHelper
 
     init(executableURL: URL = BackendClient.bundledExecutableURL(), arguments: [String] = [],
          scratchParentURL: URL = FileManager.default.temporaryDirectory) {
-        let scratch = scratchParentURL.appendingPathComponent("dbeer-database-tools-owner-\(UUID())", isDirectory: true)
-        scratchURL = scratch
-        client = BackendClient(executableURL: executableURL, arguments: arguments,
-            environment: ["DBEER_DATABASE_TOOLS_ROOT": scratch.path])
+        helper = StandaloneOperationHelper(feature: .databaseTools, executableURL: executableURL,
+            arguments: arguments, scratchParentURL: scratchParentURL)
     }
     func preview(_ request: DatabaseToolsRequest) async throws -> DatabaseToolsReply {
-        guard !closed else { throw CancellationError() }
-        if !started {
-            if startup == nil {
-                try FileManager.default.createDirectory(at: scratchURL, withIntermediateDirectories: false,
-                    attributes: [.posixPermissions: 0o700])
-                startup = Task { try await client.start() }
-            }
-            try await startup?.value
-            started = true
-        }
-        guard !closed else { throw CancellationError() }
-        guard await client.supportsDatabaseTools() else { throw BackendRequestError.invalidCommand }
-        if let settings = request.connection, settings.ssh != nil {
-            var trusted = false
-            for _ in 0..<17 {
-                try Task.checkCancellation()
-                guard !closed else { throw CancellationError() }
-                try await SSHConnectionReview.prepare(settings, client: client, ownerID: ownerID)
-                let ownProbe = try await client.request(.sshProbe(settings))
-                if ownProbe.ssh?.status == "trusted" { trusted = true; break }
-            }
-            guard trusted else { throw BackendTransportError(.invalidMessage) }
-        }
+        try await helper.prepare(connections: [request.connection].compactMap { $0 })
         return try await self.request("preview", request)
     }
     func request(_ operation: String, _ request: DatabaseToolsRequest) async throws -> DatabaseToolsReply {
-        guard !closed else { throw CancellationError() }
-        let message = try await client.request(.databaseTools(operation, request))
+        let message = try await helper.request(.databaseTools(operation, request))
         guard let reply = message.databaseTools, reply.valid(for: "dbtools.\(operation).result") else {
             throw BackendTransportError(.invalidMessage)
         }
         return reply
     }
-    func shutdown() async {
-        if let shutdownTask { await shutdownTask.value; return }
-        closed = true
-        let task = Task { await self.finishShutdown() }
-        shutdownTask = task
-        await task.value
-    }
-    private func finishShutdown() async {
-        await SSHConnectionReview.cancel(ownerID: ownerID)
-        _ = try? await startup?.value
-        _ = await client.shutdown()
-        // The helper has exited. Remove private input
-        // copies even if a forced helper exit prevented Go's deferred cleanup.
-        try? FileManager.default.removeItem(at: scratchURL)
-    }
+    func shutdown() async { await helper.shutdown() }
 }
 
 /// Runtime operation state is deliberately excluded from workspace persistence.
