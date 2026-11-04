@@ -154,12 +154,13 @@ func safeSSHError(err error) *adapter.ConnectionError {
 // The input reader owns protocol guards and never waits for result output.
 // Ordinary admission is bounded; overflow is a transport failure, rather than
 // indefinitely hiding Stop/EOF behind an unresponsive output consumer.
-func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}, comparisons *comparisonjob.Manager, schemas *schemajob.Manager, dataComparisons *datacomparisonjob.Manager) {
+func readCommands(input io.Reader, manager *session.Manager, local chan<- protocol.Response, ended chan<- inputEnd, stop <-chan struct{}, identity *productidentity.Identity, tunnels *sshtunnel.Manager, controlContext context.Context, controls chan struct{}, comparisons *comparisonjob.Manager, schemas *schemajob.Manager, dataComparisons *datacomparisonjob.Manager, operations *operationJobs) {
 	reader := protocol.NewReader(input)
 	requests, queries := make(map[string]bool), make(map[string]string)
 	handshaken := false
 	comparisonReads := make(chan struct{}, 2)
 	finish := func(err error, shutdown bool) {
+		operations.Close()
 		comparisons.Close()
 		schemas.Close()
 		dataComparisons.Close()
@@ -210,6 +211,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 		}
 		requests[command.RequestID] = true
 		if command.Type == "shutdown" {
+			operations.Close()
 			comparisons.Close()
 			schemas.Close()
 			dataComparisons.Close()
@@ -229,7 +231,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.SessionMonitorCapability, protocol.TableImportCapability, protocol.QueryParametersCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.DataTransferCapability, protocol.SessionMonitorCapability, protocol.TableImportCapability, protocol.QueryParametersCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -254,6 +256,14 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			}
 			if !emit(response) {
 				return
+			}
+			continue
+		}
+		if strings.HasPrefix(command.Type, "transfer.") {
+			if !operations.dispatch(command, local, stop) {
+				if !emit(protocol.ErrorResponse(command, "busy", "Too many data transfer requests are in progress.")) {
+					return
+				}
 			}
 			continue
 		}
@@ -429,6 +439,11 @@ func runWithSSH(input io.Reader, output io.Writer, opener adapter.OpenFunc, iden
 
 func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc, identity *productidentity.Identity, tunnels *sshtunnel.Manager, comparisons *comparisonjob.Manager) error {
 	defer comparisons.Close()
+	operations, err := newOperationJobs(opener, tunnels)
+	if err != nil {
+		return err
+	}
+	defer operations.Close()
 	schemas, err := schemajob.New(opener, schemajob.Options{RenderDefinition: renderSchemaDefinition, RenderPlan: renderSynchronizationSchema})
 	if err != nil {
 		return err
@@ -457,7 +472,7 @@ func runWithManagers(input io.Reader, output io.Writer, opener adapter.OpenFunc,
 			_ = closer.Close()
 		}
 	}()
-	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls, comparisons, schemas, dataComparisons)
+	go readCommands(input, manager, local, ended, stopIO, identity, tunnels, controlContext, controls, comparisons, schemas, dataComparisons, operations)
 	writer := protocol.NewWriter(output)
 	go func() {
 		for {

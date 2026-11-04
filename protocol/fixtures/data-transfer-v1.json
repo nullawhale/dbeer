@@ -1,0 +1,773 @@
+{
+  "version": 1,
+  "validRequests": [
+    {
+      "kind": "transfer.describe",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "table",
+        "source": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "original"
+        },
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "sourceDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.apply",
+      "request": {
+        "jobId": "transfer-job",
+        "planDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "confirmed": true
+      }
+    },
+    {
+      "kind": "transfer.status",
+      "request": {
+        "jobId": "transfer-job"
+      }
+    },
+    {
+      "kind": "transfer.describe",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": []
+      }
+    }
+  ],
+  "invalidRequests": [
+    {
+      "kind": "transfer.apply",
+      "request": {
+        "jobId": "transfer-job",
+        "planDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "confirmed": false
+      }
+    },
+    {
+      "kind": "transfer.apply",
+      "request": {
+        "jobId": "transfer-job",
+        "planDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "confirmed": true,
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ],
+        "sql": "DROP TABLE unrelated"
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "table",
+        "source": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "original"
+        },
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "sourceDigest": "",
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": null
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": null,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null",
+              "value": null
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "id",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "1"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer); DROP TABLE unrelated",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    },
+    {
+      "kind": "transfer.preview",
+      "request": {
+        "mode": "csv",
+        "target": {
+          "connection": {
+            "engine": "postgresql",
+            "host": "fixture.invalid",
+            "port": 5432,
+            "database": "fixture",
+            "user": "reader",
+            "password": "",
+            "sslMode": "disable"
+          },
+          "schema": "public",
+          "table": "new_table"
+        },
+        "headers": [
+          "id",
+          "note"
+        ],
+        "rows": [
+          [
+            {
+              "kind": "text",
+              "value": "bad\u0000text"
+            },
+            {
+              "kind": "text",
+              "value": ""
+            }
+          ],
+          [
+            {
+              "kind": "text",
+              "value": "2"
+            },
+            {
+              "kind": "null"
+            }
+          ]
+        ],
+        "columns": [
+          {
+            "sourceIndex": 0,
+            "name": "id",
+            "type": "integer",
+            "nullable": false
+          },
+          {
+            "sourceIndex": 1,
+            "name": "note",
+            "type": "text",
+            "nullable": true
+          }
+        ]
+      }
+    }
+  ],
+  "validReplies": [
+    {
+      "jobId": "transfer-job",
+      "state": "ready",
+      "phase": "review",
+      "columns": [
+        {
+          "sourceIndex": 0,
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "sourceIndex": 1,
+          "name": "note",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "sql": "CREATE TABLE \"public\".\"new_table\" (\"id\" BIGINT NOT NULL,\"note\" TEXT);",
+      "planDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "rowsRead": 2,
+      "rowsWritten": 0,
+      "notices": [
+        "Creates columns and values only; source constraints and defaults are not cloned."
+      ],
+      "tableCreated": false,
+      "outcomeUnknown": false
+    },
+    {
+      "jobId": "transfer-job",
+      "state": "completed",
+      "phase": "complete",
+      "columns": [
+        {
+          "sourceIndex": 0,
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "sourceIndex": 1,
+          "name": "note",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "sql": "CREATE TABLE \"public\".\"new_table\" (\"id\" BIGINT NOT NULL,\"note\" TEXT);",
+      "planDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "rowsRead": 2,
+      "rowsWritten": 2,
+      "notices": [
+        "Creates columns and values only; source constraints and defaults are not cloned."
+      ],
+      "tableCreated": true,
+      "outcomeUnknown": false
+    },
+    {
+      "jobId": "transfer-job",
+      "state": "closed",
+      "phase": "review",
+      "columns": [
+        {
+          "sourceIndex": 0,
+          "name": "id",
+          "type": "integer",
+          "nullable": false
+        },
+        {
+          "sourceIndex": 1,
+          "name": "note",
+          "type": "text",
+          "nullable": true
+        }
+      ],
+      "sql": "CREATE TABLE \"public\".\"new_table\" (\"id\" BIGINT NOT NULL,\"note\" TEXT);",
+      "planDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "rowsRead": 2,
+      "rowsWritten": 0,
+      "notices": [
+        "Creates columns and values only; source constraints and defaults are not cloned."
+      ],
+      "tableCreated": false,
+      "outcomeUnknown": true,
+      "message": "The destination outcome remains unknown after closing this job."
+    }
+  ]
+}

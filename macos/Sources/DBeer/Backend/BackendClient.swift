@@ -95,6 +95,8 @@ actor BackendClient {
     private var queryParametersSupported = false
     private var tableImportSupported = false
     private var sessionMonitorSupported = false
+    private var databaseToolsSupported = false
+    private var dataTransferSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -199,9 +201,37 @@ actor BackendClient {
     func supportsQueryParameters() -> Bool { queryParametersSupported }
     func supportsTableImport() -> Bool { tableImportSupported }
     func supportsSessionMonitor() -> Bool { sessionMonitorSupported }
+    func supportsDatabaseTools() -> Bool { databaseToolsSupported }
+    func supportsDataTransfer() -> Bool { dataTransferSupported }
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type.hasPrefix("dbtools.") || command.type.hasPrefix("transfer.") {
+            guard command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil,
+                  command.catalog == nil, command.stream == nil, command.export == nil, command.sequence == nil,
+                  command.changes == nil, command.operations == nil, command.authorization == nil, command.sshTrust == nil,
+                  command.insert == nil, command.comparison == nil, command.schemaComparison == nil, command.dataComparison == nil,
+                  command.explain == nil, command.structure == nil, command.parameters == nil, command.tableImport == nil,
+                  command.protocolVersion == nil else { throw BackendRequestError.invalidCommand }
+            let settings: [ConnectionSettings]
+            if command.type.hasPrefix("dbtools.") {
+                guard databaseToolsSupported, command.databaseTools?.valid(for: command.type) == true, command.transfer == nil else {
+                    throw BackendRequestError.invalidCommand
+                }
+                settings = command.databaseTools?.connection.map { [$0] } ?? []
+            } else {
+                guard dataTransferSupported, command.transfer?.valid(for: command.type) == true, command.databaseTools == nil else {
+                    throw BackendRequestError.invalidCommand
+                }
+                settings = command.transfer?.transportConnections ?? []
+            }
+            for connection in settings {
+                if connection.passwordCommand != nil, !passwordCommandSupported { throw BackendRequestError.unsupportedPasswordCommand }
+                if connection.ssh?.authMethod == .openSSH, !sshConfigurationSupported { throw BackendRequestError.unsupportedSSHConfiguration }
+            }
+        } else if command.databaseTools != nil || command.transfer != nil {
+            throw BackendRequestError.invalidCommand
+        }
         if command.type == "monitor.snapshot" {
             guard sessionMonitorSupported else { throw BackendRequestError.unsupportedSessionMonitor }
             guard command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
@@ -360,7 +390,7 @@ actor BackendClient {
         // helper does not retain its process client and suspended observer.
         for waiter in failureWaiters { waiter.resume(returning: BackendTransportError(.notReady)) }
         failureWaiters.removeAll()
-        let shutdownGrace: Duration = sshTunnelsSupported ? .seconds(6) : .seconds(2)
+        let shutdownGrace: Duration = sshTunnelsSupported ? .seconds(6) : databaseToolsSupported ? .seconds(4) : .seconds(2)
         let deadline = Task { [weak self] in
             do { try await Task.sleep(for: shutdownGrace) } catch { return }
             await self?.forceExitIfNeeded()
@@ -464,6 +494,8 @@ actor BackendClient {
             queryParametersSupported = reply.capabilities?.contains("queryParametersV1") == true
             tableImportSupported = reply.capabilities?.contains("tableImportV1") == true
             sessionMonitorSupported = reply.capabilities?.contains("sessionMonitorV1") == true
+            databaseToolsSupported = reply.capabilities?.contains("databaseToolsV1") == true
+            dataTransferSupported = reply.capabilities?.contains("dataTransferV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
@@ -478,6 +510,19 @@ actor BackendClient {
         }
         let terminal: BackendMessage
         do {
+            if reply.type != "error", command.type.hasPrefix("dbtools.") {
+                guard let request = command.databaseTools, let response = reply.databaseTools,
+                      request.jobId == nil || request.jobId == response.jobId,
+                      request.planId == nil || response.planId == nil || request.planId == response.planId else {
+                    throw BackendTransportError(.invalidMessage)
+                }
+            }
+            if reply.type != "error", command.type.hasPrefix("transfer.") {
+                guard let request = command.transfer, let response = reply.transfer,
+                      request.jobId == nil || request.jobId == response.jobId else {
+                    throw BackendTransportError(.invalidMessage)
+                }
+            }
             if let imported = reply.tableImport {
                 guard command.type.hasPrefix("import."), request.started,
                       reply.sessionId == command.sessionId, reply.queryId == command.queryId else { throw BackendTransportError(.invalidMessage) }
@@ -693,7 +738,7 @@ actor BackendClient {
         pending.removeAll()
         for request in requests {
             var contextualError = error
-            contextualError.outcomeUnknown = ["execute", "explain.run", "catalog", "changes.apply", "structure.apply", "import.apply"].contains(request.command.type)
+            contextualError.outcomeUnknown = ["execute", "explain.run", "catalog", "changes.apply", "structure.apply", "import.apply", "transfer.apply", "dbtools.start"].contains(request.command.type)
             request.continuation.resume(throwing: contextualError)
         }
     }

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add reviewed CSV/TSV table creation with checked type suggestions, reusable
+  mapping settings for creation and append imports, and immutable PostgreSQL/MySQL
+  table-copy jobs across connections. Show validation, progress, schema omissions,
+  MySQL DDL boundaries and uncertain outcomes without replaying writes.
+
 - Add a read-only PostgreSQL/MySQL session and blocking monitor with a dedicated
   connection, manual or optional automatic refresh, numeric sorting and session
   navigation. Include current-event MySQL timings, InnoDB dependencies and

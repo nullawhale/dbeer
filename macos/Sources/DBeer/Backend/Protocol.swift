@@ -286,6 +286,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var structure: StructureRequest?
     var parameters: [QueryParameterBinding]?
     var tableImport: TableImportRequest?
+    var databaseTools: DatabaseToolsRequest?
+    var transfer: DataTransferRequest?
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -367,6 +369,14 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "schema." + operation, requestId: UUID().uuidString, schemaComparison: request)
     }
 
+    static func databaseTools(_ operation: String, _ request: DatabaseToolsRequest) -> Self {
+        Self(type: "dbtools." + operation, requestId: UUID().uuidString, databaseTools: request)
+    }
+
+    static func dataTransfer(_ operation: String, _ request: DataTransferRequest) -> Self {
+        Self(type: "transfer." + operation, requestId: UUID().uuidString, transfer: request)
+    }
+
     static func assess(sessionId: String, operations: [OperationRequest]) -> Self {
         Self(type: "operation.assess", requestId: UUID().uuidString, sessionId: sessionId,
             queryId: UUID().uuidString, operations: operations)
@@ -398,6 +408,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.diff", "data.plan", "data.cancel", "data.close": type + ".result"
         case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.plan", "schema.export", "schema.cancel", "schema.close": type + ".result"
         case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close": type + ".result"
+        case "dbtools.preview", "dbtools.start", "dbtools.status", "dbtools.cancel", "dbtools.close": type + ".result"
+        case "transfer.describe", "transfer.preview", "transfer.apply", "transfer.status", "transfer.cancel", "transfer.close": type + ".result"
         default: nil
         }
     }
@@ -507,6 +519,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var structure: StructureReply?
     var tableImport: TableImportReply?
     var monitor: SessionMonitorSnapshot?
+    var databaseTools: DatabaseToolsReply?
+    var transfer: DataTransferReply?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -531,6 +545,12 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":
+            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                streamed == nil && source == nil && databaseTools?.valid(for: type) == true
+        case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
+            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                streamed == nil && source == nil && transfer?.valid == true
         case "sqlite.create.result": valid = sessionId == nil && queryId == nil
         case "import.describe.result", "import.preview.result", "import.apply.result":
             valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
@@ -588,6 +608,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
         default: valid = false
         }
         guard tableImport == nil || (type.hasPrefix("import.") || type == "error") && tableImport?.valid(for: type) == true,
+              databaseTools == nil || type.hasPrefix("dbtools."),
+              transfer == nil || type.hasPrefix("transfer."),
               monitor == nil || type == "monitor.result",
               structure == nil || type.hasPrefix("structure."),
               explain == nil || type == "explain.result",

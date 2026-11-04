@@ -39,6 +39,47 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
+## Repeatable data transfers (unreleased)
+
+Choose **Create Table from CSV…** or **Copy Table to Connection…** in a
+PostgreSQL/MySQL connection's context menu. CSV creation reads UTF-8 CSV/TSV,
+suggests column names, types and nullability, and checks every input row. Review
+or change the proposed types, exclude columns, then choose **Preview** and
+**Apply**. Header-only files can create an empty table with explicitly reviewed
+columns. Existing tables are never replaced. The existing table-level import
+continues to append rows to an existing table.
+
+**Saved mappings** retains parser options and column mappings for later use.
+Mappings match source headers exactly and remain separate from file contents,
+file locations, connection credentials and workspace restoration. Loading a
+mapping always requires a fresh preview; it never starts a transfer. The append
+import also offers this mapping library.
+
+Table copying supports PostgreSQL/MySQL sources and destinations, including
+transfers between the two engines. Describe the source, choose the destination
+connection, schema and a new table name, then review the mapped column types.
+Preview captures a consistent source snapshot into a private temporary workspace
+and validates all mapped values before creating the destination. Apply uses this
+immutable snapshot; subsequent source changes do not change the reviewed input.
+Copying has no display-row or primary-key requirement. The workspace is limited
+to 4 GiB, individual rows to 16 MiB and each operation to 15 minutes; limits stop
+the operation explicitly. CSV creation retains the 8 MiB input, 10,000-row,
+256-column, 100,000-cell and 4 MiB mapped-value limits of local CSV import.
+
+The destination contains the reviewed columns and data. Source keys, indexes,
+foreign keys, defaults, identity/sequence behavior, generated expressions,
+triggers and grants are not cloned. These omissions appear in the preview.
+MySQL receives portable JSON as validated text to preserve exact numeric and
+text representation; timezone-aware timestamps become explicitly UTC
+`DATETIME(6)`, and unsupported sub-microsecond precision is rejected. PostgreSQL
+uses native reviewed types. Unsupported conversions require an explicit mapping
+change rather than silent truncation.
+
+PostgreSQL creates and loads the table in one transaction. MySQL DDL commits
+independently: an import failure can leave a newly created empty table, and the
+result reports this explicitly. Stop only cancels this transfer's connections.
+An uncertain commit blocks replay and requires inspecting the destination.
+
 ## Sessions and blocking (unreleased)
 
 Open **Session Monitor…** from a PostgreSQL or MySQL connection's context menu.

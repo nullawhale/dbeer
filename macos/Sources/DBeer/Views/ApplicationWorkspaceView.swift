@@ -111,6 +111,9 @@ struct ApplicationWorkspaceView: View {
             DataComparisonView(model: model, close: { workspace.dismissDataComparison() })
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: Binding(get: { workspace.dataTransfer }, set: { if $0 == nil { workspace.dismissDataTransfer() } })) { model in
+            DataTransferView(model: model, close: { workspace.dismissDataTransfer() }).applicationTheme(appearance: appearance)
+        }
         .sheet(item: Binding(get: { workspace.schemaComparison }, set: { if $0 == nil { workspace.dismissSchemaComparison() } })) { model in
             SchemaComparisonView(model: model, close: { workspace.dismissSchemaComparison() })
                 .applicationTheme(appearance: appearance)

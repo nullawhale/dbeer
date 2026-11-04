@@ -37,6 +37,7 @@ struct TableImportView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     fileOptions
+                    TableImportMappingLibraryView(model: model, store: model.mappingPresets)
                     if let parsed = model.parsed {
                         columnMapping(parsed)
                         dataPreview(parsed)

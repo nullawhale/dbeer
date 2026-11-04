@@ -49,6 +49,8 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
+	Transfer           *TransferRequest         `json:"transfer,omitempty"`
+	DatabaseTools      *DatabaseToolsRequest    `json:"databaseTools,omitempty"`
 	TableImport        *TableImportRequest      `json:"tableImport,omitempty"`
 	Structure          *tableedit.Request       `json:"structure,omitempty"`
 	PreparedExplainSQL string                   `json:"-"`
@@ -363,6 +365,20 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.SSHTrust = &trust
 		}
+	case "transfer.describe", "transfer.preview", "transfer.apply", "transfer.status", "transfer.cancel", "transfer.close":
+		allowed["transfer"] = true
+		request, ok := ParseTransfer(fields["transfer"], command.Type)
+		if !ok {
+			return command, failure
+		}
+		command.Transfer = request
+	case "dbtools.preview", "dbtools.start", "dbtools.status", "dbtools.cancel", "dbtools.close":
+		allowed["databaseTools"] = true
+		request, ok := parseDatabaseTools(fields["databaseTools"], command.Type)
+		if !ok {
+			return command, failure
+		}
+		command.DatabaseTools = &request
 	case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.diff", "data.plan", "data.cancel", "data.close":
 		allowed["dataComparison"] = true
 		request, ok := parseDataComparison(fields["dataComparison"], command.Type)
@@ -814,6 +830,8 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	Transfer              *TransferReply
+	DatabaseTools         *DatabaseToolsReply
 	Monitor               *SessionMonitorSnapshot
 	SQLiteValues          [][]SQLiteValue
 	TableImport           *TableImportReply
@@ -886,6 +904,16 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["sqliteValues"] = response.SQLiteValues
 	}
 	switch response.Type {
+	case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
+		if response.Transfer == nil || !response.Transfer.Valid() {
+			return nil, errors.New("invalid data transfer response")
+		}
+		fields["transfer"] = response.Transfer
+	case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":
+		if response.DatabaseTools == nil || !response.DatabaseTools.Valid(response.Type) {
+			return nil, errors.New("invalid database tools response")
+		}
+		fields["databaseTools"] = response.DatabaseTools
 	case "monitor.result":
 		if response.Monitor == nil || !response.Monitor.Valid() || !response.Connected || response.TransactionStatus != "idle" {
 			return nil, errors.New("invalid session monitor response")

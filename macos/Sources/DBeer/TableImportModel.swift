@@ -15,6 +15,7 @@ final class TableImportModel: ObservableObject, Identifiable {
     let profile: SavedConnection
     let schema: String
     let table: String
+    let mappingPresets: TransferMappingPresetStore
     @Published private(set) var columns: [TableImportColumn] = []
     @Published private(set) var fingerprint: String?
     @Published private(set) var fileName: String?
@@ -71,8 +72,10 @@ final class TableImportModel: ObservableObject, Identifiable {
          bindingIsCurrent: @escaping () -> Bool,
          operationsAllowed: @escaping () -> Bool = { true },
          sessionIsKnownClosed: @escaping () async -> Bool = { false },
+         mappingPresets: TransferMappingPresetStore? = nil,
          changed: @escaping () -> Void) {
         self.profile = profile; self.schema = schema; self.table = table
+        self.mappingPresets = mappingPresets ?? TransferMappingPresetStore()
         self.connect = connect; self.send = send; self.authorize = authorize
         self.bindingIsCurrent = bindingIsCurrent; self.operationsAllowed = operationsAllowed
         self.sessionIsKnownClosed = sessionIsKnownClosed; self.changed = changed
@@ -243,6 +246,35 @@ final class TableImportModel: ObservableObject, Identifiable {
     func setMapping(source: Int, target: String?) {
         guard mapping.indices.contains(source), !closing, !completedOrUnknown else { return }
         mapping[source] = target
+    }
+
+    func saveMapping(name: String) async {
+        guard canEdit, let parsed else { return }
+        let preset = TransferMappingPreset(name: name, engine: profile.engine, purpose: "append", headers: parsed.headers,
+            columns: mapping.enumerated().map { .init(sourceIndex: $0.offset, targetName: $0.element) },
+            fileOptions: .init(options))
+        do { try await mappingPresets.save(preset) }
+        catch { self.error = error.localizedDescription }
+    }
+
+    func applyMapping(_ preset: TransferMappingPreset) async {
+        guard canEdit, let fileOptions = preset.fileOptions.options,
+              preset.engine == profile.engine, preset.purpose == "append", preset.valid, fileData != nil else { return }
+        options = fileOptions
+        let parsing = parsingID
+        await parsingTask?.value
+        guard canEdit, parsing == parsingID, options == fileOptions, let parsed,
+              preset.matches(headers: parsed.headers, engine: profile.engine, purpose: "append") else {
+            error = "The saved mapping does not match this file's exact column names and parser options."
+            return
+        }
+        let targets = Set(columns.filter { !$0.generated }.map { Data($0.name.utf8) })
+        guard preset.columns.allSatisfy({ $0.targetName.map { targets.contains(Data($0.utf8)) } ?? true }) else {
+            error = "The saved mapping refers to target columns that no longer exist. Reload columns and review a new mapping."
+            return
+        }
+        mapping = preset.columns.sorted { $0.sourceIndex < $1.sourceIndex }.map(\.targetName)
+        error = nil
     }
 
     private func automaticMapping(_ headers: [String]) -> [String?] {

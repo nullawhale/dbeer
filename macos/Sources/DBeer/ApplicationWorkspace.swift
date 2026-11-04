@@ -464,6 +464,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var isHistoryPresented = false
     @Published var schemaComparison: SchemaComparisonModel?
     @Published var dataComparison: DataComparisonModel?
+    @Published var dataTransfer: DataTransferModel?
     private var sessionMonitorWindow: SessionMonitorWindowController?
     private var sessionMonitorProfileObservation: AnyCancellable?
     private var sessionMonitorPresentation = SessionMonitorPresentationIntent()
@@ -918,6 +919,51 @@ final class ApplicationWorkspace: ObservableObject {
             guard let self, self.openSynchronizationPlan(sql, target: target) else { return false }
             self.dismissDataComparison(); return true
         }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true })
+    }
+
+    func showDataTransfer(_ profile: SavedConnection, mode: String = "csv", schema: String? = nil, table: String? = nil) {
+        guard canManageWorkspace, dataTransfer == nil, tableImporter == nil,
+              structureEditor == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+        let store = credentialStore
+        let model = DataTransferModel(profiles: library.savedConnections, resolve: { profile, attempt in
+            try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt)
+        }, current: { [weak self] profile in
+            guard let self, self.shutdownTask == nil else { return false }
+            return ExplainProfileBinding(profile)?.matches(self.library.savedConnections.first { $0.id == profile.id }) == true
+        }, authorize: { [weak self] target, review in
+            guard let self, self.shutdownTask == nil, review.state == "ready", !target.policy.readOnly else { return false }
+            return await self.confirmStandaloneOperation(target, preview: (review.notices.joined(separator: "\n") + "\n\n" + (review.sql ?? "")))
+        }, cancelPreparation: { profile, attempt in
+            SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, attempt))
+        }, changed: { [weak self] target in
+            guard let self else { return }
+            for document in self.documents where document.profileID == target.id { document.markQueryResultStale() }
+            if self.services[target.id]?.connectionState == .connected { Task { await self.loadSchemas(target.id, refresh: true) } }
+        })
+        model.targetID = profile.id
+        model.targetSchema = profile.engine == .mysql ? profile.database : "public"
+        model.mode = mode
+        if mode == "table" {
+            model.sourceID = profile.id
+            model.sourceSchema = schema ?? (profile.engine == .mysql ? profile.database : "public")
+            model.sourceTable = table ?? ""
+            model.targetTable = table.map { $0 + "_copy" } ?? ""
+        }
+        dataTransfer = model
+    }
+
+    func dismissDataTransfer() {
+        guard let model = dataTransfer else { return }
+        Task { await model.close(); if dataTransfer?.id == model.id { dataTransfer = nil } }
+    }
+
+    private func confirmStandaloneOperation(_ profile: SavedConnection, preview: String) async -> Bool {
+        guard ExplainProfileBinding(profile)?.matches(library.savedConnections.first { $0.id == profile.id }) == true else { return false }
+        let confirmation = OperationConfirmation(profile: profile, operations: [.init(type: "execute")],
+            assessment: .init(decision: "confirm", policy: profile.policy,
+                operations: [.init(kind: "write", statements: [])], authorization: nil),
+            isScript: false, generatedPreview: preview)
+        return await ExecutionConfirmation.present(confirmation)
     }
 
     func canShowSessionMonitor(_ profile: SavedConnection) -> Bool {
@@ -3718,6 +3764,7 @@ final class ApplicationWorkspace: ObservableObject {
         }
         invalidateERDiagrams(reason: "The workspace is shutting down.")
         await closeSessionMonitor()
+        await dataTransfer?.close(); dataTransfer = nil
         commands.shutdown()
         await dataComparison?.close(); dataComparison = nil
         await schemaComparison?.close(); schemaComparison = nil

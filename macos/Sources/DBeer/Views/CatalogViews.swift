@@ -116,6 +116,8 @@ struct ProfileCatalogRow: View {
         }
         menu.addCatalogAction(profile.engine == .mongodb ? "New JSON Script" : "New SQL Tab") { workspace.newDocument(profileID: profile.id) }
         if [.postgresql, .mysql].contains(profile.engine) {
+            menu.addCatalogAction("Create Table from CSV…", enabled: workspace.canManageWorkspace) { workspace.showDataTransfer(profile) }
+            menu.addCatalogAction("Copy Table to Connection…", enabled: workspace.canManageWorkspace) { workspace.showDataTransfer(profile, mode: "table") }
             menu.addCatalogAction("Session Monitor…", enabled: workspace.canShowSessionMonitor(profile)) {
                 workspace.showSessionMonitor(profile)
             }
