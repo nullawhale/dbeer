@@ -82,6 +82,9 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 	defer owner.authMu.Unlock()
 	owner.grant = nil
 	owner.approvedExplainSQL = ""
+	if owner.monitorOnly {
+		return protocol.ErrorResponse(command, "policy", "This session is reserved for readonly monitoring.")
+	}
 	preparedSQL := []string{}
 	assessment := &protocol.OperationAssessment{Decision: "allow", Policy: policy, Operations: []protocol.AssessedOperation{}}
 	if len(sessions) > 0 {
@@ -159,6 +162,9 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 }
 
 func (owner *owner) authorize(command protocol.Command, engine string, policy protocol.ExecutionPolicy, sessions ...adapter.Session) bool {
+	if owner.monitorOnly {
+		return command.Type == "monitor.snapshot"
+	}
 	if command.Type != "execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "import.apply" {
 		return true
 	}

@@ -464,6 +464,9 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var isHistoryPresented = false
     @Published var schemaComparison: SchemaComparisonModel?
     @Published var dataComparison: DataComparisonModel?
+    private var sessionMonitorWindow: SessionMonitorWindowController?
+    private var sessionMonitorProfileObservation: AnyCancellable?
+    private var sessionMonitorPresentation = SessionMonitorPresentationIntent()
     @Published var isSnapshotsPresented = false
     @Published private(set) var isClosing = false
     @Published var importPreview: [ImportedProfile]?
@@ -915,6 +918,92 @@ final class ApplicationWorkspace: ObservableObject {
             guard let self, self.openSynchronizationPlan(sql, target: target) else { return false }
             self.dismissDataComparison(); return true
         }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true })
+    }
+
+    func canShowSessionMonitor(_ profile: SavedConnection) -> Bool {
+        canManageWorkspace && [.postgresql, .mysql].contains(profile.engine)
+    }
+
+    func showSessionMonitor(_ profile: SavedConnection) {
+        guard canShowSessionMonitor(profile), let binding = SessionMonitorProfileBinding(profile),
+              binding.matches(in: library.savedConnections) else { return }
+        let intent = sessionMonitorPresentation.requestOpen()
+        Task { [weak self] in await self?.presentSessionMonitor(profile, binding: binding, intent: intent) }
+    }
+
+    private func presentSessionMonitor(_ profile: SavedConnection, binding: SessionMonitorProfileBinding, intent: UInt64) async {
+        guard sessionMonitorPresentation.isCurrent(intent), shutdownTask == nil,
+              canShowSessionMonitor(profile), binding.matches(in: library.savedConnections) else { return }
+        if let existing = sessionMonitorWindow {
+            if SessionMonitorProfileBinding(existing.model.profile)?.matches(profile) == true, !existing.model.isClosing {
+                existing.showWindow(nil)
+                existing.window?.makeKeyAndOrderFront(nil)
+                return
+            }
+            await closeSessionMonitor(expectedID: existing.model.id)
+        }
+        guard sessionMonitorPresentation.isCurrent(intent), shutdownTask == nil,
+              canShowSessionMonitor(profile), binding.matches(in: library.savedConnections) else { return }
+        let store = credentialStore
+        let attempt = UUID()
+        let reviewID = "monitor:\(attempt.uuidString)"
+        let current: @MainActor () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return self.shutdownTask == nil && binding.matches(in: self.library.savedConnections)
+        }
+        let lease = SessionMonitorClientLease()
+        let model = SessionMonitorModel(profile: profile, connect: { [weak self] in
+            guard let self, current() else { throw CancellationError() }
+            var settings = try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt)
+            guard current() else { throw CancellationError() }
+            let client = try await self.ensureHelper()
+            guard await client.supportsSessionMonitor() else { throw BackendRequestError.unsupportedSessionMonitor }
+            settings.sessionPurpose = "monitor"
+            settings.policy.readOnly = true
+            try await SSHConnectionReview.prepare(settings, client: client, ownerID: attempt, reviewID: reviewID)
+            try Task.checkCancellation()
+            guard current() else { throw CancellationError() }
+            let response = try await client.request(.connect(settings))
+            guard let session = response.sessionId else { throw BackendTransportError(.invalidMessage) }
+            guard response.capabilities?.contains("sessionMonitorV1") == true else {
+                _ = try? await client.request(.disconnect(sessionId: session))
+                throw BackendRequestError.unsupportedSessionMonitor
+            }
+            lease.client = client
+            return session
+        }, send: { command in
+            guard let client = lease.client else { throw BackendTransportError(.notReady) }
+            return try await client.request(command)
+        }, bindingIsCurrent: current, cancelPreparation: {
+            SSHConnectionReview.cancel(ownerID: attempt)
+            SSHConnectionReview.cancel(profileId: reviewID)
+            SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, attempt))
+        })
+        let controller = SessionMonitorWindowController(model: model, appearance: appearance, requestClose: { [weak self] in
+            Task { await self?.closeSessionMonitor(expectedID: model.id) }
+        })
+        sessionMonitorWindow = controller
+        sessionMonitorProfileObservation = library.$savedConnections.dropFirst().sink { [weak self, weak model] profiles in
+            guard !binding.matches(in: profiles), let model else { return }
+            let expectedID = model.id
+            Task { await self?.closeSessionMonitor(expectedID: expectedID) }
+        }
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        Task { await model.refresh() }
+    }
+
+    func closeSessionMonitor(expectedID: UUID? = nil) async {
+        if expectedID == nil { sessionMonitorPresentation.cancelPendingOpen() }
+        guard let controller = sessionMonitorWindow,
+              SessionMonitorPresentationIntent.mayClose(expectedID: expectedID, activeID: controller.model.id) else { return }
+        await controller.model.close()
+        guard sessionMonitorWindow === controller else { return }
+        controller.finishClosing()
+        if sessionMonitorWindow === controller {
+            sessionMonitorWindow = nil
+            sessionMonitorProfileObservation = nil
+        }
     }
 
     func agentConnectionSettings(_ profile: SavedConnection) async throws -> ConnectionSettings? {
@@ -3628,6 +3717,7 @@ final class ApplicationWorkspace: ObservableObject {
             tableImporter = nil
         }
         invalidateERDiagrams(reason: "The workspace is shutting down.")
+        await closeSessionMonitor()
         commands.shutdown()
         await dataComparison?.close(); dataComparison = nil
         await schemaComparison?.close(); schemaComparison = nil
@@ -3668,6 +3758,7 @@ final class ApplicationWorkspace: ObservableObject {
                 let failure = await client.waitForFailure()
                 guard let self, self.shutdownTask == nil, self.helperGeneration == generation else { return }
                 self.helperFailed = true
+                self.sessionMonitorWindow?.model.helperDidFail()
                 self.invalidateERDiagrams(reason: "The helper connection ended. Connect and Build explicitly to reload metadata.")
                 self.clusterInspection = nil
                 self.invalidatePostgresTypeInspection(reason: "The helper connection ended. Reopen this type after connecting again.")

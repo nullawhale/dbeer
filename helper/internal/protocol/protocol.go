@@ -391,7 +391,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -652,7 +652,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 		return connection, false
 	}
 	if _, exists := fields["sessionPurpose"]; exists {
-		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && connection.DatabaseEngine() != "sqlite") {
+		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" && connection.SessionPurpose != "monitor") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && (connection.DatabaseEngine() != "sqlite" || connection.SessionPurpose == "monitor")) {
 			return connection, false
 		}
 	}
@@ -814,6 +814,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	Monitor               *SessionMonitorSnapshot
 	SQLiteValues          [][]SQLiteValue
 	TableImport           *TableImportReply
 	Structure             *tableedit.Reply
@@ -885,6 +886,13 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["sqliteValues"] = response.SQLiteValues
 	}
 	switch response.Type {
+	case "monitor.result":
+		if response.Monitor == nil || !response.Monitor.Valid() || !response.Connected || response.TransactionStatus != "idle" {
+			return nil, errors.New("invalid session monitor response")
+		}
+		fields["monitor"] = response.Monitor
+		fields["connected"] = response.Connected
+		fields["transactionStatus"] = response.TransactionStatus
 	case "import.describe.result", "import.preview.result", "import.apply.result":
 		fields["tableImport"] = response.TableImport
 		fields["connected"] = response.Connected

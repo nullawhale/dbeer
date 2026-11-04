@@ -115,6 +115,11 @@ struct ProfileCatalogRow: View {
             }
         }
         menu.addCatalogAction(profile.engine == .mongodb ? "New JSON Script" : "New SQL Tab") { workspace.newDocument(profileID: profile.id) }
+        if [.postgresql, .mysql].contains(profile.engine) {
+            menu.addCatalogAction("Session Monitor…", enabled: workspace.canShowSessionMonitor(profile)) {
+                workspace.showSessionMonitor(profile)
+            }
+        }
         if profile.engine == .cassandra {
             menu.addCatalogAction("Cluster Nodes…", enabled: isConnected) {
                 Task { await workspace.showClusterNodes(profile.id) }

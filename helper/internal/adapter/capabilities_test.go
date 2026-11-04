@@ -28,4 +28,9 @@ func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 	if Capabilities("unknown") != nil {
 		t.Fatal("unknown engine advertises features")
 	}
+	for _, engine := range []string{"postgresql", "mysql", "sqlite", "cassandra", "mongodb"} {
+		if slices.Contains(Capabilities(engine), protocol.SessionMonitorCapability) != (engine == "postgresql" || engine == "mysql") {
+			t.Fatalf("%s has an invalid session monitor capability", engine)
+		}
+	}
 }

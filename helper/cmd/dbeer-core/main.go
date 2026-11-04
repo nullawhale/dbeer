@@ -229,7 +229,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.TableImportCapability, protocol.QueryParametersCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.SessionMonitorCapability, protocol.TableImportCapability, protocol.QueryParametersCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -377,7 +377,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			}(command)
 			continue
 		}
-		if command.Type == "execute" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || strings.HasPrefix(command.Type, "structure.") {
+		if command.Type == "monitor.snapshot" || command.Type == "execute" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || strings.HasPrefix(command.Type, "structure.") {
 			if queries[command.QueryID] != "" {
 				if !emit(protocol.ErrorResponse(command, "protocol", "Query identifier has already been used.")) {
 					return

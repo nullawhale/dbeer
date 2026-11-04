@@ -39,6 +39,51 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
+## Sessions and blocking (unreleased)
+
+Open **Session Monitor…** from a PostgreSQL or MySQL connection's context menu.
+Its separate window leaves SQL tabs available. Use **Refresh** to collect a new
+observation, or enable the optional five-second refresh interval; automatic
+refresh is off initially. **Stop** cancels the monitor's own collection.
+Sort by session ID, query or transaction duration, or reported blocking counts.
+Unavailable durations remain last in either direction. **Waiting only** also
+keeps reported waits whose blocker cannot be identified. Click a session in a
+blocking relationship to reveal it in the session list; endpoints outside the
+visible observation remain explicitly unavailable.
+The monitor uses a separate, read-only connection so a running query or open
+transaction in a SQL tab does not prevent refreshing it. Observations include
+visible sessions, current or last query text, reported durations and wait
+dependencies. Monitoring never runs user SQL or terminates other sessions.
+Closing the monitor releases its connection; observations are not saved or
+restored. Helper failure keeps the previous observation visibly stale and pauses
+automatic refresh. Use **Refresh** explicitly to reconnect.
+
+Each refresh is a bounded, best-effort observation rather than an atomic server
+snapshot. The monitor collects at most 500 sessions and 2,000 wait relationships;
+query text is bounded to 4 KiB and may already be limited by the server. Missing
+details and dependencies outside the visible session list remain explicit.
+
+PostgreSQL uses `pg_stat_activity` and `pg_blocking_pids`, including lock holders
+and sessions ahead in a conflicting wait queue. Server privileges determine
+which other sessions' details are visible; `pg_read_all_stats` or `pg_monitor`
+can provide broader visibility. MySQL uses Performance Schema process and lock
+information. Query and transaction durations come from enabled, timed current
+events and are converted from picoseconds to integer milliseconds. Completed,
+unmatched, nested or uninstrumented events remain unavailable; process-list
+state time is never substituted for query duration. The monitor does not change
+server instrumentation.
+
+MySQL reports InnoDB data-lock dependencies and confirmed metadata holder
+conflicts involving an EXCLUSIVE table lock. Compatible holders are not labelled
+as blockers. Other metadata lock modes, non-table objects and queue-priority
+dependencies can remain unresolved, with pending sessions and coverage notices
+retained. Access to Performance Schema tables and the `PROCESS` privilege
+determine visibility. A successful process-list query is not treated as proof of
+full server visibility. Collection limits, disabled instrumentation and restricted
+visibility appear as notices. See the [PostgreSQL monitoring documentation](https://www.postgresql.org/docs/18/monitoring-stats.html)
+and [MySQL process information documentation](https://dev.mysql.com/doc/refman/8.4/en/processlist-access.html)
+for server-side visibility rules.
+
 ## SQLite (unreleased)
 
 Choose **SQLite** in the connection editor, then **Choose File…** for an existing

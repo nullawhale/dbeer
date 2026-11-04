@@ -80,7 +80,7 @@ func (manager *Manager) Submit(command protocol.Command) bool {
 }
 
 func (manager *Manager) markPending(command protocol.Command) {
-	if command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
+	if command.Type == "monitor.snapshot" || command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
 		manager.controlMu.Lock()
 		manager.pendingQueries[command.QueryID] = pendingQuery{sessionID: command.SessionID}
 		manager.controlMu.Unlock()
@@ -209,6 +209,12 @@ func (manager *Manager) run() {
 					}
 					continue
 				}
+				if command.Connection.SessionPurpose == "monitor" && command.Connection.DatabaseEngine() != "postgresql" && command.Connection.DatabaseEngine() != "mysql" {
+					if !emit(protocol.ErrorResponse(command, "capability", "Session monitoring is available only for PostgreSQL and MySQL.")) {
+						return
+					}
+					continue
+				}
 				if len(owners) >= MaxSessions {
 					if !emit(protocol.ErrorResponse(command, "busy", "The maximum number of sessions is already open.")) {
 						return
@@ -223,7 +229,7 @@ func (manager *Manager) run() {
 					continue
 				}
 				id := hex.EncodeToString(randomID[:])
-				owner := &owner{id: id, structureOnly: command.Connection.SessionPurpose == "structure", importOnly: command.Connection.SessionPurpose == "import", manager: manager, commands: make(chan protocol.Command, 1), shutdown: make(chan struct{})}
+				owner := &owner{id: id, structureOnly: command.Connection.SessionPurpose == "structure", importOnly: command.Connection.SessionPurpose == "import", monitorOnly: command.Connection.SessionPurpose == "monitor", manager: manager, commands: make(chan protocol.Command, 1), shutdown: make(chan struct{})}
 				manager.controlMu.Lock()
 				owners[id] = owner
 				manager.controlMu.Unlock()
@@ -261,6 +267,7 @@ type owner struct {
 	structure          tableedit.Store
 	structureOnly      bool
 	importOnly         bool
+	monitorOnly        bool
 	id                 string
 	manager            *Manager
 	commands           chan protocol.Command
@@ -435,6 +442,10 @@ func (owner *owner) run(connectCommand protocol.Command) {
 	if connection.Policy != nil {
 		policy = *connection.Policy
 	}
+	if owner.monitorOnly {
+		policy.ReadOnly = true
+		connection.Policy = &policy
+	}
 	pending := connectCommand
 	result := make(chan operation, 1)
 	connectTimeout := ConnectTimeout
@@ -453,7 +464,12 @@ func (owner *owner) run(connectCommand protocol.Command) {
 		}
 		tx := ""
 		if physical != nil && err == nil {
-			if policy.ReadOnly && engine != "cassandra" && engine != "mongodb" {
+			if owner.monitorOnly {
+				if _, ok := physical.(adapter.SessionMonitor); !ok {
+					err = &adapter.ConnectionError{Category: "capability", Message: "Session monitoring is unavailable for this adapter."}
+				}
+			}
+			if err == nil && policy.ReadOnly && engine != "cassandra" && engine != "mongodb" {
 				readOnly, ok := physical.(adapter.ReadOnlySession)
 				if !ok {
 					err = errors.New("adapter has no readonly mode")
@@ -616,18 +632,23 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			var response protocol.Response
 			switch command.Type {
 			case "operation.assess":
-				if active != nil || len(outgoing) != 0 {
+				if owner.monitorOnly {
+					response = protocol.ErrorResponse(command, "policy", "This session is reserved for readonly monitoring.")
+				} else if active != nil || len(outgoing) != 0 {
 					response = protocol.ErrorResponse(command, "busy", "Another operation is in progress in this session.")
 				} else {
 					response = owner.assess(command, engine, policy, physical)
 				}
-			case "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "changes.preview", "changes.apply":
+			case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
 				} else if owner.manager.pendingWasCancelled(command) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "cancelled", "Execution was cancelled before it started.")
+				} else if owner.monitorOnly && command.Type != "monitor.snapshot" || !owner.monitorOnly && command.Type == "monitor.snapshot" {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "policy", "Open a dedicated readonly monitor session to collect session activity.")
 				} else if owner.importOnly && !isImport(command.Type) || !owner.importOnly && isImport(command.Type) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "Open a dedicated import session to import table data.")
@@ -672,7 +693,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						case <-begin:
 						case <-ctx.Done():
 						}
-						if isStructure(command.Type) {
+						if command.Type == "monitor.snapshot" {
+							result <- operation{response: runMonitor(ctx, physical, command, engine)}
+						} else if isStructure(command.Type) {
 							result <- operation{response: owner.runStructure(ctx, physical, command)}
 						} else {
 							result <- operation{response: runExecution(ctx, physical, command, credit)}
@@ -682,7 +705,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			case "cancel":
 				status := "alreadyFinished"
-				if active != nil && (pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
+				if active != nil && (pending.Type == "monitor.snapshot" || pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
 					cancel()
 					status = "accepted"
 				}

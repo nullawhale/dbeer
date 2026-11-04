@@ -40,6 +40,9 @@ openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1 \
     -keyout "$fixture_root/untrusted.key" -out "$fixture_root/untrusted.crt" >/dev/null 2>&1
 openssl rand -hex 32 >"$fixture_root/server/password"
 openssl rand -hex 32 >"$fixture_root/server/root-password"
+if [[ "${DBEER_TEST_MYSQL_MONITOR_PRIVILEGES:-0}" == 1 ]]; then
+    openssl rand -hex 32 >"$fixture_root/server/monitor-password"
+fi
 
 printf 'Running real MySQL checks with %s.\n' "$image"
 container_id="$(docker run --detach --rm --publish 127.0.0.1::3306 \
@@ -71,6 +74,26 @@ if [[ "${DBEER_TEST_MYSQL_STRUCTURE_PRIVILEGES:-0}" == 1 ]]; then
     docker exec "$container_id" sh -ec '
         MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --execute="GRANT SELECT ON *.* TO '\''dbeer'\''@'\''%'\'';"
     '
+fi
+if [[ "${DBEER_TEST_MYSQL_MONITOR_PRIVILEGES:-0}" == 1 ]]; then
+    # The observer has metadata privileges; the ordinary fixture user stays
+    # restricted so the same run also checks partial visibility.
+    docker exec "$container_id" sh -ec '
+        monitor_password="$(cat /fixtures/monitor-password)"
+        MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --execute="
+            CREATE USER '\''dbeer_monitor'\''@'\''%'\'' IDENTIFIED BY '\''$monitor_password'\'';
+            GRANT SELECT ON dbeer.* TO '\''dbeer_monitor'\''@'\''%'\'';
+            GRANT SELECT ON performance_schema.* TO '\''dbeer_monitor'\''@'\''%'\'';
+            GRANT PROCESS ON *.* TO '\''dbeer_monitor'\''@'\''%'\'';
+            UPDATE performance_schema.setup_consumers SET ENABLED='\''YES'\''
+                WHERE NAME IN ('\''global_instrumentation'\'','\''thread_instrumentation'\'',
+                    '\''events_statements_current'\'','\''events_transactions_current'\'');
+            UPDATE performance_schema.setup_instruments SET ENABLED='\''YES'\'',TIMED='\''YES'\''
+                WHERE NAME='\''transaction'\'' OR NAME LIKE '\''statement/%'\'';
+        "
+    '
+    export DBEER_TEST_MYSQL_MONITOR_USER=dbeer_monitor
+    export DBEER_TEST_MYSQL_MONITOR_PASSWORD="$(cat "$fixture_root/server/monitor-password")"
 fi
 if [[ "${DBEER_TEST_MYSQL_SETUP_R27:-0}" == 1 ]]; then
     # Only this runner's disposable container is eligible for extra UI schemas.

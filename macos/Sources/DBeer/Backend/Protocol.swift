@@ -335,6 +335,10 @@ struct BackendCommand: Codable, Sendable, Equatable {
         Self(type: "explain.run", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, explain: request)
     }
 
+    static func monitorSnapshot(sessionId: String, queryId: String = UUID().uuidString) -> Self {
+        Self(type: "monitor.snapshot", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId)
+    }
+
     static func cancel(sessionId: String, queryId: String) -> Self {
         Self(type: "cancel", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId)
     }
@@ -383,6 +387,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "sqlite.create": "sqlite.create.result"
         case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
         case "explain.run": "explain.result"
+        case "monitor.snapshot": "monitor.result"
         case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close": type + ".result"
         case "import.describe", "import.preview", "import.apply": type + ".result"
         case "cancel": "cancel.ack"
@@ -501,6 +506,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
     var structure: StructureReply?
     var tableImport: TableImportReply?
+    var monitor: SessionMonitorSnapshot?
 
     func validate() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
@@ -547,6 +553,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
         case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
         case "ssh.probe.result", "ssh.trust.result": valid = ssh?.isValid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
+        case "monitor.result":
+            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                monitor?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
         case "query.progress": valid = (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
         case "explain.result":
             valid = sessionId != nil && queryId != nil && transactionStatus != nil && sqlCompleted == true &&
@@ -579,6 +588,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         default: valid = false
         }
         guard tableImport == nil || (type.hasPrefix("import.") || type == "error") && tableImport?.valid(for: type) == true,
+              monitor == nil || type == "monitor.result",
               structure == nil || type.hasPrefix("structure."),
               explain == nil || type == "explain.result",
               explainSupport == nil || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,

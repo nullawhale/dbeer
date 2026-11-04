@@ -30,6 +30,12 @@ type StreamingSession interface {
 	ExecuteWithSink(context.Context, protocol.Command, ResultSink) protocol.Response
 }
 
+// SessionMonitor reads a fixed, bounded observation through a dedicated readonly
+// physical session. User SQL is never accepted on this adapter boundary.
+type SessionMonitor interface {
+	MonitorSnapshot(context.Context, protocol.Command) protocol.Response
+}
+
 // ReadOnlySession changes the physical session's default transaction access
 // mode. The owner must serialize this with Execute, and must not change policy
 // while a transaction is open. SQL assessment is still required: database
@@ -64,7 +70,7 @@ func Capabilities(engine string) []string {
 	case "cassandra":
 		return append(common, "localReadOnly", "cursorPagination", "gridEditing")
 	case "", "postgresql", "mysql":
-		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.QueryParametersCapability, protocol.TableImportCapability)
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SessionMonitorCapability)
 	default:
 		return nil
 	}

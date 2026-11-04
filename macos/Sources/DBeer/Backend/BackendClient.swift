@@ -4,7 +4,7 @@ import Foundation
 /// Local command rejection before a request is registered or written to stdin.
 /// Keep this distinct from a malformed or oversized reply from the helper.
 enum BackendRequestError: LocalizedError, Sendable, Equatable {
-    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand, unsupportedQueryParameters, unsupportedTableImport
+    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand, unsupportedQueryParameters, unsupportedTableImport, unsupportedSessionMonitor
 
     var errorDescription: String? {
         let explanation: String
@@ -17,6 +17,7 @@ enum BackendRequestError: LocalizedError, Sendable, Equatable {
         case .unsupportedPasswordCommand: explanation = "This helper does not support password commands. Rebuild the matching app and helper."
         case .unsupportedQueryParameters: explanation = "This helper does not support query parameters. Rebuild the matching app and helper."
         case .unsupportedTableImport: explanation = "This helper does not support table import. Rebuild the matching app and helper."
+        case .unsupportedSessionMonitor: explanation = "This helper does not support the session monitor. Rebuild the matching app and helper."
         }
         return explanation + " The command was not sent."
     }
@@ -93,6 +94,7 @@ actor BackendClient {
     private var synchronizationPlanSupported = false
     private var queryParametersSupported = false
     private var tableImportSupported = false
+    private var sessionMonitorSupported = false
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -196,9 +198,21 @@ actor BackendClient {
     func supportsResultComparison() -> Bool { resultComparisonSupported }
     func supportsQueryParameters() -> Bool { queryParametersSupported }
     func supportsTableImport() -> Bool { tableImportSupported }
+    func supportsSessionMonitor() -> Bool { sessionMonitorSupported }
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if command.type == "monitor.snapshot" {
+            guard sessionMonitorSupported else { throw BackendRequestError.unsupportedSessionMonitor }
+            guard command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
+                  command.protocolVersion == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
+                  command.stream == nil, command.export == nil, command.sequence == nil, command.changes == nil,
+                  command.operations == nil, command.authorization == nil, command.sshTrust == nil, command.insert == nil,
+                  command.comparison == nil, command.schemaComparison == nil, command.dataComparison == nil,
+                  command.explain == nil, command.structure == nil, command.parameters == nil, command.tableImport == nil else {
+                throw BackendRequestError.invalidCommand
+            }
+        }
         if command.type.hasPrefix("import.") {
             guard tableImportSupported else { throw BackendRequestError.unsupportedTableImport }
             guard command.tableImport?.valid(for: command.type) == true,
@@ -287,11 +301,12 @@ actor BackendClient {
                   command.sshTrust == nil, command.insert == nil else { throw BackendRequestError.invalidCommand }
         } else if command.comparison != nil { throw BackendRequestError.invalidCommand }
         if let purpose = command.connection?.sessionPurpose {
-            guard ["structure", "import"].contains(purpose), ["connect", "ssh.probe", "ssh.trust"].contains(command.type),
-                  command.connection.map({ [.postgresql, .mysql, .sqlite].contains($0.engine) }) == true else {
+            guard ["structure", "import", "monitor"].contains(purpose), ["connect", "ssh.probe", "ssh.trust"].contains(command.type),
+                  command.connection.map({ (purpose == "monitor" ? [.postgresql, .mysql] : [.postgresql, .mysql, .sqlite]).contains($0.engine) }) == true else {
                 throw BackendRequestError.invalidCommand
             }
             if purpose == "import", !tableImportSupported { throw BackendRequestError.unsupportedTableImport }
+            if purpose == "monitor", !sessionMonitorSupported { throw BackendRequestError.unsupportedSessionMonitor }
         }
         if command.connection?.passwordCommand != nil, !passwordCommandSupported {
             throw BackendRequestError.unsupportedPasswordCommand
@@ -407,7 +422,7 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
-        if reply.type == "query.started", (["execute", "explain.run", "catalog", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
+        if reply.type == "query.started", (["execute", "explain.run", "monitor.snapshot", "catalog", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
             request.started = true
             pending[reply.requestId] = request
             request.onEvent?(reply)
@@ -448,6 +463,7 @@ actor BackendClient {
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
             queryParametersSupported = reply.capabilities?.contains("queryParametersV1") == true
             tableImportSupported = reply.capabilities?.contains("tableImportV1") == true
+            sessionMonitorSupported = reply.capabilities?.contains("sessionMonitorV1") == true
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
@@ -455,6 +471,9 @@ actor BackendClient {
         }
         if command.type == "explain.run", reply.type == "explain.result",
            !request.started || reply.explain?.mode != command.explain?.mode {
+            fail(BackendTransportError(.invalidMessage)); return
+        }
+        if command.type == "monitor.snapshot", reply.type == "monitor.result", !request.started {
             fail(BackendTransportError(.invalidMessage)); return
         }
         let terminal: BackendMessage

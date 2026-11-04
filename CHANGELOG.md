@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add a read-only PostgreSQL/MySQL session and blocking monitor with a dedicated
+  connection, manual or optional automatic refresh, numeric sorting and session
+  navigation. Include current-event MySQL timings, InnoDB dependencies and
+  confirmed EXCLUSIVE table metadata-lock conflicts. Retain unresolved waiters,
+  visible permission/instrumentation limits and stale observations after helper
+  failure until an explicit reconnect. Keep monitoring separate from SQL-tab
+  transactions and exclude live observations from restored state.
+
 - Keep SQLite editor completion local to each SQL tab, including TEMP objects and
   attached databases. Resolve duplicate names in SQLite lookup order, with correct
   quoting/case rules. Refresh after explicit autocommit SQL or profile Refresh,

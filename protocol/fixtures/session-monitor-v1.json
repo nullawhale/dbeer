@@ -1,0 +1,1455 @@
+{
+  "version": 1,
+  "validCommands": [
+    {
+      "type": "monitor.snapshot",
+      "requestId": "monitor-request",
+      "sessionId": "monitor-session",
+      "queryId": "monitor-query"
+    },
+    {
+      "type": "connect",
+      "requestId": "postgresql-monitor",
+      "connection": {
+        "engine": "postgresql",
+        "sessionPurpose": "monitor",
+        "host": "fixture.invalid",
+        "port": 5432,
+        "database": "fixture_db",
+        "user": "fixture_user",
+        "password": "",
+        "sslMode": "disable"
+      }
+    },
+    {
+      "type": "connect",
+      "requestId": "mysql-monitor",
+      "connection": {
+        "engine": "mysql",
+        "sessionPurpose": "monitor",
+        "host": "fixture.invalid",
+        "port": 3306,
+        "database": "fixture_db",
+        "user": "fixture_user",
+        "password": "",
+        "sslMode": "disable"
+      }
+    }
+  ],
+  "invalidCommands": [
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"sql\":\"SELECT 1\"}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"stream\":false}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"export\":{}}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"catalog\":{\"kind\":\"schemas\"}}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"authorization\":\"token\"}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"monitor\":{}}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"protocolVersion\":6}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"connection\":{}}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\",\"operations\":[]}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\",\"queryId\":null}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"\",\"queryId\":\"monitor-query\"}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":7,\"sessionId\":\"monitor-session\",\"queryId\":\"monitor-query\"}",
+    "{\"type\":\"monitor.snapshot\",\"requestId\":\"monitor-request\",\"sessionId\":\"monitor-session\"}",
+    "{\"type\":\"connect\",\"requestId\":\"postgresql-monitor\",\"connection\":{\"engine\":\"sqlite\",\"sessionPurpose\":\"monitor\",\"host\":\"\",\"port\":0,\"database\":\"\",\"user\":\"\",\"password\":\"\",\"sslMode\":\"disable\",\"sqlite\":{\"path\":\"/synthetic/fixture.sqlite\"}}}",
+    "{\"type\":\"connect\",\"requestId\":\"postgresql-monitor\",\"connection\":{\"engine\":\"mongodb\",\"sessionPurpose\":\"monitor\",\"host\":\"fixture.invalid\",\"port\":5432,\"database\":\"fixture_db\",\"user\":\"fixture_user\",\"password\":\"\",\"sslMode\":\"disable\"}}",
+    "{\"type\":\"connect\",\"requestId\":\"postgresql-monitor\",\"connection\":{\"engine\":\"cassandra\",\"sessionPurpose\":\"monitor\",\"host\":\"fixture.invalid\",\"port\":5432,\"database\":\"fixture_db\",\"user\":\"fixture_user\",\"password\":\"\",\"sslMode\":\"disable\"}}"
+  ],
+  "snapshots": [
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "mysql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "2",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "Sleep",
+          "transactionAgeMs": "1250",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "10",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "Waiting for table metadata lock",
+          "query": "ALTER TABLE orders ADD COLUMN note TEXT",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "metadata",
+          "waitEvent": "TABLE",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "12",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "executing",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "10",
+          "blockingId": "2",
+          "kind": "metadata",
+          "object": "fixture_db.orders",
+          "lockMode": "EXCLUSIVE"
+        },
+        {
+          "waitingId": "11",
+          "blockingId": "2",
+          "kind": "data",
+          "object": "fixture_db.orders",
+          "lockMode": "X,REC_NOT_GAP"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Session visibility and metadata wait queue coverage are limited. One waiter is outside the visible session list."
+      ]
+    }
+  ],
+  "invalidSnapshots": [
+    {
+      "engine": "sqlite",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "not-a-date",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:04Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": null,
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": null,
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": null
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": []
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        },
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "042",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "-1",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1.5",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "bad\u0000user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": null,
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": true
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "guess"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "1;DROP",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05,1Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.1234567890Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05+24:00",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05+00:60",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        "Visibility follows the current database role. External or prepared blockers may have no session row."
+      ]
+    },
+    {
+      "engine": "postgresql",
+      "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+      "collectedAt": "2026-01-02T03:04:05.456Z",
+      "sessions": [
+        {
+          "id": "42",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "client": "127.0.0.1",
+          "application": "Fixture client",
+          "state": "active",
+          "query": "SELECT name FROM fixture",
+          "queryAgeMs": "250",
+          "transactionAgeMs": "1000",
+          "waitType": "Lock",
+          "waitEvent": "transactionid",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "43",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "state": "idle in transaction",
+          "isMonitor": false,
+          "queryTruncated": false
+        },
+        {
+          "id": "44",
+          "user": "fixture_user",
+          "database": "fixture_db",
+          "application": "DBeer monitor",
+          "state": "active",
+          "isMonitor": true,
+          "queryTruncated": false
+        }
+      ],
+      "waits": [
+        {
+          "waitingId": "42",
+          "blockingId": "43",
+          "kind": "lock"
+        },
+        {
+          "waitingId": "43",
+          "blockingId": "0",
+          "kind": "lock"
+        }
+      ],
+      "sessionsComplete": false,
+      "waitsComplete": false,
+      "notices": [
+        ""
+      ]
+    }
+  ],
+  "validResponses": [
+    {
+      "type": "monitor.result",
+      "requestId": "monitor-request",
+      "sessionId": "monitor-session",
+      "queryId": "monitor-query",
+      "monitor": {
+        "engine": "postgresql",
+        "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+        "collectedAt": "2026-01-02T03:04:05.456Z",
+        "sessions": [
+          {
+            "id": "42",
+            "user": "fixture_user",
+            "database": "fixture_db",
+            "client": "127.0.0.1",
+            "application": "Fixture client",
+            "state": "active",
+            "query": "SELECT name FROM fixture",
+            "queryAgeMs": "250",
+            "transactionAgeMs": "1000",
+            "waitType": "Lock",
+            "waitEvent": "transactionid",
+            "isMonitor": false,
+            "queryTruncated": false
+          },
+          {
+            "id": "43",
+            "user": "fixture_user",
+            "database": "fixture_db",
+            "state": "idle in transaction",
+            "isMonitor": false,
+            "queryTruncated": false
+          },
+          {
+            "id": "44",
+            "user": "fixture_user",
+            "database": "fixture_db",
+            "application": "DBeer monitor",
+            "state": "active",
+            "isMonitor": true,
+            "queryTruncated": false
+          }
+        ],
+        "waits": [
+          {
+            "waitingId": "42",
+            "blockingId": "43",
+            "kind": "lock"
+          },
+          {
+            "waitingId": "43",
+            "blockingId": "0",
+            "kind": "lock"
+          }
+        ],
+        "sessionsComplete": false,
+        "waitsComplete": false,
+        "notices": [
+          "Visibility follows the current database role. External or prepared blockers may have no session row."
+        ]
+      },
+      "connected": true,
+      "transactionStatus": "idle"
+    },
+    {
+      "type": "monitor.result",
+      "requestId": "mysql-monitor-request",
+      "sessionId": "mysql-monitor-session",
+      "queryId": "mysql-monitor-query",
+      "monitor": {
+        "engine": "mysql",
+        "collectionStartedAt": "2026-01-02T03:04:05.123Z",
+        "collectedAt": "2026-01-02T03:04:05.456Z",
+        "sessions": [
+          {
+            "id": "2",
+            "user": "fixture_user",
+            "database": "fixture_db",
+            "state": "Sleep",
+            "transactionAgeMs": "1250",
+            "isMonitor": false,
+            "queryTruncated": false
+          },
+          {
+            "id": "10",
+            "user": "fixture_user",
+            "database": "fixture_db",
+            "state": "Waiting for table metadata lock",
+            "query": "ALTER TABLE orders ADD COLUMN note TEXT",
+            "queryAgeMs": "250",
+            "transactionAgeMs": "1000",
+            "waitType": "metadata",
+            "waitEvent": "TABLE",
+            "isMonitor": false,
+            "queryTruncated": false
+          },
+          {
+            "id": "12",
+            "user": "fixture_user",
+            "database": "fixture_db",
+            "state": "executing",
+            "isMonitor": true,
+            "queryTruncated": false
+          }
+        ],
+        "waits": [
+          {
+            "waitingId": "10",
+            "blockingId": "2",
+            "kind": "metadata",
+            "object": "fixture_db.orders",
+            "lockMode": "EXCLUSIVE"
+          },
+          {
+            "waitingId": "11",
+            "blockingId": "2",
+            "kind": "data",
+            "object": "fixture_db.orders",
+            "lockMode": "X,REC_NOT_GAP"
+          }
+        ],
+        "sessionsComplete": false,
+        "waitsComplete": false,
+        "notices": [
+          "Session visibility and metadata wait queue coverage are limited. One waiter is outside the visible session list."
+        ]
+      },
+      "connected": true,
+      "transactionStatus": "idle"
+    }
+  ]
+}
