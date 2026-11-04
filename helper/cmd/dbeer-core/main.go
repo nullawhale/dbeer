@@ -14,6 +14,7 @@ import (
 	"dbeer/helper/internal/cassandra"
 	"dbeer/helper/internal/comparisonjob"
 	"dbeer/helper/internal/datacomparisonjob"
+	"dbeer/helper/internal/dbtools"
 	"dbeer/helper/internal/mcpbridge"
 	"dbeer/helper/internal/mongodb"
 	"dbeer/helper/internal/mysql"
@@ -231,7 +232,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.DataTransferCapability, protocol.SessionMonitorCapability, protocol.TableImportCapability, protocol.QueryParametersCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.DataTransferCapability, protocol.DatabaseToolsCapability, protocol.SessionMonitorCapability, protocol.TableImportCapability, protocol.QueryParametersCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -259,9 +260,9 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			}
 			continue
 		}
-		if strings.HasPrefix(command.Type, "transfer.") {
+		if strings.HasPrefix(command.Type, "transfer.") || strings.HasPrefix(command.Type, "dbtools.") {
 			if !operations.dispatch(command, local, stop) {
-				if !emit(protocol.ErrorResponse(command, "busy", "Too many data transfer requests are in progress.")) {
+				if !emit(protocol.ErrorResponse(command, "busy", "Too many transfer or database utility requests are in progress.")) {
 					return
 				}
 			}
@@ -621,6 +622,9 @@ func runCommand(args []string, input io.Reader, output io.Writer, rawIdentity, v
 }
 
 func main() {
+	if handled, err := dbtools.RunUtility(os.Args[1:]); handled {
+		os.Exit(dbtools.UtilityExitCode(err))
+	}
 	if err := runCommand(os.Args[1:], os.Stdin, os.Stdout, productBuildIdentity, productVersion, productBuildNumber); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

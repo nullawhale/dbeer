@@ -6,6 +6,10 @@
   mapping settings for creation and append imports, and immutable PostgreSQL/MySQL
   table-copy jobs across connections. Show validation, progress, schema omissions,
   MySQL DDL boundaries and uncertain outcomes without replaying writes.
+- Add PostgreSQL SQL/custom/tar and MySQL SQL dump/restore workflows using explicit
+  version-compatible native utilities, reviewed restore plans, private credentials,
+  atomic dump publication, cancellation and process-group cleanup. Keep operation
+  state and data outside restored workspace state.
 
 - Add a read-only PostgreSQL/MySQL session and blocking monitor with a dedicated
   connection, manual or optional automatic refresh, numeric sorting and session

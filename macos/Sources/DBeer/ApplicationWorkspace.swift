@@ -465,6 +465,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var schemaComparison: SchemaComparisonModel?
     @Published var dataComparison: DataComparisonModel?
     @Published var dataTransfer: DataTransferModel?
+    @Published var databaseTools: DatabaseToolsModel?
     private var sessionMonitorWindow: SessionMonitorWindowController?
     private var sessionMonitorProfileObservation: AnyCancellable?
     private var sessionMonitorPresentation = SessionMonitorPresentationIntent()
@@ -922,7 +923,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func showDataTransfer(_ profile: SavedConnection, mode: String = "csv", schema: String? = nil, table: String? = nil) {
-        guard canManageWorkspace, dataTransfer == nil, tableImporter == nil,
+        guard canManageWorkspace, dataTransfer == nil, databaseTools == nil, tableImporter == nil,
               structureEditor == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
         let store = credentialStore
         let model = DataTransferModel(profiles: library.savedConnections, resolve: { profile, attempt in
@@ -955,6 +956,31 @@ final class ApplicationWorkspace: ObservableObject {
     func dismissDataTransfer() {
         guard let model = dataTransfer else { return }
         Task { await model.close(); if dataTransfer?.id == model.id { dataTransfer = nil } }
+    }
+
+    func showDatabaseTools(_ profile: SavedConnection, restore: Bool = false) {
+        guard canManageWorkspace, databaseTools == nil, dataTransfer == nil, tableImporter == nil,
+              structureEditor == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+        let store = credentialStore
+        let model = DatabaseToolsModel(profiles: library.savedConnections, initialProfileID: profile.id,
+            resolve: { profile, attempt in try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt) },
+            authorize: { [weak self] target, review in
+                guard let self, self.shutdownTask == nil, !target.policy.readOnly else { return false }
+                return await self.confirmStandaloneOperation(target,
+                    preview: "Restore database: \(review.database ?? "")\nFile: \(review.path ?? "")\nUtility: \(review.toolName ?? "") \(review.toolVersion ?? "")\n\n" + review.warnings.joined(separator: "\n"))
+            }, bindingIsCurrent: { [weak self] profile in
+                guard let self, self.shutdownTask == nil else { return false }
+                return ExplainProfileBinding(profile)?.matches(self.library.savedConnections.first { $0.id == profile.id }) == true
+            }, cancelPreparation: { profile, attempt in
+                SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, attempt))
+            })
+        model.operation = restore ? .restore : .dump
+        databaseTools = model
+    }
+
+    func dismissDatabaseTools() {
+        guard let model = databaseTools else { return }
+        Task { await model.close(); if databaseTools?.id == model.id { databaseTools = nil } }
     }
 
     private func confirmStandaloneOperation(_ profile: SavedConnection, preview: String) async -> Bool {
@@ -3765,6 +3791,7 @@ final class ApplicationWorkspace: ObservableObject {
         invalidateERDiagrams(reason: "The workspace is shutting down.")
         await closeSessionMonitor()
         await dataTransfer?.close(); dataTransfer = nil
+        await databaseTools?.close(); databaseTools = nil
         commands.shutdown()
         await dataComparison?.close(); dataComparison = nil
         await schemaComparison?.close(); schemaComparison = nil

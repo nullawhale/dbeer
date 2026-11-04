@@ -1,0 +1,278 @@
+{
+  "version": 1,
+  "validCommands": [
+    {
+      "type": "dbtools.preview",
+      "requestId": "preview-dump",
+      "databaseTools": {
+        "connection": {
+          "engine": "postgresql",
+          "host": "fixture.invalid",
+          "port": 5432,
+          "database": "fixture_db",
+          "user": "fixture_user",
+          "password": "",
+          "sslMode": "disable"
+        },
+        "operation": "dump",
+        "format": "custom",
+        "path": "/synthetic/backup.dump",
+        "toolPath": "/synthetic/bin/pg_dump"
+      }
+    },
+    {
+      "type": "dbtools.preview",
+      "requestId": "preview-restore",
+      "databaseTools": {
+        "connection": {
+          "engine": "mysql",
+          "host": "fixture.invalid",
+          "port": 3306,
+          "database": "fixture_db",
+          "user": "fixture_user",
+          "password": "",
+          "sslMode": "disable"
+        },
+        "operation": "restore",
+        "format": "sql",
+        "path": "/synthetic/backup.sql",
+        "toolPath": "/synthetic/bin/mysql"
+      }
+    },
+    {
+      "type": "dbtools.start",
+      "requestId": "start",
+      "databaseTools": {
+        "planId": "plan",
+        "approvalToken": "approval",
+        "confirmed": true
+      }
+    },
+    {
+      "type": "dbtools.status",
+      "requestId": "status",
+      "databaseTools": {
+        "jobId": "job"
+      }
+    },
+    {
+      "type": "dbtools.cancel",
+      "requestId": "cancel",
+      "databaseTools": {
+        "jobId": "job"
+      }
+    },
+    {
+      "type": "dbtools.close",
+      "requestId": "close-plan",
+      "databaseTools": {
+        "planId": "plan"
+      }
+    },
+    {
+      "type": "dbtools.close",
+      "requestId": "close-job",
+      "databaseTools": {
+        "jobId": "job"
+      }
+    }
+  ],
+  "invalidCommands": [
+    "{\"type\":\"dbtools.status\",\"requestId\":\"bad\",\"databaseTools\":{\"jobId\":\"job\",\"confirmed\":false}}",
+    "{\"type\":\"dbtools.start\",\"requestId\":\"bad\",\"databaseTools\":{\"planId\":\"plan\",\"approvalToken\":\"approval\",\"path\":\"/synthetic/other\"}}",
+    "{\"type\":\"dbtools.preview\",\"requestId\":\"bad\",\"databaseTools\":{\"connection\":{\"engine\":\"postgresql\",\"host\":\"fixture.invalid\",\"port\":5432,\"database\":\"fixture_db\",\"user\":\"fixture_user\",\"password\":\"\",\"sslMode\":\"disable\"},\"operation\":\"dump\",\"format\":\"directory\",\"path\":\"/synthetic/backup.dump\",\"toolPath\":\"/synthetic/bin/pg_dump\"}}",
+    "{\"type\":\"dbtools.close\",\"requestId\":\"bad\",\"databaseTools\":{\"jobId\":\"job\",\"planId\":\"plan\"}}",
+    "{\"type\":\"dbtools.start\",\"requestId\":\"bad\",\"databaseTools\":{\"planId\":\"plan\",\"approvalToken\":\"approval\"},\"sql\":\"SELECT 1\"}"
+  ],
+  "validReplies": [
+    {
+      "type": "dbtools.preview.result",
+      "requestId": "preview-dump",
+      "databaseTools": {
+        "state": "prepared",
+        "phase": "ready",
+        "planId": "plan",
+        "approvalToken": "approval",
+        "engine": "postgresql",
+        "operation": "dump",
+        "format": "custom",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.dump",
+        "toolName": "pg_dump",
+        "toolVersion": "17.6",
+        "serverVersion": "17.6",
+        "requiresConfirmation": false,
+        "outputPublished": false,
+        "warnings": []
+      }
+    },
+    {
+      "type": "dbtools.start.result",
+      "requestId": "start",
+      "databaseTools": {
+        "state": "running",
+        "phase": "dumping",
+        "engine": "postgresql",
+        "operation": "dump",
+        "format": "custom",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.dump",
+        "toolName": "pg_dump",
+        "toolVersion": "17.6",
+        "serverVersion": "17.6",
+        "requiresConfirmation": false,
+        "outputPublished": false,
+        "warnings": [],
+        "jobId": "job",
+        "bytesProcessed": 4096
+      }
+    },
+    {
+      "type": "dbtools.status.result",
+      "requestId": "status",
+      "databaseTools": {
+        "state": "completed",
+        "phase": "completed",
+        "engine": "postgresql",
+        "operation": "dump",
+        "format": "custom",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.dump",
+        "toolName": "pg_dump",
+        "toolVersion": "17.6",
+        "serverVersion": "17.6",
+        "requiresConfirmation": false,
+        "outputPublished": true,
+        "warnings": [],
+        "jobId": "job",
+        "bytesProcessed": 4096,
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "dbtools.status.result",
+      "requestId": "restore-status",
+      "databaseTools": {
+        "state": "outcomeUnknown",
+        "phase": "outcomeUnknown",
+        "engine": "mysql",
+        "operation": "restore",
+        "format": "sql",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.sql",
+        "toolName": "mysql",
+        "toolVersion": "Ver 8.4.5",
+        "serverVersion": "8.4.5",
+        "requiresConfirmation": true,
+        "outputPublished": false,
+        "warnings": [],
+        "jobId": "job",
+        "bytesProcessed": 4096,
+        "totalBytes": 8192,
+        "exitCode": 1,
+        "message": "Restore was interrupted. Inspect the target before trying again."
+      }
+    },
+    {
+      "type": "dbtools.close.result",
+      "requestId": "close-job",
+      "databaseTools": {
+        "jobId": "job",
+        "state": "closed",
+        "phase": "closed",
+        "requiresConfirmation": false,
+        "outputPublished": false,
+        "warnings": []
+      }
+    }
+  ],
+  "invalidReplies": [
+    {
+      "type": "dbtools.preview.result",
+      "requestId": "bad",
+      "databaseTools": {
+        "state": "completed",
+        "phase": "completed",
+        "engine": "postgresql",
+        "operation": "dump",
+        "format": "custom",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.dump",
+        "toolName": "pg_dump",
+        "toolVersion": "17.6",
+        "serverVersion": "17.6",
+        "requiresConfirmation": false,
+        "outputPublished": true,
+        "warnings": [],
+        "jobId": "job",
+        "bytesProcessed": 4096,
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "dbtools.status.result",
+      "requestId": "bad",
+      "databaseTools": {
+        "state": "running",
+        "phase": "dumping",
+        "engine": "postgresql",
+        "operation": "dump",
+        "format": "custom",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.dump",
+        "toolName": "pg_dump",
+        "toolVersion": "17.6",
+        "serverVersion": "17.6",
+        "requiresConfirmation": false,
+        "outputPublished": true,
+        "warnings": [],
+        "jobId": "job",
+        "bytesProcessed": 4096
+      }
+    },
+    {
+      "type": "dbtools.status.result",
+      "requestId": "bad",
+      "databaseTools": {
+        "state": "running",
+        "phase": "restoring",
+        "engine": "mysql",
+        "operation": "restore",
+        "format": "sql",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.sql",
+        "toolName": "mysql",
+        "toolVersion": "Ver 8.4.5",
+        "serverVersion": "8.4.5",
+        "requiresConfirmation": true,
+        "outputPublished": false,
+        "warnings": [],
+        "jobId": "job",
+        "bytesProcessed": 8193,
+        "totalBytes": 8192
+      }
+    },
+    {
+      "type": "dbtools.close.result",
+      "requestId": "bad",
+      "databaseTools": {
+        "state": "closed",
+        "phase": "closed",
+        "planId": "plan",
+        "approvalToken": "approval",
+        "engine": "postgresql",
+        "operation": "dump",
+        "format": "custom",
+        "database": "fixture_db",
+        "path": "/synthetic/backup.dump",
+        "toolName": "pg_dump",
+        "toolVersion": "17.6",
+        "serverVersion": "17.6",
+        "requiresConfirmation": false,
+        "outputPublished": false,
+        "warnings": [],
+        "jobId": "job"
+      }
+    }
+  ]
+}

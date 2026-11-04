@@ -12,11 +12,15 @@ import (
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/dbtools"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/sshtunnel"
 )
 
 func TestMain(tests *testing.M) {
+	if handled, err := dbtools.RunUtility(os.Args[1:]); handled {
+		os.Exit(dbtools.UtilityExitCode(err))
+	}
 	if handled, err := sshtunnel.RunUtility(os.Args[1:]); handled {
 		if err != nil {
 			os.Exit(1)

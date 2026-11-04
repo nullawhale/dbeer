@@ -80,6 +80,39 @@ independently: an import failure can leave a newly created empty table, and the
 result reports this explicitly. Stop only cancels this transfer's connections.
 An uncertain commit blocks replay and requires inspecting the destination.
 
+## Database dump and restore (unreleased)
+
+Choose **Backup Database…** or **Restore Database…** in a PostgreSQL/MySQL
+connection's context menu. Select the database, format, file and absolute path
+to a compatible local utility. PostgreSQL supports plain SQL, custom and tar
+archives with `pg_dump`, `psql` and `pg_restore`; MySQL uses SQL files with
+`mysqldump` and `mysql`. Utilities are selected explicitly and are not installed
+or downloaded by DBeer.
+
+**Preview** checks the selected utility and server versions and freezes restore
+input. PostgreSQL utility major versions must match supported servers 16/17/18;
+plain SQL restoration additionally needs restricted-client support in psql
+16.10+, 17.6+ or 18. MySQL utilities must match the server's 8.0 or 8.4 series.
+Changing the utility, file, database or profile requires another preview.
+
+Start shows the phase, available byte progress, completion state and exit result.
+Archive restore can have indeterminate progress; DBeer does not invent a
+percentage. Dump output is published only after successful completion and a
+fresh destination identity check. Failed or cancelled dumps do not publish a
+partial final file. Restore always requires confirmation: represented existing
+objects can be replaced. DBeer does not create or drop the selected database.
+Cancellation or connection loss during restore can leave an uncertain or partial
+database result, which is reported without automatic reconnect or replay.
+
+Credentials use private temporary client configuration instead of command-line
+passwords. Client startup configuration and local file commands are restricted;
+utility diagnostics are drained without recording SQL, results or credentials.
+SSH forwarding retains the original PostgreSQL TLS verification identity.
+MySQL's verify-identity mode cannot be preserved by its command-line client over
+the local SSH endpoint and requires a direct verified connection; verification
+is never downgraded. Closing the operation cleans its private workspace and
+terminates only its own child process group.
+
 ## Sessions and blocking (unreleased)
 
 Open **Session Monitor…** from a PostgreSQL or MySQL connection's context menu.
