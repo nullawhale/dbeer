@@ -45,6 +45,11 @@ func changeNameValid(value string) bool {
 
 func (value CellValue) Valid(allowDefault bool) bool {
 	switch value.Kind {
+	case "sqliteInteger", "sqliteReal", "sqliteText", "sqliteBlob":
+		if value.Value == nil {
+			return false
+		}
+		return (SQLiteValue{Type: strings.ToLower(strings.TrimPrefix(value.Kind, "sqlite")), Value: *value.Value}).Valid()
 	case "null":
 		return value.Value == nil
 	case "default":
@@ -68,7 +73,7 @@ func (request ChangesRequest) Valid() bool {
 	}
 	columns := map[string]bool{}
 	for _, column := range request.Columns {
-		if !changeNameValid(column.Name) || columns[column.Name] || (column.Engine != "postgresql" && column.Engine != "mysql" && column.Engine != "cassandra") ||
+		if !changeNameValid(column.Name) || columns[column.Name] || (column.Engine != "postgresql" && column.Engine != "mysql" && column.Engine != "cassandra" && column.Engine != "sqlite") ||
 			column.NativeType == "" || len(column.NativeType) > 65536 || !utf8.ValidString(column.NativeType) || strings.ContainsRune(column.NativeType, 0) {
 			return false
 		}

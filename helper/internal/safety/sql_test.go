@@ -136,7 +136,7 @@ func TestClassifySQL(t *testing.T) {
 		{"nested semicolon", "postgresql", "SELECT (1; DELETE FROM t)", Unknown},
 		{"invalid query suffix", "postgresql", "SELECT 1 DELETE FROM t", Unknown},
 		{"unknown keyword", "postgresql", "FUTURE COMMAND x", Unknown},
-		{"unknown dialect", "sqlite", "SELECT 1", Unknown},
+		{"unknown dialect", "unsupported", "SELECT 1", Unknown},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

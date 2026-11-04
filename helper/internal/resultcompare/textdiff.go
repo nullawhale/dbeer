@@ -2,8 +2,12 @@ package resultcompare
 
 import (
 	"context"
+	"dbeer/helper/internal/sqlitevalue"
 	"dbeer/helper/internal/textdiff"
 	"encoding/base64"
+	"encoding/json"
+	"math"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +40,27 @@ func (r *Result) TextDiff(ctx context.Context, report int64, mapping int) (textd
 		}
 		if row[column] == nil {
 			return textdiff.Input{Kind: "null"}, nil
+		}
+		if source.Metadata().Columns[column].Encoding == "sqliteValue" {
+			var v sqlitevalue.Value
+			if json.Unmarshal([]byte(*row[column]), &v) != nil || !v.Valid() {
+				return textdiff.Input{}, ErrSource
+			}
+			switch v.Type {
+			case "null":
+				return textdiff.Input{Kind: "null"}, nil
+			case "text":
+				b, _ := base64.StdEncoding.DecodeString(v.Value)
+				return textdiff.Text(string(b)), nil
+			case "blob":
+				b, _ := base64.StdEncoding.DecodeString(v.Value)
+				return textdiff.Input{Kind: "binary", TotalBytes: int64(len(b))}, nil
+			case "integer":
+				return textdiff.Text(v.Value), nil
+			case "real":
+				bits, _ := strconv.ParseUint(v.Value, 16, 64)
+				return textdiff.Text(strconv.FormatFloat(math.Float64frombits(bits), 'g', -1, 64)), nil
+			}
 		}
 		if source.Metadata().Columns[column].Encoding == "base64" {
 			value := *row[column]

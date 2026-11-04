@@ -6,7 +6,7 @@ import (
 )
 
 func ValidBaseline(b Baseline) bool {
-	if !b.Target.Valid() || b.Target.Reconcile || !IsDigest(b.Fingerprint) || b.Engine != "postgresql" && b.Engine != "mysql" || len(b.Columns) > MaxColumns || len(b.Keys) > 256 || len(b.Indexes) > 256 || len(b.Limitations) > 64 {
+	if !b.Target.Valid() || b.Target.Reconcile || !IsDigest(b.Fingerprint) || b.Engine != "postgresql" && b.Engine != "mysql" && b.Engine != "sqlite" || len(b.Columns) > MaxColumns || len(b.Keys) > 256 || len(b.Indexes) > 256 || len(b.Limitations) > 64 {
 		return false
 	}
 	raw, e := json.Marshal(b)

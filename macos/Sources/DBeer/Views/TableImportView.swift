@@ -13,8 +13,7 @@ struct TableImportView: View {
                 Spacer()
                 Text(model.profile.name).appSecondaryText()
             }
-            Text(model.profile.engine.displayName + " · " + model.profile.host + ":" +
-                String(model.profile.port) + "/" + model.profile.database + " · " + model.profile.user +
+            Text(model.profile.engine.displayName + " · " + model.profile.endpointDescription +
                 " · " + model.profile.policy.label)
                 .font(.caption).appSecondaryText().textSelection(.enabled)
             Text(model.schema + "." + model.table).font(.system(.body, design: .monospaced)).textSelection(.enabled)

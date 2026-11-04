@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "capability": "browseFilterTreeV1",
   "validCatalogRequests": [
     {"kind":"browse","schema":"public","object":"records","objectKind":"table"},

@@ -59,7 +59,7 @@ extension NativeFeatureIntegrationTests {
         import json, sys
         def read(): return json.loads(sys.stdin.readline())
         def send(value): print(json.dumps(value), flush=True)
-        c=read();send(dict(type='hello.ack',requestId=c['requestId'],protocolVersion=5))
+        c=read();send(dict(type='hello.ack',requestId=c['requestId'],protocolVersion=6))
         \(body)
         """])
     }
@@ -129,7 +129,7 @@ extension NativeFeatureIntegrationTests {
 
 extension NativeFeatureIntegrationTests {
     @Test func optionalTransportPayloadsPreserveOmissionAndWireRoundTrips() throws {
-        let empty = BackendMessage(type: "hello.ack", requestId: "synthetic-hello", protocolVersion: 5)
+        let empty = BackendMessage(type: "hello.ack", requestId: "synthetic-hello", protocolVersion: 6)
         let emptyData = try JSONEncoder().encode(empty)
         let fields = try #require(JSONSerialization.jsonObject(with: emptyData) as? [String: Any])
         for key in ["explain", "explainSupport", "comparison", "schemaComparison", "dataComparison"] {

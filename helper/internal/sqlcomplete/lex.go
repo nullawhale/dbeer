@@ -73,7 +73,7 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 			i += 2
 			depth := 1
 			for i < len(text) && depth > 0 {
-				if strings.HasPrefix(text[i:], "/*") && engine != "mysql" && engine != "cassandra" {
+				if strings.HasPrefix(text[i:], "/*") && engine != "mysql" && engine != "cassandra" && engine != "sqlite" {
 					depth++
 					i += 2
 				} else if strings.HasPrefix(text[i:], "*/") {
@@ -112,15 +112,19 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 				continue
 			}
 		}
-		if text[i] == '\'' || text[i] == '"' || engine == "mysql" && text[i] == '`' {
+		if text[i] == '\'' || text[i] == '"' || (engine == "mysql" || engine == "sqlite") && text[i] == '`' || engine == "sqlite" && text[i] == '[' {
 			quote := text[i]
-			backslashEscapes := engine == "mysql" || engine != "cassandra" && quote == '\'' && start > 0 && (text[start-1] == 'e' || text[start-1] == 'E') && (start < 2 || !identifierRune(rune(text[start-2])))
+			closing := quote
+			if quote == '[' {
+				closing = ']'
+			}
+			backslashEscapes := engine == "mysql" || engine != "cassandra" && engine != "sqlite" && quote == '\'' && start > 0 && (text[start-1] == 'e' || text[start-1] == 'E') && (start < 2 || !identifierRune(rune(text[start-2])))
 			i++
 			terminated := false
 			var value strings.Builder
 			for i < len(text) {
-				if text[i] == quote {
-					if i+1 < len(text) && text[i+1] == quote {
+				if text[i] == closing {
+					if closing != ']' && i+1 < len(text) && text[i+1] == closing {
 						value.WriteByte(quote)
 						i += 2
 						continue

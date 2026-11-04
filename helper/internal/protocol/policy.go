@@ -177,6 +177,7 @@ type AssessedOperation struct {
 }
 
 type OperationAssessment struct {
+	SQLiteFiles   []string            `json:"sqliteFiles,omitempty"`
 	Decision      string              `json:"decision"`
 	Policy        ExecutionPolicy     `json:"policy"`
 	Operations    []AssessedOperation `json:"operations"`

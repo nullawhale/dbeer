@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+- Keep SQLite editor completion local to each SQL tab, including TEMP objects and
+  attached databases. Resolve duplicate names in SQLite lookup order, with correct
+  quoting/case rules. Refresh after explicit autocommit SQL or profile Refresh,
+  preserve deferred snapshots by using cached metadata in open transactions,
+  and disclose stale, limited or failed collections. Never connect on typing or
+  restoration or replace ordinary query results.
+- Allow readonly SQLite profiles to attach existing files with physical readonly
+  access. Continue rejecting missing files, writable operations and attachment
+  access through MCP.
+- Generate strict SQLite synchronization guards for nonzero REAL originals,
+  including infinities, while keeping signed-zero/NaN originals manual.
+
+- Preserve untouched SQLite constraints, generated expressions, collations and
+  type aliases during supported column reconstruction. Expose native SQLite
+  column types in the editor and retain NOT NULL conflict policies.
+- Verify large SQLite table rebuilds with bounded-memory external hashing rather
+  than row-capture limits, including private workspace cleanup on cancellation.
+- Generate exact binary64 SQLite literals for supported synchronization source
+  assignments, INSERT copying and change previews; retain strict original-value
+  guards and explicit refusal of unpreservable REAL payloads.
+
+- Add local SQLite profiles with explicit file creation, independent SQL sessions,
+  transactions/savepoints, cancellation, readonly policy and tab-local ATTACH.
+  Missing files are never created by connecting, and portable profiles require
+  local file selection. Network filesystems, SQLCipher and extension loading are
+  unsupported; restoration never opens database files.
+- Preserve SQLite storage classes per cell across results, grid changes, inspection,
+  copying, exports, snapshots and comparisons. Add primary-key-based Preview/Apply,
+  catalog browsing, filters/saved views, CSV/TSV import, ER diagrams and estimated
+  EXPLAIN QUERY PLAN. Query result grids remain read-only.
+- Add SQLite structure drafts with reviewed transactional reconstruction for
+  supported definitions, dependency checks and AUTOINCREMENT retention. Add schema
+  and data comparisons and conservative synchronization SQL; unsupported changes
+  remain explicit manual steps. Bundle the SQLite engine and dependency notices.
+- Advance the native/helper protocol to v6 and snapshot storage to v2, retaining
+  reads of earlier snapshots and migration backups for saved local state.
+
 - Import bounded UTF-8 CSV/TSV files into existing PostgreSQL/MySQL tables through
   explicit column mapping, separate unquoted NULL/empty-field rules, local data
   previews and a helper-generated SQL preview. Apply binds all rows in one

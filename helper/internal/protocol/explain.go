@@ -90,10 +90,10 @@ func (m ExplainMetric) Valid() bool {
 	return false
 }
 func (s ExplainSupport) Valid() bool {
-	if s.Engine != "postgresql" && s.Engine != "mysql" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
+	if s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "sqlite" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
 		return false
 	}
-	if s.Engine == "postgresql" && s.Format != "json" || s.Engine == "mysql" && s.Format != "tree" {
+	if s.Engine == "sqlite" && (s.Format != "queryPlan" || len(s.Modes) != 1 || s.Modes[0] != "plan") || s.Engine == "postgresql" && s.Format != "json" || s.Engine == "mysql" && s.Format != "tree" {
 		return false
 	}
 	seen := map[string]bool{}

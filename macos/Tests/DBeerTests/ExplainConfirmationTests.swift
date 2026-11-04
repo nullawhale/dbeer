@@ -10,7 +10,7 @@ struct ExplainConfirmationTests {
         import json,sys
         def read():return json.loads(sys.stdin.readline())
         def send(v):print(json.dumps(v),flush=True)
-        c=read();send(dict(type='hello.ack',requestId=c['requestId'],protocolVersion=5))
+        c=read();send(dict(type='hello.ack',requestId=c['requestId'],protocolVersion=6))
         c=read()
         if c['type']!='operation.assess' or c['operations'][0]['explain']['mode']!='analyze':sys.exit(31)
         support=dict(engine='postgresql',serverVersion='17.6',format='json',modes=['plan','analyze'])

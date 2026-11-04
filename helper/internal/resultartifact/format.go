@@ -2,6 +2,7 @@ package resultartifact
 
 import (
 	"bytes"
+	"dbeer/helper/internal/sqlitevalue"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -16,7 +17,7 @@ func decodeManifest(data []byte, id string) (Metadata, error) {
 		return Metadata{}, err
 	}
 	var m Metadata
-	if !decodeRequired(object, "version", &m.Version) || m.Version != 1 ||
+	if !decodeRequired(object, "version", &m.Version) || (m.Version != 1 && m.Version != 2) ||
 		!decodeRequired(object, "id", &m.ID) || strings.ToLower(m.ID) != id ||
 		!decodeRequired(object, "title", &m.Title) || strings.TrimSpace(m.Title) == "" || len(m.Title) > 4096 ||
 		!decodeRequired(object, "capturedAt", &m.CapturedAt) || math.IsInf(m.CapturedAt, 0) || math.IsNaN(m.CapturedAt) ||
@@ -39,6 +40,17 @@ func decodeManifest(data []byte, id string) (Metadata, error) {
 	m.ID = id
 	if m.Columns, err = decodeColumns(object["columns"]); err != nil {
 		return Metadata{}, err
+	}
+	if m.Engine == "sqlite" {
+		if m.Version != 2 {
+			return Metadata{}, ErrCorrupt
+		}
+		for i := range m.Columns {
+			m.Columns[i].Encoding = "sqliteValue"
+			if m.Columns[i].TypeIdentity == "" {
+				m.Columns[i].TypeIdentity = "sqlite-value-v1:" + m.Columns[i].NativeType
+			}
+		}
 	}
 	return m, nil
 }
@@ -100,7 +112,7 @@ func decodeColumn(data []byte, index int) (Column, error) {
 		c.TypeOID = *typeOID
 	}
 	if encoding != nil {
-		if *encoding != "base64" {
+		if *encoding != "base64" && *encoding != "sqliteValue" {
 			return Column{}, ErrCorrupt
 		}
 		c.Encoding = *encoding
@@ -113,6 +125,32 @@ func decodeColumn(data []byte, index int) (Column, error) {
 
 func decodeRow(data []byte, columns []Column) ([]*string, error) {
 	trimmed := bytes.TrimSpace(data)
+	if len(columns) > 0 && columns[0].Engine == "sqlite" && len(trimmed) > 0 && trimmed[0] == '{' {
+		obj, err := decodeObject(trimmed)
+		if err != nil {
+			return nil, err
+		}
+		var display []*string
+		var cells []sqlitevalue.Value
+		if len(obj) != 2 || !decodeRequired(obj, "values", &display) || !decodeRequired(obj, "sqliteValues", &cells) || len(cells) != len(columns) || len(display) != len(columns) {
+			return nil, ErrCorrupt
+		}
+		out := make([]*string, len(cells))
+		for i, v := range cells {
+			if !v.Valid() {
+				return nil, ErrCorrupt
+			}
+			if v.Type != "null" {
+				b, e := json.Marshal(v)
+				if e != nil {
+					return nil, ErrCorrupt
+				}
+				str := string(b)
+				out[i] = &str
+			}
+		}
+		return out, nil
+	}
 	if len(data) == 0 || len(data) > MaximumRowBytes || len(trimmed) == 0 || trimmed[0] != '[' || !validJSONText(data) {
 		return nil, ErrCorrupt
 	}
@@ -127,6 +165,12 @@ func decodeRow(data []byte, columns []Column) ([]*string, error) {
 		return nil, ErrCorrupt
 	}
 	for index, value := range row {
+		if value != nil && columns[index].Encoding == "sqliteValue" {
+			var v sqlitevalue.Value
+			if json.Unmarshal([]byte(*value), &v) != nil || !v.Valid() || v.Type == "null" {
+				return nil, ErrCorrupt
+			}
+		}
 		if value == nil || columns[index].Encoding != "base64" {
 			continue
 		}
@@ -178,7 +222,7 @@ func rowWidth(data []byte) int {
 }
 
 func validEngine(engine string) bool {
-	return oneOf(engine, "postgresql", "mysql", "cassandra", "mongodb")
+	return oneOf(engine, "postgresql", "mysql", "cassandra", "mongodb", "sqlite")
 }
 
 func oneOf(value string, choices ...string) bool {

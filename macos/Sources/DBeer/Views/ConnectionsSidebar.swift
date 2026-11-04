@@ -124,7 +124,7 @@ struct ConnectionsSidebar: View {
                 Text(connection.name)
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
-                Text("\(connection.host):\(String(connection.port))/\(connection.database)")
+                Text(connection.engine == .sqlite ? connection.sqlite?.path ?? "Database file unavailable" : "\(connection.host):\(String(connection.port))/\(connection.database)")
                     .font(.caption)
                     .appSecondaryText()
                     .lineLimit(1)
@@ -143,7 +143,7 @@ struct ConnectionsSidebar: View {
             guard model.canConnect else { return }
             Task { await model.connectSavedConnection(connection.id) }
         }
-        .help("\(connection.name) — \(connection.user)@\(connection.host):\(connection.port)/\(connection.database). Double-click to connect.")
+        .help("\(connection.name) — \(connection.endpointDescription). Double-click to connect.")
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("connectionRow-\(connection.id.uuidString)")
     }

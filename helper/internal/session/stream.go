@@ -71,23 +71,25 @@ func (state *creditState) send(ctx context.Context, index int, columns []protoco
 }
 
 type streamSet struct {
-	columns    []protocol.Column
-	summary    protocol.ResultSet
-	batch      [][]*string
-	batchBytes int
-	sent       int
-	seen       int64
-	dropped    bool
-	ended      bool
+	sqliteValues [][]protocol.SQLiteValue
+	columns      []protocol.Column
+	summary      protocol.ResultSet
+	batch        [][]*string
+	batchBytes   int
+	sent         int
+	seen         int64
+	dropped      bool
+	ended        bool
 }
 
 type streamSink struct {
-	ctx    context.Context
-	credit *creditState
-	sets   []*streamSet
-	bytes  int
-	rows   int
-	err    error
+	pendingSQLite []protocol.SQLiteValue
+	ctx           context.Context
+	credit        *creditState
+	sets          []*streamSet
+	bytes         int
+	rows          int
+	err           error
 }
 
 func (sink *streamSink) Begin(index int, columns []protocol.Column) error {
@@ -111,7 +113,14 @@ func (sink *streamSink) Begin(index int, columns []protocol.Column) error {
 	return sink.err
 }
 
+func (sink *streamSink) SQLiteRow(index int, row []protocol.SQLiteValue) error {
+	sink.pendingSQLite = row
+	return nil
+}
+
 func (sink *streamSink) Row(index int, row []*string) error {
+	typed := sink.pendingSQLite
+	sink.pendingSQLite = nil
 	if index < 0 || index >= len(sink.sets) {
 		return errors.New("Invalid result sequence.")
 	}
@@ -125,7 +134,12 @@ func (sink *streamSink) Row(index int, row []*string) error {
 		return nil
 	}
 	encoded, _ := json.Marshal(row)
-	if sink.bytes+len(encoded)+1 > displayBytes {
+	typedBytes := 0
+	if typed != nil {
+		b, _ := json.Marshal(typed)
+		typedBytes = len(b) + 1
+	}
+	if sink.bytes+len(encoded)+typedBytes+1 > displayBytes {
 		set.dropped = true
 		return nil
 	}
@@ -134,9 +148,12 @@ func (sink *streamSink) Row(index int, row []*string) error {
 			return err
 		}
 	}
+	if typed != nil {
+		set.sqliteValues = append(set.sqliteValues, typed)
+	}
 	set.batch = append(set.batch, row)
 	set.batchBytes += len(encoded) + 1
-	sink.bytes += len(encoded) + 1
+	sink.bytes += len(encoded) + typedBytes + 1
 	sink.rows++
 	if set.batchBytes >= chunkTarget {
 		return sink.flush(index)
@@ -173,6 +190,12 @@ func (sink *streamSink) End(index int, summary protocol.ResultSet) error {
 	set.summary = summary
 	set.summary.Columns, set.summary.Rows = set.columns, nil
 	set.summary.DisplayedRowCount = set.sent
+	set.summary.SQLiteValues = nil
+	if len(set.sqliteValues) >= set.sent && set.sqliteValues != nil {
+		set.summary.SQLiteValues = set.sqliteValues[:set.sent]
+	} else if set.sent == 0 && summary.SQLiteValues != nil {
+		set.summary.SQLiteValues = [][]protocol.SQLiteValue{}
+	}
 	if len(summary.StorageTokens) >= set.sent {
 		set.summary.StorageTokens = append([]string(nil), summary.StorageTokens[:set.sent]...)
 		encoded, _ := json.Marshal(set.summary.StorageTokens)
@@ -230,6 +253,7 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 			response.DisplayNotice = set.summary.DisplayNotice
 			response.NextCursor = set.summary.NextCursor
 			response.AffectedRowCountKnown = set.summary.AffectedRowCountKnown
+			response.SQLiteValues = set.summary.SQLiteValues
 			response.StorageTokens = set.summary.StorageTokens
 			response.Source = set.summary.Source
 			first = false
@@ -251,6 +275,20 @@ func (sinks fanoutSink) Begin(index int, columns []protocol.Column) error {
 	}
 	return first
 }
+func (sinks fanoutSink) SQLiteRow(index int, row []protocol.SQLiteValue) error {
+	var first error
+	for _, sink := range sinks {
+		if typed, ok := sink.(interface {
+			SQLiteRow(int, []protocol.SQLiteValue) error
+		}); ok {
+			if err := typed.SQLiteRow(index, row); err != nil && first == nil {
+				first = err
+			}
+		}
+	}
+	return first
+}
+
 func (sinks fanoutSink) Row(index int, row []*string) error {
 	var first error
 	for _, sink := range sinks {

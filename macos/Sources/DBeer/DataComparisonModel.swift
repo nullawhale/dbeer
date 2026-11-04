@@ -250,7 +250,7 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     func close() async { await stop(); clearOutput(); phase = .closed }
     func reset() async { await close(); operation = ""; phase = .closed }
     private func clearOutput() { dismissPlan(); clearDiff(); summary = nil; page = nil; selectedRow = nil; selectedValue = nil; valueChunk = nil; error = nil; pageOffsets = [0]; cellOffsets = [0]; valueOffsets = [0] }
-    var canGeneratePlan: Bool { phase == .completed && summary != nil && !isGeneratingPlan && targetProfile.map { [.postgresql, .mysql].contains($0.engine) } == true }
+    var canGeneratePlan: Bool { phase == .completed && summary != nil && !isGeneratingPlan && targetProfile.map { [.postgresql, .mysql, .sqlite].contains($0.engine) } == true }
     func dismissPlan() { planGeneration = UUID(); planDraft?.invalidate(); planDraft = nil; isGeneratingPlan = false }
     func generatePlan() async {
         guard canGeneratePlan, let backend, let jobID, let summary, let sourceProfile, let targetProfile else { return }
@@ -357,7 +357,7 @@ enum DataComparisonCredentials {
     static func promptID(_ profile: UUID, _ attempt: UUID) -> String { "data:\(profile):\(attempt)" }
     static func settings(_ profile: SavedConnection, store: any ConnectionCredentialStore, attempt: UUID) async throws -> ConnectionSettings {
         try Task.checkCancellation()
-        let password = profile.passwordCommand == nil ? try await store.password(for: profile.id) ?? "" : ""
+        let password = profile.engine != .sqlite && profile.passwordCommand == nil ? try await store.password(for: profile.id) ?? "" : ""
         try Task.checkCancellation(); var settings = profile.settings(password: password)
         if var ssh = settings.ssh {
             if ssh.authMethod == .password {

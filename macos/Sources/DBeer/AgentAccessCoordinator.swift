@@ -164,7 +164,7 @@ final class AgentAccessCoordinator: ObservableObject {
             return AgentConnection(id: $0.id.uuidString, name: $0.name, engine: $0.engine.rawValue,
                 readOnly: readOnly,
                 queryLanguage: $0.engine == .mongodb ? "mongodb-json" : $0.engine == .cassandra ? "cql" : "sql",
-                readOnlyEnforcement: readOnly ? ([.postgresql, .mysql].contains($0.engine) ? "localAndServer" : "local") : "off")
+                readOnlyEnforcement: readOnly ? ([.postgresql, .mysql, .sqlite].contains($0.engine) ? "localAndServer" : "local") : "off")
         }
         return AgentResponse(id: request.id, ok: true, connections: entries)
     }
@@ -235,6 +235,10 @@ final class AgentAccessCoordinator: ObservableObject {
                 command = .catalog(sessionId: sessionID, queryId: queryID, request: catalog)
             } else {
                 let sql = request.sql!
+                if profile.engine == .sqlite {
+                    let tokens = SQLScriptParser.parse(sql, engine: .sqlite).tokens.filter { $0.kind != .comment }
+                    if let token = tokens.first, ["ATTACH", "DETACH", "VACUUM"].contains((sql as NSString).substring(with: token.range).uppercased()) { throw AgentFailure() }
+                }
                 let operations = [OperationRequest(type: "execute", sql: sql)]
                 let assessed = try await backend.request(.assess(sessionId: sessionID, operations: operations))
                 guard valid(clientID, profile: profile, operation: operation),
@@ -340,7 +344,7 @@ final class AgentAccessCoordinator: ObservableObject {
             let result = AgentResult(columns: set.columns.map { AgentColumn(name: $0.name, type: $0.nativeType, encoding: $0.encoding) },
                 rows: Array(set.rows.prefix(count)), commandTag: String(set.commandTag.prefix(128)), rowCount: set.rowCount,
                 truncated: set.truncated || count < set.rows.count || sets.count > 16,
-                displayNotice: set.displayNotice, affectedRowCountKnown: set.affectedRowCountKnown)
+                displayNotice: set.displayNotice, affectedRowCountKnown: set.affectedRowCountKnown, sqliteValues: set.sqliteValues.map { Array($0.prefix(count)) })
             remaining -= count; results.append(result)
         }
         let encoder = JSONEncoder()
@@ -356,6 +360,7 @@ final class AgentAccessCoordinator: ObservableObject {
                 var result = original
                 let keep = min(remaining, original.rows.count)
                 result.rows = Array(original.rows.prefix(keep))
+                result.sqliteValues = original.sqliteValues.map { Array($0.prefix(keep)) }
                 result.truncated = original.truncated || keep < original.rows.count
                 remaining -= keep
                 return result

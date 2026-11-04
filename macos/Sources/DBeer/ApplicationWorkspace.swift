@@ -23,6 +23,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var profileID: UUID? {
         didSet {
             if profileID != oldValue {
+                invalidateSQLiteCompletion()
                 clearExecutionSuccess()
                 tableForeignKeys = []
                 foreignKeysError = nil
@@ -43,7 +44,26 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var historyConnectionNotice: String?
     @Published private(set) var successfulExecutionRanges: [NSRange] = []
     private(set) var executionRevision: UInt64 = 0
-    @Published var runtime: WorkspaceModel?
+    @Published var runtime: WorkspaceModel? {
+        didSet {
+            if runtime !== oldValue {
+                sqliteSessionObservation = nil
+                invalidateSQLiteCompletion()
+            }
+        }
+    }
+    @Published var sqliteCompletion: SQLiteSessionCompletion?
+    @Published var sqliteCompletionNotice: String?
+    var sqliteCompletionLoadID = UUID()
+    var sqliteCompletionQueryID: String?
+    private var sqliteSessionObservation: AnyCancellable?
+
+    func invalidateSQLiteCompletion() {
+        sqliteCompletionLoadID = UUID()
+        sqliteCompletion = nil
+        sqliteCompletionNotice = nil
+        sqliteCompletionQueryID = nil
+    }
     @Published var isRunning = false
     @Published var selection = NSRange(location: 0, length: 0)
     @Published var executions: [SQLExecution] = []
@@ -307,6 +327,9 @@ final class SQLDocument: ObservableObject, Identifiable {
             tableNextCursor = nil
         } else { resetTablePaging() }
         runtime = model
+        sqliteSessionObservation = model.$sessionId.removeDuplicates().sink { [weak self] _ in
+            self?.invalidateSQLiteCompletion()
+        }
         runtimeObservation = model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
@@ -897,7 +920,7 @@ final class ApplicationWorkspace: ObservableObject {
     func agentConnectionSettings(_ profile: SavedConnection) async throws -> ConnectionSettings? {
         guard profile.passwordCommand == nil,
               library.savedConnections.contains(profile) else { return nil }
-        let password = try await credentialStore.password(for: profile.id) ?? ""
+        let password = profile.engine == .sqlite ? "" : try await credentialStore.password(for: profile.id) ?? ""
         var settings = profile.settings(password: password)
         if var ssh = settings.ssh {
             if ssh.authMethod == .password {
@@ -941,7 +964,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     @discardableResult
     func openSynchronizationPlan(_ sql: String, target: SavedConnection) -> Bool {
-        guard shutdownTask == nil, !isClosing, [.postgresql, .mysql].contains(target.engine),
+        guard shutdownTask == nil, !isClosing, [.postgresql, .mysql, .sqlite].contains(target.engine),
               !sql.isEmpty, sql.utf8.count <= SynchronizationSQLPlan.maximumBytes + 1_048_576,
               synchronizationTargetMatches(target) else { return false }
         let document = newDocument(profileID: target.id, text: sql)
@@ -1536,8 +1559,8 @@ final class ApplicationWorkspace: ObservableObject {
             let definitions = libraryBinding?.parameters ?? []
             let parameters: [QueryParameterBinding]?
             if !definitions.isEmpty {
-                guard [.postgresql, .mysql].contains(profile.engine) else {
-                    throw ExecutionPolicyError(message: "Saved query parameters support PostgreSQL and MySQL connections.")
+                guard [.postgresql, .mysql, .sqlite].contains(profile.engine) else {
+                    throw ExecutionPolicyError(message: "Saved query parameters support PostgreSQL, MySQL and SQLite connections.")
                 }
                 guard let values = await requestQueryParameters(definitions, document: document, profile: profile) else { return }
                 try QueryParameterBinding.validate(values)
@@ -1598,7 +1621,7 @@ final class ApplicationWorkspace: ObservableObject {
                   Int(runtime.port) == profile.port, runtime.database == profile.database,
                   runtime.contactPoints == profile.contactPoints, runtime.localDatacenter == profile.localDatacenter,
                   runtime.consistency == profile.consistency, runtime.ssh?.configuration == profile.ssh,
-                  runtime.mongodb == profile.mongodb,
+                  runtime.mongodb == profile.mongodb, runtime.sqlite == profile.sqlite,
                   runtime.user == profile.user, runtime.sslMode == profile.sslMode,
                   (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == profile.sslRootCert else {
                 throw ExecutionPolicyError(message: "The profile changed. Disconnect and reconnect before loading data or executing SQL.")
@@ -1677,6 +1700,9 @@ final class ApplicationWorkspace: ObservableObject {
                     for index in document.executions.indices { document.executions[index].status = "Not executed" }
                     return
                 }
+                if profile.engine == .sqlite, !SQLiteSessionCompletionPolicy.preservesCatalog(statements) {
+                    document.invalidateSQLiteCompletion()
+                }
                 for (index, statement) in statements.enumerated() {
                     guard canStartOperation(document), !document.stopRequested, SQLFileDocument.sameBytes(document.text, boundText),
                           document.profileID == profileID, runtime.sessionId == sessionID,
@@ -1717,6 +1743,13 @@ final class ApplicationWorkspace: ObservableObject {
                     document.localError = "The SQL library scope or connection group changed. Remaining statements were not executed."
                 }
                 _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
+                if profile.engine == .sqlite {
+                    if runtime.transactionStatus == .idle {
+                        await refreshSQLiteSessionCompletion(document, client: client)
+                    } else if runtime.connectionState == .connected, document.sqliteCompletion == nil {
+                        document.sqliteCompletionNotice = "SQLite suggestions will refresh after the transaction ends. Use Refresh to update them now."
+                    }
+                }
             }
         } catch {
             document.localError = error.localizedDescription
@@ -1733,8 +1766,8 @@ final class ApplicationWorkspace: ObservableObject {
               !editorState.hasMultipleSelections(for: document.id),
               let profileID = document.profileID,
               let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
-        guard [.postgresql, .mysql].contains(profile.engine) else {
-            document.localError = "Visual Explain supports PostgreSQL and Oracle MySQL SQL tabs."; return
+        guard [.postgresql, .mysql, .sqlite].contains(profile.engine) else {
+            document.localError = "Visual Explain supports PostgreSQL, Oracle MySQL and SQLite SQL tabs."; return
         }
         let request: ExplainRequest
         do { request = try ExplainPlanModel.request(fragment: fragment, mode: mode, engine: profile.engine) }
@@ -1823,6 +1856,10 @@ final class ApplicationWorkspace: ObservableObject {
         document.stopRequested = true
         cancelQueryParameterPrompt(documentID: document.id)
         if document.runtime?.isConnecting == true { document.runtime?.cancelConnection() }
+        if let queryID = document.sqliteCompletionQueryID, let sessionID = document.runtime?.sessionId,
+           let client = try? await ensureHelper() {
+            _ = try? await client.request(.cancel(sessionId: sessionID, queryId: queryID))
+        }
         await document.runtime?.stop()
     }
 
@@ -2705,6 +2742,18 @@ final class ApplicationWorkspace: ObservableObject {
         } catch { reportError(error.localizedDescription) }
     }
 
+    func chooseImportedSQLiteFile(_ id: UUID) {
+        guard !isImportingProfiles, let original = importPreview?.first(where: { $0.id == id }),
+              original.profile.engine == .sqlite else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Select the SQLite database on this Mac. Imported file names do not grant access to local files."
+        guard panel.runModal() == .OK, let selected = panel.url else { return }
+        guard !isImportingProfiles, let index = importPreview?.firstIndex(where: { $0.id == id && $0 == original }) else { return }
+        importPreview?[index].profile.sqlite = SQLiteSettings(path: selected.path)
+    }
+
     func chooseImportedCA(_ id: UUID) {
         guard !isImportingProfiles, let original = importPreview?.first(where: { $0.id == id }) else { return }
         let panel = NSOpenPanel()
@@ -2728,8 +2777,8 @@ final class ApplicationWorkspace: ObservableObject {
         guard !isImportingProfiles else { return }
         let profiles = selectedImportProfiles
         guard !profiles.isEmpty else { return }
-        guard !profiles.contains(where: { $0.requiresCASelection || $0.requiresSSHKeySelection }) else {
-            importError = "Choose the missing CA files and local SSH private keys before importing."
+        guard !profiles.contains(where: { $0.requiresCASelection || $0.requiresSSHKeySelection || $0.requiresSQLiteSelection }) else {
+            importError = "Choose local SQLite files, missing CA files and local SSH private keys before importing."
             return
         }
         isImportingProfiles = true
@@ -2753,7 +2802,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     var canImportProfiles: Bool {
         !isImportingProfiles && !selectedImportProfiles.isEmpty &&
-            !selectedImportProfiles.contains(where: { $0.requiresCASelection || $0.requiresSSHKeySelection })
+            !selectedImportProfiles.contains(where: { $0.requiresCASelection || $0.requiresSSHKeySelection || $0.requiresSQLiteSelection })
     }
 
     func selectImportProfile(_ id: UUID, selected: Bool) {
@@ -2788,6 +2837,63 @@ final class ApplicationWorkspace: ObservableObject {
         let profile = library.savedConnections.first { $0.id == profileID }
         context.keyspace = keyspace ?? (profile?.engine == .cassandra ? profile?.database : nil)
         return context
+    }
+
+    func completionContext(document: SQLDocument) -> SQLCompletionContext {
+        guard let profileID = document.profileID,
+              let profile = library.savedConnections.first(where: { $0.id == profileID }),
+              profile.engine == .sqlite, document.isSQLDocument else {
+            return completionContext(profileID: document.profileID, keyspace: document.runtime?.currentKeyspace)
+        }
+        if let snapshot = document.sqliteCompletion,
+           document.runtime?.connectionState == .connected,
+           snapshot.matches(profile: profile, sessionID: document.runtime?.sessionId) {
+            return snapshot.context
+        }
+        // A connected tab can have uncommitted DDL or TEMP objects that differ
+        // from the profile service; never substitute its potentially stale names.
+        if document.runtime?.connectionState == .connected {
+            return SQLCompletionContext(profileID: profileID, catalog: [])
+        }
+        return completionContext(profileID: profileID)
+    }
+
+    /// Automatic reads require autocommit so BEGIN DEFERRED keeps its snapshot
+    /// timing. Explicit profile Refresh may read the user's current transaction.
+    /// Typing, document restoration and context lookup never call this method.
+    func refreshSQLiteSessionCompletion(_ document: SQLDocument, client: BackendClient, allowOpenTransaction: Bool = false) async {
+        guard canStartOperation(document), !document.stopRequested, document.isSQLDocument,
+              let profileID = document.profileID,
+              let profile = library.savedConnections.first(where: { $0.id == profileID }), profile.engine == .sqlite,
+              let binding = ExplainProfileBinding(profile),
+              let runtime = document.runtime, runtime.connectionState == .connected,
+              allowOpenTransaction || runtime.transactionStatus == .idle,
+              binding.matchesRuntime(runtime), let sessionID = runtime.sessionId else { return }
+        document.invalidateSQLiteCompletion()
+        let loadID = document.sqliteCompletionLoadID
+        func current() -> Bool {
+            canStartOperation(document) && !document.stopRequested &&
+                document.sqliteCompletionLoadID == loadID && document.profileID == profileID &&
+                document.runtime === runtime && runtime.connectionState == .connected && runtime.sessionId == sessionID &&
+                binding.matches(library.savedConnections.first { $0.id == profileID }) && binding.matchesRuntime(runtime)
+        }
+        defer { if document.sqliteCompletionLoadID == loadID { document.sqliteCompletionQueryID = nil } }
+        do {
+            let snapshot = try await SQLiteSessionCompletionLoader.load(profile: profile, sessionID: sessionID,
+                request: { page in
+                    let queryID = UUID().uuidString
+                    document.sqliteCompletionQueryID = queryID
+                    return try await client.request(.catalog(sessionId: sessionID, queryId: queryID,
+                        request: CatalogRequest(kind: "completion", page: page)))
+                }, isCurrent: current)
+            guard current() else { return }
+            document.sqliteCompletion = snapshot
+            document.sqliteCompletionNotice = snapshot.notice
+        } catch {
+            guard current() else { return }
+            document.sqliteCompletion = nil
+            document.sqliteCompletionNotice = "SQLite suggestions could not be refreshed. Run a query to try again."
+        }
     }
 
     func canStartTableStructure(_ profileID: UUID) -> Bool {
@@ -2881,7 +2987,19 @@ final class ApplicationWorkspace: ObservableObject {
                     engine: library.savedConnections.first { $0.id == profileID }?.engine)
             }
             catalogErrors[profileID] = nil
-            if refresh { await loadCompletionCatalog(profileID, refresh: true) }
+            if refresh {
+                await loadCompletionCatalog(profileID, refresh: true)
+                if library.savedConnections.first(where: { $0.id == profileID })?.engine == .sqlite,
+                   let client = try? await ensureHelper() {
+                    for document in documents where document.profileID == profileID && document.isSQLDocument &&
+                        !document.isRunning && document.runtime?.connectionState == .connected {
+                        document.stopRequested = false
+                        document.isRunning = true
+                        await refreshSQLiteSessionCompletion(document, client: client, allowOpenTransaction: true)
+                        document.isRunning = false
+                    }
+                }
+            }
         } catch { catalogErrors[profileID] = error.localizedDescription }
     }
 

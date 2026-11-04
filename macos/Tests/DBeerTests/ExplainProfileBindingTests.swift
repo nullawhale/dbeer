@@ -82,7 +82,7 @@ struct ExplainProfileBindingTests {
             c=json.loads(line);kind=c['type'];r=dict(type='',requestId=c['requestId'])
             if 'sessionId' in c:r['sessionId']=c['sessionId']
             if 'queryId' in c:r['queryId']=c['queryId']
-            if kind=='hello':r.update(type='hello.ack',protocolVersion=5)
+            if kind=='hello':r.update(type='hello.ack',protocolVersion=6)
             elif kind=='connect':
                 serial+=1;r.update(type='connect.result',sessionId='session-'+str(serial),transactionStatus='idle',engine='postgresql',capabilities=['execute','cancel','transactions','visualExplainV1'],explainSupport=support)
             elif kind=='catalog':

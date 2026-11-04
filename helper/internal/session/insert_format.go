@@ -7,6 +7,7 @@ import (
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
 	"dbeer/helper/internal/protocol"
+	sqlitedb "dbeer/helper/internal/sqlite"
 )
 
 // Offline formatting is routed before session lookup and never reaches an
@@ -18,6 +19,8 @@ func formatInserts(command protocol.Command) protocol.Response {
 	var sql string
 	var err error
 	switch command.Insert.Engine {
+	case "sqlite":
+		sql, err = sqlitedb.FormatInserts(*command.Insert)
 	case "postgresql":
 		sql, err = postgres.FormatInserts(*command.Insert)
 	case "mysql":

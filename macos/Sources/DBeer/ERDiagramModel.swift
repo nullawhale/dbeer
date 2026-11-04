@@ -59,7 +59,7 @@ struct StoredERDiagram: Codable, Equatable, Sendable {
     var viewport = ERViewport()
     var isValid: Bool {
         let ids = Set(tables)
-        return [.postgresql, .mysql].contains(engine) && database.utf8.count <= 1_024 && !database.contains("\0") &&
+        return [.postgresql, .mysql, .sqlite].contains(engine) && database.utf8.count <= 1_024 && !database.contains("\0") &&
             tables.count <= ERDiagramLimits.tables && ids.count == tables.count &&
             tables.allSatisfy { $0.isValid && $0.profileID == profileID } &&
             placements.count <= tables.count && Set(placements.map(\.table)).count == placements.count &&

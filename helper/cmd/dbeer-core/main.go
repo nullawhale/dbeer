@@ -24,6 +24,7 @@ import (
 	"dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/schemajob"
 	"dbeer/helper/internal/session"
+	sqlitedb "dbeer/helper/internal/sqlite"
 	"dbeer/helper/internal/sqllsp"
 	"dbeer/helper/internal/sshtunnel"
 	"dbeer/helper/internal/syncplan"
@@ -49,6 +50,8 @@ type inputEnd struct {
 
 func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, ref schemacompare.Ref) (schemacompare.Definition, error) {
 	switch capture.Context.Engine {
+	case "sqlite":
+		return sqlitedb.RenderSchemaDefinition(ctx, capture, ref)
 	case "postgresql":
 		return postgres.RenderSchemaDefinition(ctx, capture, ref)
 	case "mysql":
@@ -62,6 +65,8 @@ func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, 
 
 func renderSynchronizationSchema(ctx context.Context, report schemacompare.Report) (syncplan.Plan, error) {
 	switch report.Summary.Engine {
+	case "sqlite":
+		return syncplan.Schema(ctx, report, sqlitedb.RenderSynchronizationSchema)
 	case "postgresql":
 		return syncplan.Schema(ctx, report, postgres.RenderSynchronizationSchema)
 	case "mysql":
@@ -73,6 +78,8 @@ func renderSynchronizationSchema(ctx context.Context, report schemacompare.Repor
 
 func renderSynchronizationData(op syncplan.DataOperation) (string, error) {
 	switch op.Descriptor.Engine {
+	case "sqlite":
+		return sqlitedb.RenderDataSynchronization(op)
 	case "postgresql":
 		return postgres.RenderDataSynchronization(op)
 	case "mysql":
@@ -84,6 +91,8 @@ func renderSynchronizationData(op syncplan.DataOperation) (string, error) {
 
 func openDatabase(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
 	switch connection.DatabaseEngine() {
+	case "sqlite":
+		return sqlitedb.Open(ctx, connection)
 	case "mongodb":
 		return mongodb.Open(ctx, connection)
 	case "postgresql":
@@ -232,6 +241,18 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 		}
 		if !handshaken {
 			if !emit(protocol.ErrorResponse(command, "protocol", "A successful hello handshake is required.")) {
+				return
+			}
+			continue
+		}
+		if command.Type == "sqlite.create" {
+			response := protocol.Response{Type: "sqlite.create.result", RequestID: command.RequestID}
+			if command.Connection == nil || command.Connection.DatabaseEngine() != "sqlite" || command.Connection.SQLite == nil {
+				response = protocol.ErrorResponse(command, "validation", "SQLite file settings are required.")
+			} else if err := sqlitedb.Create(controlContext, command.Connection.SQLite.Path); err != nil {
+				response = protocol.ErrorResponse(command, "connection", "The SQLite database could not be created. Choose a new writable local file.")
+			}
+			if !emit(response) {
 				return
 			}
 			continue

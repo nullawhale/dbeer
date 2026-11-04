@@ -32,7 +32,7 @@ struct ConnectionTesterTests {
                 trace.write(kind + '\\n')
             reply = {'requestId':command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=5)
+                reply.update(type='hello.ack', protocolVersion=6)
             elif kind == 'ssh.probe':
                 ssh = command['connection']['ssh']
                 assert ssh['profileId'] != source
@@ -40,9 +40,14 @@ struct ConnectionTesterTests {
                     'port':ssh['port'], 'algorithm':'ssh-ed25519', 'fingerprint':'SHA256:fixture'})
             elif kind == 'connect':
                 settings = command['connection']
-                assert settings['host'] == 'draft.example.test'
-                assert settings['password'] == 'draft-fixture-secret'
-                assert settings['sslMode'] == 'verify-full'
+                if settings['engine'] == 'sqlite':
+                    assert settings['host'] == '' and settings['port'] == 0
+                    assert settings['password'] == '' and settings['sslMode'] == 'disable'
+                    assert settings['sqlite']['path'] == '/connection-fixtures/local.sqlite'
+                else:
+                    assert settings['host'] == 'draft.example.test'
+                    assert settings['password'] == 'draft-fixture-secret'
+                    assert settings['sslMode'] == 'verify-full'
                 if settings['engine'] == 'mongodb':
                     assert settings['user'] == 'analyst'
                     assert settings['mongodb']['authSource'] == 'admin'
@@ -81,7 +86,12 @@ struct ConnectionTesterTests {
     }
 
     private func settings(engine: DatabaseEngine = .postgresql) -> ConnectionSettings {
-        ConnectionSettings(host: "draft.example.test", port: engine.defaultPort,
+        if engine == .sqlite {
+            return ConnectionSettings(host: "", port: 0, database: "", user: "", password: "", sslMode: "disable",
+                engine: .sqlite, sqlite: SQLiteSettings(path: "/connection-fixtures/local.sqlite"))
+        }
+
+        return ConnectionSettings(host: "draft.example.test", port: engine.defaultPort,
             database: engine.defaultDatabase, user: [.cassandra, .mongodb].contains(engine) ? "analyst" : engine.defaultUser, password: "draft-fixture-secret",
             sslMode: "verify-full", engine: engine,
             contactPoints: engine == .cassandra ? ["draft.example.test"] : nil,

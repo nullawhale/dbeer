@@ -69,6 +69,25 @@ final class ConnectionTester: ObservableObject {
         state = cancellationRequested || Task.isCancelled ? .cancelled : outcome
     }
 
+    func createDatabase(_ settings: ConnectionSettings) async {
+        guard !isTesting, settings.engine == .sqlite, settings.hasValidNativeFields else { return }
+        cancellationRequested = false
+        state = .testing
+        let client = helperFactory()
+        self.client = client
+        var outcome: State = .succeeded
+        do {
+            try await client.start()
+            try checkCancellation()
+            _ = try await client.request(.sqliteCreate(settings))
+            try checkCancellation()
+        } catch is CancellationError { outcome = .cancelled }
+        catch { outcome = .failed(error.localizedDescription) }
+        _ = await client.shutdown()
+        self.client = nil
+        state = cancellationRequested || Task.isCancelled ? .cancelled : outcome
+    }
+
     private func checkCancellation() throws {
         if cancellationRequested { throw CancellationError() }
         try Task.checkCancellation()

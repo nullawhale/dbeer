@@ -110,6 +110,7 @@ struct DataGridView: View {
         view.modifiedCells = presentation.modifiedCells
         view.deletedRows = presentation.deletedRows
         view.valueKinds = presentation.valueKinds
+        view.sqliteValues = grid.sqliteValues
         view.selectedRows = grid.selectedRows
         view.onInlineDraftChanged = { grid.hasInlineDraft = $0 }
         view.dataIdentity = presentation
@@ -119,9 +120,9 @@ struct DataGridView: View {
         }
         if canEdit {
             view.onEditCell = openEditor
-            view.onCommitCell = { cell, text in
+            if grid.columns.first?.engine != .sqlite { view.onCommitCell = { cell, text in
                 grid.set(ChangeValue(kind: "text", value: text), row: cell.row, column: cell.column)
-            }
+            } }
             if grid.supportsRowInsertionAndDeletion {
                 view.onDeleteRows = { finishEditing(); grid.deleteSelected() }
             }
@@ -350,6 +351,7 @@ private struct GridCellEditor: View {
     let cancel: () -> Void
     private var kind: SwiftUI.State<String>
     private var text: SwiftUI.State<String>
+    private var sqliteType: SwiftUI.State<String>
     private var error = SwiftUI.State<String?>(initialValue: nil)
     @FocusState private var isTextFocused: Bool
 
@@ -358,7 +360,8 @@ private struct GridCellEditor: View {
         self.save = save
         self.cancel = cancel
         kind = SwiftUI.State(initialValue: ["null", "default"].contains(edit.value.kind) ? edit.value.kind : "value")
-        text = SwiftUI.State(initialValue: edit.value.value ?? "")
+        sqliteType = SwiftUI.State(initialValue: edit.value.sqliteValue?.type ?? "text")
+        text = SwiftUI.State(initialValue: edit.value.displayText ?? "")
     }
 
     private var policy: GridColumnEditing { GridColumnEditing(column: edit.column, metadata: edit.metadata) }
@@ -375,6 +378,14 @@ private struct GridCellEditor: View {
             Text("Row \(edit.cell.row + 1) · \(policy.nativeType)").font(.caption).appSecondaryText()
             ControlSegmentPicker("Value", selection: kind.projectedValue, choices: choices)
             if kind.wrappedValue == "value" {
+                if edit.column.engine == .sqlite {
+                    Picker("Storage type", selection: sqliteType.projectedValue) {
+                        Text("Text").tag("text")
+                        Text("Integer").tag("integer")
+                        Text("Real").tag("real")
+                        Text("BLOB (Base64)").tag("blob")
+                    }
+                }
                 if policy.usesMultilineEditor(for: edit.value) {
                     TextEditor(text: text.projectedValue).font(.system(.body, design: .monospaced)).frame(minHeight: 150)
                         .focused($isTextFocused).focusEffectDisabled()
@@ -404,6 +415,34 @@ private struct GridCellEditor: View {
                 Spacer()
                 Button("Stage Change") {
                     if kind.wrappedValue != "value" { save(ChangeValue(kind: kind.wrappedValue)); return }
+                    if edit.column.engine == .sqlite {
+                        let input = text.wrappedValue
+                        if input == edit.value.displayText, sqliteType.wrappedValue == edit.value.sqliteValue?.type {
+                            save(edit.value); return
+                        }
+                        let value: SQLiteValue
+                        switch sqliteType.wrappedValue {
+                        case "integer":
+                            guard let integer = Int64(input), String(integer) == input else {
+                                error.wrappedValue = "Enter a signed 64-bit integer without formatting."; return
+                            }
+                            value = SQLiteValue(type: "integer", value: input)
+                        case "real":
+                            guard let real = Double(input), real.isFinite else {
+                                error.wrappedValue = "Enter a finite real number."; return
+                            }
+                            value = SQLiteValue(type: "real", value: String(format: "%016llx", real.bitPattern))
+                        case "blob":
+                            guard let bytes = Data(base64Encoded: input) else {
+                                error.wrappedValue = "Enter valid Base64 for a BLOB."; return
+                            }
+                            value = SQLiteValue(type: "blob", value: bytes.base64EncodedString())
+                        default:
+                            value = SQLiteValue(type: "text", value: Data(input.utf8).base64EncodedString())
+                        }
+                        save(value.changeValue)
+                        return
+                    }
                     if policy.isBinary, Data(base64Encoded: text.wrappedValue) == nil {
                         error.wrappedValue = "Enter valid Base64 for a binary value."
                         return

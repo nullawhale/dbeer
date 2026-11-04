@@ -27,7 +27,7 @@ struct ExplainPlanView: View {
                 Picker("Plan display", selection: raw.projectedValue) { Text("Tree").tag(false); Text("Raw Plan").tag(true) }
                     .pickerStyle(.segmented).frame(width: 180)
             }
-            if let profile = plan.profile { Text("Source: \(profile.name) · \(profile.host):\(profile.port)/\(profile.database)").font(.caption).foregroundStyle(.secondary) }
+            if let profile = plan.profile { Text("Source: \(profile.name) · \(profile.endpointDescription)").font(.caption).foregroundStyle(.secondary) }
             DisclosureGroup("Captured SQL") {
                 ScrollView { Text(plan.request.sql).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 100)
             }

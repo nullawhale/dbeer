@@ -142,7 +142,7 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
         for profile in [sourceProfile, targetProfile].compactMap({ $0 }) where profile.ssh != nil { SSHConnectionReview.cancel(profileId: profile.id.uuidString) }
     }
     func reset() async { await close(); hasStarted = false; summary = nil; error = nil; offsets = [0]; exportComplete = false; sourceProfile = nil; targetProfile = nil }
-    var canGeneratePlan: Bool { phase == .completed && summary != nil && !isGeneratingPlan && targetProfile.map { [.postgresql, .mysql].contains($0.engine) } == true }
+    var canGeneratePlan: Bool { phase == .completed && summary != nil && !isGeneratingPlan && targetProfile.map { [.postgresql, .mysql, .sqlite].contains($0.engine) } == true }
     func dismissPlan() { planGeneration = UUID(); planDraft?.invalidate(); planDraft = nil; isGeneratingPlan = false }
     func generatePlan() async {
         guard canGeneratePlan, let backend, let jobID, let summary, let sourceProfile, let targetProfile else { return }
@@ -266,7 +266,7 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
 @MainActor
 enum SchemaComparisonCredentials {
     static func settings(_ profile: SavedConnection, store: any ConnectionCredentialStore) async throws -> ConnectionSettings {
-        let secret = profile.passwordCommand == nil ? try await store.password(for: profile.id) ?? "" : ""
+        let secret = profile.engine != .sqlite && profile.passwordCommand == nil ? try await store.password(for: profile.id) ?? "" : ""
         var settings = profile.settings(password: secret)
         if var ssh = settings.ssh {
             if ssh.authMethod == .password {

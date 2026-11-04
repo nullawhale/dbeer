@@ -86,7 +86,7 @@ struct SynchronizationPlanProtocolTests {
         let client = BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
         import base64,json,sys
         c=json.loads(sys.stdin.readline())
-        print(json.dumps({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':5,'capabilities':['schemaComparisonV1','dataComparisonV1','synchronizationPlanV1']}),flush=True)
+        print(json.dumps({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':6,'capabilities':['schemaComparisonV1','dataComparisonV1','synchronizationPlanV1']}),flush=True)
         c=json.loads(sys.stdin.readline())
         response=json.loads(base64.b64decode('\(encoded)'));response['requestId']=c['requestId']
         print(json.dumps(response),flush=True)

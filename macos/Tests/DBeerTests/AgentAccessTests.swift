@@ -55,7 +55,7 @@ struct AgentAccessTests {
                 with open(log, 'a') as f: f.write(json.dumps(c) + '\\n')
                 r = {'requestId':c['requestId']}
                 k = c['type']
-                if k == 'hello': r.update(type='hello.ack', protocolVersion=5)
+                if k == 'hello': r.update(type='hello.ack', protocolVersion=6)
                 elif k == 'connect':
                     policy = c['connection']['policy']
                     if delay == 'delay':

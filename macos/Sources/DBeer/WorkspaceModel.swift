@@ -86,6 +86,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var contactPoints: [String]?
     @Published var localDatacenter: String?
     @Published var consistency: String?
+    @Published var sqlite: SQLiteSettings?
     @Published var mongodb: MongoDBSettings?
     @Published var ssh: SSHSettings?
     @Published private(set) var connectionProgress: String?
@@ -219,8 +220,8 @@ final class WorkspaceModel: ObservableObject {
     private func openConnection(savedProfileId: UUID?) async {
         let attempt = connectionAttempt
         guard canConnect else { return }
-        guard let portNumber = Int(port), (1...65535).contains(portNumber),
-              !host.isEmpty, ([.cassandra, .mongodb].contains(engine) || (!database.isEmpty && !user.isEmpty)) else {
+        guard let portNumber = Int(port), engine == .sqlite || (1...65535).contains(portNumber) &&
+              !host.isEmpty && ([.cassandra, .mongodb].contains(engine) || (!database.isEmpty && !user.isEmpty)) else {
             errorMessage = "Enter a host, database, user, and a port from 1 to 65535."
             return
         }
@@ -231,7 +232,7 @@ final class WorkspaceModel: ObservableObject {
         let settings = ConnectionSettings(host: host, port: portNumber, database: database,
             user: user, password: password, sslMode: sslMode,
             sslRootCert: sslRootCert.isEmpty ? nil : sslRootCert, engine: engine, policy: policy,
-            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh, passwordCommand: passwordCommand, mongodb: mongodb)
+            contactPoints: contactPoints, localDatacenter: localDatacenter, consistency: consistency, ssh: ssh, passwordCommand: passwordCommand, mongodb: mongodb, sqlite: sqlite)
         guard settings.hasValidNativeFields else {
             errorMessage = "Enter valid connection settings for the selected database engine."
             return
@@ -334,7 +335,7 @@ final class WorkspaceModel: ObservableObject {
     /// nil is a read failure; an empty string is a successfully read empty/missing password.
     func passwordForConnection(_ id: UUID) async -> String? {
         guard let profile = savedConnections.first(where: { $0.id == id }) else { return nil }
-        if profile.passwordCommand != nil { return "" }
+        if profile.engine == .sqlite || profile.passwordCommand != nil { return "" }
         do { return try await credentialStore.password(for: id) ?? "" }
         catch {
             reportConnectionsError(ConnectionLibraryError.credentialRead.localizedDescription, profileID: id)
@@ -369,7 +370,7 @@ final class WorkspaceModel: ObservableObject {
         connectionPreparationId = id
         defer { if connectionAttempt == attempt { connectionPreparationId = nil } }
         do {
-            let secret = profile.passwordCommand == nil ? try await credentialStore.password(for: id) ?? "" : ""
+            let secret = profile.engine != .sqlite && profile.passwordCommand == nil ? try await credentialStore.password(for: id) ?? "" : ""
             guard !stopping, connectionAttempt == attempt, connectionState == .disconnected, selectedConnectionId == id else { return }
             var settings = profile.settings(password: secret)
             if let sshSnapshot {
@@ -420,7 +421,7 @@ final class WorkspaceModel: ObservableObject {
         let profile = SavedConnection(id: id ?? UUID(), name: cleanName, settings: settings)
         var previousSecrets: [ConnectionCredentialPurpose: String] = [:]
         do {
-            for purpose in ConnectionCredentialPurpose.allCases {
+            for purpose in settings.engine == .sqlite ? [] : ConnectionCredentialPurpose.allCases {
                 previousSecrets[purpose] = try await credentialStore.secret(for: profile.id, purpose: purpose)
             }
         } catch {
@@ -428,9 +429,10 @@ final class WorkspaceModel: ObservableObject {
             return false
         }
         do {
-            if settings.passwordCommand == nil { try await credentialStore.savePassword(settings.password, for: profile.id) }
+            if settings.engine == .sqlite { /* File profiles have no credentials. */ }
+            else if settings.passwordCommand == nil { try await credentialStore.savePassword(settings.password, for: profile.id) }
             else { try await credentialStore.deletePassword(for: profile.id) }
-            for purpose in [ConnectionCredentialPurpose.sshPassword, .sshPassphrase] {
+            for purpose in settings.engine == .sqlite ? [] : [ConnectionCredentialPurpose.sshPassword, .sshPassphrase] {
                 let value = purpose == .sshPassword ? settings.ssh?.password : settings.ssh?.passphrase
                 if rememberSSHSecret, let value { try await credentialStore.saveSecret(value, for: profile.id, purpose: purpose) }
                 else { try await credentialStore.deleteSecret(for: profile.id, purpose: purpose) }
@@ -452,7 +454,7 @@ final class WorkspaceModel: ObservableObject {
             return true
         } catch {
             reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id)
-            if !(await restoreSecrets(previousSecrets, for: profile.id)) {
+            if settings.engine != .sqlite, !(await restoreSecrets(previousSecrets, for: profile.id)) {
                 reportConnectionsError(ConnectionLibraryError.save.localizedDescription +
                     " The credential change could not be undone in macOS Keychain.", profileID: id)
             }
@@ -475,9 +477,10 @@ final class WorkspaceModel: ObservableObject {
         isSavingConnection = true
         defer { finishConnectionMutation() }
         dismissConnectionsError()
+        let credentialPurposes = savedConnections.first(where: { $0.id == id })?.engine == .sqlite ? [] : ConnectionCredentialPurpose.allCases
         var secrets: [ConnectionCredentialPurpose: String] = [:]
         do {
-            for purpose in ConnectionCredentialPurpose.allCases {
+            for purpose in credentialPurposes {
                 secrets[purpose] = try await credentialStore.secret(for: id, purpose: purpose)
             }
         } catch {
@@ -485,7 +488,7 @@ final class WorkspaceModel: ObservableObject {
             return false
         }
         do {
-            for purpose in ConnectionCredentialPurpose.allCases { try await credentialStore.deleteSecret(for: id, purpose: purpose) }
+            for purpose in credentialPurposes { try await credentialStore.deleteSecret(for: id, purpose: purpose) }
         } catch {
             _ = await restoreSecrets(secrets, for: id)
             reportConnectionsError(ConnectionLibraryError.credentialDelete.localizedDescription, profileID: id)
@@ -499,7 +502,7 @@ final class WorkspaceModel: ObservableObject {
             selectedConnectionId = selected
         } catch {
             reportConnectionsError(ConnectionLibraryError.save.localizedDescription, profileID: id)
-            if !(await restoreSecrets(secrets, for: id)) {
+            if !credentialPurposes.isEmpty, !(await restoreSecrets(secrets, for: id)) {
                 reportConnectionsError(ConnectionLibraryError.save.localizedDescription +
                     " The credentials could not be restored in macOS Keychain.", profileID: id)
             }
@@ -561,6 +564,7 @@ final class WorkspaceModel: ObservableObject {
         contactPoints = settings.contactPoints
         localDatacenter = settings.localDatacenter
         consistency = settings.consistency
+        sqlite = settings.sqlite
         mongodb = settings.mongodb
     }
 

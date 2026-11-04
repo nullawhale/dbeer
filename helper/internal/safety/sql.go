@@ -50,7 +50,7 @@ func Classify(engine, sql string) []Statement {
 	if engine == "postgresql" {
 		engine = "postgres"
 	}
-	if engine != "postgres" && engine != "mysql" {
+	if engine != "postgres" && engine != "mysql" && engine != "sqlite" {
 		return []Statement{{0, len(sql), Unknown, "unsupported_dialect"}}
 	}
 	l := lexer{sql: sql, engine: engine}
@@ -67,6 +67,17 @@ func Classify(engine, sql string) []Statement {
 		if i > start {
 			part := tokens[start:i]
 			kind, reason := classify(engine, part, 0)
+			if engine == "sqlite" {
+				if part[0].text == "ATTACH" || part[0].text == "DETACH" {
+					kind, reason = Write, "sqlite_attachment"
+				}
+				if part[0].text == "REPLACE" {
+					kind, reason = Destructive, "sqlite_replace"
+				}
+				if part[0].text == "PRAGMA" || part[0].text == "VACUUM" {
+					kind, reason = Unknown, "sqlite_configuration"
+				}
+			}
 			result = append(result, Statement{part[0].start, part[len(part)-1].end, kind, reason})
 		}
 		start = i + 1
@@ -112,7 +123,7 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 			l.pos++
 			continue
 		}
-		if c == '-' && l.has("--") && (l.engine == "postgres" || l.engine == "cassandra" || l.pos+2 == len(l.sql) || isSpace(l.sql[l.pos+2])) {
+		if c == '-' && l.has("--") && (l.engine == "postgres" || l.engine == "sqlite" || l.engine == "cassandra" || l.pos+2 == len(l.sql) || isSpace(l.sql[l.pos+2])) {
 			l.lineComment()
 			continue
 		}
@@ -139,6 +150,14 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 		}
 		t := token{start: l.pos}
 		switch {
+		case c == '[' && l.engine == "sqlite":
+			t.kind = identifier
+			l.pos++
+			end := strings.IndexByte(l.sql[l.pos:], ']')
+			if end < 0 {
+				return nil, false
+			}
+			l.pos += end + 1
 		case c == '(' || c == '[' || c == '{' && l.engine == "cassandra":
 			t.kind, t.text = group, string(c)
 			l.pos++
@@ -158,7 +177,7 @@ func (l *lexer) scan(close byte, depth int) ([]token, bool) {
 			if !l.quoted('\'', false) {
 				return nil, false
 			}
-		case c == '"' || (c == '`' && l.engine == "mysql"):
+		case c == '"' || (c == '`' && (l.engine == "mysql" || l.engine == "sqlite")):
 			t.kind = identifier
 			if !l.quoted(c, false) {
 				return nil, false
@@ -966,5 +985,7 @@ VERSION CURRENT_USER SESSION_USER MD5 REGEXP_REPLACE REGEXP_LIKE REGEXP_SUBSTR R
 `)
 
 func readFunction(engine, name string) bool {
-	return commonReadFunctions[name] || engine == "postgres" && postgresReadFunctions[name] || engine == "mysql" && mysqlReadFunctions[name]
+	return commonReadFunctions[name] || engine == "postgres" && postgresReadFunctions[name] || engine == "mysql" && mysqlReadFunctions[name] || engine == "sqlite" && sqliteReadFunctions[name]
 }
+
+var sqliteReadFunctions = names("SQLITE_VERSION SQLITE_SOURCE_ID SQLITE_COMPILEOPTION_GET SQLITE_COMPILEOPTION_USED TOTAL IFNULL IIF GROUP_CONCAT HEX UNHEX TYPEOF QUOTE UNICODE CHAR INSTR RANDOM RANDOMBLOB ZEROBLOB DATE TIME DATETIME JULIANDAY UNIXEPOCH STRFTIME TIMEDIFF JSON JSON_ARRAY JSON_OBJECT JSON_EXTRACT JSON_TYPE JSON_VALID JSON_ARRAY_LENGTH JSON_EACH JSON_TREE JSON_GROUP_ARRAY JSON_GROUP_OBJECT JSON_QUOTE JSON_SET JSON_INSERT JSON_REPLACE JSON_REMOVE")

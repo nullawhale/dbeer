@@ -59,8 +59,14 @@ func Complete(text string, offset int, context Context) []Item {
 			r.prefix = text[t.start:offset]
 			if t.kind == quotedToken {
 				quote := r.prefix[:min(len(r.prefix), 1)]
-				r.prefix = strings.TrimSuffix(strings.TrimPrefix(r.prefix, quote), quote)
-				r.prefix = strings.ReplaceAll(r.prefix, quote+quote, quote)
+				closing := quote
+				if context.Engine == "sqlite" && quote == "[" {
+					closing = "]"
+				}
+				r.prefix = strings.TrimSuffix(strings.TrimPrefix(r.prefix, quote), closing)
+				if quote != "[" {
+					r.prefix = strings.ReplaceAll(r.prefix, quote+quote, quote)
+				}
 			}
 			break
 		}

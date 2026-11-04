@@ -98,7 +98,7 @@ struct SchemaCaptureContext: Codable, Equatable, Sendable {
     var consistency: String
     var visibility: String
     var valid: Bool {
-        ["postgresql", "mysql", "cassandra"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
+        ["postgresql", "mysql", "cassandra", "sqlite"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
         ["repeatableRead", "bestEffort"].contains(consistency) && ["complete", "partial", "unknown"].contains(visibility) &&
         startedAt.utf8.count <= 64 && finishedAt.utf8.count <= 64 && !startedAt.isEmpty && !finishedAt.isEmpty
     }

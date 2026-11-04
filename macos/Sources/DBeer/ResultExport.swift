@@ -4,13 +4,15 @@ import Foundation
 struct ExportResultSet: Sendable {
     var columns: [ResultColumn]
     var rows: [[String?]]
+    var sqliteValues: [[SQLiteValue]]?
     var commandTag: String
     var rowCount: Int64
     var displayedRowCount: Int
     var truncated: Bool
 
     init(columns: [ResultColumn], rows: [[String?]], commandTag: String = "",
-         rowCount: Int64? = nil, truncated: Bool = false) {
+         rowCount: Int64? = nil, truncated: Bool = false, sqliteValues: [[SQLiteValue]]? = nil) {
+        self.sqliteValues = sqliteValues
         self.columns = columns
         self.rows = rows
         self.commandTag = commandTag
@@ -21,7 +23,7 @@ struct ExportResultSet: Sendable {
 
     init(_ message: BackendMessage) {
         self.init(columns: message.columns ?? [], rows: message.rows ?? [], commandTag: message.commandTag ?? "",
-            rowCount: message.rowCount, truncated: message.truncated == true)
+            rowCount: message.rowCount, truncated: message.truncated == true, sqliteValues: message.sqliteValues)
     }
 }
 
@@ -48,6 +50,7 @@ enum ResultExport {
     private struct Result: Encodable {
         let metadata: Metadata
         let rows: [[String?]]
+        let sqliteValues: [[SQLiteValue]]?
     }
 
     private struct Metadata: Encodable {
@@ -62,7 +65,7 @@ enum ResultExport {
         for set in sets { try validate(set) }
         let document = Document(resultSets: sets.map { set in
             Result(metadata: Metadata(columns: set.columns, commandTag: set.commandTag,
-                rowCount: set.rowCount, displayedRowCount: set.displayedRowCount, truncated: set.truncated), rows: set.rows)
+                rowCount: set.rowCount, displayedRowCount: set.displayedRowCount, truncated: set.truncated), rows: set.rows, sqliteValues: set.sqliteValues)
         })
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -71,6 +74,9 @@ enum ResultExport {
 
     static func csv(_ set: ExportResultSet, nullMarker: String) throws -> Data {
         try validate(set)
+        if let values = set.sqliteValues, values.joined().contains(where: {
+            $0.type == "text" && Data(base64Encoded: $0.value).flatMap { String(data: $0, encoding: .utf8) } == nil
+        }) { throw ResultExportError.malformed }
         guard !nullMarker.isEmpty else { throw ResultExportError.nullMarker }
         guard !set.rows.contains(where: { row in row.contains { $0 == nullMarker } }) else {
             throw ResultExportError.nullCollision
@@ -105,7 +111,9 @@ enum ResultExport {
     }
 
     private static func validate(_ set: ExportResultSet) throws {
-        guard set.columns.enumerated().allSatisfy({ $0.offset == $0.element.index }),
+        guard (!set.columns.contains(where: { $0.engine == .sqlite }) || set.sqliteValues != nil),
+              SQLiteValue.validMatrix(set.sqliteValues, rows: set.rows.count, columns: set.columns.count),
+              set.columns.enumerated().allSatisfy({ $0.offset == $0.element.index }),
               set.rows.allSatisfy({ $0.count == set.columns.count }),
               set.displayedRowCount == set.rows.count, set.rowCount >= 0 else { throw ResultExportError.malformed }
     }

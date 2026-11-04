@@ -15,8 +15,8 @@ struct ExplainSupport: Codable, Sendable, Equatable {
     var modes: [ExplainMode]
     var unavailableReason: String?
     var valid: Bool {
-        [.postgresql, .mysql].contains(engine) && serverVersion.utf8.count <= 256 &&
-        format == (engine == .postgresql ? "json" : "tree") && modes.count <= 2 &&
+        [.postgresql, .mysql, .sqlite].contains(engine) && serverVersion.utf8.count <= 256 &&
+        format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : "tree") && modes.count <= 2 &&
         Set(modes.map(\.rawValue)).count == modes.count &&
         (modes.isEmpty ? unavailableReason?.isEmpty == false : unavailableReason == nil)
     }

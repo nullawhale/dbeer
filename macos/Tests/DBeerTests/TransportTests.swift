@@ -114,7 +114,7 @@ struct BackendClientTests {
             print(json.dumps(message, ensure_ascii=False), flush=True)
         def hello():
             command = read()
-            send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
+            send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6})
         \(body)
         """])
     }
@@ -184,7 +184,7 @@ struct BackendClientTests {
     @Test func wrongRequestIdentifierInvalidatesTransport() async throws {
         let client = fake("""
         read()
-        send({'type':'hello.ack','requestId':'unrelated-request','protocolVersion':5})
+        send({'type':'hello.ack','requestId':'unrelated-request','protocolVersion':6})
         """)
         await #expect(throws: BackendTransportError(.invalidMessage)) { try await client.start() }
         _ = await client.shutdown()
@@ -194,7 +194,7 @@ struct BackendClientTests {
         let client = fake("""
         command = read()
         os.close(0)
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6})
         time.sleep(10)
         """)
         try await client.start()

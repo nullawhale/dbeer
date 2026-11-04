@@ -26,6 +26,16 @@ struct ProfileImportView: View {
                         .accessibilityIdentifier("import-profile-\(imported.id.uuidString)")
                     VStack(alignment: .leading, spacing: 6) {
                         Text(imported.profile.name).font(.headline)
+                        if imported.profile.engine == .sqlite {
+                            Text(imported.profile.sqlite?.path.isEmpty == false ? imported.profile.sqlite!.path : imported.sqliteFileNameHint ?? "SQLite database")
+                                .font(.callout).textSelection(.enabled)
+                            Button(imported.requiresSQLiteSelection ? "Choose Local Database…" : "Change Database…") {
+                                workspace.chooseImportedSQLiteFile(imported.id)
+                            }.controlHover().disabled(!imported.isSelected)
+                            if imported.requiresSQLiteSelection {
+                                Text("Choose a database on this Mac before importing.").font(.caption).foregroundStyle(.orange)
+                            }
+                        } else {
                         Text("\(imported.profile.engine.displayName) · \(imported.profile.user)@\(imported.profile.host):\(imported.profile.port)/\(imported.profile.database)")
                             .font(.callout).textSelection(.enabled)
                         HStack {
@@ -36,6 +46,7 @@ struct ProfileImportView: View {
                                 }.controlHover()
                                 .disabled(!imported.isSelected)
                             }
+                        }
                         }
                         if let ssh = imported.profile.ssh {
                             Text("SSH: \(ssh.user)@\(ssh.host):\(ssh.port) · \(ssh.authMethod.label)").font(.caption).appSecondaryText()

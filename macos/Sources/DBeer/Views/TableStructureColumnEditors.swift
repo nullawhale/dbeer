@@ -7,7 +7,7 @@ struct TableStructureNewColumnEditor: View {
     let create: Bool
     let canRemove: Bool
     let remove: () -> Void
-    private var types: [String] { engine == .postgresql ? ["integer", "bigint", "boolean", "numeric", "varchar", "text"] : ["integer", "bigint", "numeric", "varchar", "text"] }
+    private var types: [String] { engine == .sqlite ? ["integer", "real", "text", "blob", "sqliteNumeric", "any"] : engine == .postgresql ? ["integer", "bigint", "boolean", "numeric", "varchar", "text"] : ["integer", "bigint", "numeric", "varchar", "text"] }
 
     var body: some View {
         GroupBox(create ? "New Column \(number)" : "Append Column") {

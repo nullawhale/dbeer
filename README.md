@@ -1,6 +1,6 @@
 # DBeer
 
-A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, and MongoDB 8.0.
+A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, MongoDB 8.0, and local SQLite files (unreleased).
 
 The current macOS release is **0.4.0, build 13**. Download the signed application
 ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.4.0)
@@ -38,6 +38,92 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
+
+## SQLite (unreleased)
+
+Choose **SQLite** in the connection editor, then **Choose File…** for an existing
+local database or **Create Database…** for a new file. Creation is explicit and
+never overwrites an existing file. Test Connection and Connect never create a
+missing file. Profiles have no host, credentials, SSH or TLS settings. Portable
+profiles contain only a filename hint and require selecting a local file after
+import. Restored documents remain disconnected.
+
+Each SQL tab owns a physical SQLite connection and its transaction, savepoints,
+temporary objects and attachments. Run, Run Script, Run to File, saved query
+parameters, history and the existing local execution policy are available.
+Opening a database preserves its journal mode; new databases use SQLite's default
+rollback journal. Foreign keys are enabled. Busy waits are bounded to 100 ms
+without automatic retries, and Stop interrupts both queries and lock waits. Replacing the main or an attached file
+requires disconnecting and explicitly reconnecting.
+
+`ATTACH DATABASE '/synthetic/extra.sqlite' AS extra` opens an existing local file
+only in the current SQL tab. `DETACH` removes it from that session. Attachments
+are not restored or shared with the profile's catalog, comparisons or other tabs;
+open a separate profile for those tools. Readonly profiles can attach existing
+files for reading; each additional file is opened with SQLite's readonly mode.
+ATTACH cannot create a missing file or enable writing through that connection. URI filenames, implicit creation through
+ATTACH, network filesystems, SQLCipher, extension loading and user in-memory
+profiles are unsupported. Transactions spanning attached files do not promise
+crash atomicity when WAL is involved. MCP uses approved SQLite profiles and does
+not permit attaching additional files or creating files through VACUUM.
+
+After explicit SQL execution in autocommit mode, editor suggestions load tables,
+views and columns from that tab's currently open main, TEMP and ATTACH schemas.
+Unqualified duplicate names follow SQLite's TEMP/main/attachment lookup order;
+quoted identifiers retain SQLite's ASCII case-insensitive matching. The tab keeps
+its ordinary results. Open transactions reuse cached suggestions: automatic
+metadata reads never start a deferred read snapshot. Schema-changing SQL or
+ROLLBACK invalidates that cache. Use profile Refresh explicitly to inspect the
+current transaction; completing the transaction refreshes suggestions normally.
+Typing or restoring a document never connects or fetches metadata.
+Disconnecting, changing the profile or running a new batch invalidates the prior
+session cache; failed or limited refreshes show a notice. Metadata is bounded to
+10,000 objects and remains a best-effort observation outside an open transaction.
+
+The catalog shows main tables, views, columns, declared foreign keys, indexes,
+triggers and definitions. Filters, sorting and saved views reuse the native table
+browser. Ordinary, STRICT and WITHOUT ROWID tables with a complete, non-null
+primary key support grid Insert/Update/Delete through Preview SQL and Apply.
+Apply takes a dedicated write transaction and compares original typed values;
+conflicts roll back the batch. Views, virtual tables, unsuitable keys and SQL
+query result grids remain read-only. A missing exact-value capture blocks editing.
+
+SQLite storage classes are retained per cell: NULL, INTEGER, REAL, TEXT and BLOB
+remain distinct even within one column. Integer strings and binary64 REAL values
+retain their stored precision; text bytes and blobs remain separate. The inspector,
+clipboard, SQLite INSERT copying, JSON exports, snapshots and comparisons retain
+these types. CSV cannot represent invalid UTF-8 text and refuses it explicitly.
+SQLite's own type affinity and constraint rules still apply when writing values.
+
+Create Table and Edit Structure use the existing draft and Preview/Apply workflow.
+Supported changes use direct DDL or an explicitly reviewed transactional rebuild.
+Rebuilds preserve supported columns, primary keys, rowids, AUTOINCREMENT sequence,
+indexes and triggers, then check foreign keys. Ordinary column changes preserve
+untouched CHECK/UNIQUE/FK clauses, collations, named constraints, generated
+expressions and type aliases from the original definition. Generated values are
+recomputed rather than explicitly inserted. Changes to referenced/generated
+columns, key changes on complex definitions and view dependencies can still
+require manual SQL. STRICT/WITHOUT ROWID properties remain intact.
+
+Exact-value verification streams a sorted multiset of typed row hashes using
+bounded memory and private temporary files, with a 256 MiB workspace limit.
+Tables are not limited to the displayed row count or the earlier capture size;
+quota or cancellation failures stop the transaction without truncating input.
+The SQLite column editor offers native type choices; Apply refuses conversions
+that change stored values or storage classes.
+
+ER diagrams show declared relationships. CSV/TSV import appends to existing tables
+with the current mapping, NULL rules and limits. SQLite-to-SQLite schema/data
+comparisons retain independent capture intervals and exact storage classes.
+Schema reports conservatively retain original definitions, so formatting and
+mapped-name differences can remain visible. Synchronization creates supported SQL;
+complex alterations remain manual steps. Nonzero REAL originals, including
+infinities, use exact numeric guards together with storage-class checks; zero
+REAL originals remain manual because SQL equality cannot distinguish signed zero.
+REAL source assignments and copied INSERT values use exact binary64 SQL expressions,
+including subnormal and infinite values; unpreservable payloads are rejected.
+**Explain** shows EXPLAIN QUERY PLAN without fabricated costs or timing;
+**Explain Analyze** is unavailable for SQLite.
 
 ## ER diagrams
 

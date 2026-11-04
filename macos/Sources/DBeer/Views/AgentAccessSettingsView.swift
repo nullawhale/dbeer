@@ -89,12 +89,12 @@ enum AgentAccessApproval {
             for button in [selected, write] {
                 button.widthAnchor.constraint(lessThanOrEqualToConstant: rowWidth).isActive = true
                 button.cell?.lineBreakMode = .byTruncatingTail
-                button.toolTip = "\(profile.name) · \(profile.host):\(profile.port)/\(profile.database) · \(profile.user) · \(profile.policy.label) · \(profile.id.uuidString)"
+                button.toolTip = "\(profile.name) · \(profile.endpointDescription) · \(profile.policy.label) · \(profile.id.uuidString)"
             }
             write.isEnabled = !profile.policy.readOnly
             selected.state = .off; write.state = .off
             let enforcement = [.cassandra, .mongodb].contains(profile.engine) ? " · Readonly enforcement is local; use restricted database roles" : ""
-            let details = NSTextField(wrappingLabelWithString: "\(profile.host):\(profile.port)/\(profile.database) · \(profile.user) · \(profile.policy.label)\(enforcement)\nProfile \(profile.id.uuidString)")
+            let details = NSTextField(wrappingLabelWithString: "\(profile.endpointDescription) · \(profile.policy.label)\(enforcement)\nProfile \(profile.id.uuidString)")
             details.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
             details.textColor = .secondaryLabelColor
             details.setAccessibilityIdentifier("agentProfileDetails-\(profile.id.uuidString)")

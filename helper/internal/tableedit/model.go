@@ -42,7 +42,7 @@ type DataType struct {
 
 func (t DataType) Valid() bool {
 	switch t.Kind {
-	case "integer", "bigint", "boolean", "text":
+	case "integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric":
 		return t.Length == 0 && t.Precision == 0 && t.Scale == 0
 	case "varchar":
 		return t.Length > 0 && t.Length <= 16383 && t.Precision == 0 && t.Scale == 0

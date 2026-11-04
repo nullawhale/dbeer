@@ -1,25 +1,34 @@
 import Foundation
 
 enum BackendProtocol {
-    static let version = 5
+    static let version = 6
     static let maxFrameBytes = 16 * 1_024 * 1_024
 }
 
 enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
-    case postgresql, mysql, cassandra, mongodb
+    case postgresql, mysql, cassandra, mongodb, sqlite
 
-    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra, .mongodb]
+    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra, .mongodb, .sqlite]
     var id: String { rawValue }
-    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra"; case .mongodb: "MongoDB" } }
-    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042; case .mongodb: 27017 } }
-    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra, .mongodb: "" } }
-    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra, .mongodb: "" } }
+    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra"; case .mongodb: "MongoDB"; case .sqlite: "SQLite" } }
+    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042; case .mongodb: 27017; case .sqlite: 0 } }
+    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra, .mongodb, .sqlite: "" } }
+    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra, .mongodb, .sqlite: "" } }
     var sslModes: [String] {
         switch self {
         case .postgresql: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
         case .mysql: ["disable", "require", "verify-ca", "verify-full"]
         case .cassandra, .mongodb: ["verify-full", "disable"]
+        case .sqlite: ["disable"]
         }
+    }
+}
+
+struct SQLiteSettings: Codable, Sendable, Equatable {
+    var path: String
+
+    var isValid: Bool {
+        path.hasPrefix("/") && !path.hasPrefix("//") && !path.contains("\0") && path.utf8.count <= 4_096
     }
 }
 
@@ -40,12 +49,14 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     var consistency: String?
     var ssh: SSHSettings?
     var mongodb: MongoDBSettings?
+    var sqlite: SQLiteSettings?
 
     init(host: String, port: Int, database: String, user: String, password: String,
          sslMode: String, sslRootCert: String? = nil, engine: DatabaseEngine = .postgresql,
          policy: ExecutionPolicy = ExecutionPolicy(), contactPoints: [String]? = nil,
          localDatacenter: String? = nil, consistency: String? = nil, ssh: SSHSettings? = nil,
-         passwordCommand: PasswordCommand? = nil, mongodb: MongoDBSettings? = nil) {
+         passwordCommand: PasswordCommand? = nil, mongodb: MongoDBSettings? = nil, sqlite: SQLiteSettings? = nil) {
+        self.sqlite = sqlite
         self.mongodb = mongodb
         self.passwordCommand = passwordCommand
         self.ssh = ssh
@@ -64,12 +75,13 @@ struct ConnectionSettings: Codable, Sendable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sessionPurpose, engine, host, port, database, user, password, passwordCommand, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, mongodb
+        case sessionPurpose, engine, host, port, database, user, password, passwordCommand, sslMode, sslRootCert, policy, contactPoints, localDatacenter, consistency, ssh, mongodb, sqlite
     }
 
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         sessionPurpose = try values.decodeIfPresent(String.self, forKey: .sessionPurpose)
+        sqlite = try values.decodeIfPresent(SQLiteSettings.self, forKey: .sqlite)
         mongodb = try values.decodeIfPresent(MongoDBSettings.self, forKey: .mongodb)
         ssh = try values.decodeIfPresent(SSHSettings.self, forKey: .ssh)
         engine = try values.decodeIfPresent(DatabaseEngine.self, forKey: .engine) ?? .postgresql
@@ -180,15 +192,18 @@ struct InsertFormatRequest: Codable, Sendable, Equatable {
     var table: String
     var columns: [InsertFormatColumn]
     var rows: [[ChangeValue]]
+    var sqliteValues: [[SQLiteValue]]? = nil
 
     var valid: Bool {
         func validName(_ value: String) -> Bool { !value.isEmpty && value.utf8.count <= 1_024 && !value.contains("\0") }
-        guard [.postgresql, .mysql].contains(engine), (schema.isEmpty || validName(schema)), validName(table),
+        guard [.postgresql, .mysql, .sqlite].contains(engine), (schema.isEmpty || validName(schema)), validName(table),
               !columns.isEmpty, columns.count <= Self.maximumColumns,
               !rows.isEmpty, rows.count <= Self.maximumRows,
               columns.count * rows.count <= Self.maximumCells,
               columns.allSatisfy({ validName($0.name) }), Set(columns.map { Data($0.name.utf8) }).count == columns.count else { return false }
-        var bytes = schema.utf8.count + table.utf8.count + columns.reduce(0) { $0 + $1.name.utf8.count }
+        guard (sqliteValues == nil || engine == .sqlite),
+              SQLiteValue.validMatrix(sqliteValues, rows: rows.count, columns: columns.count) else { return false }
+        var bytes = (sqliteValues?.joined().reduce(0) { $0 + $1.value.utf8.count } ?? 0) + schema.utf8.count + table.utf8.count + columns.reduce(0) { $0 + $1.name.utf8.count }
         for row in rows {
             guard row.count == columns.count else { return false }
             for cell in row {
@@ -222,6 +237,7 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     var displayNotice: String?
     var affectedRowCountKnown: Bool?
     var nextCursor: String?
+    var sqliteValues: [[SQLiteValue]]?
     var storageTokens: [String]?
     var source: SQLResultSource?
 
@@ -230,6 +246,7 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     func valid(streamed: Bool = false) -> Bool {
         (nextCursor == nil || Self.validCursor(nextCursor!)) && rowCount >= 0 && displayedRowCount >= 0 &&
             Self.validStorageTokens(storageTokens, rowCount: displayedRowCount) &&
+            SQLiteValue.validMatrix(sqliteValues, rows: displayedRowCount, columns: columns.count) &&
             (source?.valid(for: columns) ?? true) &&
             (streamed ? rows.isEmpty : displayedRowCount == rows.count) &&
             columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
@@ -280,6 +297,10 @@ struct BackendCommand: Codable, Sendable, Equatable {
 
     static func sshTrust(_ connection: ConnectionSettings, token: String, replace: Bool = false) -> Self {
         Self(type: "ssh.trust", requestId: UUID().uuidString, connection: connection, sshTrust: SSHTrust(token: token, replace: replace ? true : nil))
+    }
+
+    static func sqliteCreate(_ connection: ConnectionSettings) -> Self {
+        Self(type: "sqlite.create", requestId: UUID().uuidString, connection: connection)
     }
 
     static func connect(_ connection: ConnectionSettings) -> Self {
@@ -359,6 +380,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "ssh.probe": "ssh.probe.result"
         case "ssh.trust": "ssh.trust.result"
         case "connect": "connect.result"
+        case "sqlite.create": "sqlite.create.result"
         case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
         case "explain.run": "explain.result"
         case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close": type + ".result"
@@ -441,6 +463,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var durationMs: Double?
     var columns: [ResultColumn]?
     var rows: [[String?]]?
+    var sqliteValues: [[SQLiteValue]]?
     var storageTokens: [String]?
     var source: SQLResultSource?
     var commandTag: String?
@@ -490,6 +513,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
         if let appliedChangeCount, !(0...1000).contains(appliedChangeCount) || !["query.result", "error"].contains(type) {
             throw BackendTransportError(.invalidMessage)
         }
+        if let sqliteValues {
+            let typedColumns = streamed == true ? resultSets?.first?.columns.count ?? 0 : columns?.count ?? 0
+            guard type == "query.result", SQLiteValue.validMatrix(sqliteValues, rows: displayedRowCount ?? -1, columns: typedColumns) else { throw BackendTransportError(.invalidMessage) }
+        }
         let sourceColumns = streamed == true
             ? (resultSets?.first(where: { !$0.columns.isEmpty })?.columns ?? columns ?? []) : (columns ?? [])
         if let source, type != "query.result" || !source.valid(for: sourceColumns) {
@@ -498,6 +525,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         let valid: Bool
         switch type {
         case "hello.ack": valid = protocolVersion != nil
+        case "sqlite.create.result": valid = sessionId == nil && queryId == nil
         case "import.describe.result", "import.preview.result", "import.apply.result":
             valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
                 columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&

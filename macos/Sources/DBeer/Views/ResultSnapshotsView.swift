@@ -205,7 +205,7 @@ struct ResultSnapshotDocumentView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("snapshotUnavailable")
             } else if let result = model.result, let columns = result.columns {
-                InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [],
+                InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues,
                     copySettings: workspace.copySettings,
                     onCopyError: { workspace.reportCopyError($0) },
                     copyAllowed: model.isAvailable && !workspace.isClosing,

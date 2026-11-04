@@ -150,6 +150,9 @@ func structureColumn(c tableedit.Column) (string, error) {
 	case "numeric":
 		typ = fmt.Sprintf("pg_catalog.numeric(%d,%d)", c.Type.Precision, c.Type.Scale)
 	}
+	if typ == "" {
+		return "", tableedit.ErrUnsupported
+	}
 	out := pgx.Identifier{c.Name}.Sanitize() + " " + typ
 	if !c.Nullable {
 		out += " NOT NULL"

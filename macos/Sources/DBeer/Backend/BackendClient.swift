@@ -288,7 +288,7 @@ actor BackendClient {
         } else if command.comparison != nil { throw BackendRequestError.invalidCommand }
         if let purpose = command.connection?.sessionPurpose {
             guard ["structure", "import"].contains(purpose), ["connect", "ssh.probe", "ssh.trust"].contains(command.type),
-                  command.connection.map({ [.postgresql, .mysql].contains($0.engine) }) == true else {
+                  command.connection.map({ [.postgresql, .mysql, .sqlite].contains($0.engine) }) == true else {
                 throw BackendRequestError.invalidCommand
             }
             if purpose == "import", !tableImportSupported { throw BackendRequestError.unsupportedTableImport }
@@ -615,10 +615,12 @@ actor BackendClient {
                 result.displayedRowCount = first.displayedRowCount
                 result.truncated = first.truncated; result.displayNotice = first.displayNotice
                 result.affectedRowCountKnown = first.affectedRowCountKnown; result.nextCursor = first.nextCursor
+                result.sqliteValues = first.sqliteValues
                 result.storageTokens = first.storageTokens
                 result.source = first.source
             } else {
                 result.columns = []; result.rows = []; result.displayedRowCount = 0
+                result.sqliteValues = nil
                 result.storageTokens = nil
                 result.source = nil
             }
@@ -643,7 +645,7 @@ actor BackendClient {
             sets = [QueryResultSet(columns: reply.columns ?? [], rows: reply.rows ?? [],
                 commandTag: reply.commandTag ?? "", rowCount: reply.rowCount ?? 0,
                 displayedRowCount: reply.displayedRowCount ?? 0, truncated: reply.truncated ?? false,
-                displayNotice: reply.displayNotice, storageTokens: reply.storageTokens, source: reply.source)]
+                displayNotice: reply.displayNotice, sqliteValues: reply.sqliteValues, storageTokens: reply.storageTokens, source: reply.source)]
         } else { return }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]

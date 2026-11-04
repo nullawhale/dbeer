@@ -11,7 +11,7 @@ import (
 )
 
 var ErrInvalid = errors.New("Invalid query parameters or ambiguous parameter syntax.")
-var ErrUnsupported = errors.New("Query parameters are available only for PostgreSQL and MySQL.")
+var ErrUnsupported = errors.New("Query parameters are available only for PostgreSQL, MySQL and SQLite.")
 
 type Bound struct {
 	SQL string
@@ -29,7 +29,7 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 	if engine == "" {
 		engine = "postgresql"
 	}
-	if engine != "postgresql" && engine != "mysql" {
+	if engine != "postgresql" && engine != "mysql" && engine != "sqlite" {
 		if parameters != nil {
 			return Bound{}, ErrUnsupported
 		}
@@ -57,7 +57,7 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 	// Session SQL modes may alter backslash quoting. Accept only when both
 	// interpretations locate identical placeholders; explicit PG E strings
 	// always retain their defined escape rules.
-	if len(parameters) > 0 && strings.Contains(sql, "\\") {
+	if engine != "sqlite" && len(parameters) > 0 && strings.Contains(sql, "\\") {
 		alternate, err := scan(engine, sql, parameters, true)
 		if err != nil || alternate.SQL != bound.SQL {
 			return Bound{}, ErrInvalid
@@ -77,7 +77,15 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 	last, boundBytes := 0, 0
 	for i := 0; i < len(sql); {
 		c := sql[i]
-		if c == '\'' || c == '"' || c == '`' && engine == "mysql" {
+		if c == '[' && engine == "sqlite" {
+			end := strings.IndexByte(sql[i+1:], ']')
+			if end < 0 {
+				return Bound{}, ErrInvalid
+			}
+			i += end + 2
+			continue
+		}
+		if c == '\'' || c == '"' || c == '`' && (engine == "mysql" || engine == "sqlite") {
 			quote, escape := c, escapes && c != '`'
 			if engine == "postgresql" && c == '\'' && i > 0 && (sql[i-1] == 'e' || sql[i-1] == 'E') && (i == 1 || !identifier(sql[i-2])) {
 				escape = true
@@ -105,7 +113,7 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 			}
 			continue
 		}
-		if strings.HasPrefix(sql[i:], "--") && (engine == "postgresql" || i+2 == len(sql) || sql[i+2] <= ' ') || c == '#' && engine == "mysql" {
+		if strings.HasPrefix(sql[i:], "--") && (engine == "postgresql" || engine == "sqlite" || i+2 == len(sql) || sql[i+2] <= ' ') || c == '#' && engine == "mysql" {
 			for i < len(sql) && sql[i] != '\n' && sql[i] != '\r' {
 				i++
 			}
@@ -155,8 +163,16 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 				continue
 			}
 		}
-		if c == '?' && engine == "mysql" && len(parameters) > 0 {
+		if c == '?' && (engine == "mysql" || engine == "sqlite") && len(parameters) > 0 {
 			return Bound{}, ErrInvalid
+		}
+		// SQLite also accepts $name and @name variables. They must not be
+		// mixed with the explicitly declared :name contract. A dollar within
+		// a bare identifier (for example foo$bar) remains an identifier.
+		if engine == "sqlite" && (c == '@' || c == '$' && (i == 0 || !identifier(sql[i-1]))) {
+			if i+1 < len(sql) && identifier(sql[i+1]) {
+				return Bound{}, ErrInvalid
+			}
 		}
 		if c == ':' {
 			if i+1 < len(sql) && (sql[i+1] == ':' || sql[i+1] == '=') {
@@ -190,7 +206,7 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 					if p.Value != nil {
 						boundBytes += len(*p.Value)
 					}
-					// Repeated MySQL placeholders duplicate values on the wire.
+					// Repeated positional placeholders duplicate values on the wire.
 					// Bound that amplification before the driver allocates packets.
 					if boundBytes > 8*1024*1024 {
 						return Bound{}, ErrInvalid
@@ -198,20 +214,24 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 					if len(bound.Parameters) > 65535 {
 						return Bound{}, ErrInvalid
 					}
-					switch p.Type {
-					case "decimal":
-						precision, scale := 65, 30
-						if p.Value != nil {
-							integer, fraction, _ := strings.Cut(strings.TrimLeft(*p.Value, "+-"), ".")
-							precision, scale = len(integer)+len(fraction), len(fraction)
-						}
-						output.WriteString("CAST(? AS DECIMAL(" + strconv.Itoa(precision) + "," + strconv.Itoa(scale) + "))")
-					case "date":
-						output.WriteString("CAST(? AS DATE)")
-					case "timestamp":
-						output.WriteString("CAST(? AS DATETIME(6))")
-					default:
+					if engine == "sqlite" {
 						output.WriteByte('?')
+					} else {
+						switch p.Type {
+						case "decimal":
+							precision, scale := 65, 30
+							if p.Value != nil {
+								integer, fraction, _ := strings.Cut(strings.TrimLeft(*p.Value, "+-"), ".")
+								precision, scale = len(integer)+len(fraction), len(fraction)
+							}
+							output.WriteString("CAST(? AS DECIMAL(" + strconv.Itoa(precision) + "," + strconv.Itoa(scale) + "))")
+						case "date":
+							output.WriteString("CAST(? AS DATE)")
+						case "timestamp":
+							output.WriteString("CAST(? AS DATETIME(6))")
+						default:
+							output.WriteByte('?')
+						}
 					}
 				}
 				i, last = j, j

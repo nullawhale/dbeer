@@ -11,6 +11,7 @@ let package = Package(
             .copy("Resources/mysql-logo.svg"),
             .copy("Resources/cassandra-logo.svg"),
             .copy("Resources/mongodb-logo.svg"),
+            .copy("Resources/sqlite-logo.svg"),
             .copy("Resources/EditorThemes"),
         ]),
         .testTarget(name: "DBeerTests", dependencies: ["DBeer"]),

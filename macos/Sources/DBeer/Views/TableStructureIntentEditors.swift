@@ -63,7 +63,7 @@ struct TableStructureIntentEditors: View {
                 Text("Removals and replacements also require confirmation of the generated SQL. Changing a selected key or index clears this opt-in.")
                     .font(.caption).foregroundStyle(.orange)
             }
-            if model.baseline?.dependencyProof != true {
+            if model.profile.engine != .sqlite && model.baseline?.dependencyProof != true {
                 Text("Complete dependency visibility is unavailable. Type widening and referenced-key removal are blocked; Preview reports the reason.")
                     .font(.caption).appSecondaryText()
             }
@@ -118,12 +118,16 @@ private struct StructureColumnChangeEditor: View {
                     ControlIconButton(systemName: "minus.circle", action: remove).help("Remove this local column change").accessibilityLabel("Remove column change")
                 }
                 if let old {
-                    Text("Current: " + old.nativeType + " · " + (old.nullable ? "NULL" : "NOT NULL"))
+                    Text("Current: " + (old.nativeType.isEmpty ? "No declared type" : old.nativeType) + " · " + (old.nullable ? "NULL" : "NOT NULL"))
                         .font(.caption).textSelection(.enabled)
                     Text("Current default: " + (old.defaultExpression ?? "No explicit default reported"))
                         .font(.caption).textSelection(.enabled)
                     HStack {
                         Picker("Type", selection: Binding(get: { change.type?.kind ?? "keep" }, set: { kind in
+                            if engine == .sqlite {
+                                change.type = ["integer", "real", "text", "blob", "sqliteNumeric", "any"].contains(kind) ? .init(kind: kind) : nil
+                                return
+                            }
                             switch kind {
                             case "bigint": change.type = .init(kind: "bigint")
                             case "varchar": change.type = .init(kind: "varchar", length: (old.editableType?.length ?? 0) + 1)
@@ -131,16 +135,23 @@ private struct StructureColumnChangeEditor: View {
                             }
                         })) {
                             Text("Keep type").tag("keep")
-                            if old.editableType?.kind == "integer" { Text("Widen to BIGINT").tag("bigint") }
+                            if engine == .sqlite {
+                                Text("INTEGER").tag("integer")
+                                Text("REAL").tag("real")
+                                Text("TEXT").tag("text")
+                                Text("BLOB").tag("blob")
+                                Text("NUMERIC").tag("sqliteNumeric")
+                                Text("ANY").tag("any")
+                            } else if old.editableType?.kind == "integer" { Text("Widen to BIGINT").tag("bigint") }
                             if old.editableType?.kind == "varchar", (old.editableType?.length ?? 16_383) < 16_383 { Text("Increase VARCHAR length").tag("varchar") }
-                        }.controlHover().disabled(!wideningAllowed)
+                        }.controlHover().disabled(engine != .sqlite && !wideningAllowed)
                         if change.type?.kind == "varchar" {
                             TextField("New length", value: Binding(get: { change.type?.length ?? 0 }, set: { change.type?.length = $0 }), format: .number)
                                 .textFieldStyle(.roundedBorder).frame(width: 95).accessibilityLabel("New VARCHAR length")
                         }
                     }
                     TableStructureDefaultEditor(selection: $change.default, engine: engine, allowsKeep: true)
-                    Text("Keep leaves that attribute unchanged. Widening requires a column without dependencies; Preview verifies support and lock/rebuild risks.")
+                    Text(engine == .sqlite ? "Keep preserves that attribute and its original definition. Preview prepares the rebuild; Apply rejects changes that alter stored values or their storage classes." : "Keep leaves that attribute unchanged. Widening requires a column without dependencies; Preview verifies support and lock/rebuild risks.")
                         .font(.caption).appSecondaryText()
                 } else {
                     Text("Choose an editable ordinary column. Generated, identity and unsupported columns remain read-only.").font(.caption).appSecondaryText()

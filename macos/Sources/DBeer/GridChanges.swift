@@ -62,9 +62,9 @@ final class GridPresentation {
         valueKinds.reserveCapacity(source.count)
         for (index, row) in source.enumerated() {
             rows.append(row.values.map { value in
-                value.kind == "null" ? nil : (value.kind == "default" ? "<DEFAULT>" : value.value ?? "")
+                value.displayText
             })
-            valueKinds.append(row.values.map(\.kind))
+            valueKinds.append(row.values.map(\.displayKind))
             if row.isDeleted { deletedRows.insert(index) }
             if row.isInserted || row.isDeleted || !row.assignments.isEmpty { pendingCount += 1 }
             if row.isInserted {
@@ -126,12 +126,18 @@ final class GridDraft: ObservableObject {
         self.metadata = alignedMetadata
         let loadedRows = (result.rows ?? []).enumerated().map { rowIndex, row in
             let values = row.enumerated().map { index, value -> ChangeValue in
+                if let typed = result.sqliteValues, typed.indices.contains(rowIndex), typed[rowIndex].indices.contains(index) {
+                    return typed[rowIndex][index].changeValue
+                }
                 guard let value else { return .null }
                 return ChangeValue(kind: loadedColumns.indices.contains(index) && loadedColumns[index].encoding == "base64" ? "binary" : "text", value: value)
             }
             return GridRow(original: values, values: values, originalStorageToken: result.storageTokens.flatMap { $0.indices.contains(rowIndex) ? $0[rowIndex] : nil })
         }
         rows = loadedRows
+        if loadedColumns.contains(where: { $0.engine == .sqlite }), result.sqliteValues == nil {
+            supportsEditing = false
+        }
         partitionMarkers = GridPartitions.markers(columns: loadedColumns, metadata: alignedMetadata, rows: loadedRows)
     }
 
@@ -169,6 +175,22 @@ final class GridDraft: ObservableObject {
     }
     var pendingCount: Int { presentation.pendingCount }
     var displayedRows: [[String?]] { presentation.rows }
+    var sqliteValues: [[SQLiteValue]]? {
+        guard columns.contains(where: { $0.engine == .sqlite }) else { return nil }
+        var result: [[SQLiteValue]] = []
+        for row in rows {
+            var values: [SQLiteValue] = []
+            for cell in row.values {
+                if let value = cell.sqliteValue { values.append(value) }
+                else if cell.kind == "null" { values.append(SQLiteValue(type: "null")) }
+                else if cell.kind == "text" { values.append(SQLiteValue(type: "text", value: Data((cell.value ?? "").utf8).base64EncodedString())) }
+                else if cell.kind == "binary" { values.append(SQLiteValue(type: "blob", value: cell.value ?? "")) }
+                else { return nil }
+            }
+            result.append(values)
+        }
+        return result
+    }
     var valueKinds: [[String]] { presentation.valueKinds }
     var deletedRows: IndexSet { presentation.deletedRows }
     var modifiedCells: Set<ResultGridCell> { presentation.modifiedCells }

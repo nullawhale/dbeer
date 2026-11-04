@@ -27,6 +27,7 @@ struct ResultSnapshotCapture: Sendable {
     var engine: DatabaseEngine
     var columns: [ResultColumn]
     var rows: [[String?]]
+    var sqliteValues: [[SQLiteValue]]?
     var capturedAt: Date
     var profileID: UUID?
     var profileName: String?
@@ -38,9 +39,10 @@ struct ResultSnapshotCapture: Sendable {
     var commandTag: String
 
     init(title: String, sql: String, engine: DatabaseEngine, columns: [ResultColumn], rows: [[String?]],
-         capturedAt: Date = Date(), profileID: UUID? = nil, profileName: String? = nil,
+         sqliteValues: [[SQLiteValue]]? = nil, capturedAt: Date = Date(), profileID: UUID? = nil, profileName: String? = nil,
          environment: ConnectionEnvironment = .unspecified, outcome: SQLHistoryOutcome = .succeeded,
          truncated: Bool = false, partial: Bool = false, sourceRowCount: Int64? = nil, commandTag: String = "") {
+        self.sqliteValues = sqliteValues
         self.title = title; self.sql = sql; self.engine = engine; self.columns = columns; self.rows = rows
         self.capturedAt = capturedAt; self.profileID = profileID; self.profileName = profileName
         self.environment = environment; self.outcome = outcome; self.truncated = truncated
@@ -49,7 +51,7 @@ struct ResultSnapshotCapture: Sendable {
 }
 
 struct ResultSnapshotManifest: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    static let currentVersion = 2
     var version: Int
     var id: UUID
     var title: String
@@ -89,9 +91,15 @@ struct ResultSnapshotSummary: Identifiable, Equatable, Sendable {
     var isAvailable = true
 }
 
+private struct SQLiteSnapshotRow: Codable {
+    var values: [String?]
+    var sqliteValues: [SQLiteValue]
+}
+
 struct ResultSnapshotArtifact: Sendable {
     var manifest: ResultSnapshotManifest
     var rows: [[String?]]
+    var sqliteValues: [[SQLiteValue]]? = nil
     var offset: Int
     var hasMore: Bool
 }
@@ -185,7 +193,10 @@ actor ResultSnapshotStore {
                 for (index, row) in capture.rows.enumerated() {
                     try Task.checkCancellation()
                     try writeInterceptor?(.row(index))
-                    var bytes = try encoder.encode(row)
+                    var bytes: Data
+                    if let values = capture.sqliteValues {
+                        bytes = try encoder.encode(SQLiteSnapshotRow(values: row, sqliteValues: values[index]))
+                    } else { bytes = try encoder.encode(row) }
                     guard bytes.count <= Self.maximumRowBytes else { throw ResultSnapshotError.invalid }
                     bytes.append(10)
                     try rows.write(contentsOf: bytes)
@@ -241,6 +252,7 @@ actor ResultSnapshotStore {
             var byteCount: Int64 = 0
             var rowCount = 0
             var page: [[String?]] = []
+            var typedPage: [[SQLiteValue]] = []
             do {
                 while let chunk = try handle.read(upToCount: 65_536), !chunk.isEmpty {
                     try Task.checkCancellation()
@@ -250,10 +262,23 @@ actor ResultSnapshotStore {
                     pending.append(chunk)
                     while let newline = pending.firstIndex(of: 10) {
                         let line = pending.prefix(upTo: newline)
-                        guard !line.isEmpty, line.count <= Self.maximumRowBytes,
-                              let row = try? JSONDecoder().decode([String?].self, from: line),
-                              Self.validRow(row, columns: manifest.columns) else { throw ResultSnapshotError.corrupt }
-                        if rowCount >= offset, page.count < limit { page.append(row) }
+                        guard !line.isEmpty, line.count <= Self.maximumRowBytes else { throw ResultSnapshotError.corrupt }
+                        let row: [String?]
+                        var typed: [SQLiteValue]?
+                        if manifest.engine == .sqlite {
+                            guard manifest.version >= 2, let stored = try? JSONDecoder().decode(SQLiteSnapshotRow.self, from: line),
+                                  SQLiteValue.validMatrix([stored.sqliteValues], rows: 1, columns: manifest.columns.count) else { throw ResultSnapshotError.corrupt }
+                            row = stored.values
+                            typed = stored.sqliteValues
+                        } else {
+                            guard let stored = try? JSONDecoder().decode([String?].self, from: line) else { throw ResultSnapshotError.corrupt }
+                            row = stored
+                        }
+                        guard Self.validRow(row, columns: manifest.columns) else { throw ResultSnapshotError.corrupt }
+                        if rowCount >= offset, page.count < limit {
+                            page.append(row)
+                            if let typed { typedPage.append(typed) }
+                        }
                         rowCount += 1
                         guard rowCount <= manifest.rowCount else { throw ResultSnapshotError.corrupt }
                         pending.removeSubrange(...newline)
@@ -264,7 +289,7 @@ actor ResultSnapshotStore {
             catch { throw ResultSnapshotError.corrupt }
             guard pending.isEmpty, rowCount == manifest.rowCount, byteCount == manifest.rowsBytes,
                   Self.hex(digest.finalize()) == manifest.rowsSHA256 else { throw ResultSnapshotError.corrupt }
-            return ResultSnapshotArtifact(manifest: manifest, rows: page, offset: offset,
+            return ResultSnapshotArtifact(manifest: manifest, rows: page, sqliteValues: manifest.engine == .sqlite ? typedPage : nil, offset: offset,
                 hasMore: offset < rowCount && page.count < rowCount - offset)
         }
     }
@@ -387,7 +412,7 @@ actor ResultSnapshotStore {
         guard fstat(descriptor, &info) == 0, info.st_size > 0, info.st_size <= Self.maximumManifestBytes,
               let data = try? file.readToEnd(), data.count <= Self.maximumManifestBytes,
               let manifest = try? Self.decoder().decode(ResultSnapshotManifest.self, from: data), manifest.id == id,
-              manifest.version == ResultSnapshotManifest.currentVersion,
+              (1...ResultSnapshotManifest.currentVersion).contains(manifest.version),
               manifest.rowsBytes >= 0, manifest.rowCount >= 0, Self.validDigest(manifest.rowsSHA256),
               Self.validMetadata(manifest),
               try fileSize(directory, name: "rows.jsonl") == manifest.rowsBytes else { throw ResultSnapshotError.corrupt }
@@ -517,6 +542,9 @@ actor ResultSnapshotStore {
               capture.sql.utf8.count <= maximumManifestBytes / 2, capture.capturedAt.timeIntervalSince1970.isFinite,
               (capture.profileName?.utf8.count ?? 0) <= 4096, capture.commandTag.utf8.count <= 4096,
               capture.sourceRowCount.map({ $0 >= Int64(capture.rows.count) }) ?? true,
+              (capture.engine != .sqlite || capture.sqliteValues != nil),
+              (capture.engine == .sqlite || capture.sqliteValues == nil),
+              SQLiteValue.validMatrix(capture.sqliteValues, rows: capture.rows.count, columns: capture.columns.count),
               validColumns(capture.columns), capture.rows.allSatisfy({ validRow($0, columns: capture.columns) }) else { throw ResultSnapshotError.invalid }
     }
 

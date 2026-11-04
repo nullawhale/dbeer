@@ -13,7 +13,7 @@ struct ExplainExecutionTests {
         def plan(c, mode=None):
             evidence=dict(support=dict(engine='postgresql',serverVersion='17.6',format='json',modes=['plan','analyze']),mode=mode or c['explain']['mode'],status='rawOnly',raw='original raw plan',complete=True,diagnostic='SQL completed; unsupported visualization',roots=[],nodes=[],metrics={})
             send(dict(type='explain.result',requestId=c['requestId'],sessionId=c['sessionId'],queryId=c['queryId'],transactionStatus='transaction',durationMs=2.5,sqlCompleted=True,explain=evidence))
-        c=read();send(dict(type='hello.ack',requestId=c['requestId'],protocolVersion=5))
+        c=read();send(dict(type='hello.ack',requestId=c['requestId'],protocolVersion=6))
         c=read();send(dict(type='connect.result',requestId=c['requestId'],sessionId='tab-a',transactionStatus='idle',engine='postgresql',capabilities=['visualExplainV1']))
         \(body)
         """])

@@ -22,7 +22,7 @@ struct DataComparisonDescriptor: Codable, Equatable, Sendable {
             !$0.element.nativeType.isEmpty && $0.element.nativeType.utf8.count <= 65_536 && $0.element.typeLabel.utf8.count <= 4_096 &&
             $0.element.primaryKey >= 0 && $0.element.primaryKey <= 32 &&
             ($0.element.valueComparison == nil || $0.element.valueComparison == "unresolved") &&
-            ($0.element.encoding == nil || $0.element.encoding == "base64") }
+            ($0.element.encoding == nil || $0.element.encoding == "base64" || $0.element.encoding == "sqliteValue") }
     }
 }
 struct DataComparisonDescriptors: Codable, Equatable, Sendable {

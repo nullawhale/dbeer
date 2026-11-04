@@ -15,6 +15,12 @@ func (connection Connection) CassandraConsistency() string {
 }
 
 func (connection Connection) Valid() bool {
+	if connection.DatabaseEngine() == "sqlite" {
+		return connection.SQLite != nil && connection.SQLite.Valid() && connection.Host == "" && connection.Port == 0 && connection.Database == "" && connection.User == "" && connection.Password == "" && connection.PasswordCommand == nil && connection.SSH == nil && connection.MongoDB == nil && connection.SSLRootCert == "" && (connection.SSLMode == "disable" || connection.SSLMode == "") && len(connection.ContactPoints) == 0 && connection.LocalDatacenter == "" && connection.Consistency == "" && (connection.SessionPurpose == "" || connection.SessionPurpose == "structure" || connection.SessionPurpose == "import")
+	}
+	if connection.SQLite != nil {
+		return false
+	}
 	if connection.SessionPurpose != "" && (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" || connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql") {
 		return false
 	}

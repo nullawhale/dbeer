@@ -23,11 +23,19 @@ struct InspectedValue: Equatable, Sendable {
     }
 
     static func capture(cell: ResultGridCell?, columns: [ResultColumn], rows: [[String?]],
-                        valueKinds: [[String]]? = nil) -> Self? {
+                        valueKinds: [[String]]? = nil, sqliteValues: [[SQLiteValue]]? = nil) -> Self? {
         guard let cell, columns.indices.contains(cell.column), rows.indices.contains(cell.row),
               rows[cell.row].indices.contains(cell.column) else { return nil }
         let column = columns[cell.column]
         let text = rows[cell.row][cell.column]
+        if let sqliteValues, sqliteValues.indices.contains(cell.row), sqliteValues[cell.row].indices.contains(cell.column) {
+            let typed = sqliteValues[cell.row][cell.column]
+            return Self(row: cell.row, column: cell.column, name: column.name, nativeType: column.nativeType, value: typed.changeValue)
+        }
+        if column.encoding == "sqliteValue", let text, let bytes = text.data(using: .utf8),
+           let typed = try? JSONDecoder().decode(SQLiteValue.self, from: bytes), typed.valid {
+            return Self(row: cell.row, column: cell.column, name: column.name, nativeType: column.nativeType, value: typed.changeValue)
+        }
         let explicitKind = valueKinds.flatMap { kinds in
             kinds.indices.contains(cell.row) && kinds[cell.row].indices.contains(cell.column)
                 ? kinds[cell.row][cell.column] : nil
@@ -39,6 +47,7 @@ struct InspectedValue: Equatable, Sendable {
 
     var text: String {
         switch value.kind {
+        case "sqliteInteger", "sqliteReal", "sqliteText", "sqliteBlob": value.displayText ?? ""
         case "null": "NULL"
         case "default": "DEFAULT"
         default: value.value ?? ""
@@ -50,6 +59,10 @@ struct InspectedValue: Equatable, Sendable {
         return switch value.kind {
         case "null": "SQL NULL"
         case "default": "DEFAULT"
+        case "sqliteInteger": "SQLite INTEGER"
+        case "sqliteReal": "SQLite REAL · IEEE-754 binary64"
+        case "sqliteText": "SQLite TEXT"
+        case "sqliteBlob": text.isEmpty ? "Empty SQLite BLOB · Base64" : "SQLite BLOB · Base64"
         case "binary": text.isEmpty ? "Empty binary · Base64" : "Binary · Base64"
         default: text.isEmpty ? "Empty string" : "Text"
         }
@@ -74,7 +87,7 @@ enum ValueInspectorProcessing {
 
     static func prepare(_ value: InspectedValue) throws -> InspectorContent {
         try Task.checkCancellation()
-        guard value.value.kind == "text" else { return InspectorContent() }
+        guard ["text", "sqliteText"].contains(value.value.kind) else { return InspectorContent() }
         guard value.text.utf8.count <= maximumBytes else {
             return InspectorContent(notice: "Structured preview is limited to 8 MiB. The original value is shown.")
         }

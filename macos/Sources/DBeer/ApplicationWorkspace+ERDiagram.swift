@@ -4,7 +4,7 @@ extension ApplicationWorkspace {
     @discardableResult
     func openERDiagram(_ node: CatalogNode) -> SQLDocument? {
         guard canManageWorkspace, let profile = library.savedConnections.first(where: { $0.id == node.profileID }),
-              [.postgresql, .mysql].contains(profile.engine), node.kind == .schema || (node.kind == .object && node.objectKind == "table") else { return nil }
+              [.postgresql, .mysql, .sqlite].contains(profile.engine), node.kind == .schema || (node.kind == .object && node.objectKind == "table") else { return nil }
         var stored = StoredERDiagram(profileID: profile.id, engine: profile.engine, database: profile.database)
         if node.kind == .object {
             let table = ERTableID(profileID: profile.id, schema: node.schema, name: node.name)
@@ -29,7 +29,7 @@ extension ApplicationWorkspace {
             user: service.user, password: "", sslMode: service.sslMode,
             sslRootCert: service.sslRootCert.isEmpty ? nil : service.sslRootCert, engine: service.engine,
             policy: service.policy, contactPoints: service.contactPoints, localDatacenter: service.localDatacenter,
-            consistency: service.consistency, ssh: service.ssh, passwordCommand: service.passwordCommand)
+            consistency: service.consistency, ssh: service.ssh, passwordCommand: service.passwordCommand, mongodb: service.mongodb, sqlite: service.sqlite)
         let connected = SavedConnection(id: profile.id, name: profile.name, settings: settings)
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         guard let savedBytes = try? encoder.encode(profile), let connectedBytes = try? encoder.encode(connected),

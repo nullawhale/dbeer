@@ -111,7 +111,7 @@ func mapSchemaValue(v reflect.Value, m sc.Mappings) {
 // Unknown facts and transformations outside an adapter's generator stay manual.
 func Schema(ctx context.Context, report sc.Report, render SchemaRenderer) (Plan, error) {
 	plan := New("schema", report.Summary.Engine, report.Summary.ModelDigest)
-	if render == nil || !DigestValid(plan.ModelDigest) || (plan.Engine != "postgresql" && plan.Engine != "mysql") || !report.Summary.Mappings.Valid() {
+	if render == nil || !DigestValid(plan.ModelDigest) || (plan.Engine != "postgresql" && plan.Engine != "mysql" && plan.Engine != "sqlite") || !report.Summary.Mappings.Valid() {
 		return Plan{}, ErrInvalid
 	}
 	if len(report.Differences) > MaxSteps*16 {

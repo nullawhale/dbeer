@@ -102,7 +102,7 @@ struct PasswordCommandTests {
         for line in sys.stdin:
             command = json.loads(line)
             if command['type'] == 'hello':
-                reply = dict(type='hello.ack', requestId=command['requestId'], protocolVersion=5)
+                reply = dict(type='hello.ack', requestId=command['requestId'], protocolVersion=6)
             elif command['type'] == 'shutdown':
                 reply = dict(type='shutdown.ack', requestId=command['requestId'])
             else:
@@ -133,7 +133,7 @@ struct PasswordCommandTests {
             with Path(sys.argv[1]).open('a') as trace: trace.write(kind + '\\n')
             reply = dict(requestId=command['requestId'])
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=5, capabilities=['passwordCommandV1'])
+                reply.update(type='hello.ack', protocolVersion=6, capabilities=['passwordCommandV1'])
             elif kind == 'connect':
                 reply.update(type='error', category='credential', message='The password command failed.')
             elif kind == 'shutdown': reply.update(type='shutdown.ack')

@@ -14,11 +14,12 @@ const MaxInsertBytes = 8 * 1024 * 1024
 // InsertFormatRequest contains only a deliberately chosen target and loaded
 // values. It has no connection, session or executable SQL fields.
 type InsertFormatRequest struct {
-	Engine  string               `json:"engine"`
-	Schema  string               `json:"schema"`
-	Table   string               `json:"table"`
-	Columns []InsertFormatColumn `json:"columns"`
-	Rows    [][]CellValue        `json:"rows"`
+	SQLiteValues [][]SQLiteValue      `json:"sqliteValues,omitempty"`
+	Engine       string               `json:"engine"`
+	Schema       string               `json:"schema"`
+	Table        string               `json:"table"`
+	Columns      []InsertFormatColumn `json:"columns"`
+	Rows         [][]CellValue        `json:"rows"`
 }
 
 type InsertFormatColumn struct {
@@ -26,10 +27,25 @@ type InsertFormatColumn struct {
 }
 
 func (request InsertFormatRequest) Valid() bool {
-	if (request.Engine != "postgresql" && request.Engine != "mysql") || (request.Schema != "" && !changeNameValid(request.Schema)) || !changeNameValid(request.Table) ||
+	if (request.Engine != "postgresql" && request.Engine != "mysql" && request.Engine != "sqlite") || (request.Schema != "" && !changeNameValid(request.Schema)) || !changeNameValid(request.Table) ||
 		len(request.Columns) == 0 || len(request.Columns) > MaxInsertColumns || len(request.Rows) == 0 || len(request.Rows) > MaxInsertRows ||
 		len(request.Columns)*len(request.Rows) > MaxInsertCells {
 		return false
+	}
+	if request.SQLiteValues != nil {
+		if request.Engine != "sqlite" || len(request.SQLiteValues) != len(request.Rows) {
+			return false
+		}
+		for _, row := range request.SQLiteValues {
+			if len(row) != len(request.Columns) {
+				return false
+			}
+			for _, v := range row {
+				if !v.Valid() {
+					return false
+				}
+			}
+		}
 	}
 	seen := make(map[string]bool, len(request.Columns))
 	size := len(request.Schema) + len(request.Table)
@@ -64,7 +80,7 @@ func parseInsertFormat(raw json.RawMessage) (InsertFormatRequest, bool) {
 	if !uniqueObjectKeys(raw) {
 		return request, false
 	}
-	root, ok := changesObject(raw, "engine|schema|table|columns|rows", "engine", "schema", "table", "columns", "rows")
+	root, ok := changesObject(raw, "engine|schema|table|columns|rows|sqliteValues", "engine", "schema", "table", "columns", "rows")
 	if !ok {
 		return request, false
 	}

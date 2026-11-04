@@ -12,7 +12,7 @@ import (
 )
 
 func TestOfflineInsertFormattingAdvertisesCapabilityAndNeverConnects(t *testing.T) {
-	const input = `{"type":"hello","requestId":"hello","protocolVersion":5}
+	const input = `{"type":"hello","requestId":"hello","protocolVersion":6}
 {"type":"formatInserts","requestId":"copy","insert":{"engine":"postgresql","schema":"","table":"target","columns":[{"name":"value"}],"rows":[[{"kind":"null"}]]}}
 {"type":"shutdown","requestId":"shutdown"}
 `

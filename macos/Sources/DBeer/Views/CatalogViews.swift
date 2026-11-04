@@ -100,7 +100,7 @@ struct ProfileCatalogRow: View {
         .onTapGesture { Task { await workspace.library.selectConnection(profile.id) } }
         .catalogRowHover()
         .catalogRowContextMenu { contextMenu }
-        .help(workspace.services[profile.id]?.connectionProgress ?? "\(profile.user)@\(profile.host):\(profile.port)/\(profile.database)")
+        .help(workspace.services[profile.id]?.connectionProgress ?? "\(profile.endpointDescription)")
     }
 
     private var contextMenu: NSMenu {
@@ -162,7 +162,7 @@ struct CatalogBranchView: View {
     private var contextMenu: NSMenu {
         let menu = NSMenu()
         if (node.kind == .schema || (node.kind == .object && node.objectKind == "table")),
-           workspace.library.savedConnections.contains(where: { $0.id == node.profileID && [.postgresql, .mysql].contains($0.engine) }) {
+           workspace.library.savedConnections.contains(where: { $0.id == node.profileID && [.postgresql, .mysql, .sqlite].contains($0.engine) }) {
             menu.addCatalogAction("Open ER Diagram…") { workspace.openERDiagram(node) }
         }
         if workspace.canEditTableStructure(node) {

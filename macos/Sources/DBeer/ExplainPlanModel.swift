@@ -28,7 +28,7 @@ struct ExplainProfileBinding: Sendable {
             sslRootCert: runtime.sslRootCert.isEmpty && profile.sslRootCert == nil ? nil : runtime.sslRootCert,
             engine: runtime.engine, policy: runtime.policy, contactPoints: runtime.contactPoints,
             localDatacenter: runtime.localDatacenter, consistency: runtime.consistency,
-            ssh: runtime.ssh, passwordCommand: runtime.passwordCommand, mongodb: runtime.mongodb)
+            ssh: runtime.ssh, passwordCommand: runtime.passwordCommand, mongodb: runtime.mongodb, sqlite: runtime.sqlite)
         return matches(SavedConnection(id: profile.id, name: profile.name, settings: settings))
     }
 }

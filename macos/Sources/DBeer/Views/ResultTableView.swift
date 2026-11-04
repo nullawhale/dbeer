@@ -464,6 +464,7 @@ struct ResultTableView: NSViewRepresentable {
     static let nullMarker = ResultCopy.nullMarker
     let columns: [ResultColumn]
     let rows: [[String?]]
+    var sqliteValues: [[SQLiteValue]]?
     var pasteboard: NSPasteboard = .general
     var copySettings: ResultCopySettings = .shared
     var editableColumns: IndexSet = []
@@ -517,6 +518,7 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.modifiedCells = modifiedCells
         coordinator.deletedRows = deletedRows
         coordinator.valueKinds = valueKinds
+        coordinator.sqliteValues = sqliteValues
         coordinator.partitionMarkers = partitionMarkers
         coordinator.onEditCell = onEditCell
         coordinator.onCommitCell = onCommitCell
@@ -565,6 +567,7 @@ struct ResultTableView: NSViewRepresentable {
         var modifiedCells: Set<ResultGridCell> = []
         var deletedRows: IndexSet = []
         var valueKinds: [[String]]?
+        var sqliteValues: [[SQLiteValue]]?
         var partitionMarkers: [GridPartitionMarker?]?
         var onEditCell: ((ResultGridCell) -> Void)?
         var onCommitCell: ((ResultGridCell, String) -> Void)?
@@ -988,7 +991,7 @@ struct ResultTableView: NSViewRepresentable {
                 let cell = table.cellSelection?.focus
                 self.onInspectValue?(InspectedValue.capture(
                     cell: cell.flatMap { table.selectedRowIndexes.contains($0.row) ? $0 : nil },
-                    columns: self.columns, rows: self.rows, valueKinds: self.valueKinds))
+                    columns: self.columns, rows: self.rows, valueKinds: self.valueKinds, sqliteValues: self.sqliteValues))
             }
         }
 
@@ -1018,7 +1021,7 @@ struct ResultTableView: NSViewRepresentable {
             let publisher = ResultCopyPublication.shared
             let ticket = publisher.capture(changeCount: pasteboard.changeCount)
             do {
-                let payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds,
+                let payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds, sqliteValues: sqliteValues,
                     rowIndices: rowIndices, columnIndices: columnIndices)
                 let prepared = try PreparedResultCopy(payload: payload, format: options.format,
                     includesHeaders: options.includesHeaders)
@@ -1056,7 +1059,7 @@ struct ResultTableView: NSViewRepresentable {
             guard isCopyAllowed else { return nil }
             let payload: ResultClipboardPayload
             do {
-                payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds,
+                payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds, sqliteValues: sqliteValues,
                     rowIndices: rowIndices, columnIndices: columnIndices)
             } catch {
                 onCopyError?(error.localizedDescription)

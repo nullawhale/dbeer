@@ -39,6 +39,7 @@ struct AgentResult: Codable, Sendable {
     var truncated: Bool
     var displayNotice: String? = nil
     var affectedRowCountKnown: Bool? = nil
+    var sqliteValues: [[SQLiteValue]]? = nil
 }
 
 struct AgentResponse: Codable, Sendable {

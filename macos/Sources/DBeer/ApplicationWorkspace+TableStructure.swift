@@ -8,7 +8,7 @@ private final class TableStructureSessionLease {
 extension ApplicationWorkspace {
     func canEditTableStructure(_ node: CatalogNode) -> Bool {
         guard tableImporter == nil, canStartTableStructure(node.profileID), let service = services[node.profileID], service.connectionState == .connected,
-              [.postgresql, .mysql].contains(service.engine), service.capabilities.contains("tableStructureEditorV1") else { return false }
+              [.postgresql, .mysql, .sqlite].contains(service.engine), service.capabilities.contains("tableStructureEditorV1") else { return false }
         return node.kind == .schema || node.kind == .group && node.objectKind == "table" || node.kind == .object && node.objectKind == "table"
     }
     func openTableStructure(_ node: CatalogNode, create: Bool) async {
@@ -29,7 +29,7 @@ extension ApplicationWorkspace {
                 sslRootCert: service.sslRootCert.isEmpty ? nil : service.sslRootCert,
                 engine: service.engine, policy: service.policy, contactPoints: service.contactPoints,
                 localDatacenter: service.localDatacenter, consistency: service.consistency,
-                ssh: service.ssh, passwordCommand: service.passwordCommand)
+                ssh: service.ssh, passwordCommand: service.passwordCommand, mongodb: service.mongodb, sqlite: service.sqlite)
             return (try? encoder.encode(SavedConnection(id: profile.id, name: profile.name, settings: live))) == profileBytes
         }
         guard current() else { return }

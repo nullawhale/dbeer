@@ -35,7 +35,7 @@ struct RowStorageEvidenceTests {
         import json,sys
         def read(): return json.loads(sys.stdin.readline())
         def send(x): print(json.dumps(x),flush=True)
-        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':5,'capabilities':[]})
+        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':6,'capabilities':[]})
         c=read();base={'requestId':c['requestId'],'sessionId':c['sessionId'],'queryId':c['queryId']}
         send(dict(base,type='query.started'))
         columns=[{'index':0,'name':'id','engine':'postgresql','nativeType':'int4'}]

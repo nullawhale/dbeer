@@ -123,7 +123,11 @@ func (w *Writer) Publish(ctx context.Context, out Outcome) (resultartifact.Artif
 		columns[i] = resultartifact.Column{Index: i, Name: c.Name, Engine: w.engine, NativeType: c.NativeType, TypeIdentity: stable, Encoding: c.Encoding}
 	}
 	partial := len(out.PartialReasons) > 0
-	manifest := map[string]any{"version": 1, "id": w.ID, "title": "Temporary table capture", "capturedAt": 0, "engine": w.engine, "sql": "", "environment": "unspecified", "outcome": "succeeded", "columns": columns, "rowCount": w.rows, "truncated": partial, "partial": partial, "commandTag": "", "rowsBytes": w.bytes, "rowsSHA256": w.Digest()}
+	version := 1
+	if w.engine == "sqlite" {
+		version = 2
+	}
+	manifest := map[string]any{"version": version, "id": w.ID, "title": "Temporary table capture", "capturedAt": 0, "engine": w.engine, "sql": "", "environment": "unspecified", "outcome": "succeeded", "columns": columns, "rowCount": w.rows, "truncated": partial, "partial": partial, "commandTag": "", "rowsBytes": w.bytes, "rowsSHA256": w.Digest()}
 	if !partial {
 		manifest["sourceRowCount"] = w.rows
 	}

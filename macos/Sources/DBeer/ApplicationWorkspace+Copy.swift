@@ -12,7 +12,8 @@ struct InsertCopyTarget: Sendable {
         guard columnNames.count == payload.columns.count else { throw ResultCopyError.malformed }
         let request = InsertFormatRequest(engine: engine, schema: schema, table: table,
             columns: columnNames.map { InsertFormatColumn(name: $0) },
-            rows: payload.values.map { row in row.map { ChangeValue(kind: $0.kind.rawValue, value: $0.value) } })
+            rows: payload.values.map { row in row.map { ChangeValue(kind: $0.kind.rawValue, value: $0.value) } },
+            sqliteValues: payload.sqliteValues)
         guard request.valid else { throw ResultCopyError.malformed }
         return request
     }
@@ -42,7 +43,7 @@ extension ApplicationWorkspace {
               insertCopySelection == nil else { return }
         let sourceEngine = payload.columns.first?.engine ?? .postgresql
         insertCopySelection = InsertCopySelection(payload: payload,
-            engine: sourceEngine == .mysql ? .mysql : .postgresql,
+            engine: sourceEngine == .sqlite ? .sqlite : sourceEngine == .mysql ? .mysql : .postgresql,
             schema: document.table?.schema ?? "", table: document.table?.name ?? "", pasteboard: pasteboard)
     }
 

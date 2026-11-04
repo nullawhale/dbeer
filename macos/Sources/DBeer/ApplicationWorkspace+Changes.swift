@@ -118,7 +118,7 @@ extension ApplicationWorkspace {
             user: runtime.user, password: "", sslMode: runtime.sslMode,
             sslRootCert: runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert, engine: runtime.engine, policy: runtime.policy,
             contactPoints: runtime.contactPoints, localDatacenter: runtime.localDatacenter, consistency: runtime.consistency,
-            ssh: runtime.ssh, passwordCommand: runtime.passwordCommand)
+            ssh: runtime.ssh, passwordCommand: runtime.passwordCommand, mongodb: runtime.mongodb, sqlite: runtime.sqlite)
         func validateConnectionBinding() throws {
             guard ownedSQLContext(for: document) != nil,
                   document.profileID == profileID, document.runtime === runtime, document.grid === grid,
@@ -132,7 +132,7 @@ extension ApplicationWorkspace {
                   runtime.user == boundSettings.user, runtime.sslMode == boundSettings.sslMode,
                   runtime.contactPoints == boundSettings.contactPoints, runtime.localDatacenter == boundSettings.localDatacenter,
                   runtime.consistency == boundSettings.consistency, runtime.policy == boundSettings.policy,
-                  runtime.ssh == boundSettings.ssh,
+                  runtime.ssh == boundSettings.ssh, runtime.sqlite == boundSettings.sqlite, runtime.mongodb == boundSettings.mongodb,
                   runtime.passwordCommand == boundSettings.passwordCommand,
                   (runtime.sslRootCert.isEmpty ? nil : runtime.sslRootCert) == boundSettings.sslRootCert else {
                 throw ChangesClientError(message: "The profile changed after this table was loaded. Reconnect the profile and reload the table before previewing or applying changes.")

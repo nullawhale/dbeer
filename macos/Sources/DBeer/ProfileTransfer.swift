@@ -4,10 +4,15 @@ import Foundation
 struct ImportedProfile: Identifiable, Equatable, Sendable {
     var profile: SavedConnection
     var isSelected = true
+    var sqliteFileNameHint: String?
     var id: UUID { profile.id }
 
     /// Recomputed before importing too, so a CA removed after preview does not
     /// silently switch the connection to the system trust store.
+    var requiresSQLiteSelection: Bool {
+        profile.engine == .sqlite && (profile.sqlite.map { $0.isValid && ProfileTransfer.isLocalReadableCA($0.path) } != true)
+    }
+
     var requiresSSHKeySelection: Bool {
         profile.ssh?.authMethod == .privateKey && (profile.ssh?.identityFile.map(ProfileTransfer.isLocalReadableCA) != true)
     }
@@ -33,7 +38,7 @@ enum ProfileTransferError: LocalizedError {
 /// Portable metadata only. UUIDs and password/private-key fields have no place
 /// in this format; decoding a preview never reads or writes Keychain.
 enum ProfileTransfer {
-    static let currentVersion = 3
+    static let currentVersion = 4
     static let maxFileBytes = 2 * 1_024 * 1_024
     static let maxProfiles = 1_000
 
@@ -66,8 +71,10 @@ enum ProfileTransfer {
         var consistency: String?
         var ssh: PortableSSH?
         var mongodb: MongoDBSettings?
+        var sqliteFileName: String?
 
         init(_ saved: SavedConnection) {
+            sqliteFileName = saved.engine == .sqlite ? saved.sqlite.map { URL(fileURLWithPath: $0.path).lastPathComponent } : nil
             ssh = saved.ssh.map(PortableSSH.init)
             mongodb = saved.mongodb
             name = saved.name
@@ -88,7 +95,8 @@ enum ProfileTransfer {
             ImportedProfile(profile: SavedConnection(id: UUID(), name: name, settings: ConnectionSettings(
                 host: host, port: port, database: database, user: user, password: "", sslMode: sslMode,
                 sslRootCert: sslRootCert, engine: engine, policy: policy ?? ExecutionPolicy(), contactPoints: contactPoints,
-                localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.configuration.runtime(profileId: UUID()), mongodb: mongodb)))
+                localDatacenter: localDatacenter, consistency: consistency, ssh: ssh?.configuration.runtime(profileId: UUID()), mongodb: mongodb,
+                sqlite: engine == .sqlite ? SQLiteSettings(path: "") : nil)), sqliteFileNameHint: sqliteFileName)
         }
     }
 
@@ -111,8 +119,8 @@ enum ProfileTransfer {
             }
             var uniqueKeys = UniqueJSONKeys(data)
             try uniqueKeys.validate()
-            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb"]
-            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb"])
+            let permitted: Set<String> = ["name", "engine", "host", "port", "database", "user", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb", "sqliteFileName"]
+            let required = permitted.subtracting(["sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "mongodb", "sqliteFileName"])
             guard raw.allSatisfy({ Set($0.keys).isSubset(of: permitted) && required.isSubset(of: Set($0.keys)) }) else {
                 throw ProfileTransferError.invalid
             }
@@ -156,11 +164,13 @@ enum ProfileTransfer {
         guard !profiles.isEmpty, profiles.count <= maxProfiles,
               profiles.allSatisfy({ profile in
                   var native = profile.imported().profile.settings(password: "")
+                  if profile.engine == .sqlite { native.sqlite = SQLiteSettings(path: "/requires-local-selection") }
                   if native.ssh?.authMethod == .privateKey { native.ssh?.identityFile = "/requires-local-selection" }
-                  let fields = [profile.name, profile.host] + ([.cassandra, .mongodb].contains(profile.engine) ? [] : [profile.database, profile.user])
+                  let fields = profile.engine == .sqlite ? [profile.name] : [profile.name, profile.host] + ([.cassandra, .mongodb].contains(profile.engine) ? [] : [profile.database, profile.user])
                   return fields.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
                       !$0.contains("\0") && $0.utf8.count <= 1_024 } && profile.name.count <= 128 &&
                       native.hasValidNativeFields &&
+                      (profile.engine == .sqlite ? profile.sqliteFileName.map { !$0.isEmpty && $0.utf8.count <= 255 && !$0.contains(where: { "/\\\0".contains($0) }) } == true : profile.sqliteFileName == nil) &&
                       (profile.sslRootCert.map { validCAHint($0) } ?? true)
               }) else { throw ProfileTransferError.invalid }
     }

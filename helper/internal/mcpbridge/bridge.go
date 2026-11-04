@@ -5,6 +5,7 @@ package mcpbridge
 import (
 	"bufio"
 	"context"
+	"dbeer/helper/internal/sqlitevalue"
 	"encoding/json"
 	"errors"
 	"net"
@@ -51,13 +52,14 @@ type Column struct {
 }
 
 type Result struct {
-	Columns               []Column    `json:"columns"`
-	Rows                  [][]*string `json:"rows"`
-	CommandTag            string      `json:"commandTag"`
-	RowCount              int64       `json:"rowCount"`
-	Truncated             bool        `json:"truncated"`
-	DisplayNotice         string      `json:"displayNotice,omitempty"`
-	AffectedRowCountKnown *bool       `json:"affectedRowCountKnown,omitempty"`
+	SQLiteValues          [][]sqlitevalue.Value `json:"sqliteValues,omitempty"`
+	Columns               []Column              `json:"columns"`
+	Rows                  [][]*string           `json:"rows"`
+	CommandTag            string                `json:"commandTag"`
+	RowCount              int64                 `json:"rowCount"`
+	Truncated             bool                  `json:"truncated"`
+	DisplayNotice         string                `json:"displayNotice,omitempty"`
+	AffectedRowCountKnown *bool                 `json:"affectedRowCountKnown,omitempty"`
 }
 
 type response struct {

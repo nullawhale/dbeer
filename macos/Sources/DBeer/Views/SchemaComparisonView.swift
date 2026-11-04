@@ -134,7 +134,7 @@ struct SchemaComparisonView: View {
                 }
             }.labelsHidden().accessibilityIdentifier(identifier)
             if let profile = model.profiles.first(where: { $0.id == selection.wrappedValue }) {
-                Text("\(profile.host):\(profile.port) · \(profile.database)")
+                Text("\(profile.endpointDescription)")
                     .font(.caption).appSecondaryText().textSelection(.enabled).lineLimit(2)
             }
         }
@@ -495,7 +495,7 @@ struct SchemaComparisonView: View {
                 Button("Compare") { Task { await model.start() } }.keyboardShortcut(.defaultAction)
                     .disabled(!model.canStart).accessibilityIdentifier("schemaCompareStart")
             } else {
-                if model.targetProfile.map({ [.postgresql, .mysql].contains($0.engine) }) == true {
+                if model.targetProfile.map({ [.postgresql, .mysql, .sqlite].contains($0.engine) }) == true {
                     Button(model.isGeneratingPlan ? "Generating SQL…" : "Generate SQL Plan") { Task { await model.generatePlan() } }
                         .disabled(!model.canGeneratePlan).controlHover().accessibilityIdentifier("schemaComparePlan")
                 }

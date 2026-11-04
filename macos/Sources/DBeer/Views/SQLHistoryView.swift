@@ -362,13 +362,13 @@ struct SQLHistoryProfileOption: Identifiable, Equatable {
     static func options(connections: [SavedConnection], history: [SQLHistoryEntry], selected: SQLHistoryProfileFilter = .all) -> [Self] {
         var options = Dictionary(uniqueKeysWithValues: connections.map { profile in
             (profile.id, Self(id: profile.id,
-                label: "\(profile.name) · \(profile.user)@\(profile.host):\(profile.port)/\(profile.database)"))
+                label: "\(profile.name) · \(profile.endpointDescription)"))
         })
         for entry in history.reversed() {
             guard let id = entry.profileID, options[id] == nil else { continue }
             let label: String
             if let snapshot = entry.profile {
-                label = "\(snapshot.name) (deleted) · \(snapshot.user)@\(snapshot.host):\(snapshot.port)/\(snapshot.database)"
+                label = "\(snapshot.name) (deleted) · \(snapshot.endpointDescription)"
             } else {
                 label = "Unavailable connection · \(id.uuidString.suffix(8))"
             }

@@ -29,6 +29,9 @@ struct TableBrowseUIIntegrationTests {
     private func settings(_ engine: DatabaseEngine) throws -> ConnectionSettings {
         let env = ProcessInfo.processInfo.environment
         switch engine {
+        case .sqlite:
+            return ConnectionSettings(host: "", port: 0, database: "", user: "", password: "", sslMode: "disable",
+                engine: .sqlite, sqlite: SQLiteSettings(path: try #require(env["DBEER_TEST_SQLITE_PATH"])))
         case .postgresql:
             let url = try #require(URLComponents(string: env["DBEER_TEST_DSN"] ?? ""))
             return ConnectionSettings(host: try #require(url.host), port: url.port ?? 5432,

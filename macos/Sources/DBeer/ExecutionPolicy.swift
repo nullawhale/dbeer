@@ -62,11 +62,13 @@ struct AssessedOperation: Codable, Equatable, Sendable {
 }
 
 struct OperationAssessment: Codable, Equatable, Sendable {
+    var sqliteFiles: [String]? = nil
     var decision: String
     var policy: ExecutionPolicy
     var operations: [AssessedOperation]
     var authorization: String?
     var valid: Bool {
+        (sqliteFiles.map { $0.count <= 11 && $0.allSatisfy { $0.hasPrefix("/") && $0.utf8.count <= 32768 && !$0.contains("\0") } } ?? true) &&
         ["allow", "confirm", "deny"].contains(decision) && !operations.isEmpty && operations.count <= 1024 &&
             operations.allSatisfy { operation in
                 ["read", "write", "destructive", "unknown"].contains(operation.kind) &&
@@ -115,7 +117,8 @@ enum ExecutionConfirmation {
         let isAnalyze = confirmation.operations.contains { $0.explain?.mode == .analyze }
         alert.messageText = isAnalyze ? "Run Explain Analyze?" : confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
         let profile = confirmation.profile
-        alert.informativeText = "\(profile.name) · \(profile.engine.displayName) · \(profile.host):\(profile.port)/\(profile.database)\n\(profile.policy.label)\nDestructive and unknown commands require confirmation. Production confirms every evaluated write. Functions and database objects can hide side effects; use restricted database privileges for strict protection."
+        alert.informativeText = "\(profile.name) · \(profile.engine.displayName) · \(profile.endpointDescription)\n\(profile.policy.label)\nDestructive and unknown commands require confirmation. Production confirms every evaluated write. Functions and database objects can hide side effects; use restricted database privileges for strict protection."
+        if let files = confirmation.assessment.sqliteFiles { alert.informativeText += "\nSQLite files in this session:\n" + files.joined(separator: "\n") }
         if isAnalyze { alert.informativeText += "\nExplain Analyze executes this query, consumes server resources, and may have side effects. It is not automatically rolled back." }
         alert.addButton(withTitle: "Execute")
         alert.addButton(withTitle: "Cancel")

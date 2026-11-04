@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"unicode/utf8"
 
 	"dbeer/helper/internal/protocol"
 )
@@ -27,6 +29,7 @@ var ErrInvalidRequest = errors.New("Invalid export settings.")
 var ErrCancelled = errors.New("Export was cancelled before publishing.")
 
 type Writer struct {
+	sqliteRow     []protocol.SQLiteValue
 	file          *os.File
 	csv           *csv.Writer
 	request       protocol.ExportRequest
@@ -140,6 +143,11 @@ func (writer *Writer) Begin(index int, columns []protocol.Column) error {
 	return writer.write([]byte(`{"rows":[`))
 }
 
+func (writer *Writer) SQLiteRow(_ int, row []protocol.SQLiteValue) error {
+	writer.sqliteRow = row
+	return nil
+}
+
 func (writer *Writer) Row(index int, values []*string) error {
 	if writer.failure != nil {
 		return writer.failure
@@ -147,7 +155,20 @@ func (writer *Writer) Row(index int, values []*string) error {
 	if !writer.open || index != writer.current || len(values) != len(writer.columns) {
 		return writer.fail(ErrIO)
 	}
+	typed := writer.sqliteRow
+	writer.sqliteRow = nil
+	if typed != nil && len(typed) != len(values) {
+		return writer.fail(ErrIO)
+	}
 	if writer.csv != nil {
+		for _, cell := range typed {
+			if cell.Type == "text" {
+				b, _ := base64.StdEncoding.DecodeString(cell.Value)
+				if !utf8.Valid(b) {
+					return writer.fail(ErrIO)
+				}
+			}
+		}
 		marker := `\N`
 		if writer.request.NullMarker != nil {
 			marker = *writer.request.NullMarker
@@ -171,7 +192,13 @@ func (writer *Writer) Row(index int, values []*string) error {
 				return err
 			}
 		}
-		encoded, err := json.Marshal(values)
+		var encoded []byte
+		var err error
+		if typed != nil {
+			encoded, err = json.Marshal(typed)
+		} else {
+			encoded, err = json.Marshal(values)
+		}
 		if err != nil {
 			return writer.fail(ErrIO)
 		}

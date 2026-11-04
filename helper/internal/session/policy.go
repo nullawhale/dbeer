@@ -84,6 +84,11 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 	owner.approvedExplainSQL = ""
 	preparedSQL := []string{}
 	assessment := &protocol.OperationAssessment{Decision: "allow", Policy: policy, Operations: []protocol.AssessedOperation{}}
+	if len(sessions) > 0 {
+		if files, ok := sessions[0].(interface{ SQLiteFiles() []string }); ok {
+			assessment.SQLiteFiles = files.SQLiteFiles()
+		}
+	}
 	for _, operation := range command.Operations {
 		if operation.Type == "execute" {
 			if _, err := queryparams.Bind(engine, operation.SQL, operation.Parameters); err != nil {
@@ -107,7 +112,7 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 				return protocol.ErrorResponse(command, "conflict", err.Error())
 			}
 		}
-		item := owner.assessRetainedOperation(engine, operation)
+		item := owner.assessRetainedOperation(engine, operation, policy, sessions...)
 		if operation.Type == "explain.run" {
 			if len(sessions) == 0 {
 				return protocol.ErrorResponse(command, "capability", "Visual Explain is unavailable.")
@@ -153,7 +158,7 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 	return protocol.Response{Type: "operation.assessment", RequestID: command.RequestID, SessionID: owner.id, QueryID: command.QueryID, Assessment: assessment}
 }
 
-func (owner *owner) authorize(command protocol.Command, engine string, policy protocol.ExecutionPolicy) bool {
+func (owner *owner) authorize(command protocol.Command, engine string, policy protocol.ExecutionPolicy, sessions ...adapter.Session) bool {
 	if command.Type != "execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "import.apply" {
 		return true
 	}
@@ -189,7 +194,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 	}
 	owner.authMu.Lock()
 	defer owner.authMu.Unlock()
-	if policyDecision(policy, owner.assessRetainedOperation(engine, operation)) == "deny" {
+	if policyDecision(policy, owner.assessRetainedOperation(engine, operation, policy, sessions...)) == "deny" {
 		owner.grant = nil
 		return false
 	}
@@ -199,7 +204,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 			return false
 		}
 		owner.grant = nil
-		return command.Type != "explain.run" && policyDecision(policy, owner.assessRetainedOperation(engine, operation)) == "allow"
+		return command.Type != "explain.run" && policyDecision(policy, owner.assessRetainedOperation(engine, operation, policy, sessions...)) == "allow"
 	}
 	grant := owner.grant
 	if grant == nil || grant.token != command.Authorization || grant.next >= len(grant.operations) {
@@ -234,8 +239,17 @@ func (owner *owner) takeApprovedExplainSQL() string {
 	return sql
 }
 
-func (owner *owner) assessRetainedOperation(engine string, operation protocol.OperationRequest) protocol.AssessedOperation {
+func (owner *owner) assessRetainedOperation(engine string, operation protocol.OperationRequest, policy protocol.ExecutionPolicy, sessions ...adapter.Session) protocol.AssessedOperation {
 	result := assessOperation(engine, operation)
+	if policy.ReadOnly && len(sessions) > 0 {
+		if readonly, ok := sessions[0].(adapter.ReadOnlyOperationSession); ok && readonly.IsReadOnlyOperation(operation) {
+			result.Kind = "read"
+			for i := range result.Statements {
+				result.Statements[i].Kind = "read"
+				result.Statements[i].Reason = "adapter_readonly_session_operation"
+			}
+		}
+	}
 	if operation.Type == "structure.apply" && operation.Structure != nil {
 		if plan, err := owner.structure.Resolve(*operation.Structure); err == nil && plan.Destructive {
 			result.Kind = "destructive"

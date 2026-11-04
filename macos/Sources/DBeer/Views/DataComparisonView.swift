@@ -128,8 +128,8 @@ struct DataComparisonView: View {
                 TextField("Table", text: table.name)
             }.textFieldStyle(.roundedBorder)
             if let profile = model.profiles.first(where: { $0.id == id.wrappedValue }) {
-                Text("\(profile.host):\(profile.port) · \(profile.database) · \(profile.policy.label)")
-                    .font(.caption).appSecondaryText().lineLimit(1).help("\(profile.host):\(profile.port) · \(profile.database) · \(profile.policy.label)")
+                Text("\(profile.endpointDescription) · \(profile.policy.label)")
+                    .font(.caption).appSecondaryText().lineLimit(1).help("\(profile.endpointDescription) · \(profile.policy.label)")
             }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -229,7 +229,7 @@ struct DataComparisonView: View {
     private var footer: some View {
         HStack {
             if model.summary != nil {
-                if model.targetProfile.map({ [.postgresql, .mysql].contains($0.engine) }) == true {
+                if model.targetProfile.map({ [.postgresql, .mysql, .sqlite].contains($0.engine) }) == true {
                     Button(model.isGeneratingPlan ? "Generating SQL…" : "Generate SQL Plan") { Task { await model.generatePlan() } }
                         .disabled(!model.canGeneratePlan).controlHover().accessibilityIdentifier("dataComparePlan")
                 }

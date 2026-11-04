@@ -7,7 +7,7 @@ func VisualExplainTarget(engine, sql string) bool {
 	if engine == "postgresql" {
 		engine = "postgres"
 	}
-	if engine != "postgres" && engine != "mysql" {
+	if engine != "postgres" && engine != "mysql" && engine != "sqlite" {
 		return false
 	}
 	l := lexer{sql: sql, engine: engine}
@@ -31,7 +31,7 @@ func VisualExplainTarget(engine, sql string) bool {
 			if t.kind == word && i+1 < len(tokens) && tokens[i+1].kind == group && (engine == "postgres" && postgresWriteFunctions[t.text] || engine == "mysql" && t.text == "LAST_INSERT_ID" && len(tokens[i+1].children) > 0) {
 				return false
 			}
-			if t.kind == symbol && (oneOf(t.text, "$", ":", ":=") || engine == "mysql" && oneOf(t.text, "?", "@")) {
+			if t.kind == symbol && (oneOf(t.text, "$", ":", ":=") || (engine == "mysql" || engine == "sqlite") && oneOf(t.text, "?", "@")) {
 				return false
 			}
 			if t.kind == word && oneOf(t.text, "INSERT", "DELETE", "UPDATE", "MERGE", "INTO", "LOCK", "EXECUTE", "CALL", "COPY", "LOAD", "EXPLAIN") {

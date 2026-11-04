@@ -31,7 +31,8 @@ struct InsertCopyView: View {
                     Picker("Dialect", selection: engine.projectedValue) {
                         Text("PostgreSQL").tag(DatabaseEngine.postgresql)
                         Text("MySQL").tag(DatabaseEngine.mysql)
-                    }.labelsHidden().controlHover().accessibilityIdentifier("insertCopyDialect")
+                        Text("SQLite").tag(DatabaseEngine.sqlite)
+                    }.labelsHidden().controlHover().disabled(selection.payload.sqliteValues != nil).accessibilityIdentifier("insertCopyDialect")
                 }
                 SwiftUI.GridRow {
                     Text("Schema / database")

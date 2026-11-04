@@ -10,7 +10,7 @@ extension ApplicationWorkspace {
         guard canManageWorkspace, canStartTableStructure(node.profileID), tableImporter == nil, structureEditor == nil, queryParameterPrompt == nil,
               node.kind == .object, node.objectKind == "table",
               let service = services[node.profileID], service.connectionState == .connected,
-              [.postgresql, .mysql].contains(service.engine), service.capabilities.contains("tableImportV1") else { return false }
+              [.postgresql, .mysql, .sqlite].contains(service.engine), service.capabilities.contains("tableImportV1") else { return false }
         return true
     }
 
@@ -38,7 +38,7 @@ extension ApplicationWorkspace {
                 sslRootCert: service.sslRootCert.isEmpty ? nil : service.sslRootCert,
                 engine: service.engine, policy: service.policy, contactPoints: service.contactPoints,
                 localDatacenter: service.localDatacenter, consistency: service.consistency,
-                ssh: service.ssh, passwordCommand: service.passwordCommand)
+                ssh: service.ssh, passwordCommand: service.passwordCommand, mongodb: service.mongodb, sqlite: service.sqlite)
             return (try? encoder.encode(SavedConnection(id: profile.id, name: profile.name, settings: live))) == profileBytes
         }
         guard current() else { return }

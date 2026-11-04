@@ -7,6 +7,10 @@ import Testing
 @MainActor
 struct ConnectionEditorDraftTests {
     private func profile(engine: DatabaseEngine = .postgresql, name: String = "Team database") -> SavedConnection {
+        if engine == .sqlite {
+            return SavedConnection(name: name, settings: ConnectionSettings(host: "", port: 0, database: "", user: "",
+                password: "", sslMode: "disable", engine: .sqlite, sqlite: SQLiteSettings(path: "/connection-fixtures/local.sqlite")))
+        }
         let id = UUID()
         let ssh = SSHConfiguration(host: "ssh.example.test", port: 2222, user: "operator", authMethod: .password)
         let settings = ConnectionSettings(host: "127.0.0.1", port: engine.defaultPort,
@@ -42,7 +46,7 @@ struct ConnectionEditorDraftTests {
     @Test(arguments: DatabaseEngine.allCases)
     func duplicatePrefillsSettingsWithANewSSHIdentityAndAnEditableEngine(engine: DatabaseEngine) throws {
         let source = profile(engine: engine)
-        let fixtureIsValid = source.settings(password: "fixture-database-secret").hasValidNativeFields
+        let fixtureIsValid = source.settings(password: engine == .sqlite ? "" : "fixture-database-secret").hasValidNativeFields
         try #require(fixtureIsValid, "The duplicated connection fixture must be valid for its engine and SSH topology.")
         let request = ConnectionEditorRequest.duplicate(source)
         let draft = request.makeDraft()
@@ -62,7 +66,7 @@ struct ConnectionEditorDraftTests {
         changed.selectEngine(next)
         #expect(changed.engine == next && changed.port == String(next.defaultPort))
         #expect(source.engine == engine && draft.engine == engine)
-        #expect(request.makeDraft().settings?.ssh?.profileId != draft.settings?.ssh?.profileId)
+        if engine != .sqlite { #expect(request.makeDraft().settings?.ssh?.profileId != draft.settings?.ssh?.profileId) }
     }
 
     @Test func duplicateNamesFitTheEditorLimitWithoutSplittingUnicodeCharacters() {

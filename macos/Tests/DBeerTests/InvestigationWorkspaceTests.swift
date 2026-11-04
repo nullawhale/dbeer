@@ -409,7 +409,7 @@ enum InvestigationRuntimeTestSupport {
             kind = command['type']
             reply = {'requestId':command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=5)
+                reply.update(type='hello.ack', protocolVersion=6)
             elif kind == 'connect':
                 time.sleep(\(connectDelay))
                 session = 'investigation-session-' + str(len(transactions))

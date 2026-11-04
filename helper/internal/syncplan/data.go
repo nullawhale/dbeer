@@ -41,7 +41,7 @@ func BuildData(ctx context.Context, in DataInput, result *resultcompare.Result, 
 		p.Steps = []Step{{ID: "data-manual", Title: "Review data synchronization manually", Manual: true, Reason: reason, DependsOn: []string{}}}
 		return p, p.Validate()
 	}
-	if result == nil || render == nil || in.Source.Descriptor.Engine != p.Engine || (p.Engine != "postgresql" && p.Engine != "mysql") {
+	if result == nil || render == nil || in.Source.Descriptor.Engine != p.Engine || (p.Engine != "postgresql" && p.Engine != "mysql" && p.Engine != "sqlite") {
 		return p, ErrInvalid
 	}
 	s := result.Summary()

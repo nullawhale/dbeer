@@ -33,7 +33,7 @@ struct ResultSnapshotSource: Sendable {
         guard let displayed = Self.project(result, resultSetIndex: resultSetIndex),
               let columns = displayed.columns, !columns.isEmpty else { return nil }
         return ResultSnapshotCapture(title: title, sql: sql, engine: profile.engine,
-            columns: columns, rows: displayed.rows ?? [], capturedAt: finishedAt,
+            columns: columns, rows: displayed.rows ?? [], sqliteValues: displayed.sqliteValues, capturedAt: finishedAt,
             profileID: profileID, profileName: profile.name, environment: profile.policy.environment,
             outcome: outcome, truncated: displayed.truncated == true,
             partial: isPartial || displayed.nextCursor != nil,
@@ -49,6 +49,7 @@ struct ResultSnapshotSource: Sendable {
             let set = sets[resultSetIndex]
             projected.columns = set.columns
             projected.rows = set.rows
+            projected.sqliteValues = set.sqliteValues
             projected.commandTag = set.commandTag
             projected.rowCount = set.rowCount
             projected.displayedRowCount = set.displayedRowCount

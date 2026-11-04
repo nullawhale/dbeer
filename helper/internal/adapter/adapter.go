@@ -38,6 +38,12 @@ type ReadOnlySession interface {
 	SetReadOnly(context.Context, bool) error
 }
 
+// ReadOnlyOperationSession recognizes session-local operations whose adapter
+// enforces readonly access to every target, including additional files.
+type ReadOnlyOperationSession interface {
+	IsReadOnlyOperation(protocol.OperationRequest) bool
+}
+
 // ConnectionError contains only a safe diagnostic and validated SQLSTATE. Raw
 // driver errors and connection settings never cross the adapter boundary.
 type ConnectionError struct {
@@ -51,6 +57,8 @@ func (err *ConnectionError) Error() string { return err.Message }
 func Capabilities(engine string) []string {
 	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.BrowseFilterTreeCapability}
 	switch engine {
+	case "sqlite":
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.QueryParametersCapability, protocol.TableImportCapability)
 	case "mongodb":
 		return append(common, "localReadOnly", "cursorPagination", "documentModelV1", "canonicalExtendedJSONV1")
 	case "cassandra":

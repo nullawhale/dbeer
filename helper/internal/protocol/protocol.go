@@ -15,11 +15,12 @@ import (
 	"dbeer/helper/internal/tableedit"
 )
 
-const Version = 5
+const Version = 6
 const MaxFrameBytes = 16 * 1024 * 1024
 const MaxIDBytes = 128
 
 type Connection struct {
+	SQLite          *SQLiteSettings  `json:"sqlite,omitempty"`
 	SessionPurpose  string           `json:"sessionPurpose,omitempty"`
 	MongoDB         *MongoDBSettings `json:"mongodb,omitempty"`
 	PasswordCommand *PasswordCommand `json:"passwordCommand,omitempty"`
@@ -342,14 +343,14 @@ func ParseCommand(frame []byte) (Command, error) {
 		if !required(fields, "protocolVersion") || json.Unmarshal(fields["protocolVersion"], &command.ProtocolVersion) != nil {
 			return command, failure
 		}
-	case "connect", "ssh.probe", "ssh.trust":
+	case "connect", "sqlite.create", "ssh.probe", "ssh.trust":
 		allowed["connection"] = true
 		connection, ok := parseConnection(fields["connection"])
 		if !ok {
 			return command, failure
 		}
 		command.Connection = &connection
-		if command.Type != "connect" && connection.SSH == nil {
+		if command.Type != "connect" && command.Type != "sqlite.create" && connection.SSH == nil {
 			return command, failure
 		}
 		if command.Type == "ssh.trust" {
@@ -636,7 +637,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 			return connection, false
 		}
 	}
-	if !required(fields, "port") || json.Unmarshal(fields["port"], &connection.Port) != nil || connection.Port < 1 || connection.Port > 65535 {
+	if !required(fields, "port") || json.Unmarshal(fields["port"], &connection.Port) != nil || connection.Port < 0 || connection.Port > 65535 {
 		return connection, false
 	}
 	switch connection.SSLMode {
@@ -651,7 +652,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 		return connection, false
 	}
 	if _, exists := fields["sessionPurpose"]; exists {
-		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql") {
+		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && connection.DatabaseEngine() != "sqlite") {
 			return connection, false
 		}
 	}
@@ -674,6 +675,13 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 	}
 	if raw, exists := fields["contactPoints"]; exists {
 		if !required(fields, "contactPoints") || json.Unmarshal(raw, &connection.ContactPoints) != nil || len(connection.ContactPoints) == 0 {
+			return connection, false
+		}
+	}
+	if raw, exists := fields["sqlite"]; exists {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&connection.SQLite) != nil || connection.SQLite == nil || !connection.SQLite.Valid() {
 			return connection, false
 		}
 	}
@@ -704,7 +712,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 	}
 	for name := range fields {
 		switch name {
-		case "sessionPurpose", "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "passwordCommand", "mongodb":
+		case "sessionPurpose", "engine", "host", "port", "database", "user", "password", "sslMode", "sslRootCert", "policy", "contactPoints", "localDatacenter", "consistency", "ssh", "passwordCommand", "mongodb", "sqlite":
 		default:
 			return connection, false
 		}
@@ -779,8 +787,9 @@ type Column struct {
 }
 
 type ResultSet struct {
-	Source        *ResultSource `json:"source,omitempty"`
-	StorageTokens []string      `json:"storageTokens,omitempty"`
+	SQLiteValues  [][]SQLiteValue `json:"sqliteValues,omitempty"`
+	Source        *ResultSource   `json:"source,omitempty"`
+	StorageTokens []string        `json:"storageTokens,omitempty"`
 	// False means rowCount is a returned-row count, not an affected-row assertion.
 	AffectedRowCountKnown *bool       `json:"affectedRowCountKnown,omitempty"`
 	NextCursor            string      `json:"nextCursor,omitempty"`
@@ -805,6 +814,7 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	SQLiteValues          [][]SQLiteValue
 	TableImport           *TableImportReply
 	Structure             *tableedit.Reply
 	Explain               *ExplainResult
@@ -871,6 +881,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	if response.CurrentKeyspace != nil && (response.Type == "connect.result" || response.Type == "query.result" || response.Type == "error") {
 		fields["currentKeyspace"] = *response.CurrentKeyspace
 	}
+	if response.SQLiteValues != nil && (response.Type == "query.result" || response.Type == "query.chunk") {
+		fields["sqliteValues"] = response.SQLiteValues
+	}
 	switch response.Type {
 	case "import.describe.result", "import.preview.result", "import.apply.result":
 		fields["tableImport"] = response.TableImport
@@ -918,7 +931,7 @@ func (response Response) MarshalJSON() ([]byte, error) {
 			capabilities = []string{}
 		}
 		fields["capabilities"] = capabilities
-	case "query.started", "disconnect.ack", "shutdown.ack":
+	case "sqlite.create.result", "query.started", "disconnect.ack", "shutdown.ack":
 	case "query.progress":
 		fields["resultIndex"], fields["rowCount"], fields["sequence"] = response.ResultIndex, response.RowCount, response.Sequence
 	case "query.chunk":

@@ -21,6 +21,12 @@ enum CassandraSettings {
 
 extension ConnectionSettings {
     var hasValidNativeFields: Bool {
+        if engine == .sqlite {
+            return sqlite?.isValid == true && host.isEmpty && port == 0 && database.isEmpty && user.isEmpty &&
+                password.isEmpty && passwordCommand == nil && ssh == nil && sslMode == "disable" && sslRootCert == nil &&
+                mongodb == nil && contactPoints == nil && localDatacenter == nil && consistency == nil
+        }
+        guard sqlite == nil else { return false }
         if let passwordCommand, !passwordCommand.isValid || !password.isEmpty || user.isEmpty { return false }
         guard ssh?.isValid != false else { return false }
         let fields = [host, database, user, localDatacenter ?? ""] + (contactPoints ?? [])

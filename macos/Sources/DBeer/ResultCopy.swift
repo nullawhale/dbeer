@@ -13,6 +13,7 @@ struct ResultClipboardPayload: Codable, Equatable, Sendable {
     let sourceRows: [Int]
     let sourceColumnIndices: [Int]
     let values: [[ResultClipboardValue]]
+    var sqliteValues: [[SQLiteValue]]? = nil
 }
 
 enum ResultCopyFormat: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -53,7 +54,7 @@ enum ResultCopy {
     static let defaultMarker = "<DEFAULT>"
     private static let binaryPrefix = "<BINARY:"
 
-    static func selection(columns: [ResultColumn], rows: [[String?]], valueKinds: [[String]]? = nil,
+    static func selection(columns: [ResultColumn], rows: [[String?]], valueKinds: [[String]]? = nil, sqliteValues: [[SQLiteValue]]? = nil,
                           rowIndices: [Int], columnIndices: [Int]) throws -> ResultClipboardPayload {
         guard !rowIndices.isEmpty, !columnIndices.isEmpty,
               Set(rowIndices).count == rowIndices.count, Set(columnIndices).count == columnIndices.count,
@@ -69,13 +70,21 @@ enum ResultCopy {
             return ResultColumn(index: column.index, name: column.name, typeOid: column.typeOid,
                 engine: column.engine, nativeType: column.nativeType, encoding: "base64", typeIdentity: column.typeIdentity)
         }
+        let isSQLite = columns.contains(where: { $0.engine == .sqlite })
+        guard !isSQLite || sqliteValues != nil,
+              SQLiteValue.validMatrix(sqliteValues, rows: rows.count, columns: columns.count) else { throw ResultCopyError.malformed }
         let values = try rowIndices.map { row in
             try columnIndices.map { column in
-                try clipboardValue(rows[row][column], kind: valueKinds?[row][column], column: columns[column])
+                if let typed = sqliteValues?[row][column] {
+                    return ResultClipboardValue(kind: typed.type == "null" ? .null : typed.type == "blob" ? .binary : .text,
+                        value: typed.displayText)
+                }
+                return try clipboardValue(rows[row][column], kind: valueKinds?[row][column], column: columns[column])
             }
         }
         let payload = ResultClipboardPayload(version: 1, columns: selectedColumns, sourceRows: rowIndices,
-            sourceColumnIndices: columnIndices, values: values)
+            sourceColumnIndices: columnIndices, values: values,
+            sqliteValues: sqliteValues.map { matrix in rowIndices.map { row in columnIndices.map { matrix[row][$0] } } })
         try validate(payload)
         return payload
     }
@@ -128,8 +137,15 @@ enum ResultCopy {
               Set(payload.columns.map(\.index)).count == payload.columns.count,
               payload.columns.allSatisfy({ $0.index >= 0 && ($0.encoding == nil || $0.encoding == "base64") }),
               payload.values.allSatisfy({ $0.count == payload.columns.count }) else { throw ResultCopyError.malformed }
-        for row in payload.values {
+        guard !payload.columns.contains(where: { $0.engine == .sqlite }) || payload.sqliteValues != nil,
+              SQLiteValue.validMatrix(payload.sqliteValues, rows: payload.values.count, columns: payload.columns.count) else { throw ResultCopyError.malformed }
+        for (rowIndex, row) in payload.values.enumerated() {
             for (index, value) in row.enumerated() {
+                if let typed = payload.sqliteValues?[rowIndex][index] {
+                    let expected: ResultClipboardValue.Kind = typed.type == "null" ? .null : typed.type == "blob" ? .binary : .text
+                    guard value.kind == expected, value.value == typed.displayText else { throw ResultCopyError.malformed }
+                    continue
+                }
                 switch value.kind {
                 case .null, .default:
                     guard value.value == nil else { throw ResultCopyError.malformed }

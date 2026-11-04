@@ -82,7 +82,7 @@ struct SQLResultSourceTests {
             if kind == 'stream.ack': continue
             with (directory/'commands').open('a') as log: log.write(kind+(':'+c['catalog']['kind'] if kind == 'catalog' else '')+'\\n')
             r = dict(requestId=c['requestId'])
-            if kind == 'hello': r.update(type='hello.ack',protocolVersion=5,capabilities=['resultSourceV1'])
+            if kind == 'hello': r.update(type='hello.ack',protocolVersion=6,capabilities=['resultSourceV1'])
             elif kind == 'connect':
                 connections += 1
                 r.update(type='connect.result',engine='postgresql',sessionId='session-'+str(connections),transactionStatus='idle',capabilities=['execute','cancel','catalog','gridEditing'])

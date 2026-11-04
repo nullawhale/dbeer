@@ -80,7 +80,7 @@ struct ComparisonTextDiffTests {
         import json,sys,base64
         def read(): return json.loads(sys.stdin.readline())
         def send(x): print(json.dumps(x),flush=True)
-        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':5,'capabilities':['schemaComparisonV1','dataComparisonV1']})
+        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':6,'capabilities':['schemaComparisonV1','dataComparisonV1']})
         c=read();key='schemaComparison' if c['type']=='schema.diff' else 'dataComparison';r=c[key]
         out={'jobId':r['jobId'],'state':'completed','offset':0 if '\(mismatch)'=='dataCellOffset' else 1,'diff':json.loads(base64.b64decode('\(payload)'))}
         if key=='dataComparison': out['cellOffset']=2 if '\(mismatch)'=='dataCellOffset' else 1

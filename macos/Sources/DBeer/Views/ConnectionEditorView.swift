@@ -81,8 +81,10 @@ struct ConnectionEditorView: View {
             }
             TabView(selection: selectedTab.projectedValue) {
                 generalTab.tabItem { Text("General") }.tag(Tab.general)
-                sshTab.tabItem { Text("SSH") }.tag(Tab.ssh)
-                tlsTab.tabItem { Text("TLS") }.tag(Tab.tls)
+                if draft.engine != .sqlite {
+                    sshTab.tabItem { Text("SSH") }.tag(Tab.ssh)
+                    tlsTab.tabItem { Text("TLS") }.tag(Tab.tls)
+                }
                 optionsTab.tabItem { Text("Options") }.tag(Tab.options)
             }
             .padding(.horizontal, 20).padding(.bottom, 12)
@@ -169,11 +171,29 @@ struct ConnectionEditorView: View {
         .onChange(of: draft.connectionURL) { _, value in
             if !urlNeedsApplyState.wrappedValue { urlInputState.wrappedValue = value ?? "" }
         }
-        .onChange(of: draft.engine) { _, _ in resetURL() }
+        .onChange(of: draft.engine) { _, _ in resetURL(); selectedTab.wrappedValue = .general }
         .onDisappear { tester.cancel(); clearSecrets() }
     }
 
-    private var generalTab: some View {
+    @ViewBuilder private var generalTab: some View {
+        if draft.engine == .sqlite {
+            Form {
+                Section("Database File") {
+                    TextField("Path", text: binding(\.sqlitePath)).accessibilityIdentifier("sqlitePath")
+                    HStack {
+                        Button("Choose File…", action: chooseSQLiteFile).controlHover().connectionButtonFocus()
+                        Button("Create Database…", action: createSQLiteDatabase).controlHover().connectionButtonFocus()
+                    }
+                    Text("Open an existing local SQLite file, or explicitly create a new database. Saving or testing a connection never creates a missing file.")
+                        .font(.caption).appSecondaryText()
+                }
+            }.formStyle(.grouped).appFormSurface().disabled(isBusy)
+        } else {
+            networkGeneralTab
+        }
+    }
+
+    private var networkGeneralTab: some View {
         Form {
             Section("Connection") {
                 LabeledContent([.cassandra, .mongodb].contains(draft.engine) ? "Contact points" : "Host") {
@@ -376,7 +396,7 @@ struct ConnectionEditorView: View {
                 }.frame(minHeight: 24).controlHover().connectionButtonFocus().accessibilityIdentifier("connectionEnvironment")
                 Toggle("Readonly", isOn: valueBinding(\.policy.readOnly))
                     .padding(.horizontal, 6).frame(minHeight: 24).controlHover().accessibilityIdentifier("connectionReadOnly")
-                Text(draft.engine == .mongodb ? "Local readonly blocks output pipelines and unknown operations in DBeer. Use a MongoDB role with restricted permissions for server protection." : draft.engine == .cassandra ? "Local readonly blocks evaluated writes and unknown CQL in DBeer. It does not enable a server read mode. Use a server role with restricted permissions for strict protection." : "Readonly blocks evaluated writes and unknown SQL, and enables server read mode. Functions and database objects can hide side effects. Use restricted database privileges for strict protection.")
+                Text(draft.engine == .sqlite ? "Readonly opens the database without write access and blocks modifying SQL, PRAGMA changes and writable attachments." : draft.engine == .mongodb ? "Local readonly blocks output pipelines and unknown operations in DBeer. Use a MongoDB role with restricted permissions for server protection." : draft.engine == .cassandra ? "Local readonly blocks evaluated writes and unknown CQL in DBeer. It does not enable a server read mode. Use a server role with restricted permissions for strict protection." : "Readonly blocks evaluated writes and unknown SQL, and enables server read mode. Functions and database objects can hide side effects. Use restricted database privileges for strict protection.")
                     .font(.caption).appSecondaryText()
             }
             if draft.engine == .cassandra {
@@ -454,6 +474,29 @@ struct ConnectionEditorView: View {
             draft[keyPath: keyPath] = $0
             validationState.wrappedValue = nil
         })
+    }
+
+    private func chooseSQLiteFile() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose an existing local SQLite database."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        draft.sqlitePath = url.path
+    }
+
+    private func createSQLiteDatabase() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Database.sqlite"
+        panel.message = "Create a new SQLite database. Existing files cannot be replaced."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var creationDraft = draft
+        creationDraft.sqlitePath = url.path
+        guard let settings = creationDraft.settings else { return }
+        Task {
+            await tester.createDatabase(settings)
+            if tester.state == .succeeded { draft.sqlitePath = url.path }
+        }
     }
 
     private func chooseCAFile() {
@@ -581,6 +624,7 @@ struct ConnectionDraft {
     var host: String
     var port: String
     var database: String
+    var sqlitePath = ""
     var user: String
     var password = ""
     var usesPasswordCommand = false
@@ -623,6 +667,7 @@ struct ConnectionDraft {
            let data = try? JSONEncoder().encode(arguments) {
             passwordArguments = String(decoding: data, as: UTF8.self)
         }
+        sqlitePath = connection?.sqlite?.path ?? ""
         name = connection?.name ?? ""
         engine = connection?.engine ?? .postgresql
         host = connection?.contactPoints?.joined(separator: ", ") ?? connection?.host ?? "localhost"
@@ -654,6 +699,12 @@ struct ConnectionDraft {
         if user == engine.defaultUser { user = next.defaultUser }
         if !next.sslModes.contains(sslMode) { sslMode = "verify-full" }
         engine = next
+        if next == .sqlite {
+            sslMode = "disable"
+            sshEnabled = false
+            usesPasswordCommand = false
+            password = ""
+        }
     }
 
     var connectionURL: String? {
@@ -696,6 +747,12 @@ struct ConnectionDraft {
     }
 
     var settings: ConnectionSettings? {
+        if engine == .sqlite {
+            let file = SQLiteSettings(path: sqlitePath)
+            guard file.isValid else { return nil }
+            return ConnectionSettings(host: "", port: 0, database: "", user: "", password: "", sslMode: "disable",
+                engine: .sqlite, policy: policy, sqlite: file)
+        }
         if usesPasswordCommand && passwordCommand == nil { return nil }
         let cleanedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanedDatabase = database.trimmingCharacters(in: .whitespacesAndNewlines)

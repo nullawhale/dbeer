@@ -66,7 +66,7 @@ struct SchemaComparisonProtocolTests {
         import json,sys
         def read(): return json.loads(sys.stdin.readline())
         def send(x): print(json.dumps(x),flush=True)
-        c=read(); send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':5,'capabilities':['schemaComparisonV1']})
+        c=read(); send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':6,'capabilities':['schemaComparisonV1']})
         c=read(); op=c['type']; r=c['schemaComparison']; value={'jobId':r['jobId'],'state':'completed'}
         if op=='schema.value': value['value']={'valueRef':'wrong-ref','totalBytes':0,'offset':0,'nextOffset':0,'dataBase64':'','hasMore':False}
         else:

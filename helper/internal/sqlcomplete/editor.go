@@ -45,7 +45,7 @@ func FormatEditor(text, engine string, options FormatOptions) (string, error) {
 	if engine == "mongodb" {
 		return formatJSONEditor(text, indent)
 	}
-	if engine != "postgresql" && engine != "mysql" && engine != "cassandra" {
+	if engine != "postgresql" && engine != "mysql" && engine != "cassandra" && engine != "sqlite" {
 		return "", errors.New("Unsupported editor language.")
 	}
 	tokens, diagnostics := lex(text, engine)

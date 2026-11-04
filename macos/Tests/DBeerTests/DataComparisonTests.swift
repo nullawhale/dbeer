@@ -83,7 +83,7 @@ struct DataComparisonProtocolTests {
         import json,os,sys,time
         def read(): return json.loads(sys.stdin.readline())
         def send(x): print(json.dumps(x),flush=True)
-        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':5,'capabilities':['dataComparisonV1']})
+        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':6,'capabilities':['dataComparisonV1']})
         c=read();root=os.environ['DBEER_DATA_COMPARISON_ROOT']
         os.mkdir(root+'/capture',0o700)
         with open(root+'/capture/rows.jsonl','w') as f: f.write('["synthetic"]\\n')
@@ -126,7 +126,7 @@ struct DataComparisonProtocolTests {
         import json,sys
         def read(): return json.loads(sys.stdin.readline())
         def send(x): print(json.dumps(x),flush=True)
-        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':5,'capabilities':['dataComparisonV1']})
+        c=read();send({'type':'hello.ack','requestId':c['requestId'],'protocolVersion':6,'capabilities':['dataComparisonV1']})
         c=read();r=c['dataComparison'];out={'jobId':'wrong' if '\(mismatch)'=='job' else r['jobId'],'state':'completed'}
         if '\(mismatch)'=='valueRef': out['value']={'valueRef':'wrong','isNull':False,'totalBytes':0,'offset':0,'nextOffset':0,'dataBase64':'','hasMore':False}
         else:

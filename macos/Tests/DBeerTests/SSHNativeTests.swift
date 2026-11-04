@@ -124,7 +124,7 @@ struct SSHNativeTests {
                     time.sleep(.005)
             reply = {'requestId':command['requestId']}
             if kind == 'hello':
-                reply.update(type='hello.ack', protocolVersion=5)
+                reply.update(type='hello.ack', protocolVersion=6)
             elif kind == 'ssh.probe':
                 ssh = command['connection']['ssh']
                 reply.update(type='ssh.probe.result', ssh={'status':'unknown' if delayed == 'ssh.probe' else 'trusted',
@@ -195,7 +195,7 @@ struct SSHNativeTests {
             command = json.loads(line)
             reply = {'requestId':command['requestId']}
             if command['type'] == 'hello':
-                reply.update(type='hello.ack',protocolVersion=5,capabilities=['sshTunnelsV1'])
+                reply.update(type='hello.ack',protocolVersion=6,capabilities=['sshTunnelsV1'])
             elif command['type'] == 'shutdown':
                 time.sleep(2.2)
                 reply.update(type='shutdown.ack')

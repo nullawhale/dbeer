@@ -105,11 +105,13 @@ final class ResultSnapshotDocumentModel: ObservableObject {
         let metadata = artifact.manifest
         // This is a local presentation value, not a helper protocol reply.
         // Session and query IDs stay absent so it cannot look connected.
-        return BackendMessage(type: "snapshot.result", requestId: metadata.id.uuidString,
+        var result = BackendMessage(type: "snapshot.result", requestId: metadata.id.uuidString,
             engine: metadata.engine, columns: metadata.columns, rows: artifact.rows,
             commandTag: metadata.commandTag,
             rowCount: metadata.sourceRowCount ?? Int64(metadata.rowCount),
             displayedRowCount: artifact.rows.count, truncated: metadata.truncated,
             displayNotice: metadata.isComplete ? nil : "This snapshot contains a partial or truncated result.")
+        result.sqliteValues = artifact.sqliteValues
+        return result
     }
 }

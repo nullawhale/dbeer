@@ -56,7 +56,9 @@ enum SQLScriptParser {
         "ASCII", "BIGINT", "BLOB", "BOOLEAN", "DATE", "DECIMAL", "DOUBLE", "DURATION", "FLOAT", "INET", "INT",
         "SMALLINT", "TEXT", "TIME", "TIMEUUID", "TINYINT", "UUID", "VARCHAR", "VARINT", "VECTOR", "MAP", "TUPLE",
         "NAN", "INFINITY", "COMPACT", "STORAGE", "ENTRIES", "KEYS", "FULL", "WRITETIME", "MAXWRITETIME"]
-    static func keywords(for engine: DatabaseEngine) -> [String] { engine == .mongodb ? [] : engine == .cassandra ? cqlKeywords : keywords }
+    static let sqliteKeywords = keywords.filter { !["DELIMITER", "ATOMIC", "PROCEDURE", "LANGUAGE"].contains($0) } +
+        ["ATTACH", "DETACH", "PRAGMA", "VACUUM", "REINDEX", "STRICT", "WITHOUT", "ROWID", "AUTOINCREMENT", "ABORT", "FAIL", "IGNORE", "REPLACE", "CONFLICT", "RETURNING", "TEMP", "TEMPORARY", "GLOB", "MATCH"]
+    static func keywords(for engine: DatabaseEngine) -> [String] { engine == .mongodb ? [] : engine == .cassandra ? cqlKeywords : engine == .sqlite ? sqliteKeywords : keywords }
 
     static func parse(_ text: String, engine: DatabaseEngine) -> SQLParseResult {
         if engine == .mongodb { return MongoDBScript.parse(text) }
@@ -100,6 +102,8 @@ enum SQLScriptParser {
         var atomicStart: Int?
         var cqlBatchStart: Int?
         var cqlBatchOpen = false
+        var sqliteTriggerOpen = false
+        var sqliteTriggerStart: Int?
         var leadingCQLWord: (String, NSRange)?
         var cqlDelimiters: [(UInt16, Int)] = []
 
@@ -117,7 +121,7 @@ enum SQLScriptParser {
                     continue
                 }
                 if matches(delimiter, at: index) {
-                    if atomicDepth > 0 || cqlBatchOpen { index += delimiter.count; continue }
+                    if atomicDepth > 0 || cqlBatchOpen || sqliteTriggerOpen { index += delimiter.count; continue }
                     finishStatement(at: index, delimiterLength: delimiter.count)
                     index += delimiter.count
                     segmentStart = index
@@ -132,7 +136,7 @@ enum SQLScriptParser {
                 if engine == .mysql, units[index] == 35 { scanLineComment(); continue }
                 if matches([47, 42], at: index) { scanBlockComment(); continue }
                 let unit = units[index]
-                if unit == 39 || unit == 34 || (engine == .mysql && unit == 96) {
+                if unit == 39 || unit == 34 || ([.mysql, .sqlite].contains(engine) && unit == 96) || (engine == .sqlite && unit == 91) {
                     scanQuoted(unit)
                     continue
                 }
@@ -150,6 +154,7 @@ enum SQLScriptParser {
                     tokens.append(SQLToken(range: range, kind: SQLScriptParser.keywords(for: engine).contains(value) ? .keyword : .identifier))
                     trackAtomicBody(word: value, range: range)
                     trackCQLBatch(word: value, range: range)
+                    trackSQLiteTrigger(word: value, range: range)
                     words.append((value, range))
                     hasCode = true
                     continue
@@ -184,9 +189,31 @@ enum SQLScriptParser {
                 diagnostics.append(SQLDiagnostic(range: NSRange(location: cqlBatchStart, length: units.count - cqlBatchStart),
                     message: "Unterminated CQL batch. End the batch with APPLY BATCH."))
             }
+            if sqliteTriggerOpen, let start = sqliteTriggerStart {
+                diagnostics.append(SQLDiagnostic(range: NSRange(location: start, length: units.count - start),
+                    message: "Unterminated SQLite trigger body. End the trigger with END."))
+            }
             finishStatement(at: units.count)
             return SQLParseResult(statements: statements, statementEditorRanges: statementEditorRanges,
                 tokens: tokens, diagnostics: diagnostics)
+        }
+
+        private func trackSQLiteTrigger(word: String, range: NSRange) {
+            guard engine == .sqlite else { return }
+            if sqliteTriggerOpen {
+                if word == "CASE" { caseDepth += 1 }
+                if word == "END" {
+                    if caseDepth > 0 { caseDepth -= 1 }
+                    else { sqliteTriggerOpen = false }
+                }
+            } else if word == "BEGIN" {
+                let prefix = words.map(\.0)
+                if prefix.starts(with: ["CREATE", "TRIGGER"]) || prefix.starts(with: ["CREATE", "TEMP", "TRIGGER"]) ||
+                    prefix.starts(with: ["CREATE", "TEMPORARY", "TRIGGER"]) {
+                    sqliteTriggerOpen = true
+                    sqliteTriggerStart = range.location
+                }
+            }
         }
 
         private func trackCQLBatch(word: String, range: NSRange) {
@@ -299,6 +326,7 @@ enum SQLScriptParser {
 
         private func scanQuoted(_ quote: UInt16) {
             let start = index
+            let closingQuote: UInt16 = quote == 91 ? 93 : quote
             let postgresEscape = engine == .postgresql && quote == 39 && start > 0 && (units[start - 1] == 69 || units[start - 1] == 101) &&
                 (start < 2 || !isIdentifierPart(units[start - 2]))
             let escapes = (engine == .mysql && quote != 96) || postgresEscape
@@ -306,9 +334,9 @@ enum SQLScriptParser {
             var closed = false
             while index < units.count {
                 if escapes, units[index] == 92 { index = min(index + 2, units.count) }
-                else if units[index] == quote {
+                else if units[index] == closingQuote {
                     index += 1
-                    if index < units.count, units[index] == quote { index += 1 }
+                    if quote != 91, index < units.count, units[index] == closingQuote { index += 1 }
                     else { closed = true; break }
                 } else { index += 1 }
             }
@@ -346,6 +374,7 @@ enum SQLScriptParser {
             defer {
                 hasCode = false; words.removeAll(); atomicDepth = 0; caseDepth = 0; atomicStart = nil
                 cqlBatchStart = nil; cqlBatchOpen = false; leadingCQLWord = nil; cqlDelimiters.removeAll()
+                sqliteTriggerOpen = false; sqliteTriggerStart = nil
             }
             guard hasCode else { return }
             for delimiter in cqlDelimiters {

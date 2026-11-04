@@ -234,7 +234,7 @@ struct AppCommandInvocation {
         if [.explain, .explainAnalyze].contains(command) {
             guard document.isSQLDocument, !document.queryResultSelectionLocked,
                   let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
-                  [.postgresql, .mysql].contains(profile.engine) else { return false }
+                  [.postgresql, .mysql, .sqlite].contains(profile.engine) else { return false }
         }
         if descriptor.scope == .sqlDocument, document.table != nil { return false }
         if document.table != nil { return command == .runCurrent }

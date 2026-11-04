@@ -28,8 +28,10 @@ struct SQLHistoryProfile: Codable, Equatable, Sendable {
     var contactPoints: [String]?
     var localDatacenter: String?
     var consistency: String?
+    var sqlite: SQLiteSettings?
 
     init(_ profile: SavedConnection, currentKeyspace: String? = nil) {
+        sqlite = profile.sqlite
         name = profile.name
         engine = profile.engine
         host = profile.host
@@ -45,7 +47,12 @@ struct SQLHistoryProfile: Codable, Equatable, Sendable {
         }
     }
 
+    var endpointDescription: String {
+        engine == .sqlite ? sqlite?.path ?? "SQLite database" : "\(user)@\(host):\(port)/\(database)"
+    }
+
     var summary: String {
+        if engine == .sqlite { return [name, engine.displayName, endpointDescription, policy.label].joined(separator: " · ") }
         let hosts = contactPoints?.joined(separator: ", ") ?? host
         var parts = [name, engine.displayName, "\(user)@\(hosts):\(port)/\(database)", policy.label]
         if let sslMode { parts.append("TLS: \(sslMode)") }

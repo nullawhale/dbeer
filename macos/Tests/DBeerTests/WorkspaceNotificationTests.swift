@@ -373,7 +373,7 @@ struct WorkspaceNotificationTests {
             command = json.loads(line)
             reply = {'requestId': command['requestId']}
             if command['type'] == 'hello':
-                reply.update(type='hello.ack', protocolVersion=5)
+                reply.update(type='hello.ack', protocolVersion=6)
             elif command['type'] == 'connect':
                 reply.update(type='error', category='connection', message='\(message)', connected=False, outcomeUnknown=False)
             elif command['type'] == 'shutdown':

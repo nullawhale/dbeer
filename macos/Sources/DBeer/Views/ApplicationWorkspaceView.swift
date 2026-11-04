@@ -643,6 +643,10 @@ struct SQLDocumentPane: View {
                 Divider()
             }
             if document.table == nil {
+                if let notice = document.sqliteCompletionNotice {
+                    Text(notice).font(.caption).appSecondaryText()
+                        .padding(.horizontal, 12).padding(.vertical, 4)
+                }
                 VSplitView {
                     SQLEditorView(text: $document.text, isEditable: document.fileDocument?.isSaving != true,
                         editorState: workspace.editorState, documentID: document.id,
@@ -652,7 +656,7 @@ struct SQLDocumentPane: View {
                             commands.handleKeyEvent(event, documentID: document.id, selection: selection)
                         }, completions: workspace.completions(profileID: document.profileID),
                         languageService: workspace.editorState.languageService,
-                        completionContext: workspace.completionContext(profileID: document.profileID, keyspace: document.runtime?.currentKeyspace),
+                        completionContext: workspace.completionContext(document: document),
                         errorPosition: document.errorPosition,
                         editorTheme: effectiveEditorTheme,
                         successfulExecutionRanges: document.successfulExecutionRanges)
@@ -1096,7 +1100,7 @@ struct SQLDocumentPane: View {
                     if let grid = document.grid {
                         DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
-                        InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [],
+                        InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues,
                             copySettings: workspace.copySettings,
                             onSQLInsertCopy: { payload, pasteboard in
                                 workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)

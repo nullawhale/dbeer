@@ -96,7 +96,7 @@ struct InsertFormattingTests {
     @Test func missingCapabilityRejectsBeforeWritingAnyRequest() async throws {
         let client = client("""
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6})
         command = read()
         assert command['type'] == 'shutdown'
         send({'type':'shutdown.ack','requestId':command['requestId']})
@@ -114,7 +114,7 @@ struct InsertFormattingTests {
     @Test func capableHelperFormatsWithoutAnyConnectionRequest() async throws {
         let client = client("""
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5,'capabilities':['formatInsertsV1']})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6,'capabilities':['formatInsertsV1']})
         command = read()
         assert command['type'] == 'formatInserts'
         assert 'sessionId' not in command and 'queryId' not in command and 'connection' not in command
@@ -136,7 +136,7 @@ struct InsertFormattingTests {
     @Test func helperDeathDuringFormattingHasNoUnknownSQLOutcome() async throws {
         let client = client("""
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5,'capabilities':['formatInsertsV1']})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6,'capabilities':['formatInsertsV1']})
         command = read()
         assert command['type'] == 'formatInserts'
         sys.exit(23)

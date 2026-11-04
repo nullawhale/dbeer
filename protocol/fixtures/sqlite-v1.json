@@ -1,0 +1,48 @@
+{
+  "version": 6,
+  "connection": {
+    "engine": "sqlite",
+    "host": "",
+    "port": 0,
+    "database": "",
+    "user": "",
+    "password": "",
+    "sslMode": "disable",
+    "sqlite": {
+      "path": "/synthetic/example.sqlite"
+    }
+  },
+  "typedValues": [
+    {
+      "type": "null"
+    },
+    {
+      "type": "integer",
+      "value": "9223372036854775807"
+    },
+    {
+      "type": "real",
+      "value": "3ff0000000000000"
+    },
+    {
+      "type": "text",
+      "value": "TlVMTA=="
+    },
+    {
+      "type": "text",
+      "value": ""
+    },
+    {
+      "type": "blob",
+      "value": ""
+    },
+    {
+      "type": "blob",
+      "value": "AP8="
+    },
+    {
+      "type": "text",
+      "value": "/wA="
+    }
+  ]
+}

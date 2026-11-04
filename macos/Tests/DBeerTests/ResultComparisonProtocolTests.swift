@@ -116,7 +116,7 @@ struct ResultComparisonProtocolTests {
     @Test func capabilityGateRejectsBeforeWritingAComparisonCommand() async throws {
         let client = client("""
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6})
         command = read()
         assert command['type'] == 'shutdown'
         send({'type':'shutdown.ack','requestId':command['requestId']})
@@ -136,7 +136,7 @@ struct ResultComparisonProtocolTests {
         let client = client("""
         fixture = json.loads(base64.b64decode('\(data)'))
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5,'capabilities':['resultComparisonV1']})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6,'capabilities':['resultComparisonV1']})
         for expected, response in zip(fixture['commands'], fixture['responses']):
             command = read()
             assert command['type'] == expected['type'] and command['comparison'] == expected['comparison']
@@ -160,7 +160,7 @@ struct ResultComparisonProtocolTests {
     @Test func aWrongJobIdentityInvalidatesTheHelperWithoutAnUnknownSQLOutcome() async throws {
         let client = client("""
         command = read()
-        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':5,'capabilities':['resultComparisonV1']})
+        send({'type':'hello.ack','requestId':command['requestId'],'protocolVersion':6,'capabilities':['resultComparisonV1']})
         command = read()
         send({'type':'compare.cancel.result','requestId':command['requestId'],'comparison':{'jobId':'wrong-job','state':'cancelled'}})
         sys.stdin.read()

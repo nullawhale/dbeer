@@ -107,3 +107,76 @@ func TestRepeatedMySQLValuesCannotAmplifyTheDriverPacketWithoutBound(t *testing.
 		t.Fatal("repeated value amplification was unbounded")
 	}
 }
+
+func TestSQLiteUsesPlainPlaceholdersAndRetainsExactValues(t *testing.T) {
+	parameters := []protocol.QueryParameter{
+		binding("amount", "decimal", "-1234567890.123456789"),
+		binding("day", "date", "2024-02-29"),
+		binding("at", "timestamp", "2026-11-01 12:30:59.123456"),
+		binding("text", "text", "'; DELETE FROM sensitive; --"),
+	}
+	sql := "SELECT :amount, :day, :at, :text, :amount"
+	bound, err := Bind("sqlite", sql, parameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bound.SQL != "SELECT ?, ?, ?, ?, ?" || len(bound.Parameters) != 5 {
+		t.Fatalf("SQLite inherited a server dialect cast: %#v", bound)
+	}
+	for i, want := range []int{0, 1, 2, 3, 0} {
+		if bound.Parameters[i] != parameters[want] {
+			t.Fatalf("parameter %d changed", i)
+		}
+	}
+	if strings.Contains(bound.SQL, *parameters[3].Value) || len(bound.AssessmentSQL) != len(sql) || strings.Contains(bound.AssessmentSQL, ":amount") {
+		t.Fatal("parameter values or names entered assessment SQL")
+	}
+	nullable := protocol.QueryParameter{Name: "nullable", Type: "decimal", Value: nil}
+	bound, err = Bind("sqlite", "SELECT :nullable", []protocol.QueryParameter{nullable})
+	if err != nil || bound.SQL != "SELECT ?" || bound.Parameters[0].Value != nil {
+		t.Fatal("NULL was cast or replaced")
+	}
+}
+
+func TestSQLiteQuotedIdentifiersAndCommentsHideParameters(t *testing.T) {
+	p := []protocol.QueryParameter{binding("x", "text", "safe")}
+	for _, sql := range []string{
+		"SELECT [:missing ? @native $native], :x",
+		"SELECT `:missing ? @native $native`, :x",
+		"SELECT `escaped``:missing`, :x",
+		"SELECT ':missing ? @native $native', :x",
+		"SELECT \"escaped\"\":missing\", :x",
+		"SELECT :x --:missing ? @native $native\n",
+		"SELECT :x /* :missing ? @native $native */",
+		"SELECT :x /*! :missing */",
+		`SELECT 'backslash\', :x`,
+		"SELECT foo$bar, :x",
+	} {
+		b, err := Bind("sqlite", sql, p)
+		if err != nil || len(b.Parameters) != 1 || b.Parameters[0] != p[0] {
+			t.Fatalf("SQLite lexical boundary failed for %q: %v %#v", sql, err, b)
+		}
+	}
+	for _, sql := range []string{"SELECT [unterminated :x", "SELECT `unterminated :x", "SELECT 'unterminated :x", "SELECT /* unterminated :x", "SELECT /* outer /* ignored */ :missing */ :x"} {
+		if _, err := Bind("sqlite", sql, p); err == nil {
+			t.Fatalf("ambiguous or non-nested syntax accepted: %q", sql)
+		}
+	}
+}
+
+func TestSQLiteRejectsNativeVariablesWithNamedDefinitions(t *testing.T) {
+	p := []protocol.QueryParameter{binding("x", "text", "safe")}
+	for _, sql := range []string{"SELECT :x, ?", "SELECT :x, ?1", "SELECT :x, $1", "SELECT :x, $native", "SELECT :x, @native", "SELECT :x, $native::suffix(anything)", "SELECT :missing", "SELECT :xé"} {
+		if _, err := Bind("sqlite", sql, p); err == nil {
+			t.Fatalf("mixed/native SQLite parameter accepted: %q", sql)
+		}
+	}
+	for _, sql := range []string{"SELECT ?", "SELECT ?1", "SELECT @native", "SELECT $native", "SELECT :x"} {
+		for _, parameters := range [][]protocol.QueryParameter{nil, {}} {
+			b, err := Bind("sqlite", sql, parameters)
+			if err != nil || b.SQL != sql || len(b.Parameters) != 0 {
+				t.Fatalf("ordinary unbound SQL changed: %q", sql)
+			}
+		}
+	}
+}

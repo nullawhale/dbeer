@@ -184,7 +184,7 @@ func TestMalformedManifestRejected(t *testing.T) {
 		name   string
 		modify func(map[string]any)
 	}{
-		{"version", func(m map[string]any) { m["version"] = 2 }},
+		{"version", func(m map[string]any) { m["version"] = 3 }},
 		{"id", func(m map[string]any) { m["id"] = "22222222-2222-2222-2222-222222222222" }},
 		{"blank title", func(m map[string]any) { m["title"] = " \n " }},
 		{"long title", func(m map[string]any) { m["title"] = strings.Repeat("x", 4097) }},

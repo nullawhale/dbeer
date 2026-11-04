@@ -436,7 +436,7 @@ extension StructureTarget {
 extension StructureDataType {
     var valid: Bool {
         switch kind {
-        case "integer", "bigint", "boolean", "text": (length ?? 0) == 0 && (precision ?? 0) == 0 && (scale ?? 0) == 0
+        case "integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric": (length ?? 0) == 0 && (precision ?? 0) == 0 && (scale ?? 0) == 0
         case "varchar": (1...16_383).contains(length ?? 0) && (precision ?? 0) == 0 && (scale ?? 0) == 0
         case "numeric": (length ?? 0) == 0 && (1...65).contains(precision ?? 0) && (0...30).contains(scale ?? 0) && (scale ?? 0) <= (precision ?? 0)
         default: false
@@ -494,7 +494,7 @@ extension StructureRequest {
 extension StructureBaseline {
     static func digest(_ s: String) -> Bool { s.utf8.count == 64 && s.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
     var valid: Bool {
-        BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql"].contains(engine) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
+        BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql", "sqlite"].contains(engine) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
             StructureTarget.identifier($0.name) && $0.nativeType.utf8.count <= 4096 && ($0.defaultExpression?.utf8.count ?? 0) <= 65_536 && ($0.editableType?.valid ?? true)
         } && (keys?.count ?? 0) <= 256 && (indexes?.count ?? 0) <= 256 && (keys ?? []).allSatisfy {
             StructureTarget.identifier($0.name) && ["primary", "unique", "foreign", "unsupported"].contains($0.kind) && $0.columns.count <= 32 && $0.columns.allSatisfy(StructureTarget.identifier) && ($0.reference?.valid ?? true) && ($0.referenceColumns?.count ?? 0) <= 32
