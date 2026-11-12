@@ -15,7 +15,7 @@ unchanged. Homebrew installation is not available.
 2. Extract the ZIP and move `DBeer.app` to `Applications`. When updating, quit the running DBeer instance before replacing the application.
 3. Open DBeer. If macOS blocks a trusted internal build, attempt to open it once, then go to **System Settings → Privacy & Security → Open Anyway** and confirm. Follow [Apple's official instructions](https://support.apple.com/en-us/102445). Do not disable application checks system-wide.
 4. Open **Connections → Import Connections…**, review the profiles, and select a local CA if needed; alternatively, create a profile with **⌘N**. PostgreSQL 16/17/18, MySQL 8.0/8.4, Cassandra 4.1/5.0 and MongoDB 8.0 are supported. Enter your password in the profile editor. Use `verify-full` and a trusted CA for certificate verification. The password is stored in the local Keychain and excluded from profile exports.
-5. For PostgreSQL/MySQL, connect the profile, create a SQL tab (**⌘T**), and execute `SELECT 1` (**⌘Return**). Double-click a table to open its data. Grid changes reach the database only after **Apply**. MongoDB uses JSON find/aggregation requests; see [the MongoDB guide](README.md#mongodb).
+5. For PostgreSQL/MySQL, connect the profile, create a SQL tab (**⌘T**), and execute `SELECT 1` (**⌘Return**). Double-click a table to open its data. Grid changes reach the database only after **Apply**. MongoDB uses JSON find/aggregation requests; see [the MongoDB guide](GUIDE.md#mongodb).
 
 Normal updates preserve profiles and passwords in the user directory and Keychain. Updates must come from the same owner with persistent application and helper signatures. A certificate change may cause macOS to request access to an existing password. Do not install temporarily signed CI builds over the working application.
 
@@ -58,7 +58,7 @@ For Codex/MCP, keep DBeer running and use
 profile-specific session permission in DBeer; reading is the default and writes
 require separate approval. **Settings → Agents** lists active clients, supports
 revocation and shows the bounded session activity journal. Password-command
-profiles are unavailable to agents. See [Codex setup and MCP limits](README.md#local-mcp-agent-access).
+profiles are unavailable to agents. See [Codex setup and MCP limits](GUIDE.md#local-mcp-agent-access).
 
 Readonly rejects writes and unknown SQL/CQL in the helper. PostgreSQL/MySQL also
 enable server-side read-only mode; Cassandra and MongoDB use local assessment.
