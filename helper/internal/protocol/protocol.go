@@ -394,7 +394,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.DataComparison = &request
-	case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.export", "schema.plan", "schema.cancel", "schema.close":
+	case "schema.bundle.start", "schema.bundle.status", "schema.bundle.export", "schema.bundle.cancel", "schema.bundle.close", "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.export", "schema.plan", "schema.cancel", "schema.close":
 		allowed["schemaComparison"] = true
 		request, ok := parseSchemaComparison(fields["schemaComparison"], command.Type)
 		if !ok {
@@ -993,7 +993,7 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		}
 	case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
 		fields["dataComparison"] = response.DataComparison
-	case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.plan.result", "schema.cancel.result", "schema.close.result":
+	case "schema.bundle.start.result", "schema.bundle.status.result", "schema.bundle.export.result", "schema.bundle.cancel.result", "schema.bundle.close.result", "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.plan.result", "schema.cancel.result", "schema.close.result":
 		fields["schemaComparison"] = response.SchemaComparison
 	case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
 		fields["comparison"] = response.Comparison

@@ -115,6 +115,9 @@ struct ProfileCatalogRow: View {
             }
         }
         menu.addCatalogAction(profile.engine == .mongodb ? "New JSON Script" : "New SQL Tab") { workspace.newDocument(profileID: profile.id) }
+        if [.postgresql, .mysql, .sqlite].contains(profile.engine) {
+            menu.addCatalogAction("Export Schema Bundle…", enabled: workspace.canManageWorkspace) { workspace.showSchemaBundle(profile) }
+        }
         menu.addCatalogAction("Find Data…", enabled: workspace.canManageWorkspace) { workspace.showDatabaseValueSearch(profile) }
         if [.postgresql, .mysql].contains(profile.engine) {
             menu.addCatalogAction("Create Table from CSV…", enabled: workspace.canManageWorkspace) { workspace.showDataTransfer(profile) }

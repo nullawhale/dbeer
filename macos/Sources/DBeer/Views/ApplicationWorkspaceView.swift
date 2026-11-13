@@ -122,6 +122,9 @@ struct ApplicationWorkspaceView: View {
             SchemaComparisonView(model: model, close: { workspace.dismissSchemaComparison() })
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: Binding(get: { workspace.schemaBundle }, set: { if $0 == nil { workspace.dismissSchemaBundle() } })) { model in
+            SchemaBundleView(model: model, close: { workspace.dismissSchemaBundle() }).applicationTheme(appearance: appearance)
+        }
         .sheet(isPresented: $workspace.isSavedEvidencePresented) {
             SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence).applicationTheme(appearance: appearance)
         }

@@ -9,9 +9,30 @@ import (
 	sc "dbeer/helper/internal/schemacompare"
 )
 
-func (s *Session) ReadSchema(ctx context.Context, spec sc.CaptureSpec, sink sc.Sink) error {
+func (s *Session) ReadSchema(ctx context.Context, spec sc.CaptureSpec, sink sc.Sink) (err error) {
 	if len(spec.Schemas) != 1 || spec.Schemas[0] != "main" || s.TransactionStatus() != "idle" {
 		return sc.ErrInvalid
+	}
+	// Dependency compilation needs outgoing definition references, not the
+	// incoming foreign-key actions that ordinary DML would additionally run.
+	// This is a connection-local setting on the dedicated capture owner.
+	foreignKeys, _, err := s.query(ctx, "PRAGMA foreign_keys")
+	if err != nil {
+		return err
+	}
+	if len(foreignKeys) != 1 {
+		return sc.ErrInvalid
+	}
+	restoreForeignKeys := cellInt(foreignKeys[0][0]) != 0
+	if restoreForeignKeys {
+		if err = s.exec(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+			return err
+		}
+		defer func() {
+			if restoreErr := s.exec(context.Background(), "PRAGMA foreign_keys=ON"); restoreErr != nil && err == nil {
+				err = restoreErr
+			}
+		}()
 	}
 	if err := s.exec(ctx, "BEGIN"); err != nil {
 		return err
@@ -29,13 +50,23 @@ func (s *Session) ReadSchema(ctx context.Context, spec sc.CaptureSpec, sink sc.S
 	if err = sink.Inventory(inv); err != nil {
 		return err
 	}
+	catalog, err := s.schemaDependencyCatalog(ctx, spec.Limits)
+	if err != nil {
+		return err
+	}
 	for i, row := range rows {
 		if len(rows) > spec.Limits.Nodes {
 			return sc.ErrLimit
 		}
-		t, err := s.schemaTable(ctx, inv.Tables.Items[i], cellText(row[1]))
+		t, err := s.schemaTable(ctx, inv.Tables.Items[i], cellText(row[1]), catalog, spec.Limits)
 		if err != nil {
 			return err
+		}
+		if t.Dependencies.Code == "sqliteProgramDependenciesUnproven" {
+			ref := t.Ref
+			if err = sink.Issue(sc.Issue{Ref: &ref, Property: "dependencies", Code: t.Dependencies.Code, Message: "SQLite could not prove all table, index and trigger program dependencies.", BlocksEquality: true, Planning: "manual"}); err != nil {
+				return err
+			}
 		}
 		if err = sink.Table(t); err != nil {
 			return err
@@ -51,7 +82,7 @@ func (s *Session) ReadSchema(ctx context.Context, spec sc.CaptureSpec, sink sc.S
 	}
 	return sink.Context(capture)
 }
-func (s *Session) schemaTable(ctx context.Context, ref sc.Ref, raw string) (sc.Table, error) {
+func (s *Session) schemaTable(ctx context.Context, ref sc.Ref, raw string, catalog schemaProgramCatalog, limits sc.Limits) (sc.Table, error) {
 	t := sc.Table{Ref: ref, Kind: sc.Known("table"), Storage: sc.Known("permanent"), Charset: sc.Absent[string](), Collation: sc.Absent[sc.Ref](), Options: sc.Complete[sc.Option](nil), Columns: sc.Complete[sc.Column](nil), Constraints: sc.Complete[sc.Constraint](nil), Indexes: sc.Complete[sc.Index](nil), Dependencies: sc.Complete[sc.Dependency](nil)}
 	if strings.HasPrefix(strings.ToUpper(raw), "CREATE VIRTUAL") {
 		t.Kind = sc.Known("virtual")
@@ -163,8 +194,16 @@ func (s *Session) schemaTable(ctx context.Context, ref sc.Ref, raw string) (sc.T
 	if err != nil {
 		return t, err
 	}
+	triggerNames := []string{}
 	for _, row := range triggers {
+		triggerNames = append(triggerNames, cellText(row[0]))
 		t.Options.Items = append(t.Options.Items, sc.Option{Name: "trigger:" + cellText(row[0]), Value: cellText(row[1])})
+	}
+	if t.Dependencies.Complete {
+		t.Dependencies, err = s.schemaProgramDependencies(ctx, ref, columns, triggerNames, catalog, limits)
+		if err != nil {
+			return t, err
+		}
 	}
 	return t, nil
 }
@@ -175,6 +214,7 @@ func RenderSchemaDefinition(ctx context.Context, capture sc.Capture, ref sc.Ref)
 	w := &sc.DefinitionWriter{Context: ctx}
 	for _, t := range capture.Tables {
 		if t.Ref.Schema == ref.Schema && t.Ref.Name == ref.Name {
+			sc.DefinitionItems(w, "SQLite program dependencies", t.Dependencies)
 			for _, option := range t.Options.Items {
 				if option.Name == "definition" {
 					w.Write(option.Value + ";\n")

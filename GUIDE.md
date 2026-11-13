@@ -1139,6 +1139,33 @@ Captures are transient and are not saved result snapshots. Comparison performs
 no database writes. PostgreSQL/MySQL captures can produce an explicitly requested
 synchronization SQL plan as described below.
 
+## Schema bundles for Git
+
+Choose **Export Schema Bundle…** in a PostgreSQL, MySQL or SQLite connection's
+menu, enter the exact schemas and explicitly start **Capture Schema**. Capture
+uses a separate read-only connection with a deadline and Stop. Opening the sheet
+or restoring a workspace does not connect.
+
+Export into a new directory name. The bundle contains stable SQL files, a typed
+metadata snapshot and a manifest with dependencies, SHA-256 checksums and every
+included, omitted or incomplete object. Unsupported or incomplete definitions
+contain only a comment; review the reasons before using the files. Selected
+schema/database names and exact identifiers are retained, while clocks,
+connection provenance, statistics and changing sequence/AUTO_INCREMENT counters
+are excluded. PostgreSQL/MySQL views, routines, triggers, privileges and stored
+rows are outside this scope. SQLite retains table/index/trigger SQL together
+when its dependencies can be proved by preparation without executing programs.
+References to excluded views, unavailable functions and ambiguous trigger/view
+names remain explicit omissions or incomplete coverage.
+
+DBeer verifies every file in the background, with Stop available during final
+checks, and publishes the new directory atomically without replacing existing
+files or directories. Cancellation before confirmation removes only owned
+uncommitted files; a completed, acknowledged export remains saved. Captures stay
+bound to the original profile and close after accepted matching-profile Disconnect or workspace
+shutdown. Bundle files are source artifacts; they are not automatically applied.
+See [the v1 format](protocol/fixtures/schema-bundle-v1.md) for limits and coverage.
+
 ## Schema comparison
 
 Use **Connections → Compare Schema Structure…**, choose explicit source and

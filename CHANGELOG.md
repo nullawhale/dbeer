@@ -59,6 +59,15 @@
   separate from initial helper capture cost and require Add then Build for the
   100-table diagram area. Preserve active ER work through cancelled close decisions.
 
+- Export reproducible PostgreSQL/MySQL/SQLite schema bundles from an explicit
+  read-only capture, with exact collision-safe object paths, a typed catalog
+  snapshot, dependencies, checksums and included/omitted/incomplete reports.
+  Discard partial SQL previews, preserve external dependency evidence, support
+  deadlines and Stop, and atomically publish verified files into a new directory.
+  Prove SQLite program dependencies without executing them, preserve unknown
+  references explicitly, and verify files off the main actor with cancellable
+  chunk reads and guarded confirmation/cleanup.
+
 - Profile loaded selections and locally visible columns with exact bounded
   integer/decimal aggregates, SQL NULL counts and byte/storage-aware value
   distributions. Preserve filtered source mapping, label unavailable arithmetic

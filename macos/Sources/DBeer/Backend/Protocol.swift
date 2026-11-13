@@ -492,7 +492,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "operation.assess": "operation.assessment"
         case "formatInserts": "insertSQL"
         case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.diff", "data.plan", "data.cancel", "data.close": type + ".result"
-        case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.plan", "schema.export", "schema.cancel", "schema.close": type + ".result"
+        case "schema.bundle.start", "schema.bundle.status", "schema.bundle.export", "schema.bundle.cancel", "schema.bundle.close", "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.plan", "schema.export", "schema.cancel", "schema.close": type + ".result"
         case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close": type + ".result"
         case "dbtools.preview", "dbtools.start", "dbtools.status", "dbtools.cancel", "dbtools.close": type + ".result"
         case "transfer.describe", "transfer.preview", "transfer.apply", "transfer.status", "transfer.cancel", "transfer.close": type + ".result"
@@ -667,7 +667,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 resultSets == nil && streamed == nil && source == nil && structure?.valid(for: type) == true
         case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && dataComparison?.valid(for: type) == true
-        case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.plan.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
+        case "schema.bundle.start.result", "schema.bundle.status.result", "schema.bundle.export.result", "schema.bundle.cancel.result", "schema.bundle.close.result", "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.plan.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && schemaComparison?.valid(for: type) == true
         case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
             valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
@@ -835,6 +835,7 @@ struct NDJSONFramer: Sendable {
         // Keep the value validated from original bytes, before JSONDecoder can
         // discard duplicate keys or normalize an oversized nested representation.
         reply.buildIdentity = identity
+        try SchemaBundleSummary.validateFrame(frame)
         try reply.validate()
         return reply
     }

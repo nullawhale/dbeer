@@ -486,6 +486,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
     @Published var schemaComparison: SchemaComparisonModel?
+    @Published var schemaBundle: SchemaBundleModel?
     @Published var isLogicalRelationshipsPresented = false
     @Published var logicalRelationshipEditor: LogicalRelationshipEditorModel? {
         didSet { if oldValue?.id != logicalRelationshipEditor?.id { oldValue?.close() } }
@@ -939,6 +940,9 @@ final class ApplicationWorkspace: ObservableObject {
         !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
     }
 
+    func schemaBundleBindingIsCurrent(_ binding: SessionMonitorProfileBinding) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
+    }
 
 
     @discardableResult
@@ -1475,6 +1479,7 @@ final class ApplicationWorkspace: ObservableObject {
         retireERDiagramSourceOwners(profileID: id)
         invalidateERDiagrams(profileID: id, includePreparing: true, reason: "The profile is disconnecting. Connect and Build explicitly to reload metadata.")
         invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
+        if schemaBundle?.profile.id == id { let model = schemaBundle; schemaBundle = nil; await model?.close() }
         await closeDatabaseValueSearch(profileID: id)
         await closeGridProfileServers(profileID: id)
         await closeERDiagramExports(profileID: id)
@@ -3954,6 +3959,7 @@ final class ApplicationWorkspace: ObservableObject {
         commands.shutdown()
         await dataComparison?.close(); dataComparison = nil
         await schemaComparison?.close(); schemaComparison = nil
+        await schemaBundle?.close(); schemaBundle = nil
         if let shutdownTask { await shutdownTask.value; return }
         dismissPostgresTypeInspection()
         for file in fileDocuments.values { file.stopWatching() }
