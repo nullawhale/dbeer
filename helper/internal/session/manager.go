@@ -116,7 +116,7 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 // Keep them distinct from terminal failures of dispatched database commands.
 func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
 	response := protocol.ErrorResponse(command, category, message)
-	response.SQLNotExecuted = command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "structure.apply" || command.Type == "structure.validate" || isImport(command.Type)
+	response.SQLNotExecuted = command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "structure.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || isImport(command.Type)
 	return response
 }
 
@@ -268,6 +268,7 @@ type operation struct {
 type owner struct {
 	metadata           catalogmetadata.Store
 	structure          tableedit.Store
+	migration          tableedit.MigrationStore
 	structureOnly      bool
 	importOnly         bool
 	monitorOnly        bool
@@ -670,7 +671,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else {
 					response = owner.assess(command, engine, policy, physical)
 				}
-			case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
+			case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")

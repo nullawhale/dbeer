@@ -185,6 +185,9 @@ struct CatalogBranchView: View {
                 menu.addCatalogAction("Edit Structure…") { Task { await workspace.openTableStructure(node, create: false) } }
             }
         }
+        if workspace.canComposeMigration(node) {
+            menu.addCatalogAction("Compose Migration…") { workspace.openMigration(node) }
+        }
         if workspace.canImportTableData(node) {
             menu.addCatalogAction("Import CSV/TSV…", identifier: "importTableData") { Task { await workspace.openTableImport(node) } }
         }

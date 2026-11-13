@@ -16,6 +16,12 @@ type Operation struct {
 }
 
 func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Baseline, error)) ([]Operation, []Baseline, error) {
+	return planOperations(b, d, engine, load, false)
+}
+func PlanMigrationOperations(b Baseline, d Draft, engine string, load func(Target) (Baseline, error)) ([]Operation, []Baseline, error) {
+	return planOperations(b, d, engine, load, true)
+}
+func planOperations(b Baseline, d Draft, engine string, load func(Target) (Baseline, error), migration bool) ([]Operation, []Baseline, error) {
 	if err := d.Validate(); err != nil {
 		return nil, nil, err
 	}
@@ -342,7 +348,7 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		if k.Kind != "foreign" || k.Action == "drop" {
 			continue
 		}
-		if engine == "mysql" && k.Reference.Schema != b.Target.Schema {
+		if engine == "mysql" && k.Reference.Schema != b.Target.Schema && !migration {
 			return nil, nil, errors.New("Foreign-key authoring is limited to the selected MySQL database.")
 		}
 		target := source

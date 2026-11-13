@@ -77,13 +77,13 @@ func Capabilities(engine string) []string {
 	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.NativeResultValuesCapability, protocol.BrowseFilterTreeCapability}
 	switch engine {
 	case "sqlite":
-		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SQLiteCellFilterCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.SQLiteRelationshipBrowseCapability, protocol.IncomingRelationsCapability)
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.StructureMigrationsCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SQLiteCellFilterCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.SQLiteRelationshipBrowseCapability, protocol.IncomingRelationsCapability)
 	case "mongodb":
 		return append(common, "localReadOnly", "cursorPagination", "documentModelV1", "canonicalExtendedJSONV1")
 	case "cassandra":
 		return append(common, "localReadOnly", "cursorPagination", "gridEditing")
 	case "", "postgresql", "mysql":
-		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureIndexAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SessionMonitorCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.IncomingRelationsCapability)
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureIndexAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.StructureMigrationsCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SessionMonitorCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.IncomingRelationsCapability)
 	default:
 		return nil
 	}

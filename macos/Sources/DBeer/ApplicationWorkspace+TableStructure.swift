@@ -7,7 +7,7 @@ private final class TableStructureSessionLease {
 
 extension ApplicationWorkspace {
     func canEditTableStructure(_ node: CatalogNode) -> Bool {
-        guard tableImporter == nil, canStartTableStructure(node.profileID), let service = services[node.profileID], service.connectionState == .connected,
+        guard tableImporter == nil, migrationComposer == nil, canStartTableStructure(node.profileID), let service = services[node.profileID], service.connectionState == .connected,
               [.postgresql, .mysql, .sqlite].contains(service.engine),
               service.permitsOperation("structure.preview", legacyAllowed: service.capabilities.contains("tableStructureEditorV1")) else { return false }
         return node.kind == .schema || node.kind == .group && node.objectKind == "table" || node.kind == .object && node.objectKind == "table"

@@ -775,6 +775,67 @@ a local reference that opens inside DBeer. Deletion checks snapshot links and
 saved, unopened and unsaved investigation references. Remove the links and save
 the affected investigation before deleting its evidence.
 
+## Multi-object migrations
+
+Choose **Compose Migration…** from a connected catalog to open **Multi-object
+Migration**. Use **Load & Edit Object…** and **Stage Object Intent** for each
+table. Each object keeps its exact target and existing typed structure draft.
+The planner orders new referenced keys before foreign keys and dependent table
+drops before referenced table drops; explicit `after` edges retain additional
+user-selected ordering. Cycles require a separately reviewed phase.
+
+External repairs are individual choices. **Load Owner** reads the selected
+foreign-key owner; **Select repair for…** chooses that exact constraint for
+a permanent removal or an explicitly authored replacement. Specify replacement
+source columns, target table and target columns, including the reviewed new
+names after table/column renames. The owner's own reviewed table rename carries
+its stable object identity forward. No SQL text or replacement mapping is
+rewritten automatically. PostgreSQL schemas and MySQL databases may differ only
+within the same captured server/profile session. SQL for another profile is not
+executable in this workflow.
+
+Choose **Preview Migration SQL**, review every ordered unit, its exact SQL,
+consequences and expected intermediate structures, then choose **Apply Reviewed
+Migration…**. Expected structures bind each captured identity and fingerprint to
+the exact prior reviewed transitions; server-generated fingerprints are observed
+after acknowledgement. Every captured table is checked before dispatch. The
+whole migration is not atomic. PostgreSQL copy reconstruction and each SQLite
+reconstruction retain their proven transaction boundary; MySQL DDL commits
+independently. Removing a foreign key creates a referential-integrity gap.
+Concurrent writes can make its replacement fail, leaving earlier acknowledged
+steps and the selected removal in effect.
+
+**Check Execution Status** reads retained evidence from the original owner.
+Failed, unstarted, cancelled and unknown intent remains visible. After partial
+or uncertain execution, reconcile explicitly through **Reconcile Current
+Structures**, then separately choose **Review Retained Intent for a New Plan…**.
+Reconciliation observes the schema; it does not retry steps or reinterpret a
+lost acknowledgement as success. An unknown physical connection is retired;
+only its local retained status can be read. A new connection requires a fresh
+explicit load, review and preview, with no automatic replay.
+
+The **Migration** menu opens/saves portable `.dbeermigration` intent and exports
+reviewed SQL. Portable files contain typed intent only, strip destructive consent,
+and restore disconnected without credentials, session handles, plans or grants.
+A fresh connected preview and confirmation are required. Exported SQL is a
+manual script: it lacks the helper's freshness checks, preservation verification
+and outcome tracking. Independently saved `.dbeermigrationreport` files retain
+immutable reviewed steps and execution evidence; opening one never executes or
+reconciles it.
+
+Version 1 accepts at most 16 authored objects, 16 individually selected foreign-key
+repairs and 32 captured tables, including incoming owners, referenced tables and
+verified destinations. It bounds ordered units at 96, typed intent and generated
+SQL at 1 MiB each, and the review at 6 MiB. Existing ordinary-table and server
+limits still apply (PostgreSQL 14+, Oracle MySQL 8.0.30+, and SQLite `main`).
+Repairs require complete native constraint evidence and preserve only ordinary,
+validated, enforced, nondeferred foreign keys with default MATCH semantics.
+Views, routines, expression dependencies, unsupported constraints or incomplete
+metadata remain named prerequisites. Migration orchestration does not execute
+arbitrary repair SQL, add hidden CASCADE, disable constraint checks, evaluate
+expressions during Preview or inspect user rows. Existing SQLite reconstruction
+keeps its disclosed dedicated-session settings wrapper and restoration checks.
+
 ## Table structure drafts
 
 In a connected PostgreSQL, MySQL or SQLite catalog, use **Create Table…** on a

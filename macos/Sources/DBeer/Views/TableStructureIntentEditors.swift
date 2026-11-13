@@ -3,6 +3,7 @@ import SwiftUI
 
 struct TableStructureIntentEditors: View {
     @ObservedObject var model: TableStructureEditorModel
+    var allowCrossDatabase = false
     private var names: [String] { (model.baseline?.columns.map(\.name) ?? []).filter { name in !(model.draft.changes ?? []).contains { $0.drop && StructureTarget.sameIdentifier($0.name, name) } } + model.draft.columns.map(\.name).filter { !$0.isEmpty } }
     private var changes: [StructureColumnChange] { model.draft.changes ?? [] }
     private var indexes: [StructureIndexEdit] { model.draft.indexes ?? [] }
@@ -57,7 +58,7 @@ struct TableStructureIntentEditors: View {
             }
             ForEach(keys.indices, id: \.self) { i in
                 StructureKeyIntentEditor(edit: keyBinding(i), existing: model.baseline?.keys ?? [], names: names,
-                    engine: model.profile.engine, schema: model.schema) {
+                    engine: model.profile.engine, schema: model.schema, allowCrossDatabase: allowCrossDatabase) {
                     guard canEdit, keys.indices.contains(i) else { return }
                     model.draft.keys?.remove(at: i)
                     model.draft.allowDestructive = nil
@@ -299,6 +300,7 @@ private struct StructureKeyIntentEditor: View {
     let names: [String]
     let engine: DatabaseEngine
     let schema: String
+    var allowCrossDatabase = false
     let remove: () -> Void
     private var available: [StructureKey] { existing.filter { $0.supported && $0.kind == edit.kind } }
 
@@ -336,7 +338,7 @@ private struct StructureKeyIntentEditor: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 TextField("Referenced schema/database", text: Binding(get: { edit.reference?.schema ?? schema }, set: { ensureReference(); edit.reference?.schema = $0 }))
-                    .textFieldStyle(.roundedBorder).disabled(engine == .mysql)
+                    .textFieldStyle(.roundedBorder).disabled(engine == .mysql && !allowCrossDatabase)
                 TextField("Exact referenced table name", text: Binding(get: { edit.reference?.table ?? "" }, set: { ensureReference(); edit.reference?.table = $0 }))
                     .textFieldStyle(.roundedBorder)
             }
@@ -352,7 +354,7 @@ private struct StructureKeyIntentEditor: View {
             }
             Text("Source and referenced columns must have the same count and matching order. Enter each identifier as one name, including any dots or commas. Preview verifies the referenced key, types and collation; SET NULL requires nullable source columns.")
                 .font(.caption).appSecondaryText()
-            if engine == .mysql { Text("The referenced table must be in this database.").font(.caption).appSecondaryText() }
+            if engine == .mysql { Text(allowCrossDatabase ? "Preview proves references within this connected server; another profile cannot become an executable target." : "The referenced table must be in this database.").font(.caption).appSecondaryText() }
         }
     }
     private func reset(action: String, kind: String) {

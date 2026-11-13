@@ -738,3 +738,7 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	}
 	return fail("applied", "")
 }
+
+func (s *Session) StructurePrepareMigration(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, _ func(tableedit.Target) (tableedit.Baseline, error)) (tableedit.Prepared, error) {
+	return s.StructurePrepare(ctx, b, d)
+}

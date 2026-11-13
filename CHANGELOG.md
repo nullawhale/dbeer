@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Compose dependency-ordered multi-object migrations from typed table drafts and
+  individually selected foreign-key repairs, including explicit rename mappings
+  across PostgreSQL schemas and supported MySQL databases on the same server.
+  Review exact SQL and expected intermediate structures, export portable intent
+  or manual SQL, and retain per-unit/statement acknowledgement reports. Preserve
+  failed/unstarted intent and require explicit reconciliation and a fresh review
+  after partial or uncertain execution; never reconnect or replay writes implicitly.
+
 - Add selectable execution-plan Graph and Flame views with explicit inclusive
   time, estimated cost and proven serial-leaf exclusive time. Compare row
   estimates only on compatible invocation bases; disclose partial inputs,

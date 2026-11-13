@@ -10,8 +10,14 @@ import (
 )
 
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	return s.prepareMigrationStructure(ctx, b, d, func(t tableedit.Target) (tableedit.Baseline, error) { return s.StructureLoad(ctx, t) }, false)
+}
+func (s *Session) StructurePrepareMigration(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, load func(tableedit.Target) (tableedit.Baseline, error)) (tableedit.Prepared, error) {
+	return s.prepareMigrationStructure(ctx, b, d, load, true)
+}
+func (s *Session) prepareMigrationStructure(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, load func(tableedit.Target) (tableedit.Baseline, error), migration bool) (tableedit.Prepared, error) {
 	if d.NeedsAuthoringV5() {
-		return s.prepareStructureReconstruction(ctx, b, d)
+		return s.prepareStructureReconstruction(ctx, b, d, migration)
 	}
 	var guards []tableedit.TypeGuard
 	var e error
@@ -28,7 +34,11 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	if e != nil {
 		return tableedit.Prepared{}, e
 	}
-	ops, refs, e := tableedit.PlanOperations(b, d, "postgresql", func(t tableedit.Target) (tableedit.Baseline, error) { return s.StructureLoad(ctx, t) })
+	planner := tableedit.PlanOperations
+	if migration {
+		planner = tableedit.PlanMigrationOperations
+	}
+	ops, refs, e := planner(b, d, "postgresql", load)
 	if e != nil {
 		return tableedit.Prepared{}, e
 	}
@@ -231,6 +241,10 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 			break
 		}
 		for j, ref := range refs {
+			if ref.Target.Create && plan.Conditions[i].Operation.Kind == "renameTable" && plan.Conditions[i].Operation.Name != nil && ref.Target.Schema == current.Target.Schema && ref.Target.Table == *plan.Conditions[i].Operation.Name {
+				refs[j] = fresh
+				continue
+			}
 			observed, err := s.StructureLoad(ctx, ref.Target)
 			if err != nil || !tableedit.ValidBaseline(observed) || !tableedit.VerifyReference(ref, observed, current, plan.Conditions[i]) {
 				out[len(out)-1].Message = "The DDL step was acknowledged, but referenced metadata changed unexpectedly. Reconcile before continuing."

@@ -31,7 +31,7 @@ func assessOperation(engine string, operation protocol.OperationRequest) protoco
 	if operation.Type == "structure.validate" {
 		return result
 	}
-	if operation.Type == "structure.apply" || operation.Type == "import.apply" {
+	if operation.Type == "structure.apply" || operation.Type == "structure.migration.apply" || operation.Type == "import.apply" {
 		result.Kind = "write"
 		return result
 	}
@@ -121,10 +121,17 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 		if owner.importOnly && operation.Type != "import.apply" || !owner.importOnly && operation.Type == "import.apply" {
 			return protocol.ErrorResponse(command, "policy", "Open a dedicated import session to review table imports.")
 		}
-		if owner.structureOnly && operation.Type != "structure.apply" && operation.Type != "structure.validate" {
+		if owner.structureOnly && operation.Type != "structure.apply" && operation.Type != "structure.migration.apply" && operation.Type != "structure.validate" {
 			return protocol.ErrorResponse(command, "policy", "This session is reserved for the table structure editor.")
 		}
-		if operation.Type == "structure.apply" || operation.Type == "structure.validate" {
+		if operation.Type == "structure.migration.apply" {
+			if !owner.structureOnly {
+				return protocol.ErrorResponse(command, "policy", "Open a dedicated structure session before reviewing a migration.")
+			}
+			if _, err := owner.migration.Resolve(*operation.Structure); err != nil {
+				return protocol.ErrorResponse(command, "conflict", err.Error())
+			}
+		} else if operation.Type == "structure.apply" || operation.Type == "structure.validate" {
 			if !owner.structureOnly {
 				return protocol.ErrorResponse(command, "policy", "Open a dedicated structure session before reviewing DDL.")
 			}
@@ -185,10 +192,10 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 	if owner.monitorOnly {
 		return command.Type == "monitor.snapshot" || command.Type == "monitor.schema"
 	}
-	if command.Type != "execute" && command.Type != "command.execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "structure.validate" && command.Type != "import.apply" {
+	if command.Type != "execute" && command.Type != "command.execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "structure.migration.apply" && command.Type != "structure.validate" && command.Type != "import.apply" {
 		return true
 	}
-	if owner.structureOnly && command.Type != "structure.apply" && command.Type != "structure.validate" || command.Type != "structure.apply" && command.Type != "structure.validate" && command.Structure != nil {
+	if owner.structureOnly && command.Type != "structure.apply" && command.Type != "structure.migration.apply" && command.Type != "structure.validate" || command.Type != "structure.apply" && command.Type != "structure.migration.apply" && command.Type != "structure.validate" && command.Structure != nil {
 		owner.invalidateGrant()
 		return false
 	}
@@ -211,7 +218,17 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		}
 		operation.QueryID = command.QueryID
 	}
-	if command.Type == "structure.apply" || command.Type == "structure.validate" {
+	if command.Type == "structure.migration.apply" {
+		if !owner.structureOnly || command.Structure == nil || !command.Structure.Valid(command.Type) {
+			owner.invalidateGrant()
+			return false
+		}
+		operation.Structure = command.Structure.Migration.Apply
+		if _, err := owner.migration.Resolve(*operation.Structure); err != nil {
+			owner.invalidateGrant()
+			return false
+		}
+	} else if command.Type == "structure.apply" || command.Type == "structure.validate" {
 		if !owner.structureOnly || command.Structure == nil || !command.Structure.Valid(command.Type) {
 			owner.invalidateGrant()
 			return false
@@ -242,7 +259,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		return false
 	}
 	if command.Authorization == "" {
-		if command.Type == "structure.apply" || command.Type == "structure.validate" {
+		if command.Type == "structure.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" {
 			owner.grant = nil
 			return false
 		}
@@ -303,6 +320,11 @@ func (owner *owner) assessRetainedOperation(engine string, operation protocol.Op
 				result.Statements[i].Kind = "read"
 				result.Statements[i].Reason = "adapter_readonly_session_operation"
 			}
+		}
+	}
+	if operation.Type == "structure.migration.apply" && operation.Structure != nil {
+		if plan, err := owner.migration.Resolve(*operation.Structure); err == nil && plan.Destructive {
+			result.Kind = "destructive"
 		}
 	}
 	if operation.Type == "structure.apply" && operation.Structure != nil {

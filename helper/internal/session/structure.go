@@ -11,6 +11,9 @@ import (
 
 func isStructure(t string) bool { return strings.HasPrefix(t, "structure.") }
 func (owner *owner) runStructure(ctx context.Context, physical adapter.Session, c protocol.Command) protocol.Response {
+	if strings.HasPrefix(c.Type, "structure.migration.") {
+		return owner.runMigration(ctx, physical, c)
+	}
 	reject := func(category, message string) protocol.Response {
 		r := rejectedCommand(c, category, message)
 		r.Connected = physical.TransactionStatus() != "unknown"
@@ -37,9 +40,17 @@ func (owner *owner) runStructure(ctx context.Context, physical adapter.Session, 
 	var err error
 	switch c.Type {
 	case "structure.load":
+		if owner.migration.NeedsReconciliation() {
+			return reject("policy", "Reconcile retained migration execution before loading another structure draft.")
+		}
+		owner.migration.Close()
 		owner.invalidateGrant()
 		result, err = owner.structure.Load(ctx, a, *c.Structure.Target)
 	case "structure.preview":
+		if owner.migration.NeedsReconciliation() {
+			return reject("policy", "Reconcile retained migration execution before preparing another structure draft.")
+		}
+		owner.migration.Close()
 		owner.invalidateGrant()
 		result, err = owner.structure.PreviewContext(ctx, a, c.Structure.BaselineID, *c.Structure.Draft)
 	case "structure.validate":

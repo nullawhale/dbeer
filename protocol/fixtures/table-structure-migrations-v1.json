@@ -1,0 +1,643 @@
+{
+  "capability": "tableStructureMigrationsV1",
+  "valid": [
+    {
+      "type": "structure.migration.preview",
+      "requestId": "request",
+      "sessionId": "dedicated",
+      "queryId": "query",
+      "structure": {
+        "migration": {
+          "draft": {
+            "version": 1,
+            "objects": [
+              {
+                "id": "parent",
+                "target": {
+                  "schema": "fixture",
+                  "table": "parent",
+                  "create": false
+                },
+                "draft": {
+                  "columns": [],
+                  "changes": [
+                    {
+                      "name": "id",
+                      "renameTo": "new_id"
+                    }
+                  ],
+                  "renameTable": "new_parent",
+                  "authoringVersion": 2
+                },
+                "after": []
+              }
+            ],
+            "repairs": [
+              {
+                "id": "selected",
+                "target": {
+                  "schema": "fixture",
+                  "table": "child",
+                  "create": false
+                },
+                "key": "child_parent_fk",
+                "action": "replace",
+                "replacement": {
+                  "action": "add",
+                  "kind": "foreign",
+                  "name": "child_parent_fk",
+                  "columns": [
+                    "parent_id"
+                  ],
+                  "reference": {
+                    "schema": "fixture",
+                    "table": "new_parent",
+                    "create": false
+                  },
+                  "referenceColumns": [
+                    "new_id"
+                  ],
+                  "onUpdate": "NO ACTION",
+                  "onDelete": "RESTRICT"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.migration.apply",
+      "requestId": "request",
+      "sessionId": "dedicated",
+      "queryId": "query",
+      "structure": {
+        "migration": {
+          "apply": {
+            "planId": "reviewed",
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "executionId": "execution"
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.migration.export",
+      "requestId": "request",
+      "sessionId": "dedicated",
+      "queryId": "query",
+      "structure": {
+        "migration": {
+          "apply": {
+            "planId": "reviewed",
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "executionId": "execution"
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.migration.status",
+      "requestId": "request",
+      "sessionId": "dedicated",
+      "queryId": "query",
+      "structure": {
+        "migration": {}
+      }
+    },
+    {
+      "type": "structure.migration.reconcile",
+      "requestId": "request",
+      "sessionId": "dedicated",
+      "queryId": "query",
+      "structure": {
+        "migration": {}
+      }
+    },
+    {
+      "type": "structure.migration.close",
+      "requestId": "request",
+      "sessionId": "dedicated",
+      "queryId": "query",
+      "structure": {
+        "migration": {}
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":2,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}],\"password\":\"secret\"}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[],\"expectedFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"sql\":\"DROP TABLE hidden\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"cascade\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":null}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false,\"reconcile\":true},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[\"absent\"]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]},{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\"},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false,\"connection\":\"other\"},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.preview\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"version\":1,\"objects\":[{\"id\":\"parent\",\"target\":{\"schema\":\"fixture\",\"table\":\"parent\",\"create\":false},\"draft\":{\"columns\":[],\"changes\":[{\"name\":\"id\",\"renameTo\":\"new_id\"}],\"renameTable\":\"new_parent\",\"authoringVersion\":2},\"after\":[]}],\"repairs\":[{\"id\":\"selected\",\"target\":{\"schema\":\"fixture\",\"table\":\"child\",\"create\":false},\"key\":\"child_parent_fk\",\"action\":\"replace\",\"replacement\":{\"action\":\"add\",\"kind\":\"foreign\",\"name\":\"child_parent_fk\",\"columns\":[\"parent_id\"],\"reference\":{\"schema\":\"fixture\",\"table\":\"new_parent\",\"create\":false},\"referenceColumns\":[\"new_id\"],\"onUpdate\":\"NO ACTION\",\"onDelete\":\"RESTRICT\"}}]}}}}",
+    "{\"type\":\"structure.migration.apply\",\"requestId\":\"request\",\"sessionId\":\"dedicated\",\"queryId\":\"query\",\"structure\":{\"migration\":{\"apply\":{\"planId\":\"reviewed\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"executionId\":\"execution\",\"sql\":\"hidden\"}}}}"
+  ],
+  "portable": {
+    "version": 1,
+    "objects": [
+      {
+        "id": "parent",
+        "target": {
+          "schema": "fixture",
+          "table": "parent",
+          "create": false
+        },
+        "draft": {
+          "columns": [],
+          "changes": [
+            {
+              "name": "id",
+              "renameTo": "new_id"
+            }
+          ],
+          "renameTable": "new_parent",
+          "authoringVersion": 2
+        },
+        "after": []
+      }
+    ],
+    "repairs": [
+      {
+        "id": "selected",
+        "target": {
+          "schema": "fixture",
+          "table": "child",
+          "create": false
+        },
+        "key": "child_parent_fk",
+        "action": "replace",
+        "replacement": {
+          "action": "add",
+          "kind": "foreign",
+          "name": "child_parent_fk",
+          "columns": [
+            "parent_id"
+          ],
+          "reference": {
+            "schema": "fixture",
+            "table": "new_parent",
+            "create": false
+          },
+          "referenceColumns": [
+            "new_id"
+          ],
+          "onUpdate": "NO ACTION",
+          "onDelete": "RESTRICT"
+        }
+      }
+    ]
+  },
+  "validReplies": [
+    {
+      "type": "structure.migration.preview.result",
+      "structure": {
+        "migration": {
+          "plan": {
+            "id": "plan",
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "engine": "postgresql",
+            "draft": {
+              "version": 1,
+              "objects": [
+                {
+                  "id": "object",
+                  "target": {
+                    "schema": "fixture",
+                    "table": "table",
+                    "create": false
+                  },
+                  "draft": {
+                    "columns": [
+                      {
+                        "name": "added",
+                        "type": {
+                          "kind": "integer"
+                        },
+                        "nullable": true,
+                        "default": {
+                          "kind": "none"
+                        }
+                      }
+                    ]
+                  },
+                  "after": []
+                }
+              ],
+              "repairs": []
+            },
+            "baselines": [
+              {
+                "id": "baseline",
+                "target": {
+                  "schema": "fixture",
+                  "table": "table",
+                  "create": false
+                },
+                "engine": "postgresql",
+                "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "columns": [],
+                "limitations": [],
+                "keys": [],
+                "indexes": [],
+                "dependencyProof": true
+              }
+            ],
+            "steps": [
+              {
+                "id": "unit",
+                "objectId": "object",
+                "phase": "object",
+                "target": {
+                  "schema": "fixture",
+                  "table": "table",
+                  "create": false
+                },
+                "draft": {
+                  "columns": [
+                    {
+                      "name": "added",
+                      "type": {
+                        "kind": "integer"
+                      },
+                      "nullable": true,
+                      "default": {
+                        "kind": "none"
+                      }
+                    }
+                  ]
+                },
+                "sql": [
+                  "ALTER TABLE \"fixture\".\"table\" ADD COLUMN \"added\" integer;"
+                ],
+                "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                "before": [
+                  {
+                    "target": {
+                      "schema": "fixture",
+                      "table": "table",
+                      "create": false
+                    },
+                    "initialFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "identityDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    "afterSteps": []
+                  }
+                ],
+                "after": [
+                  {
+                    "target": {
+                      "schema": "fixture",
+                      "table": "table",
+                      "create": false
+                    },
+                    "initialFingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                    "identityDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                    "afterSteps": [
+                      "unit"
+                    ]
+                  }
+                ],
+                "risks": [],
+                "atomic": false
+              }
+            ],
+            "risks": [],
+            "destructive": false
+          },
+          "draft": {
+            "version": 1,
+            "objects": [
+              {
+                "id": "object",
+                "target": {
+                  "schema": "fixture",
+                  "table": "table",
+                  "create": false
+                },
+                "draft": {
+                  "columns": [
+                    {
+                      "name": "added",
+                      "type": {
+                        "kind": "integer"
+                      },
+                      "nullable": true,
+                      "default": {
+                        "kind": "none"
+                      }
+                    }
+                  ]
+                },
+                "after": []
+              }
+            ],
+            "repairs": []
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.migration.apply.result",
+      "structure": {
+        "migration": {
+          "draft": {
+            "version": 1,
+            "objects": [
+              {
+                "id": "object",
+                "target": {
+                  "schema": "fixture",
+                  "table": "table",
+                  "create": false
+                },
+                "draft": {
+                  "columns": [
+                    {
+                      "name": "added",
+                      "type": {
+                        "kind": "integer"
+                      },
+                      "nullable": true,
+                      "default": {
+                        "kind": "none"
+                      }
+                    }
+                  ]
+                },
+                "after": []
+              }
+            ],
+            "repairs": []
+          },
+          "outcome": {
+            "planId": "plan",
+            "executionId": "execution",
+            "state": "applied",
+            "steps": [
+              {
+                "id": "unit",
+                "state": "applied",
+                "statements": [
+                  {
+                    "state": "applied"
+                  }
+                ],
+                "observed": [
+                  {
+                    "target": {
+                      "schema": "fixture",
+                      "table": "table",
+                      "create": false
+                    },
+                    "fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    "identityDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                  }
+                ]
+              }
+            ],
+            "reconciliationRequired": true
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.migration.status.result",
+      "structure": {
+        "migration": {
+          "draft": {
+            "version": 1,
+            "objects": [
+              {
+                "id": "object",
+                "target": {
+                  "schema": "fixture",
+                  "table": "table",
+                  "create": false
+                },
+                "draft": {
+                  "columns": [
+                    {
+                      "name": "added",
+                      "type": {
+                        "kind": "integer"
+                      },
+                      "nullable": true,
+                      "default": {
+                        "kind": "none"
+                      }
+                    }
+                  ]
+                },
+                "after": []
+              }
+            ],
+            "repairs": []
+          },
+          "outcome": {
+            "planId": "plan",
+            "executionId": "execution",
+            "state": "outcomeUnknown",
+            "steps": [
+              {
+                "id": "unit",
+                "state": "outcomeUnknown",
+                "statements": [
+                  {
+                    "state": "unknown"
+                  }
+                ]
+              }
+            ],
+            "reconciliationRequired": true
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.migration.reconcile.result",
+      "structure": {
+        "migration": {
+          "draft": {
+            "version": 1,
+            "objects": [
+              {
+                "id": "object",
+                "target": {
+                  "schema": "fixture",
+                  "table": "table",
+                  "create": false
+                },
+                "draft": {
+                  "columns": [
+                    {
+                      "name": "added",
+                      "type": {
+                        "kind": "integer"
+                      },
+                      "nullable": true,
+                      "default": {
+                        "kind": "none"
+                      }
+                    }
+                  ]
+                },
+                "after": []
+              }
+            ],
+            "repairs": []
+          },
+          "outcome": {
+            "planId": "plan",
+            "executionId": "execution",
+            "state": "applied",
+            "steps": [
+              {
+                "id": "unit",
+                "state": "applied",
+                "statements": [
+                  {
+                    "state": "applied"
+                  }
+                ],
+                "observed": [
+                  {
+                    "target": {
+                      "schema": "fixture",
+                      "table": "table",
+                      "create": false
+                    },
+                    "fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    "identityDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                  }
+                ]
+              }
+            ],
+            "reconciliationRequired": false
+          },
+          "observed": [
+            {
+              "id": "baseline",
+              "target": {
+                "schema": "fixture",
+                "table": "table",
+                "create": false
+              },
+              "engine": "postgresql",
+              "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "columns": [],
+              "limitations": [],
+              "keys": [],
+              "indexes": [],
+              "dependencyProof": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.migration.export.result",
+      "structure": {
+        "migration": {
+          "export": {
+            "version": 1,
+            "draft": {
+              "version": 1,
+              "objects": [
+                {
+                  "id": "object",
+                  "target": {
+                    "schema": "fixture",
+                    "table": "table",
+                    "create": false
+                  },
+                  "draft": {
+                    "columns": [
+                      {
+                        "name": "added",
+                        "type": {
+                          "kind": "integer"
+                        },
+                        "nullable": true,
+                        "default": {
+                          "kind": "none"
+                        }
+                      }
+                    ]
+                  },
+                  "after": []
+                }
+              ],
+              "repairs": []
+            },
+            "sql": "-- DBeer reviewed migration: MANUAL execution.\n-- No retained authority.\n"
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.migration.close.result",
+      "structure": {
+        "migration": {
+          "draft": {
+            "version": 1,
+            "objects": [
+              {
+                "id": "object",
+                "target": {
+                  "schema": "fixture",
+                  "table": "table",
+                  "create": false
+                },
+                "draft": {
+                  "columns": [
+                    {
+                      "name": "added",
+                      "type": {
+                        "kind": "integer"
+                      },
+                      "nullable": true,
+                      "default": {
+                        "kind": "none"
+                      }
+                    }
+                  ]
+                },
+                "after": []
+              }
+            ],
+            "repairs": []
+          },
+          "outcome": {
+            "planId": "plan",
+            "executionId": "execution",
+            "state": "outcomeUnknown",
+            "steps": [
+              {
+                "id": "unit",
+                "state": "outcomeUnknown",
+                "statements": [
+                  {
+                    "state": "unknown"
+                  }
+                ]
+              }
+            ],
+            "reconciliationRequired": true
+          }
+        }
+      }
+    }
+  ],
+  "invalidReplies": [
+    "{\"type\":\"structure.migration.preview.result\",\"structure\":{\"migration\":{\"plan\":{\"id\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"engine\":\"postgresql\",\"draft\":{\"version\":1,\"objects\":[{\"id\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"after\":[]}],\"repairs\":[]},\"baselines\":[{\"id\":\"baseline\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true}],\"steps\":[{\"id\":\"unit\",\"objectId\":\"object\",\"phase\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"sql\":[\"ALTER TABLE \\\"fixture\\\".\\\"table\\\" ADD COLUMN \\\"added\\\" integer;\"],\"digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"before\":[{\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"initialFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"identityDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"afterSteps\":[]}],\"after\":[{\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"initialFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"identityDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"afterSteps\":[\"unit\"]}],\"risks\":[],\"atomic\":false}],\"risks\":[],\"destructive\":false,\"authorization\":\"hidden\"},\"draft\":{\"version\":1,\"objects\":[{\"id\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"after\":[]}],\"repairs\":[]}}}}",
+    "{\"type\":\"structure.migration.preview.result\",\"structure\":{\"migration\":{\"plan\":{\"id\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"engine\":\"postgresql\",\"draft\":{\"version\":1,\"objects\":[{\"id\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"after\":[]}],\"repairs\":[]},\"baselines\":[{\"id\":\"baseline\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true}],\"steps\":[{\"id\":\"unit\",\"objectId\":\"object\",\"phase\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"sql\":[\"ALTER TABLE \\\"fixture\\\".\\\"table\\\" ADD COLUMN \\\"added\\\" integer;\"],\"digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"before\":[{\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"initialFingerprint\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"identityDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"afterSteps\":[]}],\"after\":[{\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"initialFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"identityDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"afterSteps\":[\"unit\"]}],\"risks\":[],\"atomic\":false}],\"risks\":[],\"destructive\":false},\"draft\":{\"version\":1,\"objects\":[{\"id\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"after\":[]}],\"repairs\":[]}}}}",
+    "{\"type\":\"structure.migration.preview.result\",\"structure\":{\"migration\":{\"plan\":{\"id\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"engine\":\"postgresql\",\"draft\":{\"version\":1,\"objects\":[{\"id\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"after\":[]}],\"repairs\":[]},\"baselines\":[{\"id\":\"baseline\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true}],\"steps\":[{\"id\":\"unit\",\"objectId\":\"object\",\"phase\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"sql\":[\"ALTER TABLE \\\"fixture\\\".\\\"table\\\" ADD COLUMN \\\"added\\\" integer;\"],\"digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"before\":[{\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"initialFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"identityDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"afterSteps\":[]}],\"after\":[{\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"initialFingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"identityDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"afterSteps\":[]}],\"risks\":[],\"atomic\":false}],\"risks\":[],\"destructive\":false},\"draft\":{\"version\":1,\"objects\":[{\"id\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"after\":[]}],\"repairs\":[]}}}}",
+    "{\"type\":\"structure.migration.status.result\",\"structure\":{\"migration\":{\"draft\":{\"version\":1,\"objects\":[{\"id\":\"object\",\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"draft\":{\"columns\":[{\"name\":\"added\",\"type\":{\"kind\":\"integer\"},\"nullable\":true,\"default\":{\"kind\":\"none\"}}]},\"after\":[]}],\"repairs\":[]},\"outcome\":{\"planId\":\"plan\",\"executionId\":\"execution\",\"state\":\"outcomeUnknown\",\"steps\":[{\"id\":\"unit\",\"state\":\"applied\",\"statements\":[{\"state\":\"unknown\"}]}],\"reconciliationRequired\":true}}}}",
+    "{\"type\":\"structure.migration.apply.result\",\"structure\":{\"migration\":{\"draft\":null,\"outcome\":{\"planId\":\"plan\",\"executionId\":\"execution\",\"state\":\"applied\",\"steps\":[{\"id\":\"unit\",\"state\":\"applied\",\"statements\":[{\"state\":\"applied\"}],\"observed\":[{\"target\":{\"schema\":\"fixture\",\"table\":\"table\",\"create\":false},\"fingerprint\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"identityDigest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"}]}],\"reconciliationRequired\":true}}}}"
+  ]
+}

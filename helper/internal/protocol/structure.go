@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dbeer/helper/internal/tableedit"
 	"encoding/json"
+	"strings"
 )
 
 const StructureAuthoringCapability = tableedit.AuthoringCapability
@@ -13,6 +14,9 @@ const StructureReconstructionCapability = tableedit.ReconstructionCapability
 
 func parseStructure(raw json.RawMessage, command string) (tableedit.Request, bool) {
 	var r tableedit.Request
+	if strings.HasPrefix(command, "structure.migration.") {
+		return parseMigrationStructure(raw, command)
+	}
 	if !JSONUnicodeValid(raw) || !structureNoNull(raw) {
 		return r, false
 	}

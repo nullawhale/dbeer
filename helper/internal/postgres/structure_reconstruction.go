@@ -12,13 +12,13 @@ import (
 	"time"
 )
 
-func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, migration ...bool) (tableedit.Prepared, error) {
 	order, err := tableedit.ReconstructionOrder(b, d)
 	if err != nil {
 		return tableedit.Prepared{}, err
 	}
 	if d.Reconstruct || len(d.ColumnOrder) > 0 {
-		return s.preparePGRebuild(ctx, b, d, order)
+		return s.preparePGRebuild(ctx, b, d, order, len(migration) > 0 && migration[0])
 	}
 	relaxed := tableedit.Draft{AuthoringVersion: 2, Columns: append([]tableedit.Column(nil), d.Columns...)}
 	for i := range relaxed.Columns {
@@ -46,7 +46,7 @@ func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedi
 
 // PostgreSQL has no ALTER COLUMN position. Only a positively proven ordinary
 // subset can change physical order by transactional copy/drop/rename.
-func (s *Session) preparePGRebuild(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, order []string) (tableedit.Prepared, error) {
+func (s *Session) preparePGRebuild(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, order []string, migration bool) (tableedit.Prepared, error) {
 	p := tableedit.Prepared{}
 	if len(d.Columns) > 0 {
 		return p, errors.New("Review PostgreSQL backfill separately from physical reconstruction.")
@@ -54,7 +54,7 @@ func (s *Session) preparePGRebuild(ctx context.Context, b tableedit.Baseline, d 
 	if err := pgRebuildFacts(b); err != nil {
 		return p, err
 	}
-	if !pgRebuildCatalog(ctx, s.conn, b) {
+	if !pgRebuildCatalog(ctx, s.conn, b, migration) {
 		return p, errors.New("Reconstruction requires a table owned by the active role, default privileges/storage/replica identity, no ACLs, comments, policies, rules, publications, security labels, table or event triggers, and no owned sequences. Preserve those properties in an explicit multi-object migration.")
 	}
 	temp := "__dbeer_rebuild_" + b.Fingerprint[:12]
@@ -125,7 +125,7 @@ func (s *Session) preparePGRebuild(ctx context.Context, b tableedit.Baseline, d 
 			p.SQL = append(p.SQL, definition.SQL)
 		}
 	}
-	p.Reconstruction = &tableedit.Reconstruction{Method: "postgresql-copy", ColumnOrder: order}
+	p.Reconstruction = &tableedit.Reconstruction{Method: "postgresql-copy", ColumnOrder: order, TemporaryTable: temp}
 	p.Consequences, p.ValidationChecks = tableedit.ReconstructionReview(b, d)
 	p.Risks = []string{"PostgreSQL physical column order requires a new relation: CREATE, INSERT SELECT, exact-value verification, DROP RESTRICT, RENAME and retained key/index recreation run in one transaction under ACCESS EXCLUSIVE locking and a five-second lock wait. Relation OID and physical row locations change. No CASCADE or dependent-object repair is generated.", "Before COMMIT, binary representations of every retained value and duplicate multiplicity are compared in both directions, and all retained catalog facts and attributes are checked. Unknown COMMIT acknowledgement retires this physical connection; status retains uncertainty without replay."}
 	return p, nil
@@ -201,12 +201,13 @@ func tableeditPlainPGIndex(b tableedit.Baseline, name string) bool {
 	}
 	return false
 }
-func pgRebuildCatalog(ctx context.Context, q structureReader, b tableedit.Baseline) bool {
+func pgRebuildCatalog(ctx context.Context, q structureReader, b tableedit.Baseline, selectedRepairs ...bool) bool {
+	allowInternal := len(selectedRepairs) > 0 && selectedRepairs[0]
 	var safe bool
 	err := q.QueryRow(ctx, `SELECT c.relowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user)
  AND c.relacl IS NULL AND c.reloptions IS NULL AND c.reltablespace=0 AND c.relreplident='d'
  AND c.relam=(SELECT oid FROM pg_catalog.pg_am WHERE amname='heap')
- AND NOT c.relhasrules AND NOT c.relhastriggers AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
+ AND NOT c.relhasrules AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid=c.oid AND (NOT $4 OR NOT tgisinternal)) AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_event_trigger WHERE evtenabled<>'D')
  AND pg_catalog.obj_description(c.oid,'pg_class') IS NULL
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_seclabel WHERE classoid='pg_catalog.pg_class'::pg_catalog.regclass AND objoid=c.oid)
@@ -214,7 +215,7 @@ func pgRebuildCatalog(ctx context.Context, q structureReader, b tableedit.Baseli
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend WHERE classid='pg_catalog.pg_class'::pg_catalog.regclass AND objid=c.oid AND deptype='e')
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_default_acl WHERE defaclrole=c.relowner AND defaclobjtype='r' AND defaclnamespace IN (0,c.relnamespace))
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend WHERE refobjid=c.oid AND classid='pg_catalog.pg_class'::pg_catalog.regclass AND deptype IN ('a','i') AND objsubid=0 AND objid IN (SELECT oid FROM pg_catalog.pg_class WHERE relkind='S'))
- FROM pg_catalog.pg_class c WHERE c.oid=$1::pg_catalog.oid`, b.Identity, b.Target.Schema, b.Target.Table).Scan(&safe)
+ FROM pg_catalog.pg_class c WHERE c.oid=$1::pg_catalog.oid`, b.Identity, b.Target.Schema, b.Target.Table, allowInternal).Scan(&safe)
 	return err == nil && safe
 }
 func pgBinaryProjection(b tableedit.Baseline) string {
@@ -260,11 +261,26 @@ func (s *Session) applyPGRebuild(ctx context.Context, b tableedit.Baseline, p ta
 	if _, err = tx.Exec(ctx, "LOCK TABLE "+target+" IN ACCESS EXCLUSIVE MODE"); err != nil {
 		return fill("notStarted", "Cannot acquire the reconstruction lock.")
 	}
+	for _, ref := range p.References {
+		if !ref.Target.Create {
+			if _, err = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{ref.Target.Schema, ref.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+				return fill("notStarted", "Cannot acquire a captured migration reference lock.")
+			}
+		}
+		observed, e := readStructure(ctx, tx, ref.Target)
+		if e != nil || observed.Fingerprint != ref.Fingerprint {
+			return fill("notStarted", "A captured migration reference changed before reconstruction dispatch.")
+		}
+	}
 	current, err := readStructure(ctx, tx, b.Target)
 	if err != nil || current.Fingerprint != b.Fingerprint || !pgRebuildCatalog(ctx, tx, b) {
 		return fill("notStarted", "The table or reconstruction prerequisites changed; prepare a new preview.")
 	}
-	temporary := pgx.Identifier{b.Target.Schema, "__dbeer_rebuild_" + b.Fingerprint[:12]}.Sanitize()
+	temp := p.Reconstruction.TemporaryTable
+	if temp == "" {
+		temp = "__dbeer_rebuild_" + b.Fingerprint[:12]
+	}
+	temporary := pgx.Identifier{b.Target.Schema, temp}.Sanitize()
 	fail := func(message string) []tableedit.Execution {
 		cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

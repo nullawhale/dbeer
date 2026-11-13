@@ -187,14 +187,21 @@ func IsDigest(s string) bool {
 }
 
 type Request struct {
-	Validation *Apply  `json:"validation,omitempty"`
-	Target     *Target `json:"target,omitempty"`
-	BaselineID string  `json:"baselineId,omitempty"`
-	Draft      *Draft  `json:"draft,omitempty"`
-	Apply      *Apply  `json:"apply,omitempty"`
+	Migration  *MigrationRequest `json:"migration,omitempty"`
+	Validation *Apply            `json:"validation,omitempty"`
+	Target     *Target           `json:"target,omitempty"`
+	BaselineID string            `json:"baselineId,omitempty"`
+	Draft      *Draft            `json:"draft,omitempty"`
+	Apply      *Apply            `json:"apply,omitempty"`
 }
 
 func (r Request) Valid(command string) bool {
+	if strings.HasPrefix(command, "structure.migration.") {
+		return r.Migration != nil && r.Target == nil && r.BaselineID == "" && r.Draft == nil && r.Apply == nil && r.Validation == nil && r.Migration.Valid(command)
+	}
+	if r.Migration != nil {
+		return false
+	}
 	if command == "structure.validate" {
 		return r.Target == nil && r.BaselineID == "" && r.Draft == nil && r.Apply == nil && r.Validation != nil && r.Validation.Valid()
 	}
@@ -228,6 +235,7 @@ type Outcome struct {
 	RefreshError  string        `json:"refreshError,omitempty"`
 }
 type Reply struct {
+	Migration  *MigrationReply    `json:"migration,omitempty"`
 	Validation *ValidationOutcome `json:"validation,omitempty"`
 	Baseline   *Baseline          `json:"baseline,omitempty"`
 	Plan       *Plan              `json:"plan,omitempty"`

@@ -304,8 +304,10 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 		}
 	}
 	for _, ref := range refs {
-		if _, e = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{ref.Target.Schema, ref.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
-			return fail("notStarted", "Referenced table lock could not be acquired.")
+		if !ref.Target.Create {
+			if _, e = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{ref.Target.Schema, ref.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
+				return fail("notStarted", "Referenced table lock could not be acquired.")
+			}
 		}
 		observed, err := readStructure(ctx, tx, ref.Target)
 		if err != nil || observed.Fingerprint != ref.Fingerprint {

@@ -284,12 +284,13 @@ struct StructureRequest: Codable, Equatable, Sendable {
     var draft: StructureDraft?
     var apply: StructureApply?
     var validation: StructureApply? = nil
+    var migration: StructureMigrationRequest? = nil
 }
 extension StructureRequest {
-    private enum CodingKeys: String, CodingKey { case target, baselineId, draft, apply, validation }
+    private enum CodingKeys: String, CodingKey { case target, baselineId, draft, apply, validation, migration }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["target", "baselineId", "draft", "apply", "validation"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["target", "baselineId", "draft", "apply", "validation", "migration"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         if c.contains(.target), try c.decodeNil(forKey: .target) { throw BackendTransportError(.invalidMessage) }
         target = try c.decodeIfPresent(StructureTarget.self, forKey: .target)
@@ -301,6 +302,8 @@ extension StructureRequest {
         apply = try c.decodeIfPresent(StructureApply.self, forKey: .apply)
         if c.contains(.validation), try c.decodeNil(forKey: .validation) { throw BackendTransportError(.invalidMessage) }
         validation = try c.decodeIfPresent(StructureApply.self, forKey: .validation) ?? nil
+        if c.contains(.migration), try c.decodeNil(forKey: .migration) { throw BackendTransportError(.invalidMessage) }
+        migration = try c.decodeIfPresent(StructureMigrationRequest.self, forKey: .migration)
     }
 }
 
@@ -355,14 +358,15 @@ final class StructureReply: Codable, Equatable, Sendable {
     let plan: StructurePlan?
     let outcome: StructureOutcome?
     let validation: StructureValidationOutcome?
+    let migration: StructureMigrationReply?
 
-    init(baseline: StructureBaseline? = nil, plan: StructurePlan? = nil, outcome: StructureOutcome? = nil, validation: StructureValidationOutcome? = nil) {
-        self.baseline = baseline; self.plan = plan; self.outcome = outcome; self.validation = validation
+    init(baseline: StructureBaseline? = nil, plan: StructurePlan? = nil, outcome: StructureOutcome? = nil, validation: StructureValidationOutcome? = nil, migration: StructureMigrationReply? = nil) {
+        self.baseline = baseline; self.plan = plan; self.outcome = outcome; self.validation = validation; self.migration = migration
     }
-    private enum CodingKeys: String, CodingKey { case baseline, plan, outcome, validation }
+    private enum CodingKeys: String, CodingKey { case baseline, plan, outcome, validation, migration }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["baseline", "plan", "outcome", "validation"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["baseline", "plan", "outcome", "validation", "migration"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         if c.contains(.baseline), try c.decodeNil(forKey: .baseline) { throw BackendTransportError(.invalidMessage) }
         if c.contains(.plan), try c.decodeNil(forKey: .plan) { throw BackendTransportError(.invalidMessage) }
@@ -372,8 +376,10 @@ final class StructureReply: Codable, Equatable, Sendable {
         outcome = try c.decodeIfPresent(StructureOutcome.self, forKey: .outcome)
         if c.contains(.validation), try c.decodeNil(forKey: .validation) { throw BackendTransportError(.invalidMessage) }
         validation = try c.decodeIfPresent(StructureValidationOutcome.self, forKey: .validation)
+        if c.contains(.migration), try c.decodeNil(forKey: .migration) { throw BackendTransportError(.invalidMessage) }
+        migration = try c.decodeIfPresent(StructureMigrationReply.self, forKey: .migration)
     }
-    static func == (a: StructureReply, b: StructureReply) -> Bool { a.baseline == b.baseline && a.plan == b.plan && a.outcome == b.outcome && a.validation == b.validation }
+    static func == (a: StructureReply, b: StructureReply) -> Bool { a.baseline == b.baseline && a.plan == b.plan && a.outcome == b.outcome && a.validation == b.validation && a.migration == b.migration }
 }
 
 struct StructureColumnChange: Codable, Equatable, Sendable {
@@ -602,6 +608,10 @@ extension StructureApply {
 }
 extension StructureRequest {
     func valid(for type: String) -> Bool {
+        if type.hasPrefix("structure.migration.") {
+            return target == nil && baselineId == nil && draft == nil && apply == nil && validation == nil && migration?.valid(for: type) == true
+        }
+        guard migration == nil else { return false }
         if type == "structure.validate" { return target == nil && baselineId == nil && draft == nil && apply == nil && validation?.valid == true }
         guard validation == nil else { return false }
         return switch type {
@@ -651,7 +661,11 @@ extension StructureOutcome {
 }
 extension StructureReply {
     func valid(for type: String) -> Bool {
-        switch type {
+        if type.hasPrefix("structure.migration.") {
+            return baseline == nil && plan == nil && outcome == nil && validation == nil && migration?.valid(for: type) == true
+        }
+        guard migration == nil else { return false }
+        return switch type {
         case "structure.load.result": baseline?.valid == true && plan == nil && outcome == nil && validation == nil
         case "structure.preview.result": baseline == nil && plan?.valid == true && outcome == nil && validation == nil
         case "structure.apply.result": baseline == nil && plan == nil && outcome?.valid == true && validation == nil
