@@ -491,6 +491,11 @@ final class ApplicationWorkspace: ObservableObject {
     private var sessionMonitorWindow: SessionMonitorWindowController?
     private var sessionMonitorProfileObservation: AnyCancellable?
     private var sessionMonitorPresentation = SessionMonitorPresentationIntent()
+    var databaseSearchWindow: DatabaseValueSearchWindowController?
+    var databaseSearchModel: DatabaseValueSearchModel?
+    var databaseSearchProfileObservation: AnyCancellable?
+    var databaseSearchPresentation = SessionMonitorPresentationIntent()
+    var databaseSearchRequestedProfileID: UUID?
     @Published var isSnapshotsPresented = false
     @Published var isSavedEvidencePresented = false
     @Published private(set) var isClosing = false
@@ -541,6 +546,8 @@ final class ApplicationWorkspace: ObservableObject {
     private var catalogRequests: [UUID: (id: UUID, task: Task<BackendMessage, Error>)] = [:]
     private var completionLoads: [UUID: (id: UUID, task: Task<Void, Never>)] = [:]
     private var shutdownTask: Task<Void, Never>?
+    private var shutdownLifecycleTask: Task<Void, Never>?
+    private var hasBegunShutdown = false
     private var started = false
     private var observations: [UUID: AnyCancellable] = [:]
     var typeProfileRevisions: [UUID: UUID] = [:]
@@ -903,11 +910,18 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     var canManageWorkspace: Bool {
-        shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
+        !hasBegunShutdown && shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
             !isClosing && !isClearingDocuments && closingDocuments.isEmpty && disconnectingProfiles.isEmpty
     }
 
     var canReopenClosedTab: Bool { canManageWorkspace && !closedTabs.isEmpty }
+
+    func databaseSearchBindingIsCurrent(_ binding: SessionMonitorProfileBinding) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
+    }
+
+
+
 
     @discardableResult
     func reopenClosedTab() -> SQLDocument? {
@@ -1110,6 +1124,10 @@ final class ApplicationWorkspace: ObservableObject {
             sessionMonitorWindow = nil
             sessionMonitorProfileObservation = nil
         }
+    }
+
+    func readonlyOperationSettings(_ profile: SavedConnection, attempt: UUID) async throws -> ConnectionSettings {
+        try await DataComparisonCredentials.settings(profile, store: credentialStore, attempt: attempt)
     }
 
     func agentConnectionSettings(_ profile: SavedConnection) async throws -> ConnectionSettings? {
@@ -1492,6 +1510,7 @@ final class ApplicationWorkspace: ObservableObject {
     func canStartOperation(_ document: SQLDocument, forClosing: Bool = false, forNavigating: Bool = false) -> Bool {
         guard shutdownTask == nil, let owner = ownedSQLContext(for: document) else { return false }
         if forClosing { return true }
+        guard !hasBegunShutdown else { return false }
         if document === owner.tab, let model = owner.tab.investigationModel,
            model.allSQLDocuments.contains(where: {
                closingDocuments.contains($0.id) || $0.profileID.map { disconnectingProfiles.contains($0) } == true
@@ -3114,7 +3133,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func canStartERSource(_ profileID: UUID) -> Bool {
-        shutdownTask == nil && !disconnectingProfiles.contains(profileID) &&
+        shutdownTask == nil && !hasBegunShutdown && !disconnectingProfiles.contains(profileID) &&
             !isClosing
     }
 
@@ -3837,7 +3856,7 @@ final class ApplicationWorkspace: ObservableObject {
         return reply
     }
 
-    var relationshipServiceContextIsAvailable: Bool { shutdownTask == nil && !helperFailed }
+    var relationshipServiceContextIsAvailable: Bool { !hasBegunShutdown && shutdownTask == nil && !helperFailed }
 
     func relationshipDocumentIsCurrent(_ document: SQLDocument) -> Bool {
         relationshipServiceContextIsAvailable && documents.contains(where: { $0 === document })
@@ -3858,6 +3877,16 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func shutdown() async {
+        if let shutdownLifecycleTask { await shutdownLifecycleTask.value; return }
+        // This is permanent teardown, separate from cancellable close decisions.
+        // Fence new owners before any cleanup operation can suspend.
+        hasBegunShutdown = true
+        let task = Task { @MainActor [self] in await finishShutdown() }
+        shutdownLifecycleTask = task
+        await task.value
+    }
+
+    private func finishShutdown() async {
         await savedEvidence.waitForPendingWork()
         cancelQueryParameterPrompt()
         if let model = tableImporter {
@@ -3869,6 +3898,7 @@ final class ApplicationWorkspace: ObservableObject {
         }
         invalidateERDiagrams(reason: "The workspace is shutting down.")
         await closeSessionMonitor()
+        await closeDatabaseValueSearch()
         await dataTransfer?.close(); dataTransfer = nil
         await databaseTools?.close(); databaseTools = nil
         commands.shutdown()
@@ -3912,6 +3942,7 @@ final class ApplicationWorkspace: ObservableObject {
                 guard let self, self.shutdownTask == nil, self.helperGeneration == generation else { return }
                 self.helperFailed = true
                 self.sessionMonitorWindow?.model.helperDidFail()
+                self.databaseSearchModel?.helperDidFail()
                 self.invalidateERDiagrams(reason: "The helper connection ended. Connect and Build explicitly to reload metadata.")
                 self.clusterInspection = nil
                 self.invalidatePostgresTypeInspection(reason: "The helper connection ended. Reopen this type after connecting again.")

@@ -86,6 +86,38 @@ result, profile and session, and rejects protected columns. Search reads remain
 separate from SQL-tab transactions; opening restored documents never connects
 or starts a picker search.
 
+## Finding data across tables (unreleased)
+
+Choose **Find Data…** in a connection's context menu to search PostgreSQL, MySQL
+or SQLite table and view values. Explicitly load schemas, select objects and
+choose column types; loading another schema adds its objects to the scope.
+This workflow currently reports its client coverage limits for MongoDB and
+Cassandra instead of searching their fields or partitions.
+
+**Exact value** uses the existing typed table-filter predicates, with database
+equality and collation rules. Choose Text, Exact number, Binary (Base64) or
+SQL NULL; empty text and the text `NULL` remain distinct from SQL NULL. Exact
+numbers retain their decimal text. SQLite exact searches require explicit Text,
+INTEGER, REAL or BLOB storage. The separate **Contains text** mode searches
+declared textual columns. Unsupported types and denied reads remain visible in
+the column report.
+
+Search shows object progress and per-column observations, with at most 200
+matching rows returned per column. A `200+` observation is a lower bound;
+these output limits do not bound how much data the server may scan. Select up
+to 100 objects, with at most 2,000 column checks per search, and choose a deadline
+from 15 to 300 seconds. **Stop** cancels this search's current read. Completed
+observations remain available, and the report distinguishes checked, skipped,
+failed, stopped and unstarted scope.
+
+**Open Filtered Table** opens a new data tab using the captured column predicate
+and original profile, even after the search settings change. Search uses its own
+read-only session, leaving SQL-tab transactions independent. Closing Find Data
+or accepting Disconnect for its profile closes that session. Cancelling a close
+decision or closing an unrelated profile preserves the search. Restoration does
+not reconnect or replay a search; after helper failure, a fresh load or search
+requires an explicit action.
+
 
 ## Repeatable data transfers (unreleased)
 

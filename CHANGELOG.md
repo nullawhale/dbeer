@@ -32,6 +32,14 @@
   separate from initial helper capture cost and require Add then Build for the
   100-table diagram area. Preserve active ER work through cancelled close decisions.
 
+- Add **Find Data…** across explicitly selected PostgreSQL/MySQL/SQLite tables
+  and views, with exact typed values, SQL NULL, explicit SQLite storage and a
+  separate text-contains mode. Use a dedicated read-only session, bounded
+  per-column match evidence, progress, deadlines, Stop and coverage reports.
+  Open results through their captured table-filter predicate and original
+  profile; preserve searches through cancelled or unrelated close decisions
+  and release their session after an accepted matching-profile Disconnect.
+
 - Choose referenced records while editing declared PostgreSQL/MySQL/SQLite foreign
   keys, including eligible PostgreSQL/MySQL SQL results with aliases or reordered
   columns. Add bounded descriptive-column search, complete composite-key details,
