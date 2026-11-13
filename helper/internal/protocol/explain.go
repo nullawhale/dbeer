@@ -111,14 +111,16 @@ type ExplainMetric struct {
 	UnavailableReason string  `json:"unavailableReason,omitempty"`
 }
 type ExplainNode struct {
-	ID        string                   `json:"id"`
-	Children  []string                 `json:"children"`
-	Operation string                   `json:"operation"`
-	Details   map[string]string        `json:"details"`
-	Execution string                   `json:"execution"`
-	Metrics   map[string]ExplainMetric `json:"metrics"`
+	AdvancedMetrics *ExplainNodeMetrics      `json:"advancedMetrics,omitempty"`
+	ID              string                   `json:"id"`
+	Children        []string                 `json:"children"`
+	Operation       string                   `json:"operation"`
+	Details         map[string]string        `json:"details"`
+	Execution       string                   `json:"execution"`
+	Metrics         map[string]ExplainMetric `json:"metrics"`
 }
 type ExplainResult struct {
+	AdvancedMetrics  *ExplainPlanMetrics      `json:"advancedMetrics,omitempty"`
 	Options          *ExplainOptions          `json:"options,omitempty"`
 	Format           string                   `json:"format,omitempty"`
 	EngineDiagnostic *EngineDiagnostic        `json:"engineDiagnostic,omitempty"`
@@ -137,17 +139,17 @@ var explainDecimal = regexp.MustCompile(`^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][
 
 func ValidExplainDecimal(s string) bool { return len(s) <= 128 && explainDecimal.MatchString(s) }
 func (m ExplainMetric) Valid() bool {
-	if m.Unit != "cost" && m.Unit != "rows" && m.Unit != "ms" && m.Unit != "count" {
+	if m.Unit != "cost" && m.Unit != "rows" && m.Unit != "ms" && m.Unit != "count" && m.Unit != "blocks" && m.Unit != "bytes" {
 		return false
 	}
-	if m.Basis != "inclusive" && m.Basis != "perInvocation" && m.Basis != "total" {
+	if m.Basis != "inclusive" && m.Basis != "perInvocation" && m.Basis != "total" && m.Basis != "inclusiveTotal" && m.Basis != "exclusivePerInvocation" {
 		return false
 	}
 	if m.Value != nil {
 		return m.UnavailableReason == "" && ValidExplainDecimal(*m.Value)
 	}
 	switch m.UnavailableReason {
-	case "notCollected", "notReported", "unsupported", "notExecuted", "disabled":
+	case "notCollected", "notReported", "unsupported", "notExecuted", "disabled", "inclusiveOnly", "parallel", "unknownScope", "partialInput":
 		return true
 	}
 	return false
@@ -201,6 +203,9 @@ func (s ExplainSupport) Valid() bool {
 	return len(s.Modes) > 0 && s.UnavailableReason == "" || len(s.Modes) == 0 && s.UnavailableReason != ""
 }
 func (r ExplainResult) Valid() bool {
+	if r.AdvancedMetrics != nil && (r.Status != "tree" || !r.AdvancedMetrics.Valid(r.Support.Engine)) {
+		return false
+	}
 	supported := false
 	for _, mode := range r.Support.Modes {
 		if mode == r.Mode {
@@ -243,6 +248,9 @@ func (r ExplainResult) Valid() bool {
 	}
 	nodes := map[string]ExplainNode{}
 	for _, n := range r.Nodes {
+		if n.AdvancedMetrics != nil && (r.AdvancedMetrics == nil || !n.AdvancedMetrics.Valid(r.Support.Engine, n, r.Mode) || n.AdvancedMetrics.JIT != nil && !containsExplainString(r.Roots, n.ID)) {
+			return false
+		}
 		if !ValidID(n.ID) || n.Operation == "" || len(n.Operation) > 65536 || len(n.Details) > 128 || len(n.Metrics) > 32 || len(n.Children) > MaxExplainNodes || nodes[n.ID].ID != "" {
 			return false
 		}

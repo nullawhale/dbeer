@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add selectable execution-plan Graph and Flame views with explicit inclusive
+  time, estimated cost and proven serial-leaf exclusive time. Compare row
+  estimates only on compatible invocation bases; disclose partial inputs,
+  parallel overlap, zeros and unavailable measurements. Preserve exact
+  PostgreSQL buffer/I/O/WAL counters, worker evidence and scoped JIT aggregates,
+  capturing VERBOSE in the same reviewed statement without rerunning Analyze.
+  Save advanced evidence in version 5 plan files while retaining version 1–4 readers.
+
 - Review explicit required-column backfills, complete physical column order and
   table reconstruction through exact SQL and destructive confirmation. Add native
   MySQL FIRST/AFTER and FORCE, guarded transactional PostgreSQL reconstruction,
@@ -36,7 +44,7 @@
   BSON evidence, source-node elapsed time, bounded first-page/eventual trace
   scope and explicit missing measurements. Expand SQLite EQP native fields and
   unavailable actual metrics. Save/import these distinct diagnostic kinds as
-  private version 3 plan artifacts while retaining offline version 1/2 readers.
+  private plan artifacts while retaining older offline readers.
 
 - Explain typed named parameters and explicitly chosen script fragments or
   multiple editor selections in their original document order. Choose the source

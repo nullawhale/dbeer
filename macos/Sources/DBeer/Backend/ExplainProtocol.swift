@@ -114,14 +114,15 @@ struct ExplainMetric: Codable, Sendable, Equatable {
     var unit: String
     var basis: String
     var unavailableReason: String?
+    private enum CodingKeys: String, CodingKey { case value, unit, basis, unavailableReason }
     static func validDecimal(_ value: String) -> Bool {
         value.utf8.count <= 128 && value.range(of: #"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$"#, options: .regularExpression) == value.startIndex..<value.endIndex
     }
     var valid: Bool {
-        ["cost", "rows", "ms", "count"].contains(unit) &&
-        ["inclusive", "perInvocation", "total"].contains(basis) &&
+        ["cost", "rows", "ms", "count", "blocks", "bytes"].contains(unit) &&
+        ["inclusive", "perInvocation", "total", "inclusiveTotal", "exclusivePerInvocation"].contains(basis) &&
         (value.map { Self.validDecimal($0) && unavailableReason == nil } ??
-            ["notCollected", "notReported", "unsupported", "notExecuted", "disabled"].contains(unavailableReason))
+            ["notCollected", "notReported", "unsupported", "notExecuted", "disabled", "inclusiveOnly", "parallel", "unknownScope", "partialInput"].contains(unavailableReason))
     }
     var unavailableLabel: String {
         switch unavailableReason {
@@ -129,10 +130,22 @@ struct ExplainMetric: Codable, Sendable, Equatable {
         case "disabled": "Unavailable — timing was disabled for this collection"
         case "notExecuted": "Unavailable — not executed"
         case "unsupported": "Unavailable — unsupported by this format"
+        case "inclusiveOnly": "Unavailable — inclusive time cannot be safely partitioned"
+        case "parallel": "Unavailable — parallel measurements can overlap"
+        case "unknownScope": "Unavailable — serial execution could not be proved"
+        case "partialInput": "Unavailable — input may have been consumed only partly"
         default: "Unavailable — server did not report this metric"
         }
     }
-    var label: String { value.map { "\($0) \(unit) · \(basis == "perInvocation" ? "per invocation" : basis)" } ?? unavailableLabel }
+    var basisLabel: String {
+        switch basis {
+        case "perInvocation": "per invocation"
+        case "inclusiveTotal": "inclusive total across loops"
+        case "exclusivePerInvocation": "exclusive per invocation"
+        default: basis
+        }
+    }
+    var label: String { value.map { "\($0) \(unit) · \(basisLabel)" } ?? unavailableLabel }
     var decimal: Decimal? {
         guard let value, valid else { return nil }
         let mantissa = value.split(whereSeparator: { $0 == "e" || $0 == "E" }).first ?? ""
@@ -148,6 +161,8 @@ struct ExplainNode: Codable, Sendable, Equatable, Identifiable {
     var details: [String: String]
     var execution: String
     var metrics: [String: ExplainMetric]
+    var advancedMetrics: ExplainNodeMetrics? = nil
+    private enum CodingKeys: String, CodingKey { case id, children, operation, details, execution, metrics, advancedMetrics }
 }
 struct ExplainResult: Codable, Sendable, Equatable {
     static let maximumRawBytes = 4 * 1_024 * 1_024
@@ -160,11 +175,14 @@ struct ExplainResult: Codable, Sendable, Equatable {
     var roots: [String]
     var nodes: [ExplainNode]
     var metrics: [String: ExplainMetric]
+    var advancedMetrics: ExplainPlanMetrics? = nil
     var engineDiagnostic: EngineDiagnostic? = nil
     var options: ExplainOptions? = nil
     var format: String? = nil
+    private enum CodingKeys: String, CodingKey { case support, mode, status, raw, complete, diagnostic, roots, nodes, metrics, advancedMetrics, engineDiagnostic, options, format }
     var valid: Bool {
         guard support.valid, support.modes.contains(mode),
+              advancedMetrics == nil || status == "tree" && advancedMetrics?.valid(engine: support.engine) == true,
               validExplainSelection(support: support, options: options, mode: mode, format: format, status: status), raw.utf8.count <= Self.maximumRawBytes,
               nodes.count <= 10_000, metrics.count <= 16, metrics.values.allSatisfy(\.valid),
               (diagnostic?.utf8.count ?? 0) <= 4_096 else { return false }
@@ -182,7 +200,8 @@ struct ExplainResult: Codable, Sendable, Equatable {
         }
         var indexed: [String: ExplainNode] = [:]
         for node in nodes {
-            guard BackendMessage.validID(node.id), indexed[node.id] == nil, !node.operation.isEmpty,
+            guard node.advancedMetrics == nil || advancedMetrics != nil && node.advancedMetrics?.valid(engine: support.engine, node: node, mode: mode) == true,
+                  node.advancedMetrics?.jit == nil || roots.contains(node.id), BackendMessage.validID(node.id), indexed[node.id] == nil, !node.operation.isEmpty,
                   node.operation.utf8.count <= 65_536, node.details.count <= 128,
                   node.details.allSatisfy({ $0.key.utf8.count <= 1_024 && $0.value.utf8.count <= 65_536 }),
                   node.children.count <= 10_000, node.metrics.count <= 32, node.metrics.values.allSatisfy(\.valid),
@@ -196,5 +215,49 @@ struct ExplainResult: Codable, Sendable, Equatable {
             pending.append(contentsOf: node.children.map { ($0, depth + 1) })
         }
         return seen.count == nodes.count
+    }
+}
+
+extension ExplainNode {
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["id", "children", "operation", "details", "execution", "metrics"], optional: ["advancedMetrics"])
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        id = try fields.decode(String.self, forKey: .id)
+        children = try fields.decode([String].self, forKey: .children)
+        operation = try fields.decode(String.self, forKey: .operation)
+        details = try fields.decode([String: String].self, forKey: .details)
+        execution = try fields.decode(String.self, forKey: .execution)
+        metrics = try fields.decode([String: ExplainMetric].self, forKey: .metrics)
+        advancedMetrics = fields.contains(.advancedMetrics) ? try fields.decode(ExplainNodeMetrics.self, forKey: .advancedMetrics) : nil
+    }
+}
+extension ExplainResult {
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["support", "mode", "status", "raw", "complete", "roots", "nodes", "metrics"], optional: ["diagnostic", "engineDiagnostic", "options", "format", "advancedMetrics"])
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        support = try fields.decode(ExplainSupport.self, forKey: .support)
+        mode = try fields.decode(ExplainMode.self, forKey: .mode)
+        status = try fields.decode(String.self, forKey: .status)
+        raw = try fields.decode(String.self, forKey: .raw)
+        complete = try fields.decode(Bool.self, forKey: .complete)
+        diagnostic = try fields.decodeIfPresent(String.self, forKey: .diagnostic)
+        roots = try fields.decode([String].self, forKey: .roots)
+        nodes = try fields.decode([ExplainNode].self, forKey: .nodes)
+        metrics = try fields.decode([String: ExplainMetric].self, forKey: .metrics)
+        engineDiagnostic = try fields.decodeIfPresent(EngineDiagnostic.self, forKey: .engineDiagnostic)
+        options = try fields.decodeIfPresent(ExplainOptions.self, forKey: .options)
+        format = try fields.decodeIfPresent(String.self, forKey: .format)
+        advancedMetrics = fields.contains(.advancedMetrics) ? try fields.decode(ExplainPlanMetrics.self, forKey: .advancedMetrics) : nil
+    }
+}
+
+extension ExplainMetric {
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["unit", "basis"], optional: ["value", "unavailableReason"])
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        value = try fields.decodeIfPresent(String.self, forKey: .value)
+        unit = try fields.decode(String.self, forKey: .unit)
+        basis = try fields.decode(String.self, forKey: .basis)
+        unavailableReason = try fields.decodeIfPresent(String.self, forKey: .unavailableReason)
     }
 }

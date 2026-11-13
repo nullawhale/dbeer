@@ -94,6 +94,8 @@ actor BackendClient {
     private var schemaBundleSourceSupported = false
     private var dataComparisonSupported = false
     private var synchronizationPlanSupported = false
+    private var explainMetricsSupported = false
+    private var sessionExplainMetricsSupport: [String: ExplainSupport] = [:]
     private var explainOptionsSupported = false
     private var sessionExplainOptionSupport: [String: ExplainSupport] = [:]
     private var explainParametersSupported = false
@@ -238,6 +240,7 @@ actor BackendClient {
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
+    func supportsExplainMetrics() -> Bool { explainMetricsSupported }
     func supportsExplainOptions() -> Bool { explainOptionsSupported }
     func supportsExplainParameters() -> Bool { explainParametersSupported }
     func supportsEngineDiagnostics() -> Bool { engineDiagnosticsSupported }
@@ -640,6 +643,13 @@ actor BackendClient {
                     fail(BackendTransportError(.invalidMessage)); return
                 }
             }
+            if result.advancedMetrics != nil || result.nodes.contains(where: { $0.advancedMetrics != nil }) {
+                guard let session = command.sessionId, let owner = sessionExplainMetricsSupport[session], result.support == owner,
+                      ExplainMetricsAdmission.validOwner(support: owner, engine: result.support.engine,
+                        capabilities: sessionCapabilities[session] ?? [], helperSupports: explainMetricsSupported) else {
+                    fail(BackendTransportError(.invalidMessage)); return
+                }
+            }
             let owner = command.sessionId.flatMap { sessionDiagnosticSupport[$0] }
             if owner != nil || result.engineDiagnostic != nil {
                 guard engineDiagnosticsSupported, let session = command.sessionId,
@@ -676,6 +686,7 @@ actor BackendClient {
             schemaBundleSourceSupported = reply.capabilities?.contains("schemaBundleSourceV1") == true
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
+            explainMetricsSupported = reply.capabilities?.contains(ExplainNodeMetrics.capability) == true
             explainOptionsSupported = reply.capabilities?.contains("explainOptionsV1") == true
             explainParametersSupported = reply.capabilities?.contains("explainParametersV1") == true
             engineDiagnosticsSupported = reply.capabilities?.contains("engineDiagnosticsV1") == true
@@ -695,6 +706,11 @@ actor BackendClient {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
             reconstructionSessions[session] = false
             if let support = reply.explainSupport,
+               ExplainMetricsAdmission.validOwner(support: support, engine: reply.engine,
+                 capabilities: Set(reply.capabilities ?? []), helperSupports: explainMetricsSupported) {
+                sessionExplainMetricsSupport[session] = support
+            } else { sessionExplainMetricsSupport.removeValue(forKey: session) }
+            if let support = reply.explainSupport,
                ExplainOptionsAdmission.validOwner(support: support, engine: reply.engine,
                  capabilities: Set(reply.capabilities ?? []), helperSupports: explainOptionsSupported) {
                 sessionExplainOptionSupport[session] = support
@@ -713,6 +729,7 @@ actor BackendClient {
         if reply.type == "disconnect.ack" || reply.connected == false, let session = reply.sessionId {
             sessionCapabilities.removeValue(forKey: session)
             sessionExplainOptionSupport.removeValue(forKey: session)
+            sessionExplainMetricsSupport.removeValue(forKey: session)
             sessionDiagnosticSupport.removeValue(forKey: session)
         }
         if let session = reply.sessionId, let transaction = reply.transactionStatus, transaction != .unsupported {

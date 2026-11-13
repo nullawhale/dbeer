@@ -294,6 +294,8 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 	if err != nil {
 		return fail()
 	}
+	_, logical := document["query_block"]
+	decorateMySQLMetrics(nodes, mode, logical)
 	return nodes, []string{root}, map[string]protocol.ExplainMetric{}, nil
 }
 func zeroExplainNumber(value string) bool {

@@ -76,6 +76,7 @@ func parseExplainJSONWithOptions(ctx context.Context, raw, mode string, options 
 		return fail()
 	}
 	nodes := []protocol.ExplainNode{}
+	objects := []map[string]any{}
 	metrics := map[string]protocol.ExplainMetric{}
 	metric := func(v any, unit, basis, reason string) (protocol.ExplainMetric, error) {
 		var text *string
@@ -102,7 +103,7 @@ func parseExplainJSONWithOptions(ctx context.Context, raw, mode string, options 
 		node := protocol.ExplainNode{ID: id, Operation: label, Children: []string{}, Details: map[string]string{}, Metrics: map[string]protocol.ExplainMetric{}, Execution: "estimated"}
 		if mode == "analyze" {
 			node.Execution = "executed"
-			if loops, ok := plan["Actual Loops"].(json.Number); ok && string(loops) == "0" {
+			if loops, ok := plan["Actual Loops"].(json.Number); ok && adapter.ExplainNumberIsZero(string(loops)) {
 				node.Execution = "notExecuted"
 			}
 		}
@@ -154,6 +155,7 @@ func parseExplainJSONWithOptions(ctx context.Context, raw, mode string, options 
 		}
 		index := len(nodes)
 		nodes = append(nodes, node)
+		objects = append(objects, plan)
 		if children, exists := plan["Plans"]; exists {
 			array, ok := children.([]any)
 			if !ok {
@@ -199,6 +201,9 @@ func parseExplainJSONWithOptions(ctx context.Context, raw, mode string, options 
 			return fail()
 		}
 		metrics[pair.key] = m
+	}
+	if err := decoratePostgresMetrics(nodes, objects, mode, timingDisabled, roots[0]); err != nil {
+		return fail()
 	}
 	return nodes, []string{id}, metrics, nil
 }

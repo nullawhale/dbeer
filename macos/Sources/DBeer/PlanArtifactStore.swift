@@ -4,7 +4,7 @@ import Foundation
 /// Explicit user artifacts retain only the SQL and evidence from the original
 /// Explain operation. Runtime ownership and connection settings are excluded.
 struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
-    static let currentVersion = 4
+    static let currentVersion = 5
     static let maximumBytes = 16 * 1_024 * 1_024
     var version = Self.currentVersion
     var id: UUID
@@ -20,6 +20,7 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
 
     var valid: Bool {
         (1...Self.currentVersion).contains(version) && request.context == nil &&
+        (version >= 5 || result.advancedMetrics == nil && result.nodes.allSatisfy { $0.advancedMetrics == nil }) &&
         (version >= 4 || request.options == nil && result.options == nil && result.format == nil && result.support.options == nil && result.support.analyzeUnavailableReason == nil && result.support.notices == nil &&
             !(result.support.engine == .mysql && result.support.format == "json") &&
             !result.metrics.values.contains(where: { $0.unavailableReason == "disabled" }) &&
@@ -92,6 +93,8 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
               version >= 3 || result["engineDiagnostic"] == nil && support["diagnosticModel"] == nil else { throw PlanArtifactError.invalid }
         guard version >= 4 || request["options"] == nil && result["options"] == nil && result["format"] == nil &&
               support["options"] == nil && support["analyzeUnavailableReason"] == nil && support["notices"] == nil else { throw PlanArtifactError.invalid }
+        guard version >= 5 || result["advancedMetrics"] == nil &&
+              (result["nodes"] as? [[String: Any]])?.allSatisfy({ $0["advancedMetrics"] == nil }) == true else { throw PlanArtifactError.invalid }
         if let source = fields["source"] {
             guard let source = source as? [String: Any],
                   Set(source.keys).isSubset(of: ["rangeLocation", "rangeLength", "transactionStatus"]),

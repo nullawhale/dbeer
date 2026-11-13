@@ -101,6 +101,7 @@ func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (Prepa
 				options = append(options, "SERIALIZE "+strings.ToUpper(pg.Serialize))
 			}
 		}
+		options = append(options, "VERBOSE TRUE")
 		p.Prefix = "EXPLAIN (" + strings.Join(append(options, "FORMAT JSON"), ", ") + ")\n"
 	} else if s.Engine == "mysql" {
 		if r.Options != nil {
@@ -282,9 +283,13 @@ func FinishExplain(ctx context.Context, command protocol.Command, response proto
 		nodes, roots, metrics, err := parse(ctx, c.Raw, p.Request.Mode)
 		if err == nil {
 			result.Nodes, result.Roots, result.Metrics = nodes, roots, metrics
+			if len(nodes) > 0 && nodes[0].AdvancedMetrics != nil {
+				result.AdvancedMetrics = &protocol.ExplainPlanMetrics{Version: 1}
+			}
 			result.Status = "tree"
 			result.Diagnostic = ""
 			if !result.Valid() {
+				result.AdvancedMetrics = nil
 				result.Nodes = []protocol.ExplainNode{}
 				result.Roots = []string{}
 				result.Metrics = map[string]protocol.ExplainMetric{}
@@ -304,6 +309,7 @@ func FinishExplain(ctx context.Context, command protocol.Command, response proto
 	encoded, _ := json.Marshal(response)
 	if len(encoded) > protocol.MaxExplainResponseBytes {
 		result.Status = "rawOnly"
+		result.AdvancedMetrics = nil
 		result.Nodes = []protocol.ExplainNode{}
 		result.Roots = []string{}
 		result.Metrics = map[string]protocol.ExplainMetric{}

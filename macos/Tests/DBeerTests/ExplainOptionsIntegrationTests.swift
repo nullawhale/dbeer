@@ -193,7 +193,7 @@ struct ExplainOptionsIntegrationTests {
         let artifact = try PlanArtifact.capture(plan, title: "Normal helper " + format)
         let saved = try await plans.save(artifact)
         let offline = try await plans.load(saved.id)
-        #expect(offline.version == 4 && offline.request == plan.request.portable && offline.result == result)
+        #expect(offline.version == PlanArtifact.currentVersion && offline.request == plan.request.portable && offline.result == result)
         #expect(offline.displayPlan.sessionID == nil && offline.displayPlan.targetDocumentID == nil && offline.displayPlan.profile == nil)
         #expect(try PlanArtifact.decode(offline.encoded()) == offline)
         #expect(decisions.helperStarts == startsBeforeSave)

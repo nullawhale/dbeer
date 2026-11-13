@@ -156,7 +156,7 @@ struct ExplainOptionsTests {
         let artifact = try PlanArtifact.capture(plan, title: "Options evidence")
         let encoded = try artifact.encoded()
         let restored = try PlanArtifact.decode(encoded)
-        #expect(restored.version == 4 && restored.request.options == options && restored.result.options == options && restored.result.format == "json")
+        #expect(restored.version == PlanArtifact.currentVersion && restored.request.options == options && restored.result.options == options && restored.result.format == "json")
         #expect(restored.request.parameters == plan.request.parameters && restored.request.context == nil && restored.source == plan.sourceEvidence)
         #expect(restored.displayPlan.sessionID == nil && restored.displayPlan.profile == nil && restored.displayPlan.sourceDocumentID == nil)
         let restoredNode = try #require(restored.result.nodes.first)
@@ -224,7 +224,7 @@ struct ExplainOptionsTests {
             complete: true, diagnostic: "Fixture raw evidence", roots: [], nodes: [], metrics: [:], format: "tree")
         let artifact = try PlanArtifact.capture(plan, title: "Older server evidence")
         let restored = try PlanArtifact.decode(artifact.encoded())
-        #expect(restored.version == 4 && restored.request.options == nil && restored.result.options == nil)
+        #expect(restored.version == PlanArtifact.currentVersion && restored.request.options == nil && restored.result.options == nil)
         #expect(restored.result.support.notices == notices && restored.displayPlan.result?.support.notices == notices)
         #expect(restored.displayPlan.sessionID == nil && restored.displayPlan.profile == nil)
         var oldEnvelope = artifact

@@ -605,6 +605,47 @@ transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
 confirmed SQL completion, and a lost completion is never retried. The current
 plan is held by its SQL tab. **Save Plan…** explicitly creates a local artifact.
 
+### Advanced plan metrics
+
+Use **Graph** for a selectable parent/input diagram and **Flame** for operation
+lanes by depth. Flame can show **Inclusive time**, **Estimated cost** or
+**Proven exclusive time**. The lanes show each operation's own reported basis;
+they are not a timeline or a partition of query wall time. Parent/child and
+parallel observations can overlap. A missing selected metric stays unavailable
+rather than silently changing to another measurement. **Tree** and **Raw Output**
+retain the complete captured evidence. SQLite has a structural Graph, without
+invented execution-time or cost lanes.
+
+Row-estimate discrepancies compare estimated and actual output per invocation
+only when their bases and measured loops are compatible. Zero rows and zero
+time remain measured zeros; a zero denominator does not become an infinite
+ratio. Parallel plans and potentially partial inputs beneath LIMIT, merge joins
+or early-stopping joins are labelled explicitly and do not receive a confident
+row-estimate error badge. MySQL JSON v1 logical/access estimates do not become
+iterator output measurements.
+
+PostgreSQL details show reported buffer blocks, I/O time, WAL, planned/launched
+workers and individual worker observations. Buffer counts and I/O time include
+child work and all loops: do not add ancestors or multiply these counters by
+loops. Blocks are not bytes, and buffer hits/reads are not distinct blocks.
+Worker observations overlap the node totals. **Query JIT** includes the server's
+aggregate across leader and workers; worker JIT remains separate, and Deform is
+already included in Generation. These aggregates are not a query wall-clock
+breakdown. Missing, disabled and unexecuted measurements keep their own states.
+
+New PostgreSQL captures request VERBOSE in the same reviewed Explain statement,
+including output expressions and per-worker evidence when the server reports
+it. TIMING off still retains rows, buffers and whole-query time while node and
+worker timing is explicitly disabled. Older helpers and saved captures remain
+readable; absent advanced evidence is unavailable until another explicit
+capture. Viewing an older plan never reruns it.
+
+Exclusive time is exposed only for a recognized serial leaf with measured loops
+and timing, where its inclusive time has no reported child work. Other nodes
+show why exclusive time cannot be proved. DBeer does not subtract rounded,
+parallel, materialization or otherwise overlapping child measurements from a
+parent.
+
 ### Explain collection options
 
 After choosing the target SQL tab, review collection options supported by that
@@ -678,7 +719,7 @@ is explicit and **Explain Analyze** stays unavailable.
 
 Engine diagnostics use distinct presentations and metric definitions. Explicit
 private saves retain the original query and captured evidence in plan artifact
-version 3; version 1/2 readers remain supported. Runtime execution grants,
+version 5; version 1–4 readers remain supported. Runtime execution grants,
 application session/profile handles and connection/server settings stay out of
 portable files. Opening or comparing saved evidence stays offline. A different
 engine/diagnostic kind has no relational tree comparison; missing measurements

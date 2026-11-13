@@ -204,6 +204,15 @@ func parseExplainTree(ctx context.Context, raw, mode string) ([]protocol.Explain
 				return fail()
 			}
 			text = strings.TrimSuffix(text, m[0])
+			if adapter.ExplainNumberIsZero(m[4]) {
+				node.Execution = "notExecuted"
+				for _, key := range []string{"actualRows", "startupTime", "totalTime"} {
+					metric := node.Metrics[key]
+					metric.Value = nil
+					metric.UnavailableReason = "notExecuted"
+					node.Metrics[key] = metric
+				}
+			}
 		}
 		if m := treeCost.FindStringSubmatch(text); m != nil {
 			total := m[1]
@@ -254,5 +263,6 @@ func parseExplainTree(ctx context.Context, raw, mode string) ([]protocol.Explain
 	if len(nodes) == 0 {
 		return fail()
 	}
+	decorateMySQLMetrics(nodes, mode, false)
 	return nodes, roots, map[string]protocol.ExplainMetric{}, nil
 }
