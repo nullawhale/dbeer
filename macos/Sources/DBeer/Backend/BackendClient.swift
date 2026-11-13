@@ -95,6 +95,8 @@ actor BackendClient {
     private var dataComparisonSupported = false
     private var synchronizationPlanSupported = false
     private var explainParametersSupported = false
+    private var engineDiagnosticsSupported = false
+    private var sessionDiagnosticSupport: [String: ExplainSupport] = [:]
     private var queryParametersSupported = false
     private var tableImportSupported = false
     private var sessionMonitorSupported = false
@@ -215,6 +217,7 @@ actor BackendClient {
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
     func supportsExplainParameters() -> Bool { explainParametersSupported }
+    func supportsEngineDiagnostics() -> Bool { engineDiagnosticsSupported }
     func supportsQueryParameters() -> Bool { queryParametersSupported }
     func supportsTableImport() -> Bool { tableImportSupported }
     func supportsSessionMonitor() -> Bool { sessionMonitorSupported }
@@ -347,11 +350,19 @@ actor BackendClient {
             }
         }
         let explainRequests = [command.explain].compactMap { $0 } + (command.operations ?? []).compactMap(\.explain)
-        for explain in explainRequests where explain.parameters != nil || explain.planKind != nil || explain.context != nil {
-            guard explainParametersSupported, let session = command.sessionId,
-                  sessionCapabilities[session]?.contains("explainParametersV1") == true,
-                  explain.valid, explain.context.map({ $0.sessionId == session }) ?? true else {
-                throw BackendRequestError.invalidCommand
+        for explain in explainRequests {
+            guard let session = command.sessionId, explain.valid,
+                  explain.context.map({ $0.sessionId == session }) ?? true else { throw BackendRequestError.invalidCommand }
+            if let support = sessionDiagnosticSupport[session] {
+                guard ExplainDiagnosticAdmission.validOwner(support: support,
+                    capabilities: sessionCapabilities[session] ?? [], helperSupports: engineDiagnosticsSupported,
+                    transaction: .unsupported, parameters: explain.parameters, planKind: explain.planKind),
+                    explain.context?.transactionStatus == "unsupported", support.modes.contains(explain.mode) else {
+                    throw BackendRequestError.invalidCommand
+                }
+            } else if explain.parameters != nil || explain.planKind != nil || explain.context != nil {
+                guard explainParametersSupported, sessionCapabilities[session]?.contains("explainParametersV1") == true,
+                      explain.context?.transactionStatus != "unsupported" else { throw BackendRequestError.invalidCommand }
             }
         }
         if command.type == "explain.run" {
@@ -563,6 +574,19 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
+        if command.type == "explain.run", reply.type == "explain.result" {
+            guard request.started, let result = reply.explain, result.mode == command.explain?.mode else {
+                fail(BackendTransportError(.invalidMessage)); return
+            }
+            let owner = command.sessionId.flatMap { sessionDiagnosticSupport[$0] }
+            if owner != nil || result.engineDiagnostic != nil {
+                guard engineDiagnosticsSupported, let session = command.sessionId,
+                      sessionCapabilities[session]?.contains("engineDiagnosticsV1") == true,
+                      let owner, owner.engine == result.support.engine,
+                      owner.diagnosticModel == result.engineDiagnostic?.kind,
+                      reply.transactionStatus == .unsupported else { fail(BackendTransportError(.invalidMessage)); return }
+            }
+        }
         // The original frame has already validated optional product metadata.
         // Native SwiftUI helpers remain compatible without GPUI product pairing.
         if reply.type == "hello.ack" {
@@ -578,6 +602,7 @@ actor BackendClient {
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
             explainParametersSupported = reply.capabilities?.contains("explainParametersV1") == true
+            engineDiagnosticsSupported = reply.capabilities?.contains("engineDiagnosticsV1") == true
             queryParametersSupported = reply.capabilities?.contains("queryParametersV1") == true
             tableImportSupported = reply.capabilities?.contains("tableImportV1") == true
             sessionMonitorSupported = reply.capabilities?.contains("sessionMonitorV1") == true
@@ -590,17 +615,20 @@ actor BackendClient {
         }
         if reply.type == "connect.result", let session = reply.sessionId {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
+            if reply.transactionStatus == .unsupported, let support = reply.explainSupport, support.engine.hasEngineDiagnostics {
+                sessionDiagnosticSupport[session] = support
+            } else { sessionDiagnosticSupport.removeValue(forKey: session) }
         }
         if reply.type == "disconnect.ack" || reply.connected == false, let session = reply.sessionId {
             sessionCapabilities.removeValue(forKey: session)
+            sessionDiagnosticSupport.removeValue(forKey: session)
+        }
+        if let session = reply.sessionId, let transaction = reply.transactionStatus, transaction != .unsupported {
+            sessionDiagnosticSupport.removeValue(forKey: session)
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
             return
-        }
-        if command.type == "explain.run", reply.type == "explain.result",
-           !request.started || reply.explain?.mode != command.explain?.mode {
-            fail(BackendTransportError(.invalidMessage)); return
         }
         if command.type == "monitor.schema", reply.type == "monitor.schema.result", !request.started {
             fail(BackendTransportError(.invalidMessage)); return

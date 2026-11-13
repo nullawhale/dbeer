@@ -798,8 +798,8 @@ struct SQLDocumentPane: View {
                             Button("Run Statement") { perform(.runCurrent) }.disabled(!canPerform(.runCurrent))
                         } else {
                             Button("Run Script") { perform(.runScript) }.disabled(!canPerform(.runScript))
-                            Button("Explain") { perform(.explain) }.disabled(!canPerform(.explain))
-                            Button("Explain Analyze…") { perform(.explainAnalyze) }.disabled(!canPerform(.explainAnalyze))
+                            Button(commands.title(for: .explain, engine: document.profileID.flatMap { id in workspace.library.savedConnections.first { $0.id == id }?.engine })) { perform(.explain) }.disabled(!canPerform(.explain))
+                            Button(commands.title(for: .explainAnalyze, engine: document.profileID.flatMap { id in workspace.library.savedConnections.first { $0.id == id }?.engine })) { perform(.explainAnalyze) }.disabled(!canPerform(.explainAnalyze))
                         }
                         Menu("Run to File") {
                             Button("JSON…") { perform(.runToJSON) }.disabled(!canPerform(.runToJSON))

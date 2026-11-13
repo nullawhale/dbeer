@@ -52,7 +52,7 @@ struct PlanArtifactsView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(artifact.title).lineLimit(2)
                             if artifact.isAvailable {
-                                Text("\(artifact.engine.displayName) · \(artifact.mode.title) · \(artifact.capturedAt.formatted(date: .abbreviated, time: .shortened))")
+                                Text("\(artifact.engine.displayName) · \(artifact.mode.title(engine: artifact.engine)) · \(artifact.capturedAt.formatted(date: .abbreviated, time: .shortened))")
                                     .font(.caption).appSecondaryText()
                             } else { Text("Local artifact is damaged or unavailable").font(.caption).foregroundStyle(.orange) }
                             if let name = artifact.baselineName { Label(name, systemImage: "flag").font(.caption) }
@@ -206,47 +206,55 @@ private struct SavedPlanComparisonView: View {
                 let comparison = PlanComparison(before: before, after: after)
                 VStack(alignment: .leading, spacing: 8) {
                     Text(before.title + " → " + after.title).font(.headline)
-                    Text("Before · \(before.result.support.engine.displayName) \(before.result.support.serverVersion) · \(before.result.support.format) · \(before.request.mode.title)").font(.caption)
-                    Text("After · \(after.result.support.engine.displayName) \(after.result.support.serverVersion) · \(after.result.support.format) · \(after.request.mode.title)").font(.caption)
-                    if !comparison.metricsComparable { Text("Captured contexts differ. Metric values are shown independently.").font(.caption).foregroundStyle(.orange) }
+                    Text("Before · \(before.result.support.engine.displayName) \(before.result.support.serverVersion) · \(before.result.support.format) · \(before.request.mode.title(engine: before.result.support.engine))").font(.caption)
+                    Text("After · \(after.result.support.engine.displayName) \(after.result.support.serverVersion) · \(after.result.support.format) · \(after.request.mode.title(engine: after.result.support.engine))").font(.caption)
+                    if let message = comparison.diagnosticMessage {
+                        Text(message).font(.caption).foregroundStyle(.orange)
+                        HSplitView {
+                            ExplainPlanView(plan: before.displayPlan, stale: false)
+                            ExplainPlanView(plan: after.displayPlan, stale: false)
+                        }
+                    } else {
+                        if !comparison.metricsComparable { Text("Captured contexts differ. Metric values are shown independently.").font(.caption).foregroundStyle(.orange) }
 
-                    Text(comparison.shapeAvailable ? (comparison.shapeChanged ? "Plan shape changed" : "Same recorded plan shape") : "Plan shape unavailable from captured evidence").font(.caption)
-                    if !comparison.comparableEngine { Text("Different engines — operations are shown independently.").foregroundStyle(.orange) }
-                    if comparison.incomplete { Text("Captured evidence limits node comparison.").foregroundStyle(.orange) }
-                    Text("Node matching uses operation and native relation/index identity. Duplicate candidates stay ambiguous. Inclusive metrics overlap.")
-                        .font(.caption).appSecondaryText()
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 10) {
-                            ForEach(comparison.matches) { match in
-                                GroupBox {
-                                    VStack(alignment: .leading, spacing: 5) {
-                                        Text(match.label).fontWeight(.medium)
-                                        Text(match.status).font(.caption).foregroundStyle(match.isAmbiguous ? Color.orange : Color.secondary)
-                                        if !match.isAmbiguous {
-                                            let left = match.before.first
-                                            let right = match.after.first
-                                            ForEach(PlanComparison.metricPairs(before: left?.metrics ?? [:], after: right?.metrics ?? [:])) { metric in
-                                                let comparable = comparison.metricsComparable && metric.sameDefinition
-                                                Text("\(metric.name) · Before \(metric.before?.label ?? "Absent")" + (comparable ? " → " : " | After ") + (metric.after?.label ?? "Absent"))
-                                                    .font(.caption).textSelection(.enabled)
-                                            }
-                                            let changes = PlanComparison.detailChanges(before: left?.details ?? [:], after: right?.details ?? [:])
-                                            if !changes.isEmpty {
-                                                DisclosureGroup("Changed native details") {
-                                                    ForEach(changes) { change in
-                                                        Text("\(change.name) · \(change.before ?? "Absent") → \(change.after ?? "Absent")")
-                                                            .font(.caption).textSelection(.enabled)
-                                                        if change.unicodeRepresentationChanged {
-                                                            Text("Unicode byte representation changed").font(.caption).foregroundStyle(.orange)
+                        Text(comparison.shapeAvailable ? (comparison.shapeChanged ? "Plan shape changed" : "Same recorded plan shape") : "Plan shape unavailable from captured evidence").font(.caption)
+                        if !comparison.comparableEngine { Text("Different engines — operations are shown independently.").foregroundStyle(.orange) }
+                        if comparison.incomplete { Text("Captured evidence limits node comparison.").foregroundStyle(.orange) }
+                        Text("Node matching uses operation and native relation/index identity. Duplicate candidates stay ambiguous. Inclusive metrics overlap.")
+                            .font(.caption).appSecondaryText()
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 10) {
+                                ForEach(comparison.matches) { match in
+                                    GroupBox {
+                                        VStack(alignment: .leading, spacing: 5) {
+                                            Text(match.label).fontWeight(.medium)
+                                            Text(match.status).font(.caption).foregroundStyle(match.isAmbiguous ? Color.orange : Color.secondary)
+                                            if !match.isAmbiguous {
+                                                let left = match.before.first
+                                                let right = match.after.first
+                                                ForEach(PlanComparison.metricPairs(before: left?.metrics ?? [:], after: right?.metrics ?? [:])) { metric in
+                                                    let comparable = comparison.metricsComparable && metric.sameDefinition
+                                                    Text("\(metric.name) · Before \(metric.before?.label ?? "Absent")" + (comparable ? " → " : " | After ") + (metric.after?.label ?? "Absent"))
+                                                        .font(.caption).textSelection(.enabled)
+                                                }
+                                                let changes = PlanComparison.detailChanges(before: left?.details ?? [:], after: right?.details ?? [:])
+                                                if !changes.isEmpty {
+                                                    DisclosureGroup("Changed native details") {
+                                                        ForEach(changes) { change in
+                                                            Text("\(change.name) · \(change.before ?? "Absent") → \(change.after ?? "Absent")")
+                                                                .font(.caption).textSelection(.enabled)
+                                                            if change.unicodeRepresentationChanged {
+                                                                Text("Unicode byte representation changed").font(.caption).foregroundStyle(.orange)
+                                                            }
                                                         }
                                                     }
                                                 }
+                                            } else {
+                                                Text("\(match.before.count) before candidates · \(match.after.count) after candidates")
+                                                    .font(.caption).textSelection(.enabled)
                                             }
-                                        } else {
-                                            Text("\(match.before.count) before candidates · \(match.after.count) after candidates")
-                                                .font(.caption).textSelection(.enabled)
-                                        }
-                                    }.frame(maxWidth: .infinity, alignment: .leading)
+                                        }.frame(maxWidth: .infinity, alignment: .leading)
+                                    }
                                 }
                             }
                         }

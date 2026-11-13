@@ -18,7 +18,7 @@ struct ExplainSelectionView: View {
     private var target: ExplainBatchTarget? { draft.targets.first { $0.id == targetID.wrappedValue } }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("\(draft.mode.title) · Choose Statements").font(.title2)
+            Text("\(draft.mode.title(engine: target?.profile.engine ?? draft.sourceProfileBinding.profile.engine)) · Choose Statements").font(.title2)
             Text("Statements run in original document order. Each operation receives a separate review. Setup commands run only when you select them.")
                 .font(.callout).appSecondaryText()
             Picker("Target SQL session", selection: targetID.projectedValue) {
@@ -45,15 +45,22 @@ struct ExplainSelectionView: View {
                             if $0 { selected.wrappedValue.insert(statement.id) } else { selected.wrappedValue.remove(statement.id) }
                         })) {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("Line \(statement.line) · \(statement.action == .plan ? draft.mode.title : "Execute setup command")").font(.callout)
+                                Text("Line \(statement.line) · \(statement.action == .plan ? draft.mode.title(engine: target?.profile.engine ?? draft.sourceProfileBinding.profile.engine) : "Execute setup command")").font(.callout)
                                 Text(statement.sql).font(.system(.caption, design: .monospaced)).lineLimit(3).textSelection(.enabled)
                             }
                         }.toggleStyle(.checkbox).controlHover()
                     }
                 }.padding(4)
             }.frame(minHeight: 120, maxHeight: 380)
-            Text("Parameter values are requested next and sent as typed bindings. Generic plans use their types without planning for the entered values.")
-                .font(.caption).appSecondaryText()
+            if target?.profile.engine.hasEngineDiagnostics == true {
+                Text(target?.profile.engine == .cassandra ?
+                    "Trace Read executes the selected read after separate confirmation. Only its first server page is requested; trace events are a bounded, eventually recorded observation. Estimated plans, parameters and setup commands are unavailable." :
+                    "Query Planner collects planning evidence. Execution Statistics executes the selected read after separate confirmation. Parameters and setup commands are unavailable.")
+                    .font(.caption).appSecondaryText()
+            } else {
+                Text("Parameter values are requested next and sent as typed bindings. Generic plans use their types without planning for the entered values.")
+                    .font(.caption).appSecondaryText()
+            }
             HStack {
                 Button("Cancel") { dismiss() }.controlHover().keyboardShortcut(.cancelAction)
                 Spacer()

@@ -2059,7 +2059,7 @@ final class ApplicationWorkspace: ObservableObject {
             let targets = allOwnedSQLDocuments.compactMap { target -> ExplainBatchTarget? in
                 guard target.isSQLDocument, !target.isRunning, !target.queryResultSelectionLocked,
                       let targetProfile = library.savedConnections.first(where: { $0.id == target.profileID }),
-                      [.postgresql, .mysql, .sqlite].contains(targetProfile.engine),
+                      targetProfile.engine.supportsExplain(mode),
                       let targetBinding = ExplainProfileBinding(targetProfile) else { return nil }
                 let state = target.runtime?.connectionState == .connected ? "connected session" : "disconnected; connect explicitly"
                 return ExplainBatchTarget(id: target.id.uuidString, documentID: target.id, profile: targetProfile,
@@ -2067,7 +2067,7 @@ final class ApplicationWorkspace: ObservableObject {
                     transactionStatus: target.runtime?.transactionStatus,
                     title: "\(targetProfile.name) · \(target.title) · \(state)")
             } + library.savedConnections.compactMap { profile -> ExplainBatchTarget? in
-                guard [.postgresql, .mysql, .sqlite].contains(profile.engine), let binding = ExplainProfileBinding(profile) else { return nil }
+                guard profile.engine.supportsExplain(mode), let binding = ExplainProfileBinding(profile) else { return nil }
                 return ExplainBatchTarget(id: "new:" + profile.id.uuidString, documentID: nil, profile: profile,
                     binding: binding, sessionID: nil, transactionStatus: nil,
                     title: "\(profile.name) · new SQL tab and session")
@@ -2131,8 +2131,18 @@ final class ApplicationWorkspace: ObservableObject {
     private func executeExplainBatch(_ source: SQLDocument, draft: ExplainBatchDraft, statements: [ExplainBatchStatement],
                                      target choice: ExplainBatchTarget, planKind: ExplainPlanKind?) async throws {
         guard canStartOperation(source), !source.isRunning, !source.queryResultSelectionLocked,
-              [.postgresql, .mysql, .sqlite].contains(choice.profile.engine),
+              choice.profile.engine.supportsExplain(draft.mode),
               pendingQueryParameterPrompt == nil else { return }
+        if choice.profile.engine.hasEngineDiagnostics {
+            guard draft.definitions.isEmpty, planKind == nil, statements.allSatisfy({ $0.action == .plan }) else {
+                throw ExecutionPolicyError(message: "Engine diagnostics accept the original read query without parameters or setup commands.")
+            }
+            for statement in statements {
+                let fragment = SQLExecutionFragment(kind: .statement, sourceSQL: statement.sql, range: statement.range,
+                    statements: [.init(sql: statement.sql, range: statement.range)], diagnostic: nil, firstLine: statement.line, lastLine: statement.line)
+                _ = try ExplainPlanModel.request(fragment: fragment, mode: draft.mode, engine: choice.profile.engine)
+            }
+        }
         let sourceBinding = sqlLibraryExecutionBinding(source)
         func sourceValid() -> Bool {
             canStartOperation(source) && !source.stopRequested && source.profileID == draft.sourceProfileID &&
@@ -2215,11 +2225,21 @@ final class ApplicationWorkspace: ObservableObject {
                   runtime.activeConnectionId == choice.profile.id, choice.binding.matchesRuntime(runtime),
                   let sessionID = runtime.sessionId else { throw CancellationError() }
             let helperSupportsExplainParameters = await client.supportsExplainParameters()
-            let extended = runtime.capabilities.contains("explainParametersV1") && helperSupportsExplainParameters
+            let helperSupportsEngineDiagnostics = await client.supportsEngineDiagnostics()
+            let diagnosticOwner = ExplainDiagnosticAdmission.validOwner(support: runtime.explainSupport,
+                capabilities: Set(runtime.capabilities), helperSupports: helperSupportsEngineDiagnostics,
+                transaction: runtime.transactionStatus, parameters: parameters, planKind: planKind)
+            if choice.profile.engine.hasEngineDiagnostics {
+                guard diagnosticOwner, runtime.explainSupport?.engine == choice.profile.engine,
+                      statements.allSatisfy({ $0.action == .plan }), draft.definitions.isEmpty else {
+                    throw ExecutionPolicyError(message: "Engine diagnostics are unavailable for this connected session. Parameters and setup commands are unsupported.")
+                }
+            }
+            let extended = diagnosticOwner || runtime.capabilities.contains("explainParametersV1") && helperSupportsExplainParameters
             guard parameters == nil && planKind == nil || extended else {
                 throw ExecutionPolicyError(message: "This helper does not support parameterized Explain. Update the app and helper together.")
             }
-            guard !extended || runtime.transactionStatus.map({ [.idle, .transaction, .failedTransaction].contains($0) }) == true else {
+            guard !extended || diagnosticOwner || runtime.transactionStatus.map({ [.idle, .transaction, .failedTransaction].contains($0) }) == true else {
                 throw ExecutionPolicyError(message: "The exact session transaction context is unavailable. SQL was not executed.")
             }
             let helperSupportsParameters = await client.supportsQueryParameters()

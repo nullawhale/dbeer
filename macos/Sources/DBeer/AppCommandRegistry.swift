@@ -165,8 +165,18 @@ struct AppCommandInvocation {
         gridHandlers[command] = handler
     }
 
+    func title(for command: AppCommandID, engine: DatabaseEngine? = nil) -> String {
+        if [.explain, .explainAnalyze].contains(command) {
+            let engine = engine ?? workspace.selectedDocument.flatMap { document in
+                workspace.library.savedConnections.first { $0.id == document.profileID }?.engine
+            } ?? .postgresql
+            return (command == .explainAnalyze ? ExplainMode.analyze : .plan).commandTitle(engine: engine)
+        }
+        return shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
+    }
+
     func help(for command: AppCommandID) -> String {
-        let title = shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
+        let title = title(for: command)
         return title + (shortcuts.shortcut(for: command).map { " (\($0.displayString))" } ?? "")
     }
 
@@ -234,7 +244,7 @@ struct AppCommandInvocation {
         if [.explain, .explainAnalyze].contains(command) {
             guard document.isSQLDocument, !document.queryResultSelectionLocked,
                   let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
-                  [.postgresql, .mysql, .sqlite].contains(profile.engine) else { return false }
+                  profile.engine.supportsExplain(command == .explainAnalyze ? .analyze : .plan) else { return false }
         }
         if descriptor.scope == .sqlDocument, document.table != nil { return false }
         if document.table != nil { return command == .runCurrent }

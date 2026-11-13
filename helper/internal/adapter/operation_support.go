@@ -52,6 +52,12 @@ func SessionOperationSupport(engine string, physical Session, policy protocol.Ex
 				state, reason = "available", ""
 			} else if reason == "" {
 				reason = "This server does not support the selected Explain mode."
+				if engine == "cassandra" && mode == "plan" {
+					reason = "Cassandra exposes request tracing only; estimated relational plans are unavailable."
+				}
+				if engine == "sqlite" && mode == "analyze" {
+					reason = "SQLite EQP exposes query strategy only; this adapter does not expose actual scan measurements."
+				}
 			}
 		}
 		support.Operations = append(support.Operations, protocol.OperationAvailability{Operation: "explain." + mode, State: state, Reason: reason})

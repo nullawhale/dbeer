@@ -43,7 +43,7 @@ struct ExplainBatchStatement: Identifiable, Equatable, Sendable {
         return statements.map { statement in
             let fragment = SQLExecutionFragment(kind: .statement, sourceSQL: statement.sql, range: statement.range,
                 statements: [statement], diagnostic: nil, firstLine: 1, lastLine: 1)
-            let action: Action = (try? ExplainPlanModel.request(fragment: fragment, mode: .plan, engine: engine)) == nil ? .execute : .plan
+            let action: Action = (try? ExplainPlanModel.request(fragment: fragment, mode: engine == .cassandra ? .analyze : .plan, engine: engine)) == nil ? .execute : .plan
             let prefix = (text as NSString).substring(to: statement.range.location)
             return Self(sql: statement.sql, range: statement.range, action: action,
                 line: 1 + prefix.utf16.filter { $0 == 10 }.count,

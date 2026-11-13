@@ -569,6 +569,48 @@ transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
 confirmed SQL completion, and a lost completion is never retried. The current
 plan is held by its SQL tab. **Save Plan…** explicitly creates a local artifact.
 
+### Engine diagnostics
+
+MongoDB tabs use the existing JSON find/aggregate request format. Choose
+**Query → Query Planner** for optimizer evidence, or **Execution Statistics…**
+for a separately reviewed execution of the read. The latter runs the winning
+operation to completion. Output pipelines (`$out`, `$merge`), unknown commands,
+JavaScript and bound parameters are rejected. Canonical Extended JSON retains
+BSON types and document order in the captured output. MongoDB Explain ignores
+the plan cache; stage estimates and document/key counters retain their native
+scope and are not relational cost or exclusive wall time. Unsupported output
+shapes remain visible in the captured evidence without rerunning the request.
+
+Cassandra provides **Query → Trace Read…**, rather than an estimated relational
+plan. Review the exact current/selected read and first-page scope before
+execution. DBeer traces one server page of up to 200 rows using that tab's
+physical session and saved read consistency. Later pages are not fetched.
+Preparation and execution can produce separate trace sessions. A bounded,
+cancellable collection reads `system_traces` at consistency ONE for at most
+two seconds, retaining up to four sessions, 1,000 events and 1 MiB of event data.
+Trace writes are asynchronous: missing permissions, expired traces and late
+information remain unavailable or partial, even when coordinator duration is
+present. Each source node's elapsed microseconds and coordinator duration are
+different measurements; do not add them or derive exclusive/global timing.
+Collection failure preserves the confirmed page outcome and never replays CQL.
+Writes, batches, setup statements, unbound markers and unknown functions cannot
+be traced through this read-only action.
+
+SQLite's existing estimated EQP tree also shows its exact node, parent and
+auxiliary fields, reported scan/search/sort strategy and original description.
+The auxiliary integer is unused by SQLite. This adapter does not expose actual
+scan statistics, planner costs, measured rows or execution timing; their absence
+is explicit and **Explain Analyze** stays unavailable.
+
+Engine diagnostics use distinct presentations and metric definitions. Explicit
+private saves retain the original query and captured evidence in plan artifact
+version 3; version 1/2 readers remain supported. Runtime execution grants,
+application session/profile handles and connection/server settings stay out of
+portable files. Opening or comparing saved evidence stays offline. A different
+engine/diagnostic kind has no relational tree comparison; missing measurements
+never become zero. Trace session IDs identify captured trace evidence rather
+than live application sessions.
+
 ### Saved execution plans
 
 Choose **Query → Saved Execution Plans…** to open the local plan library. Search

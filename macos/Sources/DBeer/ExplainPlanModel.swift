@@ -77,10 +77,20 @@ struct ExplainPlanModel {
             throw ExecutionPolicyError(message: "Explain requires exactly one selected or current statement.")
         }
         let request = ExplainRequest(sql: fragment.statements[0].sql, mode: mode)
+        guard request.valid else { throw ExecutionPolicyError(message: "The selected statement exceeds the Explain input limit.") }
+        if engine == .mongodb {
+            guard MongoDBScript.validDiagnostic(request.sql) else {
+                throw ExecutionPolicyError(message: "MongoDB diagnostics require one read-only find or aggregate JSON request without output stages or executable JavaScript.")
+            }
+            return request
+        }
+        guard engine.supportsExplain(mode) else {
+            throw ExecutionPolicyError(message: "Cassandra does not expose an estimated plan. Choose Trace Read to execute the selected read with tracing.")
+        }
         let parsed = SQLScriptParser.parse(request.sql, engine: engine)
         let tokens = parsed.tokens.filter { $0.kind != .comment }
         guard let first = tokens.first, first.kind == .keyword,
-              ["SELECT", "WITH"].contains((request.sql as NSString).substring(with: first.range).uppercased()) else {
+              (engine == .cassandra ? ["SELECT"] : ["SELECT", "WITH"]).contains((request.sql as NSString).substring(with: first.range).uppercased()) else {
             throw ExecutionPolicyError(message: "Explain requires an unwrapped SELECT or WITH … SELECT statement.")
         }
         var prefix = (request.sql as NSString).substring(to: first.range.location)

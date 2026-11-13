@@ -20,7 +20,7 @@ struct ExplainContext: Codable, Sendable, Equatable {
     var valid: Bool {
         [documentId, targetDocumentId, profileId, sessionId].allSatisfy(BackendMessage.validID) &&
         (0...16_777_216).contains(rangeLocation) && (1...1_048_576).contains(rangeLength) &&
-        ["idle", "transaction", "failedTransaction"].contains(transactionStatus)
+        ["idle", "transaction", "failedTransaction", "unsupported"].contains(transactionStatus)
     }
 }
 struct ExplainRequest: Codable, Sendable, Equatable {
@@ -69,7 +69,7 @@ private struct ExplainCodingKey: CodingKey {
     init?(stringValue: String) { self.stringValue = stringValue }
     init?(intValue: Int) { return nil }
 }
-private func requireExplainKeys(_ decoder: Decoder, required: Set<String>, optional: Set<String> = []) throws {
+func requireExplainKeys(_ decoder: Decoder, required: Set<String>, optional: Set<String> = []) throws {
     let values = try decoder.container(keyedBy: ExplainCodingKey.self)
     let keys = Set(values.allKeys.map(\.stringValue))
     guard required.isSubset(of: keys), keys.isSubset(of: required.union(optional)) else {
@@ -83,9 +83,11 @@ struct ExplainSupport: Codable, Sendable, Equatable {
     var modes: [ExplainMode]
     var unavailableReason: String?
     var planKinds: [ExplainPlanKind]? = nil
+    var diagnosticModel: String? = nil
     var valid: Bool {
-        [.postgresql, .mysql, .sqlite].contains(engine) && serverVersion.utf8.count <= 256 &&
-        format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : "tree") && modes.count <= 2 &&
+        [.postgresql, .mysql, .sqlite, .mongodb, .cassandra].contains(engine) && serverVersion.utf8.count <= 256 &&
+        format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : engine == .mysql ? "tree" : engine == .mongodb ? "mongodbExplain" : "cassandraTrace") &&
+        (engine == .mongodb ? diagnosticModel == "mongodbExplain" : engine == .cassandra ? diagnosticModel == "cassandraTrace" && modes == [.analyze] : diagnosticModel == nil) && modes.count <= 2 &&
         Set(modes.map(\.rawValue)).count == modes.count &&
         (planKinds == nil || engine == .postgresql && planKinds!.count <= 2 && Set(planKinds!.map(\.rawValue)).count == planKinds!.count) &&
         (modes.isEmpty ? unavailableReason?.isEmpty == false : unavailableReason == nil)
@@ -147,10 +149,17 @@ struct ExplainResult: Codable, Sendable, Equatable {
     var roots: [String]
     var nodes: [ExplainNode]
     var metrics: [String: ExplainMetric]
+    var engineDiagnostic: EngineDiagnostic? = nil
     var valid: Bool {
         guard support.valid, support.modes.contains(mode), raw.utf8.count <= Self.maximumRawBytes,
               nodes.count <= 10_000, metrics.count <= 16, metrics.values.allSatisfy(\.valid),
-              (diagnostic?.utf8.count ?? 0) <= 4_096, ["tree", "rawOnly", "limited"].contains(status) else { return false }
+              (diagnostic?.utf8.count ?? 0) <= 4_096 else { return false }
+        if support.engine == .cassandra && complete { return false }
+        if support.engine == .mongodb || support.engine == .cassandra {
+            return engineDiagnostic?.valid(engine: support.engine, mode: mode) == true && status == "diagnostic" &&
+                nodes.isEmpty && roots.isEmpty && metrics.isEmpty && diagnostic?.isEmpty == false
+        }
+        guard engineDiagnostic == nil, ["tree", "rawOnly", "limited"].contains(status) else { return false }
         if status == "tree" {
             guard complete, !nodes.isEmpty, !roots.isEmpty, diagnostic == nil else { return false }
         } else {

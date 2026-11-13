@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add MongoDB query-planner/execution-statistics diagnostics and separately
+  confirmed Cassandra read tracing through the existing session owner. Preserve
+  BSON evidence, source-node elapsed time, bounded first-page/eventual trace
+  scope and explicit missing measurements. Expand SQLite EQP native fields and
+  unavailable actual metrics. Save/import these distinct diagnostic kinds as
+  private version 3 plan artifacts while retaining offline version 1/2 readers.
+
 - Explain typed named parameters and explicitly chosen script fragments or
   multiple editor selections in their original document order. Choose the source
   SQL tab, an existing SQL tab or a new session for another saved connection;

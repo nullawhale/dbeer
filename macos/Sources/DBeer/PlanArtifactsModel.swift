@@ -77,9 +77,23 @@ struct PlanComparison {
     let shapeChanged: Bool
     let shapeAvailable: Bool
     let incomplete: Bool
+    let diagnosticMessage: String?
 
     init(before: PlanArtifact, after: PlanArtifact) {
         let sameEngine = before.result.support.engine == after.result.support.engine
+        if before.result.engineDiagnostic != nil || after.result.engineDiagnostic != nil {
+            comparableEngine = sameEngine
+            metricsComparable = false
+            shapeChanged = false
+            shapeAvailable = false
+            incomplete = !before.result.complete || !after.result.complete
+            matches = []
+            diagnosticMessage = before.result.evidenceKind == after.result.evidenceKind && sameEngine ?
+                "Engine diagnostic evidence is shown independently. Trace and stage measurements retain their original scope; relational node matching is unavailable." :
+                "Different evidence kinds. Engine diagnostics and relational plans cannot be compared as one plan tree."
+            return
+        }
+        diagnosticMessage = nil
         comparableEngine = sameEngine
         metricsComparable = sameEngine && Self.sameBytes(before.result.support.serverVersion, after.result.support.serverVersion) &&
             Self.sameBytes(before.result.support.format, after.result.support.format) && before.request.mode == after.request.mode && before.request.planKind == after.request.planKind

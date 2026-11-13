@@ -65,7 +65,14 @@ func (s *Session) query(ctx context.Context, command protocol.Command, sql strin
 		}
 		observer = &attemptObserver{}
 		query := ConfigureQuery(s.driver.Query(sql, values...), s.keyspace).NoSkipMetadata().PageSize(pageRows).PageState(page).Observer(observer)
+		trace, _ := ctx.Value(diagnosticTraceKey{}).(*diagnosticTraces)
+		if trace != nil {
+			query = query.Trace(trace)
+		}
 		iter := query.IterContext(ctx)
+		if trace != nil {
+			trace.observeFirstPage(iter.PageState())
+		}
 		columns := iter.Columns()
 		numRows := iter.NumRows()
 		// Server errors have no result metadata. Check them before exposing a result

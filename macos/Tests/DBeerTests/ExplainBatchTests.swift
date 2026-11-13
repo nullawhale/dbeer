@@ -71,7 +71,7 @@ struct ExplainBatchModelTests {
         let artifact = try PlanArtifact.capture(plan, title: "Generic historical evidence")
         let encoded = try artifact.encoded()
         let restored = try PlanArtifact.decode(encoded)
-        #expect(restored.version == 2 && restored.request.context == nil)
+        #expect(restored.version == PlanArtifact.currentVersion && restored.request.context == nil)
         #expect(restored.request.parameters == request.parameters && restored.request.planKind == .generic)
         #expect(restored.source == plan.sourceEvidence)
         #expect(!encoded.contains("private-") && !encoded.contains("targetDocumentId") && !encoded.contains("authorization"))
@@ -87,7 +87,7 @@ struct ExplainBatchModelTests {
         object["version"] = 1
         func text() throws -> String { String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self) }
         #expect(try PlanArtifact.decode(text()).version == 1)
-        object["version"] = 3
+        object["version"] = PlanArtifact.currentVersion + 1
         #expect(throws: (any Error).self) { try PlanArtifact.decode(text()) }
         object["version"] = 2
         object["request"] = ["sql": "SELECT 1", "mode": "plan", "context": ["sessionId": "injected"]]
@@ -110,19 +110,26 @@ struct ExplainBatchExecutionTests {
     }
     private let values = [QueryParameterBinding(name: "p", type: .text, value: "e\u{0301}' ; DROP TABLE excluded; --")]
 
-    private func fixture(capability: Bool = true, failure: String = "",
+    private func fixture(capability: Bool = true, failure: String = "", diagnostic: DatabaseEngine? = nil, diagnosticReply: String = "",
                          parameters: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)? = nil,
                          review: (@MainActor (OperationConfirmation) async -> Bool)? = nil) async throws -> Fixture {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("build/explain-batch/" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let contract = root.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("protocol/fixtures/engine-diagnostics-v1/contract.json")
         let client = BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
         import json,sys,os
-        root,extended,failure=sys.argv[1],sys.argv[2]=='true',sys.argv[3]
+        root,extended,failure,engine,contract,diagnostic_reply=sys.argv[1],sys.argv[2]=='true',sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6]
         counts=dict(connects=0,assessments=0,executions=0,setups=0)
         sessions={};grants={}
         support=dict(engine='postgresql',serverVersion='17.6',format='json',modes=['plan','analyze'],planKinds=['custom','generic'])
         caps=['execute','cancel','transactions','visualExplainV1','queryParametersV1']+(['explainParametersV1'] if extended else [])
+        diagnostic=engine in ['mongodb','cassandra']
+        if diagnostic:
+            with open(contract) as f:fixtures=json.load(f)['fixtures']
+            evidence=next(v['result'] for v in fixtures if v['result']['support']['engine']==engine)
+            support=evidence['support'];caps=['execute','cancel','visualExplainV1']+(['engineDiagnosticsV1'] if extended else [])
         def send(v):print(json.dumps(v),flush=True)
         def started(c):send(dict(type='query.started',requestId=c['requestId'],sessionId=c['sessionId'],queryId=c['queryId']))
         def record():
@@ -133,8 +140,8 @@ struct ExplainBatchExecutionTests {
             if 'queryId' in c:r['queryId']=c['queryId']
             if kind=='hello':r.update(type='hello.ack',protocolVersion=6,capabilities=caps)
             elif kind=='connect':
-                counts['connects']+=1;sid='session-'+str(counts['connects']);sessions[sid]='idle'
-                r.update(type='connect.result',sessionId=sid,transactionStatus='idle',engine='postgresql',capabilities=caps,explainSupport=support)
+                counts['connects']+=1;sid='session-'+str(counts['connects']);sessions[sid]='unsupported' if diagnostic else 'idle'
+                r.update(type='connect.result',sessionId=sid,transactionStatus=sessions[sid],engine=engine,capabilities=caps,explainSupport=support)
             elif kind=='catalog':
                 started(c);r.update(type='query.result',transactionStatus=sessions[c['sessionId']],durationMs=0,columns=[],rows=[],commandTag='SELECT 0',rowCount=0,displayedRowCount=0,truncated=False)
             elif kind=='operation.assess':
@@ -143,6 +150,7 @@ struct ExplainBatchExecutionTests {
                 if op['type']=='explain.run':
                     q=op['explain'];ctx=q.get('context')
                     if extended:assert ctx and ctx['sessionId']==c['sessionId'] and ctx['transactionStatus']==sessions[c['sessionId']]
+                    if diagnostic:assert q.get('parameters') is None and q.get('planKind') is None
                     preview=dict(sql='EXPLAIN '+q['sql'],mode=q['mode'],support=support)
                     assessed=dict(kind='read',statements=[],explain=preview)
                 else:assessed=dict(kind='unknown',statements=[dict(start=0,end=len(op['sql']),kind='unknown',reason='Explicit setup')])
@@ -152,8 +160,14 @@ struct ExplainBatchExecutionTests {
                 counts['executions']+=1;started(c)
                 if kind=='explain.run':
                     assert op['explain']==c['explain']
-                    evidence=dict(support=support,mode=c['explain']['mode'],status='rawOnly',raw='fixture plan',complete=True,diagnostic='Fixture raw plan',roots=[],nodes=[],metrics={})
-                    r.update(type='explain.result',transactionStatus=sessions[sid],durationMs=1,sqlCompleted=True,explain=evidence)
+                    if not diagnostic:evidence=dict(support=support,mode=c['explain']['mode'],status='rawOnly',raw='fixture plan',complete=True,diagnostic='Fixture raw plan',roots=[],nodes=[],metrics={})
+                    if diagnostic_reply in ['relational','relationalIdle']:
+                        wrong_engine='postgresql' if engine=='mongodb' else 'mysql'
+                        wrong_support=dict(engine=wrong_engine,serverVersion='fixture',format='json' if wrong_engine=='postgresql' else 'tree',modes=['plan','analyze'])
+                        evidence=dict(support=wrong_support,mode=c['explain']['mode'],status='rawOnly',raw='wrong owner evidence',complete=True,diagnostic='Synthetic wrong owner',roots=[],nodes=[],metrics={})
+                    elif diagnostic_reply=='otherDiagnostic':evidence=next(v['result'] for v in fixtures if v['result']['support']['engine']!=engine)
+                    r.update(type='explain.result',transactionStatus='idle' if diagnostic_reply=='relationalIdle' else sessions[sid],durationMs=1,sqlCompleted=True,explain=evidence)
+                    if diagnostic_reply=='disconnected':r['connected']=False
                 else:
                     counts['setups']+=1;assert op['sql']==c['sql'] and op.get('parameters')==c.get('parameters')
                     if failure:
@@ -166,9 +180,9 @@ struct ExplainBatchExecutionTests {
             elif kind=='shutdown':r.update(type='shutdown.ack');record();send(r);break
             else:sys.exit(31)
             record();send(r)
-        """, root.path, String(capability), failure])
+        """, root.path, String(capability), failure, (diagnostic ?? .postgresql).rawValue, contract.path, diagnosticReply])
         let profiles = ["Source", "Other"].map { SavedConnection(name: $0,
-            settings: ConnectionSettings(host: "127.0.0.1", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable")) }
+            settings: ConnectionSettings(host: "127.0.0.1", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable", engine: diagnostic ?? .postgresql)) }
         let counter = Counter()
         let supplied = values
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(library:
@@ -199,10 +213,78 @@ struct ExplainBatchExecutionTests {
     private func counts(_ fixture: Fixture) throws -> [String: Int] {
         try JSONDecoder().decode([String: Int].self, from: Data(contentsOf: fixture.root.appendingPathComponent("counts.json")))
     }
-    private func finish(_ fixture: Fixture) async {
+    private func finish(_ fixture: Fixture, cleanExit: Bool = true) async {
         await fixture.workspace.shutdown()
-        if fixture.counter.helperStarts > 0 { #expect(await fixture.client.waitForExit().status == 0) }
+        if fixture.counter.helperStarts > 0 {
+            let exit = await fixture.client.waitForExit()
+            if cleanExit { #expect(exit.status == 0) }
+        }
         try? FileManager.default.removeItem(at: fixture.root)
+    }
+
+    @Test(arguments: [DatabaseEngine.mongodb, .cassandra])
+    func engineDiagnosticUsesExactUnsupportedOwnerContextAndSeparateGrant(_ engine: DatabaseEngine) async throws {
+        let f = try await fixture(diagnostic: engine)
+        let sql = engine == .mongodb ? #"{"collection":"items","find":{}}"# : "SELECT * FROM fixture.items"
+        let document = f.workspace.newDocument(profileID: f.profiles[0].id, text: sql)
+        f.workspace.beginExplainSelection(document, mode: .analyze, selections: [NSRange(location: 0, length: sql.utf16.count)])
+        let draft = try #require(f.workspace.explainSelection)
+        f.workspace.explainSelection = nil
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        let plan = try #require(document.explainExecutions.first?.plan)
+        #expect(plan.result?.engineDiagnostic?.kind == (engine == .mongodb ? "mongodbExplain" : "cassandraTrace"))
+        #expect(plan.request.context?.transactionStatus == "unsupported")
+        #expect(plan.request.context?.sessionId == document.runtime?.sessionId)
+        #expect(plan.request.sql == sql && document.runtime?.transactionStatus == .unsupported)
+        #expect(f.counter.reviews.count == 1 && f.counter.reviews.first?.operations.first?.explain?.mode == .analyze)
+        #expect(try counts(f)["executions"] == 1 && counts(f)["assessments"] == 1)
+        await finish(f)
+    }
+
+    @Test(arguments: [DatabaseEngine.mongodb, .cassandra])
+    func missingDiagnosticNegotiationCannotAssessOrExecute(_ engine: DatabaseEngine) async throws {
+        let f = try await fixture(capability: false, diagnostic: engine)
+        let sql = engine == .mongodb ? #"{"collection":"items","find":{}}"# : "SELECT * FROM fixture.items"
+        let document = f.workspace.newDocument(profileID: f.profiles[0].id, text: sql)
+        f.workspace.beginExplainSelection(document, mode: .analyze, selections: [NSRange(location: 0, length: sql.utf16.count)])
+        let draft = try #require(f.workspace.explainSelection)
+        f.workspace.explainSelection = nil
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(try counts(f)["executions"] == 0 && counts(f)["assessments"] == 0)
+        #expect(document.localError != nil && f.counter.reviews.isEmpty)
+        await finish(f)
+    }
+
+    @Test(arguments: [DatabaseEngine.mongodb, .cassandra], ["relational", "relationalIdle", "otherDiagnostic"])
+    func diagnosticOwnerRejectsInternallyValidEvidenceFromAnotherEngine(_ engine: DatabaseEngine, _ replyKind: String) async throws {
+        let f = try await fixture(diagnostic: engine, diagnosticReply: replyKind)
+        let sql = engine == .mongodb ? #"{"collection":"items","find":{}}"# : "SELECT * FROM fixture.items"
+        let document = f.workspace.newDocument(profileID: f.profiles[0].id, text: sql)
+        f.workspace.beginExplainSelection(document, mode: .analyze, selections: [NSRange(location: 0, length: sql.utf16.count)])
+        let draft = try #require(f.workspace.explainSelection)
+        f.workspace.explainSelection = nil
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(document.explainExecutions.first?.plan?.result == nil && document.explainPlan?.result == nil)
+        #expect(document.explainExecutions.first?.failure != nil)
+        #expect(try counts(f)["executions"] == 1 && counts(f)["assessments"] == 1)
+        #expect(f.counter.helperStarts == 1)
+        await finish(f, cleanExit: false)
+    }
+
+    @Test(arguments: [DatabaseEngine.mongodb, .cassandra])
+    func acknowledgedDiagnosticRetainsEvidenceWhenOwnerDisconnectsAfterCompletion(_ engine: DatabaseEngine) async throws {
+        let f = try await fixture(diagnostic: engine, diagnosticReply: "disconnected")
+        let sql = engine == .mongodb ? #"{"collection":"items","find":{}}"# : "SELECT * FROM fixture.items"
+        let document = f.workspace.newDocument(profileID: f.profiles[0].id, text: sql)
+        f.workspace.beginExplainSelection(document, mode: .analyze, selections: [NSRange(location: 0, length: sql.utf16.count)])
+        let draft = try #require(f.workspace.explainSelection)
+        f.workspace.explainSelection = nil
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(document.explainExecutions.first?.plan?.result?.valid == true)
+        #expect(document.explainExecutions.first?.failure == nil && document.explainExecutions.first?.status == "Completed")
+        #expect(try counts(f)["executions"] == 1 && counts(f)["assessments"] == 1)
+        #expect(f.counter.helperStarts == 1)
+        await finish(f)
     }
 
     @Test func typedValuesAndEachStatementHaveTheirOwnExactGrant() async throws {

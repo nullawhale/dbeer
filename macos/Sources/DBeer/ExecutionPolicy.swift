@@ -126,11 +126,16 @@ enum ExecutionConfirmation {
         let alert = NSAlert()
         alert.alertStyle = confirmation.assessment.decision == "confirm" ? .warning : .informational
         let isAnalyze = confirmation.operations.contains { $0.explain?.mode == .analyze }
-        alert.messageText = isAnalyze ? "Run Explain Analyze?" : confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
         let profile = confirmation.profile
+        alert.messageText = isAnalyze ? "Run " + ExplainMode.analyze.title(engine: profile.engine) + "?" : confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
         alert.informativeText = "\(profile.name) · \(profile.engine.displayName) · \(profile.endpointDescription)\n\(profile.policy.label)\nDestructive and unknown commands require confirmation. Production confirms every evaluated write. Functions and database objects can hide side effects; use restricted database privileges for strict protection."
         if let files = confirmation.assessment.sqliteFiles { alert.informativeText += "\nSQLite files in this session:\n" + files.joined(separator: "\n") }
-        if isAnalyze { alert.informativeText += "\nExplain Analyze executes this query, consumes server resources, and may have side effects. It is not automatically rolled back." }
+        if isAnalyze {
+            alert.informativeText += "\n" + ExplainMode.analyze.title(engine: profile.engine) + " executes this query, consumes server resources, and may have side effects. It is not automatically rolled back."
+            if profile.engine == .cassandra {
+                alert.informativeText += "\nOnly the first server page (200 rows) is requested. Trace metadata is collected at consistency ONE; your selected read retains the saved consistency. Trace events are eventual and the bounded observation is incomplete."
+            }
+        }
         alert.addButton(withTitle: "Execute")
         alert.addButton(withTitle: "Cancel")
         // Cancel is the default key action; Return must not accidentally approve.
@@ -155,7 +160,7 @@ enum ExecutionConfirmation {
         content.append(NSAttributedString(string: profile.policy.label + "\n\n",
             attributes: [.font: NSFont.boldSystemFont(ofSize: 14), .foregroundColor: profile.policy.environment.nativeColor]))
         if let source = confirmation.sourceSQL {
-            content.append(NSAttributedString(string: (confirmation.isScript ? "Entire script source\n" : "Original SQL source\n") + source + "\n\nCommands sent to the server follow below.\n",
+            content.append(NSAttributedString(string: (confirmation.isScript ? "Entire script source\n" : profile.engine.hasEngineDiagnostics ? "Original query source\n" : "Original SQL source\n") + source + "\n\nCommands sent to the server follow below.\n",
                 attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))
         }
         if let preview = confirmation.generatedPreview {

@@ -155,8 +155,7 @@ private struct WorkspaceCommands: Commands {
 
     private func commandItem(_ command: AppCommandID) -> some View {
         let shortcut = commands.shortcuts.shortcut(for: command)
-        let descriptor = commands.shortcuts.descriptors.first { $0.id == command }
-        return Button(descriptor?.title ?? command.rawValue) { commands.perform(command) }
+        return Button(commands.title(for: command)) { commands.perform(command) }
             .keyboardShortcut(shortcut.map { KeyboardShortcut($0.keyEquivalent, modifiers: $0.eventModifiers) })
             .disabled(!commands.canPerform(command))
     }

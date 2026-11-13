@@ -138,7 +138,7 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 			if !ok {
 				return protocol.ErrorResponse(command, "capability", "Visual Explain is unavailable.")
 			}
-			if binding := operation.Explain.Context; binding != nil && (binding.SessionID != owner.id || binding.TransactionStatus != sessions[0].TransactionStatus()) {
+			if binding := operation.Explain.Context; binding != nil && (binding.SessionID != owner.id || binding.TransactionStatus != sessions[0].TransactionStatus() || !diagnosticContextEngine(engine, binding.TransactionStatus, sessions[0])) {
 				return protocol.ErrorResponse(command, "conflict", "The Explain session context changed. Review it again.")
 			}
 			prepared, err := explain.PrepareExplain(*operation.Explain)
@@ -195,7 +195,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 	}
 	if command.Type == "explain.run" && command.Explain != nil && command.Explain.Context != nil {
 		binding := command.Explain.Context
-		if len(sessions) == 0 || binding.SessionID != owner.id || binding.TransactionStatus != sessions[0].TransactionStatus() {
+		if len(sessions) == 0 || binding.SessionID != owner.id || binding.TransactionStatus != sessions[0].TransactionStatus() || !diagnosticContextEngine(engine, binding.TransactionStatus, sessions[0]) {
 			owner.invalidateGrant()
 			return false
 		}
@@ -305,4 +305,19 @@ func (owner *owner) assessRetainedOperation(engine string, operation protocol.Op
 		}
 	}
 	return result
+}
+
+func diagnosticContextEngine(engine, status string, physical adapter.Session) bool {
+	if status != "unsupported" {
+		return true
+	}
+	if engine != "mongodb" && engine != "cassandra" {
+		return false
+	}
+	explain, ok := physical.(adapter.ExplainSession)
+	if !ok {
+		return false
+	}
+	support := explain.ExplainSupport()
+	return support.Valid() && support.Engine == engine && support.DiagnosticModel != ""
 }

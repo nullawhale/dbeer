@@ -9,7 +9,7 @@ struct ExplainBatchResultsView: View {
             Picker("Statement result", selection: $document.selectedExplainExecution) {
                 ForEach(document.explainExecutions.indices, id: \.self) { index in
                     let execution = document.explainExecutions[index]
-                    Text("\(index + 1). Line \(execution.statement.line) · \(execution.statement.action == .plan ? "Plan" : "Setup") · \(execution.status)")
+                    Text("\(index + 1). Line \(execution.statement.line) · \(execution.statement.action == .plan ? execution.plan?.request.mode.title(engine: execution.targetProfile?.engine ?? .postgresql) ?? "Plan" : "Setup") · \(execution.status)")
                         .tag(index)
                 }
             }.padding(.horizontal, 10).controlHover()

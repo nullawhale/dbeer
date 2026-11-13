@@ -30,7 +30,7 @@ type ExplainContext struct {
 func (c ExplainContext) Valid() bool {
 	return ValidID(c.DocumentID) && ValidID(c.TargetDocumentID) && ValidID(c.ProfileID) && ValidID(c.SessionID) &&
 		c.RangeLocation >= 0 && c.RangeLocation <= 16*1024*1024 && c.RangeLength > 0 && c.RangeLength <= 1024*1024 &&
-		(c.TransactionStatus == "idle" || c.TransactionStatus == "transaction" || c.TransactionStatus == "failedTransaction")
+		(c.TransactionStatus == "idle" || c.TransactionStatus == "transaction" || c.TransactionStatus == "failedTransaction" || c.TransactionStatus == "unsupported")
 }
 
 type ExplainRequest struct {
@@ -78,6 +78,7 @@ func parseExplain(raw json.RawMessage) (*ExplainRequest, bool) {
 }
 
 type ExplainSupport struct {
+	DiagnosticModel   string   `json:"diagnosticModel,omitempty"`
 	Engine            string   `json:"engine"`
 	ServerVersion     string   `json:"serverVersion"`
 	Format            string   `json:"format"`
@@ -105,15 +106,16 @@ type ExplainNode struct {
 	Metrics   map[string]ExplainMetric `json:"metrics"`
 }
 type ExplainResult struct {
-	Support    ExplainSupport           `json:"support"`
-	Mode       string                   `json:"mode"`
-	Status     string                   `json:"status"`
-	Raw        string                   `json:"raw"`
-	Complete   bool                     `json:"complete"`
-	Diagnostic string                   `json:"diagnostic,omitempty"`
-	Roots      []string                 `json:"roots"`
-	Nodes      []ExplainNode            `json:"nodes"`
-	Metrics    map[string]ExplainMetric `json:"metrics"`
+	EngineDiagnostic *EngineDiagnostic        `json:"engineDiagnostic,omitempty"`
+	Support          ExplainSupport           `json:"support"`
+	Mode             string                   `json:"mode"`
+	Status           string                   `json:"status"`
+	Raw              string                   `json:"raw"`
+	Complete         bool                     `json:"complete"`
+	Diagnostic       string                   `json:"diagnostic,omitempty"`
+	Roots            []string                 `json:"roots"`
+	Nodes            []ExplainNode            `json:"nodes"`
+	Metrics          map[string]ExplainMetric `json:"metrics"`
 }
 
 var explainDecimal = regexp.MustCompile(`^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
@@ -136,10 +138,21 @@ func (m ExplainMetric) Valid() bool {
 	return false
 }
 func (s ExplainSupport) Valid() bool {
-	if s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "sqlite" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
+	if s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "sqlite" && s.Engine != "mongodb" && s.Engine != "cassandra" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
 		return false
 	}
 	if s.Engine == "sqlite" && (s.Format != "queryPlan" || len(s.Modes) != 1 || s.Modes[0] != "plan") || s.Engine == "postgresql" && s.Format != "json" || s.Engine == "mysql" && s.Format != "tree" {
+		return false
+	}
+	if s.Engine == "mongodb" {
+		if s.Format != "mongodbExplain" || s.DiagnosticModel != "mongodbExplain" {
+			return false
+		}
+	} else if s.Engine == "cassandra" {
+		if s.Format != "cassandraTrace" || s.DiagnosticModel != "cassandraTrace" || len(s.Modes) != 1 || s.Modes[0] != "analyze" {
+			return false
+		}
+	} else if s.DiagnosticModel != "" {
 		return false
 	}
 	if len(s.PlanKinds) > 2 || s.Engine != "postgresql" && len(s.PlanKinds) != 0 {
@@ -169,6 +182,17 @@ func (r ExplainResult) Valid() bool {
 		}
 	}
 	if !supported || !r.Support.Valid() || (r.Mode != "plan" && r.Mode != "analyze") || len(r.Raw) > MaxExplainRawBytes || !utf8.ValidString(r.Raw) || len(r.Nodes) > MaxExplainNodes || len(r.Metrics) > 16 || len(r.Diagnostic) > 4096 {
+		return false
+	}
+	if r.Support.Engine == "cassandra" && r.Complete {
+		return false
+	}
+	if r.Support.Engine == "mongodb" || r.Support.Engine == "cassandra" {
+		if r.EngineDiagnostic == nil || !r.EngineDiagnostic.Valid(r.Support.Engine, r.Mode) || r.Status != "diagnostic" || len(r.Nodes) != 0 || len(r.Roots) != 0 || len(r.Metrics) != 0 || r.Diagnostic == "" {
+			return false
+		}
+		return true
+	} else if r.EngineDiagnostic != nil {
 		return false
 	}
 	if r.Status != "tree" && r.Status != "rawOnly" && r.Status != "limited" {

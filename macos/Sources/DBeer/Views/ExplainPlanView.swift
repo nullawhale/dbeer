@@ -11,6 +11,8 @@ struct ExplainPlanView: View {
     private var raw = SwiftUI.State(initialValue: false)
     private var selected = SwiftUI.State<String?>(initialValue: nil)
     private var collapsed = SwiftUI.State(initialValue: Set<String>())
+    private var engine: DatabaseEngine { plan.result?.support.engine ?? plan.profile?.engine ?? plan.sourceProfileBinding?.profile.engine ?? .postgresql }
+    private var evidenceTitle: String { engine.hasEngineDiagnostics ? "Engine Diagnostics" : "Execution Plan" }
     private struct Row: Identifiable { let node: ExplainNode; let depth: Int; var id: String { node.id } }
     private var rows: [Row] {
         guard let result = plan.result else { return [] }
@@ -26,15 +28,15 @@ struct ExplainPlanView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Execution Plan · \(plan.request.mode.title)").font(.headline)
+                Text("\(evidenceTitle) · \(plan.request.mode.title(engine: engine))").font(.headline)
                 Text(plan.status).foregroundStyle(.secondary)
                 Spacer()
                 if let planLibrary {
-                    Button("Save Plan…") { saving.wrappedValue = true }.controlHover()
+                    Button(engine.hasEngineDiagnostics ? "Save Diagnostic…" : "Save Plan…") { saving.wrappedValue = true }.controlHover()
                         .disabled(plan.result == nil || planLibrary.isBusy || !canSave())
                 }
                 if let openLibrary { Button("Saved Plans…", action: openLibrary).controlHover().disabled(!canSave()) }
-                Picker("Plan display", selection: raw.projectedValue) { Text("Tree").tag(false); Text("Raw Plan").tag(true) }
+                Picker("Plan display", selection: raw.projectedValue) { Text(engine.hasEngineDiagnostics ? "Diagnostic" : "Tree").tag(false); Text("Raw Output").tag(true) }
                     .pickerStyle(.segmented).frame(width: 180)
             }
             if let profile = plan.sourceProfileBinding?.profile {
@@ -54,24 +56,30 @@ struct ExplainPlanView: View {
                     }
                 }
             }
-            DisclosureGroup("Captured SQL") {
+            DisclosureGroup("Captured Query · included when you save or export this evidence") {
                 ScrollView { Text(plan.request.sql).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 100)
             }
-            if stale { Label("Earlier query or connection — run Explain again to refresh", systemImage: "clock.arrow.circlepath").foregroundStyle(.orange) }
+            if stale { Label("Earlier query or connection — collect again to refresh", systemImage: "clock.arrow.circlepath").foregroundStyle(.orange) }
             if let failure = plan.failure { Text(failure.message).foregroundStyle(.red).textSelection(.enabled) }
             if let result = plan.result {
-                Text("\(result.support.engine.displayName) \(result.support.serverVersion) · \(result.support.format.uppercased()) · SQL completed")
+                Text("\(result.support.engine.displayName) \(result.support.serverVersion) · \(result.support.format.uppercased()) · Command completed")
                     .font(.caption).foregroundStyle(.secondary)
                 if let diagnostic = result.diagnostic { Text(diagnostic).foregroundStyle(.orange).textSelection(.enabled) }
-                if raw.wrappedValue || result.status != "tree" {
+                if let diagnostic = result.engineDiagnostic, !raw.wrappedValue {
+                    EngineDiagnosticView(diagnostic: diagnostic)
+                    if let duration = plan.clientDurationMs {
+                        Text("Client elapsed: \(duration.formatted(.number.precision(.fractionLength(2)))) ms · includes transport and diagnostic collection")
+                            .font(.caption).appSecondaryText()
+                    }
+                } else if raw.wrappedValue || result.status != "tree" {
                     ScrollView([.horizontal, .vertical]) {
                         Text(result.raw).font(.system(.body, design: .monospaced)).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     HStack {
-                        Text(result.complete ? "Original captured server output" : "Incomplete plan output").font(.caption).foregroundStyle(.secondary)
+                        Text(engine == .mongodb ? "Captured canonical BSON evidence · server/session metadata excluded" : engine == .cassandra ? "Bounded trace observation · eventual events may be missing" : result.complete ? "Original captured server output" : "Incomplete captured evidence").font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Copy Raw Plan") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result.raw, forType: .string) }.controlHover()
+                        Button("Copy Raw Output") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(result.raw, forType: .string) }.controlHover()
                     }
                 } else {
                     let ranking = ExplainRanking(result)
@@ -81,7 +89,9 @@ struct ExplainPlanView: View {
                             Button { reveal(entry.id, in: result) } label: { Label(entry.operation, systemImage: "flame").lineLimit(1) }.controlHover()
                         }
                     }
-                    Text("Inclusive parent and child values overlap. Do not add them; parallel work can exceed wall time.")
+                    Text(engine == .sqlite ?
+                        "SQLite EQP reports strategy and native id/parent/aux/detail fields. It does not report actual row counts, elapsed time or planner cost." :
+                        "Inclusive parent and child values overlap. Do not add them; parallel work can exceed wall time.")
                         .font(.caption).foregroundStyle(.secondary)
                     HSplitView {
                         ScrollViewReader { proxy in
@@ -95,7 +105,7 @@ struct ExplainPlanView: View {
                                     }
                                     if ranking.entries.contains(where: { $0.id == row.id }) { Image(systemName: "flame").foregroundStyle(.orange) }
                                     Text(row.node.operation).lineLimit(2)
-                                    if result.roots.contains(row.id) { Text("Plan total").font(.caption).foregroundStyle(.secondary) }
+                                    if result.roots.contains(row.id) { Text(engine == .sqlite ? "EQP root" : "Plan total").font(.caption).foregroundStyle(.secondary) }
                                 }.padding(.leading, CGFloat(row.depth) * 12).tag(row.id).id(row.id)
                             }
                         }.onChange(of: selected.wrappedValue) { _, id in
@@ -127,7 +137,7 @@ struct ExplainPlanView: View {
         }.padding(10)
             .sheet(isPresented: saving.projectedValue) {
                 if let planLibrary {
-                    PlanArtifactNameView(title: "Save Execution Plan", initialName: saveTitle) { title, baseline in
+                    PlanArtifactNameView(title: "Save " + evidenceTitle, initialName: saveTitle) { title, baseline in
                         guard canSave() else { return false }
                         return await planLibrary.save(plan, title: title, baselineName: baseline, sourceWasStale: stale) != nil
                     }
