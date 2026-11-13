@@ -34,6 +34,9 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		return false
 	}
 	op := c.Operation
+	if op.Kind == "renameColumn" || op.Kind == "renameTable" {
+		return verifyRename(before, after, c)
+	}
 	checkNew := func(column Column) bool {
 		actual, ok := FindColumn(after, column.Name)
 		if !ok || actual.Nullable.Value == nil || *actual.Nullable.Value != column.Nullable {
@@ -42,10 +45,10 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		typ, ok := ColumnType(actual)
 		expected := PlanningSource(before, Draft{Columns: []Column{column}}, after.Engine)
 		wanted, exists := FindColumn(expected, column.Name)
-		if !exists || !ok || typ != column.Type || actual.Type.Value == nil || !reflect.DeepEqual(*actual.Type.Value, ExpectedNewType(after.Engine, column.Type)) || !defaultMatches(actual, column.Default) {
+		if !exists || column.Type.Kind != "reference" && (!ok || !SameDataType(typ, column.Type)) || actual.Type.Value == nil || !reflect.DeepEqual(*actual.Type.Value, ExpectedColumnType(after.Engine, column)) || !authoredDefaultMatches(after.Engine, actual, column, defaultMatches) {
 			return false
 		}
-		if actual.Generated.Value == nil || actual.Generated.Value.Kind != "none" || actual.Identity.Value == nil || actual.Identity.Value.Kind != "none" || actual.Visible.Value == nil || !*actual.Visible.Value || actual.Comment.Value == nil || *actual.Comment.Value != "" || actual.OnUpdate.Value != nil || !reflect.DeepEqual(actual.Charset, wanted.Charset) || !reflect.DeepEqual(actual.Collation, wanted.Collation) || !reflect.DeepEqual(actual.CollationProperties, wanted.CollationProperties) {
+		if !generatedMatches(after.Engine, after.Facts, actual, column.Generated) || !identityMatches(after.Engine, after.Facts, actual, column.Identity, nil) || actual.Visible.Value == nil || !*actual.Visible.Value || actual.Comment.Value == nil || *actual.Comment.Value != "" || actual.OnUpdate.Value != nil || !reflect.DeepEqual(actual.Charset, wanted.Charset) || !reflect.DeepEqual(actual.Collation, wanted.Collation) || !reflect.DeepEqual(actual.CollationProperties, wanted.CollationProperties) {
 			return false
 		}
 		if after.Engine == "postgresql" {
@@ -53,6 +56,9 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 			storage := ""
 			if before.Facts != nil {
 				storage = before.Facts.TypeStorage[column.Type.Kind]
+				if column.Resolved != nil {
+					storage = column.Resolved.Storage
+				}
 			}
 			if storage == "" {
 				return false
@@ -100,6 +106,15 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 							col.Default = sc.Known(sc.Default{Kind: "none"})
 						}
 					}
+					if change.Generated != nil {
+						if before.Engine == "mysql" && col.Default.Value != nil && (col.Default.Value.Kind == "none" || col.Default.Value.Kind == "sqlNull") {
+							col.Default = sc.Known(sc.Default{Kind: "none"})
+						}
+						col.Generated = sc.Fact[sc.Generated]{}
+					}
+					if change.Identity != nil {
+						col.Identity = sc.Fact[sc.Identity]{}
+					}
 					if change.Default != nil {
 						col.Default = sc.Fact[sc.Default]{}
 					}
@@ -120,6 +135,13 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 				}
 				if change.Nullable != nil {
 					delete(attrs[name], "attnotnull")
+				}
+				if change.Generated != nil {
+					delete(attrs[name], "attgenerated")
+					delete(attrs[name], "atthasdef")
+				}
+				if change.Identity != nil {
+					delete(attrs[name], "attidentity")
 				}
 				if change.Default != nil {
 					delete(attrs[name], "atthasdef")
@@ -164,12 +186,26 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		if !checkNew(*op.Column) || len(after.Facts.Table.Columns.Items) != len(before.Facts.Table.Columns.Items)+1 {
 			return false
 		}
+		if !stripResolvedTypes(a, b, *op.Column) {
+			return false
+		}
+		stripOwnedSequences(a, b, sc.Ref{Kind: "column", Schema: after.Target.Schema, Table: after.Target.Table, Name: op.Column.Name})
 		stripColumn(op.Column.Name, true, nil)
 	case "changeColumn":
 		change := op.Change
 		actual, ok := FindColumn(after, change.Name)
 		if !ok {
 			return false
+		}
+		if change.Generated != nil && !generatedMatches(after.Engine, after.Facts, actual, change.Generated) {
+			return false
+		}
+		if change.Identity != nil {
+			owner := actual.Ref
+			if !identityMatches(after.Engine, after.Facts, actual, change.Identity, sequenceFor(before.Facts, owner)) {
+				return false
+			}
+			stripOwnedSequences(a, b, owner)
 		}
 		if change.Type != nil {
 			typ, ok := ColumnType(actual)
@@ -257,6 +293,17 @@ func VerifyReference(before, after, source Baseline, c Condition) bool {
 	}
 	a, b := cloneFacts(before.Facts), cloneFacts(after.Facts)
 	op := c.Operation
+	if op.Kind == "renameTable" && op.Name != nil {
+		renameFacts(a, source.Target, "", *op.Name)
+	}
+	if op.Kind == "renameColumn" && op.Change != nil && op.Change.RenameTo != nil {
+		renameFacts(a, source.Target, op.Change.Name, *op.Change.RenameTo)
+	}
+
+	if op.Kind == "renameColumn" || op.Kind == "renameTable" {
+		sortRenameDependencies(a)
+		sortRenameDependencies(b)
+	}
 	if (op.Kind == "addKey" || op.Kind == "dropKey") && op.Key.Kind == "foreign" {
 		for _, f := range []*Facts{a, b} {
 			out := []Incoming{}

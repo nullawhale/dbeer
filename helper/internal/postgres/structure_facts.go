@@ -15,7 +15,11 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::int").Scan(&version) != nil {
 		return nil, tableedit.ErrUnsupported
 	}
-	r := &schemaCapture{ctx: ctx, tx: q, sink: sink, spec: sc.CaptureSpec{Schemas: []string{t.Schema}, Limits: limits}, version: version, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}}
+	r := &schemaCapture{ctx: ctx, tx: q, sink: sink, spec: sc.CaptureSpec{Schemas: []string{t.Schema}, Limits: limits}, version: version, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}, skipCustomTypeFormatting: true}
+	keywords, keywordErr := r.rows(`SELECT word FROM pg_catalog.pg_get_keywords() WHERE catcode<>'U' ORDER BY word COLLATE pg_catalog."C"`)
+	if keywordErr != nil {
+		return nil, tableedit.ErrUnsupported
+	}
 	ref := sc.Ref{Kind: "table", Schema: t.Schema, Name: t.Table}
 	id := strconv.FormatUint(uint64(oid), 10)
 	columns, e := r.columns(ref, id)
@@ -42,7 +46,23 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 	if e != nil {
 		return nil, e
 	}
-	f := &tableedit.Facts{TypeStorage: storage, DefaultCollationProperties: defaultProperties, Table: sc.Table{Ref: ref, Kind: sc.Known("r"), Storage: sc.Known("p"), Columns: sc.Complete(columns), Constraints: sc.Complete(keys), Indexes: sc.Complete(indexes)}, Types: sink.Capture.Types, Proof: true, Dependents: map[string][]string{}}
+	sequences, e := readStructureSequences(ctx, q, t, oid)
+	if e != nil {
+		return nil, e
+	}
+	for i := range columns {
+		for _, seq := range sequences {
+			if seq.Owner.Value != nil && *seq.Owner.Value == columns[i].Ref && columns[i].Identity.Value != nil && columns[i].Identity.Value.Kind != "none" {
+				columns[i].Identity.Value.Sequence = &seq.Ref
+			}
+		}
+	}
+	f := &tableedit.Facts{ServerVersion: version, Sequences: sequences, TypeStorage: storage, DefaultCollationProperties: defaultProperties, Table: sc.Table{Ref: ref, Kind: sc.Known("r"), Storage: sc.Known("p"), Columns: sc.Complete(columns), Constraints: sc.Complete(keys), Indexes: sc.Complete(indexes)}, Types: sink.Capture.Types, Proof: true, Dependents: map[string][]string{}}
+	f.RawExpressions = r.rawExpressions
+	f.ExpressionKeywords = []string{}
+	for _, keyword := range keywords {
+		f.ExpressionKeywords = append(f.ExpressionKeywords, keyword[0])
+	}
 	incoming, e := q.Query(ctx, `SELECT n.nspname,c.relname,k.conname,COALESCE((SELECT json_agg(a.attname ORDER BY x.ord)::text FROM pg_catalog.unnest(k.confkey) WITH ORDINALITY x(num,ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.num),'[]') FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE k.confrelid=$1 AND k.contype='f' ORDER BY n.nspname,c.relname,k.conname LIMIT 257`, oid)
 	if e != nil {
 		return nil, tableedit.ErrUnsupported
@@ -98,7 +118,7 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 
 func readStructureDefaults(ctx context.Context, q structureReader, t tableedit.Target) (*tableedit.Facts, error) {
 	limits := sc.Limits{Nodes: 32, Members: 128, Bytes: 65536, Scalar: 4096}
-	r := &schemaCapture{ctx: ctx, tx: q, sink: sc.NewCollector(ctx, limits), spec: sc.CaptureSpec{Limits: limits}, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}}
+	r := &schemaCapture{ctx: ctx, tx: q, sink: sc.NewCollector(ctx, limits), spec: sc.CaptureSpec{Limits: limits}, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}, skipCustomTypeFormatting: true}
 	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::int").Scan(&r.version) != nil {
 		return nil, tableedit.ErrUnsupported
 	}
@@ -114,7 +134,7 @@ func readStructureDefaults(ctx context.Context, q structureReader, t tableedit.T
 	if e != nil {
 		return nil, e
 	}
-	return &tableedit.Facts{TypeStorage: storage, Proof: true, DefaultCollationProperties: properties, Table: sc.Table{Ref: sc.Ref{Kind: "table", Schema: t.Schema, Name: t.Table}, Columns: sc.Complete[sc.Column](nil), Constraints: sc.Complete[sc.Constraint](nil), Indexes: sc.Complete[sc.Index](nil)}, Dependents: map[string][]string{}}, nil
+	return &tableedit.Facts{ServerVersion: r.version, TypeStorage: storage, Proof: true, DefaultCollationProperties: properties, Table: sc.Table{Ref: sc.Ref{Kind: "table", Schema: t.Schema, Name: t.Table}, Columns: sc.Complete[sc.Column](nil), Constraints: sc.Complete[sc.Constraint](nil), Indexes: sc.Complete[sc.Index](nil)}, Dependents: map[string][]string{}}, nil
 }
 
 func structureTypeStorage(ctx context.Context, q structureReader) (map[string]string, error) {

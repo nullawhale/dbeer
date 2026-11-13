@@ -101,11 +101,21 @@ func sqliteEditableType(typ string) (tableedit.DataType, bool) {
 var sqliteNumericLiteral = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
 
 func structureColumn(c tableedit.Column) (string, error) {
+	if c.Type.Reference != nil {
+		return "", tableedit.ErrUnsupported
+	}
 	typ := map[string]string{"integer": "INTEGER", "bigint": "INTEGER", "boolean": "INTEGER", "real": "REAL", "text": "TEXT", "blob": "BLOB", "any": "ANY", "sqliteNumeric": "NUMERIC"}[c.Type.Kind]
 	if !c.Valid() || typ == "" {
 		return "", tableedit.ErrUnsupported
 	}
 	out := quote(c.Name) + " " + typ
+	if c.Generated != nil && c.Generated.Storage != "none" {
+		expr, err := tableedit.ExpressionSlot("sqlite", c.Generated.Expression)
+		if err != nil {
+			return "", err
+		}
+		out += " GENERATED ALWAYS AS " + expr + " " + strings.ToUpper(c.Generated.Storage)
+	}
 	if !c.Nullable {
 		out += " NOT NULL"
 	}
@@ -128,8 +138,20 @@ func structureColumn(c tableedit.Column) (string, error) {
 		} else {
 			return "", tableedit.ErrInvalid
 		}
+	case "expression":
+		expr, err := tableedit.ExpressionSlot("sqlite", *c.Default.Value)
+		if err != nil {
+			return "", err
+		}
+		out += " DEFAULT " + expr
 	default:
 		return "", tableedit.ErrUnsupported
+	}
+	if c.Identity != nil && c.Identity.Kind != "none" {
+		if c.Identity.Kind != "autoIncrement" || c.PrimaryKeyName == "" || (c.Type.Kind != "integer" && c.Type.Kind != "bigint") {
+			return "", tableedit.ErrUnsupported
+		}
+		out += " CONSTRAINT " + quote(c.PrimaryKeyName) + " PRIMARY KEY AUTOINCREMENT"
 	}
 	return out, nil
 }
@@ -170,6 +192,21 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	p := tableedit.Prepared{Risks: []string{"Apply uses BEGIN IMMEDIATE and rechecks the captured schema. Table reconstruction copies all rows and validates foreign keys before COMMIT."}}
 	if !d.Valid() || b.Engine != "sqlite" || b.Target.Schema != "main" {
 		return p, tableedit.ErrInvalid
+	}
+	if d.HasAuthoredExpressions() {
+		p.Risks = append(p.Risks, "Authored expressions and generated values run only during Apply or later writes. Preview validates expression boundaries without evaluating authored code. SQLite may reject expressions at Apply; semantic validity is not proven by Preview.")
+	}
+	renaming := d.RenameTable != nil
+	for _, c := range d.Changes {
+		renaming = renaming || c.RenameTo != nil
+	}
+	if renaming {
+		return s.prepareStructureRenames(ctx, b, d, p)
+	}
+	for _, c := range d.Changes {
+		if c.Generated != nil || c.Identity != nil || c.Type != nil && c.Type.Reference != nil {
+			return p, errors.New("Changing generated or identity columns requires a separately reviewed SQLite reconstruction.")
+		}
 	}
 	target := "main." + quote(b.Target.Table)
 	indexEdits := func() error {
@@ -219,7 +256,22 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			return p, tableedit.ErrInvalid
 		}
 		parts := []string{}
+		inlinePrimary := ""
 		for _, c := range d.Columns {
+			if c.Identity != nil && c.Identity.Kind != "none" {
+				if inlinePrimary != "" {
+					return p, tableedit.ErrInvalid
+				}
+				for _, k := range d.Keys {
+					if k.Action == "add" && k.Kind == "primary" && len(k.Columns) == 1 && k.Columns[0] == c.Name {
+						c.PrimaryKeyName = k.Name
+						inlinePrimary = k.Name
+					}
+				}
+				if c.PrimaryKeyName == "" {
+					return p, errors.New("SQLite AUTOINCREMENT requires an explicit single-column INTEGER primary key.")
+				}
+			}
 			x, e := structureColumn(c)
 			if e != nil {
 				return p, e
@@ -227,6 +279,9 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			parts = append(parts, x)
 		}
 		for _, k := range d.Keys {
+			if k.Kind == "primary" && k.Name == inlinePrimary {
+				continue
+			}
 			if k.Action != "add" {
 				return p, tableedit.ErrInvalid
 			}
@@ -241,6 +296,15 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	}
 	if len(d.Changes) == 0 && len(d.Keys) == 0 {
 		for _, c := range d.Columns {
+			if c.Default.Kind == "expression" {
+				return p, errors.New("SQLite cannot ADD a column with an expression default; use an explicit reviewed reconstruction.")
+			}
+			if c.Generated != nil && c.Generated.Storage == "stored" {
+				return p, errors.New("SQLite cannot ADD a stored generated column; use an explicit reviewed reconstruction.")
+			}
+			if c.Identity != nil && c.Identity.Kind != "none" {
+				return p, errors.New("Adding SQLite AUTOINCREMENT to an existing table requires explicit reconstruction.")
+			}
 			x, e := structureColumn(c)
 			if e != nil {
 				return p, e
@@ -521,7 +585,17 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		}
 	}
 	if !b.Target.Create {
-		after, afterCount, e := s.structureValueDigest(ctx, b.Target.Table, b.Columns)
+		observedTable := b.Target.Table
+		if p.ResultTarget != nil {
+			observedTable = p.ResultTarget.Table
+		}
+		copiedColumns := append([]tableedit.ObservedColumn(nil), b.Columns...)
+		for i := range copiedColumns {
+			if name, ok := p.RenamedColumns[copiedColumns[i].Name]; ok {
+				copiedColumns[i].Name = name
+			}
+		}
+		after, afterCount, e := s.structureValueDigest(ctx, observedTable, copiedColumns)
 		if e != nil || original != after || originalCount != afterCount {
 			return fail("rolledBack", "The change would alter stored values or storage classes; no changes were committed.")
 		}

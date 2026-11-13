@@ -36,6 +36,10 @@ func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 			}
 			seen[capability] = true
 		}
+		authoring := engine == "postgresql" || engine == "mysql" || engine == "sqlite"
+		if slices.Contains(Capabilities(engine), protocol.StructureAuthoringCapability) != authoring {
+			t.Fatalf("%s has an invalid structure authoring capability", engine)
+		}
 		if !slices.Contains(Capabilities(engine), protocol.NativeResultValuesCapability) {
 			t.Fatalf("%s lacks its completed native result contract", engine)
 		}

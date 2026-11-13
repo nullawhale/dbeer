@@ -37,7 +37,7 @@ extension ApplicationWorkspace {
         let lease = TableStructureSessionLease()
         let targetName = create ? "" : node.name
         let model = TableStructureEditorModel(profile: profile, schema: node.schema, table: targetName, create: create,
-            historyReviews: structureOutcomeReports.filter { $0.profileID == profile.id && StructureTarget.sameIdentifier($0.schema, node.schema) && StructureTarget.sameIdentifier($0.table, targetName) }.map(\.review),
+            historyReviews: structureOutcomeReports.filter { $0.profileID == profile.id && $0.matchesTable(schema: node.schema, table: targetName) }.map(\.review),
             connect: { [weak self] in
                 guard let self, current(), let password = await self.library.passwordForConnection(profile.id), current() else {
                     throw ExecutionPolicyError(message: "The profile changed or its credentials are unavailable.")
@@ -68,7 +68,7 @@ extension ApplicationWorkspace {
                 return try await self.authorizeOperations([.init(type: "structure.apply", structure: apply)],
                     sessionID: session, profile: profile, client: client,
                     generatedPreview: plan.sql.joined(separator: "\n") + "\n\n" + plan.risks.joined(separator: "\n"))
-            }, bindingIsCurrent: current, operationsAllowed: { [weak self] in self?.canStartTableStructure(profile.id) == true }, sessionIsKnownClosed: {
+            }, bindingIsCurrent: current, authoringSupported: { [weak service] in service?.capabilities.contains("tableStructureAuthoringV2") == true }, operationsAllowed: { [weak self] in self?.canStartTableStructure(profile.id) == true }, sessionIsKnownClosed: {
                 guard let client = lease.client else { return false }
                 return await client.hasExited()
             }, changed: { [weak self] review in

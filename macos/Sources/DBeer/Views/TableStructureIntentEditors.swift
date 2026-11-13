@@ -8,6 +8,7 @@ struct TableStructureIntentEditors: View {
     private var indexes: [StructureIndexEdit] { model.draft.indexes ?? [] }
     private var keys: [StructureKeyEdit] { model.draft.keys ?? [] }
     private var canEdit: Bool { !model.isBusy && !model.closing && !model.invalidated && model.baseline != nil && model.outcome == nil }
+    private var columnLimitReached: Bool { (model.baseline?.columns.count ?? 0) + model.draft.columns.count >= 128 }
     private var operationLimitReached: Bool { changes.count + indexes.count + keys.count >= 64 }
 
     var body: some View {
@@ -15,13 +16,13 @@ struct TableStructureIntentEditors: View {
             HStack {
                 if !model.create {
                     Button("Append Column") {
-                        guard canEdit, model.draft.columns.isEmpty else { return }
+                        guard canEdit, (model.authoringAvailable || model.draft.columns.isEmpty), !columnLimitReached else { return }
                         model.draft.columns.append(TableStructureEditorModel.emptyColumn)
-                    }.controlHover().disabled(!model.draft.columns.isEmpty)
+                    }.controlHover().disabled((!model.authoringAvailable && !model.draft.columns.isEmpty) || columnLimitReached)
                     Button("Change Column") {
                         guard canEdit, !operationLimitReached else { return }
                         model.draft.changes = changes + [.init(name: "")]
-                    }.controlHover().disabled(operationLimitReached || model.baseline?.columns.contains { $0.canModify == true } != true)
+                    }.controlHover().disabled(operationLimitReached || model.baseline?.columns.contains { model.authoringAvailable || $0.canModify == true } != true)
                 }
                 Button("Add Index Operation") {
                     guard canEdit, !operationLimitReached else { return }
@@ -34,7 +35,7 @@ struct TableStructureIntentEditors: View {
             }
             ForEach(changes.indices, id: \.self) { i in
                 StructureColumnChangeEditor(change: changeBinding(i), columns: model.baseline?.columns ?? [],
-                    engine: model.profile.engine, wideningAllowed: model.baseline?.dependencyProof == true) {
+                    engine: model.profile.engine, wideningAllowed: model.baseline?.dependencyProof == true, authoringAvailable: model.authoringAvailable) {
                     guard canEdit, changes.indices.contains(i) else { return }
                     model.draft.changes?.remove(at: i)
                 }
@@ -99,6 +100,7 @@ private struct StructureColumnChangeEditor: View {
     let columns: [StructureObservedColumn]
     let engine: DatabaseEngine
     let wideningAllowed: Bool
+    var authoringAvailable = false
     let remove: () -> Void
     private var old: StructureObservedColumn? { columns.first { StructureTarget.sameIdentifier($0.name, change.name) } }
 
@@ -106,7 +108,7 @@ private struct StructureColumnChangeEditor: View {
         GroupBox("Existing Column Change") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    StructureExactNamePicker(title: "Column", placeholder: "Choose column", names: columns.filter { $0.canModify == true }.map(\.name),
+                    StructureExactNamePicker(title: "Column", placeholder: "Choose column", names: columns.filter { authoringAvailable || $0.canModify == true }.map(\.name),
                         selection: Binding(get: { change.name }, set: { change = .init(name: $0) }))
                     Picker("Nullability", selection: Binding(get: { change.nullable.map { $0 ? "nullable" : "required" } ?? "keep" }, set: {
                         change.nullable = $0 == "keep" ? nil : $0 == "nullable"
@@ -114,7 +116,7 @@ private struct StructureColumnChangeEditor: View {
                         Text("Keep nullability").tag("keep")
                         Text("Allow NULL").tag("nullable")
                         Text("Require NOT NULL").tag("required")
-                    }.controlHover()
+                    }.controlHover().disabled(old?.canModify != true || change.generated != nil || change.identity != nil)
                     ControlIconButton(systemName: "minus.circle", action: remove).help("Remove this local column change").accessibilityLabel("Remove column change")
                 }
                 if let old {
@@ -122,6 +124,12 @@ private struct StructureColumnChangeEditor: View {
                         .font(.caption).textSelection(.enabled)
                     Text("Current default: " + (old.defaultExpression ?? "No explicit default reported"))
                         .font(.caption).textSelection(.enabled)
+                    if authoringAvailable {
+                        Toggle("Rename column", isOn: Binding(get: { change.renameTo != nil }, set: { change.renameTo = $0 ? "" : nil })).controlHover()
+                        if change.renameTo != nil {
+                            TextField("Exact resulting column name", text: Binding(get: { change.renameTo ?? "" }, set: { change.renameTo = $0 })).textFieldStyle(.roundedBorder)
+                        }
+                    }
                     HStack {
                         Picker("Type", selection: Binding(get: { change.type?.kind ?? "keep" }, set: { kind in
                             if engine == .sqlite {
@@ -144,17 +152,29 @@ private struct StructureColumnChangeEditor: View {
                                 Text("ANY").tag("any")
                             } else if old.editableType?.kind == "integer" { Text("Widen to BIGINT").tag("bigint") }
                             if old.editableType?.kind == "varchar", (old.editableType?.length ?? 16_383) < 16_383 { Text("Increase VARCHAR length").tag("varchar") }
-                        }.controlHover().disabled(engine != .sqlite && !wideningAllowed)
+                        }.controlHover().disabled(old.canModify != true || change.generated != nil || change.identity != nil || engine != .sqlite && !wideningAllowed)
                         if change.type?.kind == "varchar" {
                             TextField("New length", value: Binding(get: { change.type?.length ?? 0 }, set: { change.type?.length = $0 }), format: .number)
                                 .textFieldStyle(.roundedBorder).frame(width: 95).accessibilityLabel("New VARCHAR length")
                         }
                     }
-                    TableStructureDefaultEditor(selection: $change.default, engine: engine, allowsKeep: true)
+                    TableStructureDefaultEditor(selection: $change.default, engine: engine, allowsKeep: true, authoringAvailable: authoringAvailable)
+                        .disabled(old.canModify != true || change.generated != nil || change.identity != nil)
+                    if authoringAvailable && engine != .sqlite {
+                        TableStructureGenerationEditor(selection: Binding(get: { change.generated }, set: {
+                            change.generated = $0
+                            if $0 != nil { change.identity = nil; change.type = nil; change.nullable = nil; change.default = nil }
+                        }), allowsKeep: true)
+                        TableStructureIdentityEditor(selection: Binding(get: { change.identity }, set: {
+                            change.identity = $0
+                            if $0 != nil { change.generated = nil; change.type = nil; change.nullable = nil; change.default = nil }
+                        }), engine: engine, allowsKeep: true)
+                        Text("Generation and identity are separate attribute changes. Keep preserves existing settings; Preview checks the server version and prerequisites.").font(.caption).appSecondaryText()
+                    }
                     Text(engine == .sqlite ? "Keep preserves that attribute and its original definition. Preview prepares the rebuild; Apply rejects changes that alter stored values or their storage classes." : "Keep leaves that attribute unchanged. Widening requires a column without dependencies; Preview verifies support and lock/rebuild risks.")
                         .font(.caption).appSecondaryText()
                 } else {
-                    Text("Choose an editable ordinary column. Generated, identity and unsupported columns remain read-only.").font(.caption).appSecondaryText()
+                    Text("Choose a column. Preview checks dependencies and the selected operation’s engine support.").font(.caption).appSecondaryText()
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }

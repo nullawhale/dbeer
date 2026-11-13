@@ -14,6 +14,7 @@ import (
 )
 
 const Capability = "tableStructureEditorV1"
+const AuthoringCapability = "tableStructureAuthoringV2"
 const MaxColumns = 128
 const MaxSQLBytes = 1024 * 1024
 
@@ -34,13 +35,20 @@ func Identifier(s string) bool {
 func (t Target) Valid() bool { return Identifier(t.Schema) && Identifier(t.Table) }
 
 type DataType struct {
-	Kind      string `json:"kind"`
-	Length    int    `json:"length,omitempty"`
-	Precision int    `json:"precision,omitempty"`
-	Scale     int    `json:"scale,omitempty"`
+	Kind      string         `json:"kind"`
+	Length    int            `json:"length,omitempty"`
+	Precision int            `json:"precision,omitempty"`
+	Scale     int            `json:"scale,omitempty"`
+	Reference *TypeReference `json:"reference,omitempty"`
 }
 
 func (t DataType) Valid() bool {
+	if t.Kind == "reference" {
+		return t.Reference != nil && t.Reference.Valid() && t.Length == 0 && t.Precision == 0 && t.Scale == 0
+	}
+	if t.Reference != nil {
+		return false
+	}
 	switch t.Kind {
 	case "integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric":
 		return t.Length == 0 && t.Precision == 0 && t.Scale == 0
@@ -62,24 +70,30 @@ func (d Default) Valid() bool {
 	switch d.Kind {
 	case "none", "null":
 		return d.Value == nil
-	case "text", "numeric", "boolean":
+	case "text", "numeric", "boolean", "expression":
 		return d.Value != nil && len(*d.Value) <= 4096 && utf8.ValidString(*d.Value) && !strings.ContainsRune(*d.Value, 0)
 	}
 	return false
 }
 
 type Column struct {
-	Name     string   `json:"name"`
-	Type     DataType `json:"type"`
-	Nullable bool     `json:"nullable"`
-	Default  Default  `json:"default"`
+	PrimaryKeyName string      `json:"-"`
+	Resolved       *TypeGuard  `json:"-"`
+	Name           string      `json:"name"`
+	Type           DataType    `json:"type"`
+	Nullable       bool        `json:"nullable"`
+	Default        Default     `json:"default"`
+	Generated      *Generation `json:"generated,omitempty"`
+	Identity       *Identity   `json:"identity,omitempty"`
 }
 
 func (c Column) Valid() bool {
-	return Identifier(c.Name) && c.Type.Valid() && c.Default.Valid() && !(c.Default.Kind == "null" && !c.Nullable)
+	return Identifier(c.Name) && c.Type.Valid() && c.Default.Valid() && !(c.Default.Kind == "null" && !c.Nullable) && columnAuthoredValid(c)
 }
 
 type Draft struct {
+	AuthoringVersion int            `json:"authoringVersion,omitempty"`
+	RenameTable      *string        `json:"renameTable,omitempty"`
 	Columns          []Column       `json:"columns"`
 	Changes          []ColumnChange `json:"changes,omitempty"`
 	Indexes          []IndexEdit    `json:"indexes,omitempty"`
@@ -114,16 +128,19 @@ type Baseline struct {
 	Limitations     []string                  `json:"limitations"`
 }
 type Plan struct {
-	Conditions  []Condition `json:"-"`
-	References  []Baseline  `json:"-"`
-	Destructive bool        `json:"destructive"`
-	ID          string      `json:"id"`
-	BaselineID  string      `json:"baselineId"`
-	Digest      string      `json:"digest"`
-	Target      Target      `json:"target"`
-	SQL         []string    `json:"sql"`
-	Risks       []string    `json:"risks"`
-	Created     time.Time   `json:"-"`
+	ResultTarget   *Target           `json:"resultTarget,omitempty"`
+	Types          []TypeGuard       `json:"-"`
+	RenamedColumns map[string]string `json:"-"`
+	Conditions     []Condition       `json:"-"`
+	References     []Baseline        `json:"-"`
+	Destructive    bool              `json:"destructive"`
+	ID             string            `json:"id"`
+	BaselineID     string            `json:"baselineId"`
+	Digest         string            `json:"digest"`
+	Target         Target            `json:"target"`
+	SQL            []string          `json:"sql"`
+	Risks          []string          `json:"risks"`
+	Created        time.Time         `json:"-"`
 }
 type Apply struct {
 	PlanID      string `json:"planId"`
@@ -254,19 +271,25 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	var sql, risks []string
 	var references []Baseline
 	var conditions []Condition
+	var types []TypeGuard
+	var resultTarget *Target
 	var err error
 	if advanced, ok := a.(AdvancedAdapter); ok {
 		var prepared Prepared
 		prepared, err = advanced.StructurePrepare(ctx, *s.baseline, d)
 		sql, risks, references, conditions = prepared.SQL, prepared.Risks, prepared.References, prepared.Conditions
+		types, resultTarget = prepared.Types, prepared.ResultTarget
 	} else {
-		if len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
+		if d.NeedsAuthoringV2() || len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
 			return Reply{}, ErrUnsupported
 		}
 		sql, risks, err = a.StructureRender(*s.baseline, d)
 	}
 	if err != nil {
 		return Reply{}, err
+	}
+	if d.RenameTable != nil && resultTarget == nil {
+		return Reply{}, ErrUnsupported
 	}
 	if len(sql) == 0 || len(sql) > 64 || (conditions != nil && len(conditions) != len(sql)) {
 		return Reply{}, ErrInvalid
@@ -292,12 +315,18 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	if referenceBytes > 8<<20 {
 		return Reply{}, ErrUnsupported
 	}
-	p := &Plan{ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive(), Conditions: conditions, Created: time.Now()}
+	p := &Plan{ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, Conditions: conditions, Created: time.Now()}
 	identities := []string{}
 	for _, b := range references {
 		identities = append(identities, b.Fingerprint)
 	}
-	p.Digest = Fingerprint([]any{p, identities, conditions})
+	p.RenamedColumns = map[string]string{}
+	for _, c := range d.Changes {
+		if c.RenameTo != nil {
+			p.RenamedColumns[c.Name] = *c.RenameTo
+		}
+	}
+	p.Digest = Fingerprint([]any{p, identities, conditions, types, p.RenamedColumns})
 	s.plan = p
 	return Reply{Plan: p}, nil
 }
@@ -363,6 +392,9 @@ func (s *Store) Apply(ctx context.Context, a Adapter, r Apply) (Reply, error) {
 	s.plan = nil
 	s.baseline = nil
 	observe := b.Target
+	if p.ResultTarget != nil && s.outcome.State == "applied" {
+		observe = *p.ResultTarget
+	}
 	observe.Create = false
 	if ctx.Err() == nil {
 		fresh, err := a.StructureLoad(ctx, observe)

@@ -18,7 +18,7 @@ enum StructureDraftFileError: LocalizedError {
 /// Portable intent deliberately excludes server baselines, execution plans and grants.
 struct StructureDraftDocument: Codable, Equatable, Sendable {
     static let maximumBytes = 1_048_576
-    static let currentFormatVersion = 1
+    static let currentFormatVersion = 2
     let formatVersion: Int
     let engine: DatabaseEngine
     let target: StructureTarget
@@ -30,6 +30,7 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
         self.target = .init(schema: target.schema, table: target.table, create: target.create)
         var retained = draft
         retained.allowDestructive = nil
+        if retained.requiresAuthoringV2 { retained.authoringVersion = 2 }
         self.draft = retained
     }
 
@@ -42,13 +43,13 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard version == Self.currentFormatVersion else {
+        guard [1, Self.currentFormatVersion].contains(version) else {
             throw StructureDraftFileError.invalidDocument
         }
         let target = try values.decode(StructureTarget.self, forKey: .target)
         guard target.reconcile == nil else { throw StructureDraftFileError.invalidDocument }
         let draft = try values.decode(StructureDraft.self, forKey: .draft)
-        guard !draft.requiresAuthoringV2 && draft.authoringVersion == nil else { throw StructureDraftFileError.invalidDocument }
+        guard version != 1 || !draft.requiresAuthoringV2 && draft.authoringVersion == nil else { throw StructureDraftFileError.invalidDocument }
         self.init(engine: try values.decode(DatabaseEngine.self, forKey: .engine), target: target, draft: draft)
         guard valid else { throw StructureDraftFileError.invalidDocument }
     }
@@ -58,9 +59,8 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
               StructureTarget.identifier(target.schema),
               StructureTarget.identifier(target.table) || target.create && target.table.isEmpty,
               draft.columns.count <= 128,
-              draft.authoringVersion == nil,
-              !draft.requiresAuthoringV2,
-              draft.renameTable == nil,
+              draft.authoringVersion == nil || draft.authoringVersion == 2,
+              draft.renameTable.map(Self.name) ?? true,
               (draft.changes?.count ?? 0) + (draft.indexes?.count ?? 0) + (draft.keys?.count ?? 0) <= 64 else { return false }
         // Incomplete editor fields remain saveable, while imported collections and text stay bounded.
         return draft.columns.allSatisfy { column in
@@ -84,12 +84,12 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
     private static func name(_ value: String) -> Bool { value.utf8.count <= 63 && !value.contains("\0") }
     private static func names(_ values: [String]) -> Bool { values.count <= 32 && values.allSatisfy(name) }
     private static func type(_ value: StructureDataType) -> Bool {
-        ["integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric", "varchar", "numeric"].contains(value.kind) &&
+        ["integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric", "varchar", "numeric", "reference"].contains(value.kind) &&
             (value.reference.map { name($0.schema) && name($0.name) } ?? true) &&
             [value.length, value.precision, value.scale].allSatisfy { $0.map { (-1_000_000...1_000_000).contains($0) } ?? true }
     }
     private static func defaultValue(_ value: StructureDefault) -> Bool {
-        ["none", "null", "text", "numeric", "boolean"].contains(value.kind) &&
+        ["none", "null", "text", "numeric", "boolean", "expression"].contains(value.kind) &&
             (value.value.map { $0.utf8.count <= 4096 && !$0.contains("\0") } ?? true)
     }
 

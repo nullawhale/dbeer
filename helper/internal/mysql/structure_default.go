@@ -7,6 +7,9 @@ import (
 )
 
 func structureDefaultMatches(c sc.Column, want tableedit.Default) bool {
+	return structureDefaultMatchesFacts(c, want, nil)
+}
+func structureDefaultMatchesFacts(c sc.Column, want tableedit.Default, facts *tableedit.Facts) bool {
 	if c.Default.Value == nil {
 		return false
 	}
@@ -14,6 +17,8 @@ func structureDefaultMatches(c sc.Column, want tableedit.Default) bool {
 	switch want.Kind {
 	case "none":
 		return d.Kind == "none" || c.Nullable.Value != nil && *c.Nullable.Value && d.Kind == "sqlNull"
+	case "expression":
+		return d.Kind == "expression" && d.Expression != nil && want.Value != nil && tableedit.SameCatalogExpression("mysql", d.Expression.Text, *want.Value, facts)
 	case "null":
 		return d.Kind == "sqlNull"
 	case "text":

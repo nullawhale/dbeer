@@ -475,7 +475,7 @@ extension StructureDataType {
 extension StructureDefault {
     var valid: Bool {
         if ["none", "null"].contains(kind) { return value == nil }
-        return ["text", "numeric", "boolean"].contains(kind) && value.map { $0.utf8.count <= 4096 && !$0.contains("\0") } == true
+        return ["text", "numeric", "boolean", "expression"].contains(kind) && value.map { $0.utf8.count <= 4096 && !$0.contains("\0") } == true
     }
 }
 extension StructureColumnChange {
@@ -497,7 +497,6 @@ extension StructureKeyEdit {
 extension StructureDraft {
     var destructive: Bool { (indexes ?? []).contains { $0.action != "add" } || (keys ?? []).contains { $0.action != "add" } }
     var valid: Bool {
-        if requiresAuthoringV2 || authoringVersion != nil { return false }
         let changes = changes ?? []; let indexes = indexes ?? []; let keys = keys ?? []
         guard (authoringVersion == nil || authoringVersion == 2), !requiresAuthoringV2 || authoringVersion == 2, columns.count <= 128, changes.count + indexes.count + keys.count <= 64,
               columns.count + changes.count + indexes.count + keys.count > 0 || renameTable != nil,

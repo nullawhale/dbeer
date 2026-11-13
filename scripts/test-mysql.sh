@@ -88,7 +88,7 @@ NATIVE_FILTER_SQL
 fi
 if [[ "${DBEER_TEST_MYSQL_STRUCTURE_PRIVILEGES:-0}" == 1 ]]; then
     docker exec "$container_id" sh -ec '
-        MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --execute="GRANT SELECT ON *.* TO '\''dbeer'\''@'\''%'\'';"
+        MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --execute="GRANT SELECT, TRIGGER ON *.* TO '\''dbeer'\''@'\''%'\'';"
     '
 fi
 if [[ "${DBEER_TEST_MYSQL_MONITOR_PRIVILEGES:-0}" == 1 ]]; then

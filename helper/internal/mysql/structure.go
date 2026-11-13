@@ -4,6 +4,7 @@ import (
 	"context"
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
+	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 
 	"fmt"
@@ -34,13 +35,14 @@ func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tablee
 func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) {
 	observe := t.Reconcile
 	t.Reconcile = false
-	b := tableedit.Baseline{Target: t, Engine: "mysql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary nonpartitioned InnoDB tables and one create/add-column statement are supported.", "MySQL DDL implicitly commits. Metadata rechecks are best effort and cannot close a concurrent DDL race or prove drop/recreate identity. Stop and Discard do not undo applied DDL.", "Text defaults containing backslashes/control characters and TEXT defaults are not supported."}}
+	b := tableedit.Baseline{Target: t, Engine: "mysql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary nonpartitioned InnoDB tables are supported. Appended columns are nullable; required-column backfills and physical reconstruction require a separate reviewed plan.", "MySQL DDL implicitly commits. Metadata rechecks are best effort and cannot close a concurrent DDL race or prove drop/recreate identity. Stop and Discard do not undo applied DDL.", "Text literal defaults containing backslashes/control characters and literal TEXT defaults are unsupported; expression defaults use an explicit bounded SQL expression."}}
 	if !t.Valid() || s.TransactionStatus() != "idle" {
 		return b, tableedit.ErrUnsupported
 	}
 	if err := s.requireNativeMetadataEncoding(); err != nil {
 		return b, err
 	}
+
 	meta, e := s.work.client.Execute(`SELECT VERSION(), @@version_comment, @@sql_mode, @@lower_case_table_names, @@character_set_connection, @@collation_connection, DATABASE(), CURRENT_USER(), @@server_uuid`)
 	if e != nil {
 		return b, e
@@ -125,6 +127,8 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 		charset, _ := ownedStructureString(schema, 0, 1)
 		collation, _ := ownedStructureString(schema, 0, 2)
 		b.Facts = newStructureFacts(charset, collation)
+		b.Facts.ServerVersion = major*10000 + minor*100 + patch
+		b.Facts.EngineContext = []sc.Option{{Name: "sqlMode", Value: context[2]}}
 		tableedit.Summarize(&b)
 		b.Fingerprint = tableedit.Fingerprint([]any{context, t})
 		return b, nil
@@ -181,6 +185,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	if e != nil {
 		return b, e
 	}
+	b.Facts.ServerVersion = major*10000 + minor*100 + patch
 	tableedit.Summarize(&b)
 	b.Fingerprint = tableedit.Fingerprint([]any{context, kind, engine, options, collation, definition, b.Columns, b.Facts})
 	return b, nil
@@ -189,6 +194,9 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 var structureNumeric = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
 
 func structureColumn(c tableedit.Column) (string, error) {
+	if c.Type.Reference != nil {
+		return "", tableedit.ErrUnsupported
+	}
 	if !c.Valid() {
 		return "", tableedit.ErrInvalid
 	}
@@ -208,6 +216,13 @@ func structureColumn(c tableedit.Column) (string, error) {
 		return "", tableedit.ErrUnsupported
 	}
 	out := QuoteIdentifier(c.Name) + " " + typ
+	if c.Generated != nil && c.Generated.Storage != "none" {
+		expr, err := tableedit.ExpressionSlot("mysql", c.Generated.Expression)
+		if err != nil {
+			return "", err
+		}
+		out += " GENERATED ALWAYS AS " + expr + " " + strings.ToUpper(c.Generated.Storage)
+	}
 	if !c.Nullable {
 		out += " NOT NULL"
 	}
@@ -233,8 +248,20 @@ func structureColumn(c tableedit.Column) (string, error) {
 			return "", tableedit.ErrInvalid
 		}
 		out += " DEFAULT " + *c.Default.Value
+	case "expression":
+		expr, err := tableedit.ExpressionSlot("mysql", *c.Default.Value)
+		if err != nil {
+			return "", err
+		}
+		out += " DEFAULT " + expr
 	default:
 		return "", tableedit.ErrInvalid
+	}
+	if c.Identity != nil && c.Identity.Kind != "none" {
+		if c.Identity.Kind != "autoIncrement" {
+			return "", tableedit.ErrUnsupported
+		}
+		out += " AUTO_INCREMENT"
 	}
 	return out, nil
 }

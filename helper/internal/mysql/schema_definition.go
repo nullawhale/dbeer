@@ -44,6 +44,7 @@ func RenderSchemaDefinition(ctx context.Context, capture sc.Capture, ref sc.Ref)
 }
 
 type myDefinition struct {
+	authored                            map[*sc.Expression]bool
 	w                                   *sc.DefinitionWriter
 	engine                              sc.Fact[[]sc.Option]
 	modeChecked, modeKnown, noBackslash bool
@@ -129,7 +130,9 @@ func (r *myDefinition) expression(label string, expression *sc.Expression) {
 		r.w.Write("/* expression unavailable */")
 		return
 	}
-	sc.DefinitionItems(r.w, label+" dependencies", expression.Dependencies)
+	if !r.authored[expression] {
+		sc.DefinitionItems(r.w, label+" dependencies", expression.Dependencies)
+	}
 	r.w.Write(expression.Text)
 }
 func (r *myDefinition) typ(u sc.TypeUse) {

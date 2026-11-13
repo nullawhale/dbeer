@@ -114,6 +114,15 @@
   storage values without converting them to display text. Retain source row
   mapping while loaded-result search is active.
 
+- Expand reviewed structure authoring with multiple appended columns, explicit
+  table/column renames, qualified PostgreSQL custom types, expression defaults,
+  generated columns and version-aware identity/sequence/AUTO_INCREMENT settings.
+  Keep Preview non-executing, preserve untouched catalog evidence and require
+  explicit supporting keys and confirmation of value-changing identity effects.
+  Retain original/result targets, atomic SQLite rollback evidence and unknown
+  execution status through reconciliation; save unfinished authoring in version 2
+  portable drafts while continuing to read version 1.
+
 - Save and reopen typed table-structure drafts as versioned `.dbeerstructure`
   files, with guarded Save/Save As, exact target checks and fresh structure
   loading and SQL preview before Apply. Export reviewed SQL steps with warnings

@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 	"errors"
 	"github.com/jackc/pgx/v5"
@@ -9,11 +10,25 @@ import (
 )
 
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	var guards []tableedit.TypeGuard
+	var e error
+	d, guards, e = s.resolveAuthoredTypes(ctx, b, d)
+	if e != nil {
+		return tableedit.Prepared{}, e
+	}
+	for _, c := range d.Columns {
+		if e = validatePGAuthoredColumn(b, c); e != nil {
+			return tableedit.Prepared{}, e
+		}
+	}
 	ops, refs, e := tableedit.PlanOperations(b, d, "postgresql", func(t tableedit.Target) (tableedit.Baseline, error) { return s.StructureLoad(ctx, t) })
 	if e != nil {
 		return tableedit.Prepared{}, e
 	}
-	out := tableedit.Prepared{References: refs, Risks: []string{"Every displayed statement is an independent execution unit using a dedicated session: BEGIN, SET LOCAL lock_timeout='5s', ordered ACCESS EXCLUSIVE locks, metadata rechecks, the reviewed DDL and COMMIT. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, scan or rewrite tables. No backfill, CASCADE or automatic replay is generated. Catalogs cannot prove the absence of dynamic SQL dependencies."}}
+	out := tableedit.Prepared{Types: guards, ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"Every displayed statement is an independent execution unit using a dedicated session: BEGIN, SET LOCAL lock_timeout='5s', ordered ACCESS EXCLUSIVE locks, metadata rechecks, the reviewed DDL and COMMIT. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, scan or rewrite tables. No backfill, CASCADE or automatic replay is generated. Catalogs cannot prove the absence of dynamic SQL dependencies."}}
+	if d.HasAuthoredExpressions() || len(guards) > 0 {
+		out.Risks = append(out.Risks, pgExpressionRisk())
+	}
 	target := pgx.Identifier{b.Target.Schema, b.Target.Table}.Sanitize()
 	quote := func(x string) string { return pgx.Identifier{x}.Sanitize() }
 	columns := func(names []string) string {
@@ -27,7 +42,7 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		stepStart := len(out.SQL)
 		switch op.Kind {
 		case "create":
-			sql, _, e := s.StructureRender(b, tableedit.Draft{Columns: d.Columns})
+			sql, _, e := s.StructureRender(b, tableedit.Draft{AuthoringVersion: d.AuthoringVersion, Columns: d.Columns})
 			if e != nil {
 				return out, e
 			}
@@ -40,6 +55,22 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			out.SQL = append(out.SQL, "ALTER TABLE "+target+" ADD COLUMN "+definition+";")
 		case "changeColumn":
 			c := op.Change
+			if c.Generated != nil {
+				steps, err := pgGeneratedChange(b, *c, target)
+				if err != nil {
+					return out, err
+				}
+				out.SQL = append(out.SQL, steps...)
+				break
+			}
+			if c.Identity != nil {
+				steps, err := pgIdentityChange(b, *c, target)
+				if err != nil {
+					return out, err
+				}
+				out.SQL = append(out.SQL, steps...)
+				break
+			}
 			old, ok := tableedit.FindColumn(b, c.Name)
 			if !ok {
 				return out, tableedit.ErrUnsupported
@@ -83,6 +114,10 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 					out.SQL = append(out.SQL, prefix+" SET DEFAULT "+definition[i+9:]+";")
 				}
 			}
+		case "renameColumn":
+			out.SQL = append(out.SQL, "ALTER TABLE "+target+" RENAME COLUMN "+quote(op.Change.Name)+" TO "+quote(*op.Change.RenameTo)+";")
+		case "renameTable":
+			out.SQL = append(out.SQL, "ALTER TABLE "+target+" RENAME TO "+quote(*op.Name)+";")
 		case "dropIndex":
 			out.SQL = append(out.SQL, "DROP INDEX "+pgx.Identifier{b.Target.Schema, op.Index.Name}.Sanitize()+";")
 		case "addIndex":
@@ -116,7 +151,7 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			if op.Kind == "create" {
 				condition.Columns = d.Columns
 			}
-			if op.Kind == "changeColumn" {
+			if op.Kind == "changeColumn" && op.Change.Generated == nil && op.Change.Identity == nil {
 				changes := []tableedit.ColumnChange{}
 				c := op.Change
 				if c.Type != nil {
@@ -147,15 +182,14 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		if ctx.Err() != nil {
 			return append(out, tableedit.Execution{State: "notStarted", Message: "Cancelled before the next DDL step."})
 		}
-		x := s.applyStructureStep(ctx, current, []string{step}, refs)
+		x := s.applyStructureStep(ctx, current, []string{step}, refs, plan.Types)
 		out = append(out, x)
 		if x.State != "applied" {
 			break
 		}
-		target := current.Target
-		target.Create = false
+		target := tableedit.StepTarget(current.Target, plan.Conditions[i])
 		fresh, e := s.StructureLoad(ctx, target)
-		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], structureDefaultMatches)
+		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) })
 		if !verified {
 			out[len(out)-1].Message = "The DDL step was acknowledged, but observed structure did not match the expected change and preservation conditions. Reconcile before continuing."
 			break

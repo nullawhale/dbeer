@@ -34,6 +34,11 @@ struct TableStructureEditorView: View {
                 }.controlHover().disabled(!canLoad)
                     .help("Read the current structure. Discard unapplied edits before reloading; reconciliation never retries DDL.")
             }
+            if model.canReconcileRenamedTarget {
+                Button("Reconcile Resulting Table") { Task { await model.load(useResultTarget: true) } }
+                    .controlHover().disabled(!canLoad)
+                    .help("Read the intended resulting table without retrying SQL or changing the historical unknown outcome.")
+            }
             HStack {
                 Menu("Draft") {
                     Button("Open Draft…") {
@@ -152,9 +157,16 @@ struct TableStructureEditorView: View {
 
     private var draftEditors: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !model.create && model.authoringAvailable {
+                Toggle("Rename table", isOn: Binding(get: { model.draft.renameTable != nil }, set: { model.draft.renameTable = $0 ? "" : nil })).controlHover()
+                if model.draft.renameTable != nil {
+                    TextField("Exact resulting table name", text: Binding(get: { model.draft.renameTable ?? "" }, set: { model.draft.renameTable = $0 })).textFieldStyle(.roundedBorder)
+                    Text("The reviewed target and execution history keep the original table name. Reconciliation can read the resulting table explicitly.").font(.caption).appSecondaryText()
+                }
+            }
             ForEach(model.draft.columns.indices, id: \.self) { i in
                 TableStructureNewColumnEditor(column: columnBinding(i), number: i + 1, engine: model.profile.engine,
-                    create: model.create, canRemove: !model.create || model.draft.columns.count > 1) {
+                    create: model.create, authoringAvailable: model.authoringAvailable, canRemove: !model.create || model.draft.columns.count > 1) {
                     guard canEdit, model.draft.columns.indices.contains(i) else { return }
                     model.draft.columns.remove(at: i)
                     if model.draft.destructive { model.draft.allowDestructive = nil }

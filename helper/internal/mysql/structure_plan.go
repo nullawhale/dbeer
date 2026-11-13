@@ -11,11 +11,28 @@ import (
 )
 
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	var enable []tableedit.Operation
+	var e error
+	d, enable, e = mysqlAuthoredDraft(b, d)
+	if e != nil {
+		return tableedit.Prepared{}, e
+	}
 	ops, refs, e := tableedit.PlanOperations(b, d, "mysql", func(t tableedit.Target) (tableedit.Baseline, error) { return s.StructureLoad(ctx, t) })
 	if e != nil {
 		return tableedit.Prepared{}, e
 	}
-	out := tableedit.Prepared{References: refs, Risks: []string{"MySQL DDL implicitly commits. Each displayed statement is an independent step on a dedicated session with lock_wait_timeout=5. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, rebuild or scan tables. Metadata rechecks are best effort and cannot close concurrent DDL races or prove drop/recreate identity. Catalogs cannot prove absence of dynamic SQL dependencies. No backfill, disabled checks, CASCADE removal or automatic replay is generated.", "Foreign keys are generated only against a supported primary/unique key; any required supporting index is an explicit reviewed step. MySQL may normalize nullable defaults and key-owned backing structures."}}
+	ops = insertMySQLIdentityOperations(ops, enable)
+	out := tableedit.Prepared{ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"MySQL DDL implicitly commits. Each displayed statement is an independent step on a dedicated session with lock_wait_timeout=5. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, rebuild or scan tables. Metadata rechecks are best effort and cannot close concurrent DDL races or prove drop/recreate identity. Catalogs cannot prove absence of dynamic SQL dependencies. No backfill, disabled checks, CASCADE removal or automatic replay is generated.", "Foreign keys are generated only against a supported primary/unique key; any required supporting index is an explicit reviewed step. MySQL may normalize nullable defaults and key-owned backing structures."}}
+	if d.HasAuthoredExpressions() || len(enable) > 0 {
+		out.Risks = append(out.Risks, "Expressions and value generation run only during Apply or later writes. Preview reads metadata and validates boundaries; it does not evaluate expressions. AUTO_INCREMENT uses only an explicitly selected leading key and does not guarantee gap-free values.")
+	}
+	existingIdentityEnable := !b.Target.Create && len(enable) > 0
+	for _, change := range d.Changes {
+		existingIdentityEnable = existingIdentityEnable || change.Identity != nil && change.Identity.Kind == "autoIncrement"
+	}
+	if existingIdentityEnable {
+		out.Risks = append(out.Risks, "Enabling AUTO_INCREMENT may replace stored zero values with generated IDs unless the captured session SQL mode includes NO_AUTO_VALUE_ON_ZERO. This value-changing effect requires confirmation of this exact plan; Preview does not scan values or change SQL mode.")
+	}
 	target := QuoteIdentifier(b.Target.Schema) + "." + QuoteIdentifier(b.Target.Table)
 	columns := func(names []string) string {
 		v := []string{}
@@ -28,7 +45,7 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		stepStart := len(out.SQL)
 		switch op.Kind {
 		case "create":
-			sql, _, e := s.StructureRender(b, tableedit.Draft{Columns: d.Columns})
+			sql, _, e := s.StructureRender(b, tableedit.Draft{AuthoringVersion: d.AuthoringVersion, Columns: d.Columns})
 			if e != nil {
 				return out, e
 			}
@@ -40,11 +57,15 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			}
 			out.SQL = append(out.SQL, "ALTER TABLE "+target+" ADD COLUMN "+definition+";")
 		case "changeColumn":
-			sql, e := mysqlStructureChange(ctx, b, *op.Change, target)
+			sql, e := mysqlPlannedChange(ctx, b, d, *op.Change, target)
 			if e != nil {
 				return out, e
 			}
 			out.SQL = append(out.SQL, sql...)
+		case "renameColumn":
+			out.SQL = append(out.SQL, "ALTER TABLE "+target+" RENAME COLUMN "+QuoteIdentifier(op.Change.Name)+" TO "+QuoteIdentifier(*op.Change.RenameTo)+";")
+		case "renameTable":
+			out.SQL = append(out.SQL, "RENAME TABLE "+target+" TO "+QuoteIdentifier(b.Target.Schema)+"."+QuoteIdentifier(*op.Name)+";")
 		case "dropIndex":
 			out.SQL = append(out.SQL, "ALTER TABLE "+target+" DROP INDEX "+QuoteIdentifier(op.Index.Name)+";")
 		case "addIndex":
@@ -91,6 +112,22 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	}
 	return out, nil
 }
+func mysqlPlannedChange(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, change tableedit.ColumnChange, target string) ([]string, error) {
+	if change.Identity != nil {
+		for _, c := range d.Columns {
+			if c.Name == change.Name {
+				c.Identity = change.Identity
+				definition, err := structureColumn(c)
+				if err != nil {
+					return nil, err
+				}
+				return []string{"ALTER TABLE " + target + " MODIFY COLUMN " + definition + ";"}, nil
+			}
+		}
+	}
+	return mysqlStructureChange(ctx, b, change, target)
+}
+
 func mysqlStructureChange(ctx context.Context, b tableedit.Baseline, change tableedit.ColumnChange, target string) ([]string, error) {
 	captured, ok := tableedit.FindColumn(b, change.Name)
 	if !ok {
@@ -102,6 +139,9 @@ func mysqlStructureChange(ctx context.Context, b tableedit.Baseline, change tabl
 	typ, ok := tableedit.ColumnType(c)
 	if !ok {
 		return nil, tableedit.ErrUnsupported
+	}
+	if change.Generated != nil || change.Identity != nil {
+		return mysqlAuthoredChange(ctx, b, c, change, target)
 	}
 	if change.Type == nil && change.Nullable == nil {
 		if change.Default.Kind == "none" {
@@ -144,6 +184,9 @@ func mysqlStructureChange(ctx context.Context, b tableedit.Baseline, change tabl
 		case "none":
 		case "null":
 			value.Kind = "sqlNull"
+		case "expression":
+			value.Kind = "expression"
+			value.Expression = &sc.Expression{Text: *change.Default.Value}
 		default:
 			value.Kind = "literal"
 			value.Value = change.Default.Value
@@ -152,10 +195,16 @@ func mysqlStructureChange(ctx context.Context, b tableedit.Baseline, change tabl
 		}
 		c.Default = sc.Known(value)
 	}
-	if reason := syncplan.SchemaFactsReason(c); reason != "" {
+	proof := c
+	authored := map[*sc.Expression]bool{}
+	if change.Default != nil && change.Default.Kind == "expression" {
+		proof.Default = sc.Known(sc.Default{Kind: "none"})
+		authored[c.Default.Value.Expression] = true
+	}
+	if reason := syncplan.SchemaFactsReason(proof); reason != "" {
 		return nil, errors.New("MySQL MODIFY cannot preserve all unchanged column attributes: " + reason)
 	}
-	renderer := myDefinition{w: &sc.DefinitionWriter{Context: ctx}, engine: sc.Known(b.Facts.EngineContext)}
+	renderer := myDefinition{w: &sc.DefinitionWriter{Context: ctx}, engine: sc.Known(b.Facts.EngineContext), authored: authored}
 	renderer.column(c)
 	definition, e := renderer.w.Finish()
 	if e != nil || definition.Limited {
@@ -179,10 +228,9 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		if x.State != "applied" {
 			break
 		}
-		target := current.Target
-		target.Create = false
+		target := tableedit.StepTarget(current.Target, plan.Conditions[i])
 		fresh, e := s.StructureLoad(ctx, target)
-		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], structureDefaultMatches)
+		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) })
 		if !verified {
 			out[len(out)-1].Message = "The DDL step was acknowledged, but observed structure did not match the expected change and preservation conditions. Reconcile before continuing."
 			break

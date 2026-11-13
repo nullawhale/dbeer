@@ -117,7 +117,11 @@ func (r *schemaCapture) typeFunction(oid, role string) (*sc.TypeFunction, error)
 	if oid == "0" {
 		return nil, nil
 	}
-	rows, e := r.rows("SELECT n.nspname,p.proname,rn.nspname,rt.typname,l.lanname,p.prosrc,COALESCE(p.probin,''),p.provolatile::pg_catalog.text,p.proisstrict::pg_catalog.text,p.prosecdef::pg_catalog.text,p.proleakproof::pg_catalog.text,p.proparallel::pg_catalog.text,COALESCE(pg_catalog.array_to_json(p.proconfig)::pg_catalog.text,'[]'),p.procost::pg_catalog.text,p.prorows::pg_catalog.text,CASE WHEN p.prosqlbody IS NULL THEN '' ELSE pg_catalog.pg_get_functiondef(p.oid) END FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace JOIN pg_catalog.pg_type rt ON rt.oid=p.prorettype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace JOIN pg_catalog.pg_language l ON l.oid=p.prolang WHERE p.oid=$1::pg_catalog.oid", oid)
+	body := "CASE WHEN p.prosqlbody IS NULL THEN '' ELSE pg_catalog.pg_get_functiondef(p.oid) END"
+	if r.skipCustomTypeFormatting {
+		body = "COALESCE(p.prosqlbody::text,'')"
+	}
+	rows, e := r.rows("SELECT n.nspname,p.proname,rn.nspname,rt.typname,l.lanname,p.prosrc,COALESCE(p.probin,''),p.provolatile::pg_catalog.text,p.proisstrict::pg_catalog.text,p.prosecdef::pg_catalog.text,p.proleakproof::pg_catalog.text,p.proparallel::pg_catalog.text,COALESCE(pg_catalog.array_to_json(p.proconfig)::pg_catalog.text,'[]'),p.procost::pg_catalog.text,p.prorows::pg_catalog.text,"+body+",COALESCE(p.proargdefaults::text,'') FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace JOIN pg_catalog.pg_type rt ON rt.oid=p.prorettype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace JOIN pg_catalog.pg_language l ON l.oid=p.prolang WHERE p.oid=$1::pg_catalog.oid", oid)
 	if e != nil || len(rows) != 1 {
 		return nil, sc.ErrInvalid
 	}
@@ -125,6 +129,9 @@ func (r *schemaCapture) typeFunction(oid, role string) (*sc.TypeFunction, error)
 	out := &sc.TypeFunction{Role: role, Ref: sc.Ref{Kind: "routine", Schema: v[0], Name: v[1]}, Result: sc.Ref{Kind: "type", Schema: v[2], Name: v[3]}, Arguments: []sc.Ref{}, Properties: sc.Complete[sc.Option](nil)}
 	for i, name := range []string{"language", "source", "binary", "volatility", "strict", "securityDefiner", "leakproof", "parallel", "configuration", "cost", "rows", "sqlBody"} {
 		out.Properties.Items = append(out.Properties.Items, sc.Option{Name: name, Value: v[4+i]})
+	}
+	if r.skipCustomTypeFormatting {
+		out.Properties.Items = append(out.Properties.Items, sc.Option{Name: "sqlBodyEncoding", Value: "catalogNodeTree"}, sc.Option{Name: "argumentDefaults", Value: v[16]})
 	}
 	args, e := r.rows("SELECT n.nspname,t.typname FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.unnest(p.proargtypes) WITH ORDINALITY a(oid,ord) JOIN pg_catalog.pg_type t ON t.oid=a.oid JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE p.oid=$1::pg_catalog.oid ORDER BY a.ord", oid)
 	if e != nil {

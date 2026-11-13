@@ -57,6 +57,9 @@ struct TableStructureExecutionReportView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Execution: " + StructureReviewPresentation.state(review.outcome.state)).font(.headline).textSelection(.enabled)
             Text("Reviewed target: " + review.plan.target.schema + " · " + review.plan.target.table).font(.caption).textSelection(.enabled)
+            if let result = review.plan.resultTarget {
+                Text("Intended resulting target: " + result.schema + " · " + result.table).font(.caption).textSelection(.enabled)
+            }
             DisclosureGroup("Intended changes retained from this review") { TableStructureDraftSummary(draft: review.draft) }
             ForEach(review.plan.sql.indices, id: \.self) { i in
                 step(i)
@@ -94,16 +97,22 @@ struct TableStructureDraftSummary: View {
     let draft: StructureDraft
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let name = draft.renameTable { Text("Rename table to: " + name).textSelection(.enabled) }
             ForEach(Array(draft.columns.enumerated()), id: \.offset) { _, column in
                 VStack(alignment: .leading, spacing: 2) {
                     Text("New column: " + column.name).font(.subheadline)
                     Text(StructureReviewPresentation.type(column.type) + (column.nullable ? " · NULL" : " · NOT NULL"))
                     Text(StructureReviewPresentation.defaultValue(column.default))
+                    if let generated = column.generated { Text(StructureReviewPresentation.generation(generated)) }
+                    if let identity = column.identity { Text(StructureReviewPresentation.identity(identity)) }
                 }.textSelection(.enabled)
             }
             ForEach(Array((draft.changes ?? []).enumerated()), id: \.offset) { _, change in
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Change column: " + change.name).font(.subheadline)
+                    if let name = change.renameTo { Text("Rename to: " + name) }
+                    if let generated = change.generated { Text(StructureReviewPresentation.generation(generated)) }
+                    if let identity = change.identity { Text(StructureReviewPresentation.identity(identity)) }
                     Text(change.type.map(StructureReviewPresentation.type) ?? "Keep existing type")
                     Text(change.nullable.map { $0 ? "Allow NULL" : "Require NOT NULL" } ?? "Keep existing nullability")
                     Text(StructureReviewPresentation.defaultValue(change.default))
@@ -156,10 +165,19 @@ private enum StructureReviewPresentation {
     }
     static func type(_ type: StructureDataType) -> String {
         switch type.kind {
+        case "reference": (type.reference?.schema ?? "") + "." + (type.reference?.name ?? "")
         case "varchar": "varchar · length \(type.length ?? 0)"
         case "numeric": "numeric · precision \(type.precision ?? 0) · scale \(type.scale ?? 0)"
         default: type.kind
         }
+    }
+    static func generation(_ value: StructureGeneration) -> String {
+        value.storage == "none" ? "Remove generation" : value.storage.capitalized + " generation: " + (value.expression ?? "")
+    }
+    static func identity(_ value: StructureIdentity) -> String {
+        let settings = [("start", value.start), ("increment", value.increment), ("minimum", value.minimum), ("maximum", value.maximum), ("cache", value.cache)]
+            .compactMap { name, number in number.map { name + "=" + $0 } }
+        return "Identity: " + value.kind + (settings.isEmpty ? "" : " · " + settings.joined(separator: ", ")) + (value.cycle.map { $0 ? " · CYCLE" : " · NO CYCLE" } ?? "")
     }
     static func defaultValue(_ value: StructureDefault?) -> String {
         guard let value else { return "Keep existing default" }
@@ -169,6 +187,7 @@ private enum StructureReviewPresentation {
         case "text": return value.value == "" ? "Empty text literal default" : "Text literal default: «" + (value.value ?? "") + "»"
         case "numeric": return "Exact numeric default: " + (value.value ?? "")
         case "boolean": return "Boolean default: " + (value.value ?? "")
+        case "expression": return "Expression default: " + (value.value ?? "")
         default: return "Default kind: " + value.kind
         }
     }

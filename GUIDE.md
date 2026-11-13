@@ -592,15 +592,19 @@ the affected investigation before deleting its evidence.
 
 ## Table structure drafts
 
-In a connected PostgreSQL/MySQL catalog, use **Create Table…** on a schema or
-**Edit Structure…** on a table. Prepare a local draft, choose **Preview SQL**, then
-explicitly **Apply** the reviewed plan. Preview reads metadata and never runs DDL.
-Readonly profiles can inspect and preview; the helper rejects Apply. Production
-writes and explicit key/index removals or replacements require confirmation.
+In a connected PostgreSQL, MySQL or SQLite catalog, use **Create Table…** on a
+schema or **Edit Structure…** on a table. Prepare a local draft, choose
+**Preview SQL**, then explicitly **Apply** the reviewed plan. Readonly profiles
+can inspect and preview; the helper rejects Apply. Production writes, explicit
+key/index removals or replacements, authored expressions and custom types require
+confirmation of the exact plan. Enabling MySQL AUTO_INCREMENT on an existing
+column also requires confirmation because it can change stored zero values.
 
 The editor's **Draft** menu saves local typed changes in a versioned
-`.dbeerstructure` file through **Save Draft** or **Save Draft As…**. Incomplete fields can be saved for later editing. Files contain engine, exact target names and typed intent with a
-1 MiB limit. The current writer uses version 1. Save
+`.dbeerstructure` file through **Save Draft** or **Save Draft As…**. Incomplete
+fields, including expressions and qualified type references, can be saved for
+later editing. Files contain engine, exact target names and typed intent with a
+1 MiB limit. The current writer uses version 2 and still reads version 1. Save
 checks the previous file version and preserves concurrent external changes.
 
 Use **Open Draft…** in **Create Table…** for a matching schema or in
@@ -614,12 +618,63 @@ Execution evidence is kept separately for the workspace session.
 with ordered steps and warnings. The file represents the captured plan; review
 the current destination before executing it through the SQL editor.
 
-Apply uses a dedicated session and bounded lock waits. Every displayed statement
-is an independent execution unit: the entire plan is not atomic, and MySQL DDL
-can implicitly commit. Stop and Discard do not undo acknowledged changes. A later
+Supported operations include ordinary permanent table creation, multiple
+appended columns, explicit table/column renames, literal and expression defaults,
+generated columns and identity options where the server supports them. Existing
+columns offer **Keep existing** for untouched properties. PostgreSQL can resolve
+an existing type by its exact schema and name, with fresh identity, definition
+and USAGE checks before execution. Identity sequences retain exact start,
+increment, minimum, maximum, cache and cycle settings. PostgreSQL generated
+expression replacement requires version 17+; virtual generation requires 18+.
+
+Ordinary ordered BTREE indexes and supported primary/unique/foreign keys can be
+added, explicitly removed or replaced. Foreign keys preserve composite order,
+require a supported referenced primary/unique key and matching types/collations,
+and show any required MySQL supporting index as an explicit step. MySQL
+AUTO_INCREMENT likewise requires an explicitly selected leading key. Before
+replacing its only supporting key, add an alternative leading index in a
+separate reviewed plan. Enabling AUTO_INCREMENT on existing data may replace
+stored zeros unless the captured SQL mode includes NO_AUTO_VALUE_ON_ZERO; DBeer
+does not scan values or change SQL mode during Preview.
+
+SQLite supports creation with expression defaults, generated columns and an
+explicit single INTEGER primary key for AUTO_INCREMENT. Native ADD COLUMN can
+append eligible nullable columns and virtual generated columns. Stored generated
+columns, expression defaults or identity added to an existing table, and changes
+requiring table reconstruction, are rejected with a prerequisite reason. Review
+SQLite renames separately from other edits; modern dependency handling requires
+legacy_alter_table=OFF. DBeer does not silently change that setting.
+
+Preview reads catalog metadata and checks expression boundaries; it never runs
+DDL, evaluates authored expressions or calls custom type input/output or typmod
+support routines. Expressions must fit one balanced slot; comments, parameters
+and backslash escapes are rejected. Expression text is never rewritten to repair
+references. PostgreSQL metadata that would need custom support code retains raw
+catalog evidence and is explicitly unavailable for affected changes. Ordinary
+safe enum/domain types remain eligible. MySQL catalog literal escaping is decoded
+only for comparison. Some MySQL 8 NO_BACKSLASH_ESCAPES expressions with doubled
+apostrophes are rejected because of a reproduced server parser limitation.
+
+PostgreSQL editing requires 14+ and Oracle MySQL editing requires 8.0.30+.
+Unsupported properties or incomplete dependency visibility block the affected
+operation. MySQL rename/type dependency proof requires direct global SELECT and
+TRIGGER metadata visibility without active roles or partial revokes; narrower
+accounts retain eligible additive and narrow column operations. A proven
+unrelated direct column reference can permit a rename while an uncertain or
+dependent expression still requires an explicit reviewed migration. Catalogs
+cannot prove the absence of dynamic SQL dependencies. Advanced index definitions,
+lossy conversions, backfills, reordering and column/table deletion remain outside
+this authoring stage.
+
+Apply uses a dedicated session and bounded lock waits. PostgreSQL/MySQL statements
+are independent execution units, and MySQL DDL can implicitly commit. SQLite
+uses an atomic transaction for its plan and retains known rollback evidence.
+Stop and Discard do not undo acknowledged changes. A later independent-step
 failure retains earlier applied steps and leaves later steps unstarted. Lost
 acknowledgements stay unknown even when a subsequent read finds matching schema;
-DBeer never retries them automatically. Reconcile explicitly before a new plan.
+DBeer never retries them automatically. Rename reviews retain the original target
+and execution identity alongside the resulting target for explicit reconciliation.
+
 
 Reviewed drafts, SQL and execution/observation reports remain in memory for the
 workspace session, including after reconciliation or reopening a table. Closing

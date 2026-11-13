@@ -11,10 +11,13 @@ import (
 )
 
 type ColumnChange struct {
-	Name     string    `json:"name"`
-	Nullable *bool     `json:"nullable,omitempty"`
-	Default  *Default  `json:"default,omitempty"`
-	Type     *DataType `json:"type,omitempty"`
+	Name      string      `json:"name"`
+	RenameTo  *string     `json:"renameTo,omitempty"`
+	Generated *Generation `json:"generated,omitempty"`
+	Identity  *Identity   `json:"identity,omitempty"`
+	Nullable  *bool       `json:"nullable,omitempty"`
+	Default   *Default    `json:"default,omitempty"`
+	Type      *DataType   `json:"type,omitempty"`
 }
 type Index struct {
 	Name      string   `json:"name"`
@@ -56,6 +59,10 @@ type Incoming struct {
 	Columns []string
 }
 type Facts struct {
+	RawExpressions             map[string]string
+	ExpressionKeywords         []string
+	ServerVersion              int
+	Sequences                  []sc.Sequence
 	EngineContext              []sc.Option
 	DefaultCollationProperties *sc.Collection[sc.Option]
 	TypeStorage                map[string]string
@@ -66,10 +73,12 @@ type Facts struct {
 	Proof                      bool
 }
 type Prepared struct {
-	Conditions []Condition
-	SQL        []string
-	Risks      []string
-	References []Baseline
+	Conditions   []Condition
+	SQL          []string
+	Risks        []string
+	References   []Baseline
+	ResultTarget *Target
+	Types        []TypeGuard
 }
 type AdvancedAdapter interface {
 	StructurePrepare(context.Context, Baseline, Draft) (Prepared, error)
@@ -104,7 +113,10 @@ func (d Draft) Destructive() bool {
 	return false
 }
 func (d Draft) Validate() error {
-	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 {
+	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 || d.NeedsAuthoringV2() && d.AuthoringVersion != 2 {
+		return ErrInvalid
+	}
+	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 && d.RenameTable == nil || d.RenameTable != nil && !Identifier(*d.RenameTable) {
 		return ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -115,7 +127,7 @@ func (d Draft) Validate() error {
 		seen[c.Name] = true
 	}
 	for _, c := range d.Changes {
-		if !Identifier(c.Name) || seen[c.Name] || c.Nullable == nil && c.Default == nil && c.Type == nil || c.Default != nil && !c.Default.Valid() || c.Type != nil && !c.Type.Valid() {
+		if !Identifier(c.Name) || seen[c.Name] || c.Nullable == nil && c.Default == nil && c.Type == nil && c.RenameTo == nil && c.Generated == nil && c.Identity == nil || c.Default != nil && !c.Default.Valid() || c.Type != nil && !c.Type.Valid() || !changeAuthoredValid(c) {
 			return ErrInvalid
 		}
 		seen[c.Name] = true
@@ -250,7 +262,7 @@ func Summarize(b *Baseline) {
 			if t, valid := ColumnType(c); valid {
 				b.Columns[i].EditableType = &t
 			}
-			b.Columns[i].CanModify = c.Generated.Value != nil && c.Generated.Value.Kind == "none" && c.Identity.Value != nil && c.Identity.Value.Kind == "none"
+			b.Columns[i].CanModify = c.Generated.Value != nil && c.Generated.Value.Kind == "none" && c.Identity.Value != nil && c.Identity.Value.Kind == "none" && !unavailableColumnExpression(c)
 		}
 	}
 	for _, x := range f.Table.Indexes.Items {
@@ -311,8 +323,23 @@ func NormalizeAction(p *string) string {
 	}
 }
 func CheckChange(b Baseline, c ColumnChange) error {
+	if c.Type != nil && c.Type.Reference != nil {
+		return ErrUnsupported
+	}
 	old, ok := FindColumn(b, c.Name)
-	if !ok || old.Generated.Value == nil || old.Generated.Value.Kind != "none" || old.Identity.Value == nil || old.Identity.Value.Kind != "none" {
+	if !ok || old.Generated.Value == nil || old.Identity.Value == nil {
+		return ErrUnsupported
+	}
+	if unavailableColumnExpression(old) {
+		return errors.New("This column's expression metadata requires custom type support code and is unavailable for attribute changes; its raw catalog proof is retained. Use an explicit reviewed migration.")
+	}
+	if c.Generated != nil || c.Identity != nil {
+		if c.Type != nil || c.Nullable != nil || c.Default != nil || c.Generated != nil && c.Identity != nil {
+			return errors.New("Review generation and identity changes separately from other column attributes.")
+		}
+		return nil
+	}
+	if c.Type != nil && (old.Generated.Value.Kind != "none" || old.Identity.Value.Kind != "none") {
 		return ErrUnsupported
 	}
 	if c.Type != nil {
@@ -463,7 +490,11 @@ func PlanningSource(b Baseline, d Draft, engine string) Baseline {
 				col.Collation = f.Table.Collation
 			}
 		}
-		col.Type = sc.Known(ExpectedNewType(engine, c.Type))
+		col.Type = sc.Known(ExpectedColumnType(engine, c))
+		if c.Resolved != nil {
+			col.Collation = c.Resolved.Collation
+			col.CollationProperties = c.Resolved.CollationProperties
+		}
 		f.Table.Columns.Items = append(f.Table.Columns.Items, col)
 	}
 	for _, change := range d.Changes {
@@ -544,4 +575,8 @@ func ExpectedNewType(engine string, want DataType) sc.TypeUse {
 		m.Scale = &s
 	}
 	return sc.TypeUse{Ref: sc.Ref{Kind: "type", Schema: schema, Name: name}, Kind: "builtin", Modifiers: sc.Known(m), Labels: sc.Complete[string](nil)}
+}
+
+func unavailableColumnExpression(c sc.Column) bool {
+	return c.Default.Value != nil && c.Default.Value.Expression != nil && c.Default.Value.Expression.Dependencies.Code == "customTypeSupport" || c.Generated.Value != nil && c.Generated.Value.Expression != nil && c.Generated.Value.Expression.Dependencies.Code == "customTypeSupport"
 }

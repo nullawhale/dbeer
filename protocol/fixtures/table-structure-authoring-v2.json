@@ -1,0 +1,206 @@
+{
+  "valid": [
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 2,
+          "columns": [],
+          "renameTable": "renamed"
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 2,
+          "columns": [],
+          "changes": [
+            {
+              "name": "value",
+              "renameTo": "new_value"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 2,
+          "columns": [
+            {
+              "name": "mood",
+              "type": {
+                "kind": "reference",
+                "reference": {
+                  "schema": "public",
+                  "name": "Mood"
+                }
+              },
+              "nullable": true,
+              "default": {
+                "kind": "none"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 2,
+          "columns": [
+            {
+              "name": "computed",
+              "type": {
+                "kind": "integer"
+              },
+              "nullable": true,
+              "default": {
+                "kind": "none"
+              },
+              "generated": {
+                "storage": "stored",
+                "expression": "1 + 2"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 2,
+          "columns": [
+            {
+              "name": "id",
+              "type": {
+                "kind": "bigint"
+              },
+              "nullable": false,
+              "default": {
+                "kind": "none"
+              },
+              "identity": {
+                "kind": "byDefault",
+                "start": "9007199254740993",
+                "increment": "2",
+                "cache": "1",
+                "cycle": false
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 2,
+          "columns": [
+            {
+              "name": "created",
+              "type": {
+                "kind": "text"
+              },
+              "nullable": true,
+              "default": {
+                "kind": "expression",
+                "value": "now()::text"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [], \"renameTable\": \"renamed\"}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [], \"changes\": [{\"name\": \"value\", \"renameTo\": \"new_value\"}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [{\"name\": \"mood\", \"type\": {\"kind\": \"reference\", \"reference\": {\"schema\": \"public\", \"name\": \"Mood\"}}, \"nullable\": true, \"default\": {\"kind\": \"none\"}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [{\"name\": \"computed\", \"type\": {\"kind\": \"integer\"}, \"nullable\": true, \"default\": {\"kind\": \"none\"}, \"generated\": {\"storage\": \"stored\", \"expression\": \"1 + 2\"}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [{\"name\": \"id\", \"type\": {\"kind\": \"bigint\"}, \"nullable\": false, \"default\": {\"kind\": \"none\"}, \"identity\": {\"kind\": \"byDefault\", \"start\": \"9007199254740993\", \"increment\": \"2\", \"cache\": \"1\", \"cycle\": false}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"columns\": [{\"name\": \"created\", \"type\": {\"kind\": \"text\"}, \"nullable\": true, \"default\": {\"kind\": \"expression\", \"value\": \"now()::text\"}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 1, \"columns\": [], \"renameTable\": \"renamed\"}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 3, \"columns\": [], \"renameTable\": \"renamed\"}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 2.5, \"columns\": [], \"renameTable\": \"renamed\"}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": true, \"columns\": [], \"renameTable\": \"renamed\"}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 2, \"columns\": [{\"name\": \"id\", \"type\": {\"kind\": \"bigint\"}, \"nullable\": false, \"default\": {\"kind\": \"none\"}, \"identity\": {\"kind\": \"byDefault\", \"start\": \"9007199254740993\", \"increment\": \"0\", \"cache\": \"1\", \"cycle\": false}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 2, \"columns\": [{\"name\": \"id\", \"type\": {\"kind\": \"bigint\"}, \"nullable\": false, \"default\": {\"kind\": \"none\"}, \"identity\": {\"kind\": \"byDefault\", \"start\": \"01\", \"increment\": \"2\", \"cache\": \"1\", \"cycle\": false}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 2, \"columns\": [{\"name\": \"id\", \"type\": {\"kind\": \"bigint\"}, \"nullable\": true, \"default\": {\"kind\": \"none\"}, \"identity\": {\"kind\": \"byDefault\", \"start\": \"9007199254740993\", \"increment\": \"2\", \"cache\": \"1\", \"cycle\": false}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 2, \"columns\": [{\"name\": \"computed\", \"type\": {\"kind\": \"integer\"}, \"nullable\": true, \"default\": {\"kind\": \"text\", \"value\": \"x\"}, \"generated\": {\"storage\": \"stored\", \"expression\": \"1 + 2\"}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 2, \"columns\": [{\"name\": \"mood\", \"type\": {\"kind\": \"reference\", \"reference\": {\"schema\": \"public\", \"name\": \"Mood\", \"unknown\": \"x\"}}, \"nullable\": true, \"default\": {\"kind\": \"none\"}}]}}}",
+    "{\"type\": \"structure.preview\", \"requestId\": \"request\", \"sessionId\": \"session\", \"queryId\": \"query\", \"structure\": {\"baselineId\": \"baseline\", \"draft\": {\"authoringVersion\": 2, \"columns\": [], \"renameTable\": \"\\ud800\"}}}"
+  ],
+  "responses": [
+    {
+      "type": "structure.preview.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "transactionStatus": "idle",
+      "structure": {
+        "plan": {
+          "id": "plan",
+          "baselineId": "baseline",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "schema": "public",
+            "table": "samples",
+            "create": false
+          },
+          "sql": [
+            "ALTER TABLE \"public\".\"samples\" ADD COLUMN \"added\" pg_catalog.int4;",
+            "CREATE INDEX \"ordered_index\" ON \"public\".\"samples\" (\"added\");"
+          ],
+          "risks": [
+            "Independent statement execution units; earlier acknowledged steps remain applied."
+          ],
+          "destructive": false,
+          "resultTarget": {
+            "schema": "public",
+            "table": "renamed",
+            "create": false
+          }
+        }
+      },
+      "connected": true
+    }
+  ],
+  "invalidResponses": [
+    "{\"type\": \"structure.preview.result\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"transactionStatus\": \"idle\", \"structure\": {\"plan\": {\"id\": \"plan\", \"baselineId\": \"baseline\", \"digest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"target\": {\"schema\": \"public\", \"table\": \"samples\", \"create\": false}, \"sql\": [\"ALTER TABLE \\\"public\\\".\\\"samples\\\" ADD COLUMN \\\"added\\\" pg_catalog.int4;\", \"CREATE INDEX \\\"ordered_index\\\" ON \\\"public\\\".\\\"samples\\\" (\\\"added\\\");\"], \"risks\": [\"Independent statement execution units; earlier acknowledged steps remain applied.\"], \"destructive\": false, \"resultTarget\": {\"schema\": \"other_schema\", \"table\": \"renamed\", \"create\": false}}}, \"connected\": true}",
+    "{\"type\": \"structure.preview.result\", \"requestId\": \"r\", \"sessionId\": \"s\", \"queryId\": \"q\", \"transactionStatus\": \"idle\", \"structure\": {\"plan\": {\"id\": \"plan\", \"baselineId\": \"baseline\", \"digest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"target\": {\"schema\": \"public\", \"table\": \"samples\", \"create\": false}, \"sql\": [\"ALTER TABLE \\\"public\\\".\\\"samples\\\" ADD COLUMN \\\"added\\\" pg_catalog.int4;\", \"CREATE INDEX \\\"ordered_index\\\" ON \\\"public\\\".\\\"samples\\\" (\\\"added\\\");\"], \"risks\": [\"Independent statement execution units; earlier acknowledged steps remain applied.\"], \"destructive\": false, \"resultTarget\": {\"schema\": \"public\", \"table\": \"renamed\", \"create\": true}}}, \"connected\": true}"
+  ]
+}

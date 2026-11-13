@@ -8,6 +8,7 @@ import (
 
 type Operation struct {
 	Kind   string
+	Name   *string
 	Column *Column
 	Change *ColumnChange
 	Index  *IndexEdit
@@ -18,13 +19,16 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 	if err := d.Validate(); err != nil {
 		return nil, nil, err
 	}
-	if b.Target.Create && len(d.Columns) == 0 || b.Target.Create && len(d.Changes) > 0 || !b.Target.Create && len(d.Columns) > 1 {
+	if b.Target.Create && len(d.Columns) == 0 || b.Target.Create && len(d.Changes) > 0 || b.Target.Create && d.RenameTable != nil {
 		return nil, nil, ErrInvalid
 	}
 	if !b.Target.Create && (b.Facts == nil || (len(d.Changes)+len(d.Indexes)+len(d.Keys) > 0 && (!b.Facts.Table.Columns.Complete || !b.Facts.Table.Constraints.Complete || !b.Facts.Table.Indexes.Complete))) {
 		return nil, nil, ErrUnsupported
 	}
 	if !b.Target.Create {
+		if len(b.Columns)+len(d.Columns) > MaxColumns {
+			return nil, nil, ErrInvalid
+		}
 		for _, c := range d.Columns {
 			if !c.Nullable {
 				return nil, nil, ErrUnsupported
@@ -39,8 +43,88 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 	source := PlanningSource(b, d, engine)
 	var ops []Operation
 	var refs []Baseline
+	finalNames := map[string]bool{}
+	for _, old := range b.Columns {
+		name := old.Name
+		for _, c := range d.Changes {
+			if c.Name == old.Name && c.RenameTo != nil {
+				name = *c.RenameTo
+			}
+		}
+		key := name
+		if engine == "mysql" {
+			key = strings.ToLower(key)
+		}
+		if finalNames[key] {
+			return nil, nil, ErrInvalid
+		}
+		finalNames[key] = true
+	}
+	for _, c := range d.Columns {
+		key := c.Name
+		if engine == "mysql" {
+			key = strings.ToLower(key)
+		}
+		if finalNames[key] {
+			return nil, nil, ErrInvalid
+		}
+		finalNames[key] = true
+	}
+	if d.RenameTable != nil {
+		if *d.RenameTable == b.Target.Table {
+			return nil, nil, ErrInvalid
+		}
+		if err := CheckRename(b, ""); err != nil {
+			return nil, nil, err
+		}
+		if _, err := load(Target{Schema: b.Target.Schema, Table: *d.RenameTable, Create: true}); err != nil {
+			return nil, nil, errors.New("The rename destination must be a verified absent table in the current schema.")
+		}
+	}
+	renaming := d.RenameTable != nil
+	for _, c := range d.Changes {
+		renaming = renaming || c.RenameTo != nil
+	}
+	if renaming && b.Facts != nil {
+		for _, incoming := range b.Facts.Incoming {
+			if incoming.Schema == b.Target.Schema && incoming.Table == b.Target.Table {
+				continue
+			}
+			exists := false
+			for _, r := range refs {
+				if r.Target.Schema == incoming.Schema && r.Target.Table == incoming.Table {
+					exists = true
+				}
+			}
+			if exists {
+				continue
+			}
+			if len(refs) >= 16 {
+				return nil, nil, ErrUnsupported
+			}
+			r, err := load(Target{Schema: incoming.Schema, Table: incoming.Table})
+			if err != nil {
+				return nil, nil, err
+			}
+			refs = append(refs, r)
+		}
+	}
+
 	for i := range d.Changes {
 		c := &d.Changes[i]
+		if c.RenameTo != nil {
+			for _, old := range b.Columns {
+				if old.Name != c.Name && (old.Name == *c.RenameTo || engine == "mysql" && strings.EqualFold(old.Name, *c.RenameTo)) {
+					return nil, nil, errors.New("Rename destinations must be unoccupied; rename occupied columns in a separate reviewed operation.")
+				}
+			}
+			if err := CheckRename(b, c.Name); err != nil {
+				return nil, nil, err
+			}
+		}
+		if c.Nullable == nil && c.Default == nil && c.Type == nil && c.Generated == nil && c.Identity == nil {
+			continue
+		}
 		if err := CheckChange(b, *c); err != nil {
 			return nil, nil, err
 		}
@@ -110,7 +194,11 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		}
 	}
 	for i := range d.Changes {
-		ops = append(ops, Operation{Kind: "changeColumn", Change: &d.Changes[i]})
+		c := d.Changes[i]
+		c.RenameTo = nil
+		if c.Nullable != nil || c.Default != nil || c.Type != nil || c.Generated != nil || c.Identity != nil {
+			ops = append(ops, Operation{Kind: "changeColumn", Change: &c})
+		}
 	}
 	keys := []Key{}
 	for _, k := range source.Keys {
@@ -243,6 +331,14 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 			}
 		}
 		ops = append(ops, Operation{Kind: "addKey", Key: k})
+	}
+	for i := range d.Changes {
+		if d.Changes[i].RenameTo != nil {
+			ops = append(ops, Operation{Kind: "renameColumn", Change: &d.Changes[i]})
+		}
+	}
+	if d.RenameTable != nil {
+		ops = append(ops, Operation{Kind: "renameTable", Name: d.RenameTable})
 	}
 	return ops, refs, nil
 }
