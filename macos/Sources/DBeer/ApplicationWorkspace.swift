@@ -3096,7 +3096,10 @@ final class ApplicationWorkspace: ObservableObject {
                     try Task.checkCancellation()
                     let reply = try await self.catalog(CatalogRequest(kind: "completion", page: page),
                         profileID: profileID, connectedSessionID: sessionID)
-                    guard reply.truncated != true else { return }
+                    guard reply.truncated != true, (reply.displayNotice ?? "").isEmpty else {
+                        self.completionCatalog.remove(profileID: profileID)
+                        return
+                    }
                     let batch = reply.catalogRecords
                     records += batch
                     if batch.count < 200 { break }
@@ -3715,7 +3718,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func catalog(_ request: CatalogRequest, profileID: UUID, connectedSessionID: String? = nil,
-                 metadataRequest: CatalogMetadataRequest? = nil) async throws -> BackendMessage {
+                 metadataRequest: CatalogMetadataRequest? = nil, onMetadataPage: CatalogMetadataPageHandler? = nil) async throws -> BackendMessage {
         let client: BackendClient
         if let connectedSessionID {
             guard shutdownTask == nil, !helperFailed, !disconnectingProfiles.contains(profileID),
@@ -3741,6 +3744,11 @@ final class ApplicationWorkspace: ObservableObject {
                   metadataRequest?.cancelled != true else {
                 throw CatalogFailure(message: "The profile was disconnected while loading metadata.")
             }
+            if request.supportsMetadataPaging, self.services[profileID]?.capabilities.contains("catalogMetadataV1") == true {
+                return try await CatalogMetadataLoader.load(request, sessionID: sessionID, request: metadataRequest,
+                    isCurrent: { self.services[profileID]?.sessionId == sessionID && self.services[profileID]?.connectionState == .connected },
+                    onPage: onMetadataPage, send: { try await client.request($0) })
+            }
             metadataRequest?.submitted = true
             return try await client.request(.catalog(sessionId: sessionID,
                 queryId: metadataRequest?.queryID ?? UUID().uuidString, request: request))
@@ -3758,7 +3766,9 @@ final class ApplicationWorkspace: ObservableObject {
         guard services[profileID]?.sessionId == sessionID else {
             throw CatalogFailure(message: "The profile was disconnected while loading this branch.")
         }
-        if request.kind != "completion" {
+        if request.kind == "columns", reply.truncated == true || !(reply.displayNotice ?? "").isEmpty {
+            completionCatalog.remove(profileID: profileID)
+        } else if request.kind != "completion" {
             completionCatalog.record(reply.catalogRecords, request: request, profileID: profileID)
         }
         return reply

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add bounded PostgreSQL/MySQL/SQLite metadata paging and selected-object batches
+  beyond the ordinary result display limit. Retain immutable observations and
+  complete composite foreign keys, surface access gaps, source changes and MySQL
+  metadata warnings, and clean private captures after loading, expiry or disconnect.
+
 - Check operation availability using current adapter/server support, readonly
   policy and object metadata for Explain, structure and result-source actions.
 

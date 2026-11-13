@@ -49,6 +49,7 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
+	CatalogMetadata    *CatalogMetadataRequest  `json:"catalogMetadata,omitempty"`
 	Transfer           *TransferRequest         `json:"transfer,omitempty"`
 	DatabaseTools      *DatabaseToolsRequest    `json:"databaseTools,omitempty"`
 	TableImport        *TableImportRequest      `json:"tableImport,omitempty"`
@@ -407,7 +408,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -499,6 +500,14 @@ func ParseCommand(frame []byte) (Command, error) {
 			if raw, exists := fields["stream"]; exists && (bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &command.Stream) != nil) {
 				return command, failure
 			}
+		}
+		if command.Type == "catalog.page" || command.Type == "catalog.batch" || command.Type == "catalog.close" {
+			allowed["catalogMetadata"] = true
+			request, ok := parseCatalogMetadata(fields["catalogMetadata"], command.Type)
+			if !ok {
+				return command, failure
+			}
+			command.CatalogMetadata = request
 		}
 		if command.Type == "catalog" {
 			allowed["catalog"] = true
@@ -830,6 +839,9 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
+	CatalogMetadata       *CatalogMetadataReply
+	MetadataStale         bool
+	MetadataTarget        *CatalogRelationTarget
 	Transfer              *TransferReply
 	DatabaseTools         *DatabaseToolsReply
 	Monitor               *SessionMonitorSnapshot
@@ -913,6 +925,13 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["sqliteValues"] = response.SQLiteValues
 	}
 	switch response.Type {
+	case "catalog.page.result", "catalog.batch.result", "catalog.close.result":
+		if response.CatalogMetadata == nil || !response.CatalogMetadata.Valid() {
+			return nil, errors.New("invalid catalog metadata response")
+		}
+		fields["catalogMetadata"] = response.CatalogMetadata
+		fields["connected"] = response.Connected
+		fields["transactionStatus"] = response.TransactionStatus
 	case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
 		if response.Transfer == nil || !response.Transfer.Valid() {
 			return nil, errors.New("invalid data transfer response")

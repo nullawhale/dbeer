@@ -38,7 +38,7 @@ final class PostgresTypeTestFixture {
         let log = Data(logURL.path.utf8).base64EncodedString()
         let gate = Data(gateURL.path.utf8).base64EncodedString()
         let source = #"""
-        import base64, json, sys, os, select
+        import base64, json, sys, os, select, time
         log_path=base64.b64decode('\#(log)').decode('utf-8')
         gate_path=base64.b64decode('\#(gate)').decode('utf-8')
         policies, engines, pending = {}, {}, {}
@@ -131,6 +131,10 @@ final class PostgresTypeTestFixture {
             reply=dict(requestId=command['requestId'])
             if kind=='hello': reply.update(type='hello.ack',protocolVersion=\#(BackendProtocol.version),capabilities=['passwordCommandV1'])
             elif kind=='connect':
+                if os.path.exists(gate_path+'.connect-hold'):
+                    open(gate_path+'.connect-entered','w').close()
+                    deadline=time.monotonic()+5
+                    while not os.path.exists(gate_path+'.connect-release') and time.monotonic()<deadline: time.sleep(.005)
                 sid='type-session-1' if \#(reuseSessionID ? "True" : "False") else 'type-session-'+str(len(policies)+1)
                 policies[sid]=command['connection']['policy']; engines[sid]=command['connection']['engine']
                 reply.update(type='connect.result',sessionId=sid,engine=engines[sid],transactionStatus='idle',capabilities=['execute','cancel','catalog','transactions'])
@@ -202,6 +206,9 @@ final class PostgresTypeTestFixture {
         try await Self.waitFor { ((try? self.commands().filter { $0.catalog?.kind == kind }.count) ?? 0) >= count }
     }
     func releaseHeld() throws { try Data().write(to: gateURL) }
+    func holdConnection() throws { try Data().write(to: gateURL.appendingPathExtension("connect-hold")) }
+    var connectionIsWaiting: Bool { FileManager.default.fileExists(atPath: gateURL.appendingPathExtension("connect-entered").path) }
+    func releaseConnection() throws { try Data().write(to: gateURL.appendingPathExtension("connect-release")) }
     static func waitFor(_ condition: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(4))
         while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }

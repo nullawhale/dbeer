@@ -44,6 +44,23 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
+## Catalog metadata (unreleased)
+
+PostgreSQL, MySQL and SQLite catalog browsing, object search, structure inspection
+and ER loading collect metadata beyond the ordinary result display limit. Each
+paged collection retains one immutable observation. Composite foreign keys keep
+every ordered column pair together. PostgreSQL uses a read-only repeatable-read
+capture; MySQL rechecks its observation, and SQLite checks its schema version.
+Access failures, concurrent changes and server metadata warnings remain explicit.
+
+Captures allow up to 100,000 rows per collection and 64 MiB of private temporary
+storage per service session. Engine-specific lower limits can apply. Reaching a
+limit leaves an incomplete observation and requires narrowing the scope. Loading
+finishes by releasing its temporary observation; expiry and disconnect also clean
+it up. Existing ER selection and layout limits still apply. Workspace restoration
+keeps metadata unloaded until an explicit action.
+
+
 ## Repeatable data transfers (unreleased)
 
 Choose **Create Table from CSV…** or **Copy Table to Connection…** in a

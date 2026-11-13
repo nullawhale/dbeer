@@ -25,6 +25,7 @@ type Session struct {
 	identity          os.FileInfo
 	readOnly          bool
 	internal          bool
+	metadataCapture   bool
 	closed            bool
 	attachAllowed     string
 	attachmentChanged bool

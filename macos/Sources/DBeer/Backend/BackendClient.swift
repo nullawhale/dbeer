@@ -206,6 +206,18 @@ actor BackendClient {
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if ["catalog.page", "catalog.batch", "catalog.close"].contains(command.type) {
+            guard command.catalogMetadata?.valid(for: command.type) == true,
+                  command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
+                  command.catalog == nil, command.sql == nil, command.connection == nil, command.stream == nil,
+                  command.changes == nil, command.explain == nil, command.structure == nil, command.operations == nil,
+                  command.authorization == nil, command.parameters == nil, command.tableImport == nil,
+                  command.databaseTools == nil, command.transfer == nil, command.comparison == nil,
+                  command.schemaComparison == nil, command.dataComparison == nil, command.protocolVersion == nil,
+                  command.export == nil, command.sequence == nil, command.sshTrust == nil, command.insert == nil else {
+                throw BackendRequestError.invalidCommand
+            }
+        } else if command.catalogMetadata != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("dbtools.") || command.type.hasPrefix("transfer.") {
             guard command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil,
                   command.catalog == nil, command.stream == nil, command.export == nil, command.sequence == nil,
@@ -452,7 +464,7 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
-        if reply.type == "query.started", (["execute", "explain.run", "monitor.snapshot", "catalog", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
+        if reply.type == "query.started", (["execute", "explain.run", "monitor.snapshot", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
             request.started = true
             pending[reply.requestId] = request
             request.onEvent?(reply)
@@ -521,6 +533,15 @@ actor BackendClient {
                 guard let request = command.transfer, let response = reply.transfer,
                       request.jobId == nil || request.jobId == response.jobId else {
                     throw BackendTransportError(.invalidMessage)
+                }
+            }
+            if let metadata = reply.catalogMetadata {
+                guard request.started, let selectors = command.catalogMetadata?.selectors else { throw BackendTransportError(.invalidMessage) }
+                if command.type != "catalog.close" {
+                    guard metadata.collections.count == selectors.count,
+                          zip(metadata.collections, selectors).allSatisfy({ $0.selector.normalizedMetadataSelector == $1.normalizedMetadataSelector }) else {
+                        throw BackendTransportError(.invalidMessage)
+                    }
                 }
             }
             if let imported = reply.tableImport {

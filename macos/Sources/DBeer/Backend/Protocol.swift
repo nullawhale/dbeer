@@ -271,6 +271,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var queryId: String?
     var sql: String?
     var catalog: CatalogRequest?
+    var catalogMetadata: CatalogMetadataPageRequest?
     var stream: Bool?
     var export: ExportRequest?
     var sequence: Int?
@@ -396,6 +397,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "connect": "connect.result"
         case "sqlite.create": "sqlite.create.result"
         case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
+        case "catalog.page", "catalog.batch", "catalog.close": type + ".result"
         case "explain.run": "explain.result"
         case "monitor.snapshot": "monitor.result"
         case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close": type + ".result"
@@ -517,6 +519,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var explain: ExplainResult? = nil
     @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
     @OptionalTransportPayload var operationSupport: OperationSupport? = nil
+    @OptionalTransportPayload var catalogMetadata: CatalogMetadataReply? = nil
     var structure: StructureReply?
     var tableImport: TableImportReply?
     var monitor: SessionMonitorSnapshot?
@@ -582,6 +585,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
         case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
         case "ssh.probe.result", "ssh.trust.result": valid = ssh?.isValid == true
         case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
+        case "catalog.page.result", "catalog.batch.result", "catalog.close.result":
+            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                catalogMetadata?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
+                (type == "catalog.close.result" ? catalogMetadata?.closed == true : catalogMetadata?.closed != true)
         case "monitor.result":
             valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
                 monitor?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
@@ -620,6 +627,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
               databaseTools == nil || type.hasPrefix("dbtools."),
               transfer == nil || type.hasPrefix("transfer."),
               monitor == nil || type == "monitor.result",
+              !_catalogMetadata.isPresent || ["catalog.page.result", "catalog.batch.result", "catalog.close.result"].contains(type),
               structure == nil || type.hasPrefix("structure."),
               explain == nil || type == "explain.result",
               explainSupport == nil || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/catalogmetadata"
 	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/queryparams"
@@ -80,7 +81,7 @@ func (manager *Manager) Submit(command protocol.Command) bool {
 }
 
 func (manager *Manager) markPending(command protocol.Command) {
-	if command.Type == "monitor.snapshot" || command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
+	if command.Type == "monitor.snapshot" || command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || isCatalogMetadata(command.Type) || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
 		manager.controlMu.Lock()
 		manager.pendingQueries[command.QueryID] = pendingQuery{sessionID: command.SessionID}
 		manager.controlMu.Unlock()
@@ -264,6 +265,7 @@ type operation struct {
 }
 
 type owner struct {
+	metadata           catalogmetadata.Store
 	structure          tableedit.Store
 	structureOnly      bool
 	importOnly         bool
@@ -426,6 +428,7 @@ func (owner *owner) closeRouting() []protocol.Response {
 }
 
 func (owner *owner) run(connectCommand protocol.Command) {
+	defer owner.metadata.Close()
 	var physical adapter.Session
 	defer func() {
 		if physical != nil {
@@ -591,6 +594,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					support := adapter.SessionOperationSupport(engine, physical, policy)
 					response.OperationSupport = &support
 					response.Capabilities = append(response.Capabilities, protocol.OperationSupportCapability)
+					if _, ok := physical.(adapter.CatalogMetadataReader); ok {
+						response.Capabilities = append(response.Capabilities, protocol.CatalogMetadataCapability)
+					}
 					if explain, ok := physical.(adapter.ExplainSession); ok {
 						support := explain.ExplainSupport()
 						response.ExplainSupport = &support
@@ -643,7 +649,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else {
 					response = owner.assess(command, engine, policy, physical)
 				}
-			case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "changes.preview", "changes.apply":
+			case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
@@ -697,7 +703,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						case <-begin:
 						case <-ctx.Done():
 						}
-						if command.Type == "monitor.snapshot" {
+						if isCatalogMetadata(command.Type) {
+							result <- operation{response: owner.runCatalogMetadata(ctx, physical, command)}
+						} else if command.Type == "monitor.snapshot" {
 							result <- operation{response: runMonitor(ctx, physical, command, engine)}
 						} else if isStructure(command.Type) {
 							result <- operation{response: owner.runStructure(ctx, physical, command)}
@@ -709,7 +717,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			case "cancel":
 				status := "alreadyFinished"
-				if active != nil && (pending.Type == "monitor.snapshot" || pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
+				if active != nil && (pending.Type == "monitor.snapshot" || pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || isCatalogMetadata(pending.Type) || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
 					cancel()
 					status = "accepted"
 				}

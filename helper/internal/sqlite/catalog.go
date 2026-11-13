@@ -106,8 +106,11 @@ func (s *Session) catalog(ctx context.Context, c protocol.Command, sink adapter.
 			sql += " AND instr(lower(name),lower(?))>0"
 			args = append(args, r.Search)
 		}
-		sql += " ORDER BY name LIMIT 200 OFFSET ?"
-		args = append(args, r.Page*200)
+		sql += " ORDER BY name"
+		if !s.metadataCapture {
+			sql += " LIMIT 200 OFFSET ?"
+			args = append(args, r.Page*200)
+		}
 	case "columns":
 		cols, err := s.tableInfo(ctx, schema, r.Object)
 		if err != nil {
