@@ -8,6 +8,7 @@ struct DataGridView: View {
     let result: BackendMessage?
     private var editing = SwiftUI.State<GridCellEdit?>(initialValue: nil)
     private var showingColumns = SwiftUI.State(initialValue: false)
+    private var showingIncoming = SwiftUI.State(initialValue: false)
     private var showingRowDetails = SwiftUI.State(initialValue: false)
 
     init(document: SQLDocument, workspace: ApplicationWorkspace, grid: GridDraft, result: BackendMessage? = nil) {
@@ -22,7 +23,8 @@ struct DataGridView: View {
         workspace.canStartOperation(document) && !workspace.isClosing && document.canNavigateTable
     }
     private var supportsForeignKeys: Bool {
-        grid.columns.first?.engine == .postgresql || grid.columns.first?.engine == .mysql
+        guard let engine = grid.columns.first?.engine else { return false }
+        return [.postgresql, .mysql, .sqlite].contains(engine)
     }
     private var selectedRelationshipRowID: UUID? {
         guard grid.selectedRows.count == 1, let row = grid.selectedRows.first,
@@ -55,6 +57,18 @@ struct DataGridView: View {
                     Button("Reset") { TableBrowseNavigation.resetDraft(document: document) }
                         .controlHover().disabled(!canNavigate)
                 }.font(.caption).padding(8)
+            }
+            if let scope = document.tableRelationshipScope {
+                HStack {
+                    Text("Related rows from \(scope.parent.schema).\(scope.parent.name) · \(scope.name)").textSelection(.enabled)
+                    Spacer()
+                    Button("Remove Relationship Restriction") {
+                        var configuration = document.browseDraftConfiguration
+                        configuration.relationshipScope = nil
+                        document.browseDraftConfiguration = configuration
+                    }.controlHover().disabled(!canNavigate)
+                }.font(.caption).padding(8)
+                    .help("Only child rows related to the selected parent key are shown. Remove this restriction and Apply View to update the rows.")
             }
             if let reason = grid.readOnlyReason {
                 Text("Read only: \(reason)").font(.caption).appSecondaryText().padding(8)
@@ -97,6 +111,9 @@ struct DataGridView: View {
                 }
                 editing.wrappedValue = nil
             } cancel: { editing.wrappedValue = nil }
+        }
+        .sheet(isPresented: showingIncoming.projectedValue) {
+            IncomingRelationsSheet(document: document, workspace: workspace, grid: grid)
         }
         .sheet(isPresented: Binding(get: { grid.preview != nil }, set: { if !$0 { grid.preview = nil } })) {
             GridSQLPreviewView(result: grid.preview, editingNotice: grid.editingNotice) { grid.preview = nil }
@@ -222,6 +239,14 @@ struct DataGridView: View {
                 }
             } else {
                 Text("Select one row to follow a foreign key")
+            }
+            Divider()
+            Button("Find Incoming Relations…") {
+                showingIncoming.wrappedValue = true
+                Task { await workspace.discoverIncomingRows(document) }
+            }.disabled(!workspace.supportsRelationshipDiscovery(profileID: document.profileID) || document.incomingRelationships?.isBusy == true)
+            if document.incomingRelationships != nil {
+                Button("Show Incoming Relations…") { showingIncoming.wrappedValue = true }
             }
             Divider()
             Button(document.foreignKeysError == nil ? "Refresh Foreign Keys" : "Retry Foreign Keys") {

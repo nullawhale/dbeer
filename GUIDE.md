@@ -389,8 +389,10 @@ and exact table, view or collection. Select a view to fill the draft, then Apply
 explicitly. Save New, Update Selected, Rename and Delete manage local entries;
 missing fields remain visible for correction. Views are private local data under
 `~/Library/Application Support/DBeer/TableViews/`, with no profile transfer or
-cross-connection copying. Applied settings survive workspace restoration in
-format v11; unapplied drafts last until the tab closes and are not restored.
+cross-connection copying. Applied settings, including relationship restrictions,
+survive workspace restoration in format v13; saved-view libraries use format v2.
+Older application versions reject these formats instead of silently losing a
+restriction. Unapplied drafts last until the tab closes and are not restored.
 Restoration never connects or reads data. Rows retained after a failed changed
 view are identified as belonging to the previous read.
 
@@ -733,14 +735,22 @@ filters, page or pending changes. **Open in New Tab**, available in the catalog
 and a table tab's context menu, opens a separate view with its own session and
 clean browsing settings. Opening one view does not copy another view's edits.
 
-Select one loaded row and use **Related Rows** to follow a PostgreSQL or MySQL
-foreign key in the current view or a new tab. Composite keys use every mapped
-column in constraint order. Exact numeric text, empty strings and binary values
-retain their transport representation. A NULL or unresolved DEFAULT cannot
-identify a related row. Incomplete metadata and unavailable or denied targets
-show an explicit message.
+Select one loaded row and use **Related Rows** to follow a declared PostgreSQL or MySQL foreign key in the current view or a new tab. **Find Incoming
+Relations…** explicitly discovers child tables referencing the current table.
+Select a stored parent row, then choose **Open Child Rows in New Tab** or **Open
+in This Tab** in the incoming-relations list. Discovery shows source progress,
+Stop and incomplete-metadata reports; its rows use server-resolved table names
+and complete constraint mappings.
 
-**Back** and **Forward** restore a view's table, page, filters and sorting.
+Composite keys use every mapped column in constraint order. Exact numeric text,
+empty strings and binary values retain their transport representation; SQLite
+retains the parent's storage values and comparison rules through a visible
+[relationship restriction](#table-filters-sorting-and-saved-views). A NULL or
+unresolved DEFAULT cannot identify a related row. Incomplete metadata and
+unavailable, changed or denied targets show an explicit message.
+
+**Back** and **Forward** restore a view's table, page, filters, relationship
+restriction and sorting.
 Navigation in the current view with pending edits offers the existing
 Apply/Discard/Cancel review; Apply still previews and confirms the generated
 changes. Opening related rows in a new tab uses confirmed source values and

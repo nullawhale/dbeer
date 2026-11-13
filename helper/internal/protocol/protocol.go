@@ -146,18 +146,19 @@ func (request ExportRequest) Valid() bool {
 }
 
 type CatalogRequest struct {
-	TypeChange       *TypeChange              `json:"typeChange,omitempty"`
-	Kind             string                   `json:"kind"`
-	Schema           string                   `json:"schema,omitempty"`
-	Object           string                   `json:"object,omitempty"`
-	ObjectKind       string                   `json:"objectKind,omitempty"`
-	Identity         string                   `json:"identity,omitempty"`
-	Search           string                   `json:"search,omitempty"`
-	Cursor           string                   `json:"cursor,omitempty"`
-	Page             int                      `json:"page,omitempty"`
-	Sort             []CatalogSort            `json:"sort,omitempty"`
-	Filters          []CatalogFilter          `json:"filters,omitempty"`
-	FilterExpression *CatalogFilterExpression `json:"filterExpression,omitempty"`
+	RelationshipScope *SQLiteRelationshipScope `json:"relationshipScope,omitempty"`
+	TypeChange        *TypeChange              `json:"typeChange,omitempty"`
+	Kind              string                   `json:"kind"`
+	Schema            string                   `json:"schema,omitempty"`
+	Object            string                   `json:"object,omitempty"`
+	ObjectKind        string                   `json:"objectKind,omitempty"`
+	Identity          string                   `json:"identity,omitempty"`
+	Search            string                   `json:"search,omitempty"`
+	Cursor            string                   `json:"cursor,omitempty"`
+	Page              int                      `json:"page,omitempty"`
+	Sort              []CatalogSort            `json:"sort,omitempty"`
+	Filters           []CatalogFilter          `json:"filters,omitempty"`
+	FilterExpression  *CatalogFilterExpression `json:"filterExpression,omitempty"`
 }
 
 // TypeChange is a preview request, never an executable catalog operation.
@@ -213,6 +214,10 @@ type CatalogFilter struct {
 }
 
 func (request CatalogRequest) Valid() bool {
+	if request.RelationshipScope != nil && (request.Kind != "browse" || !request.RelationshipScope.Valid() || request.Schema != request.RelationshipScope.Child.Schema || request.Object != request.RelationshipScope.Child.Name || request.ObjectKind != "table") {
+		return false
+	}
+
 	if request.Kind == "typeDDL" {
 		if request.TypeChange == nil || !request.TypeChange.Valid() {
 			return false
@@ -271,6 +276,8 @@ func (request CatalogRequest) Valid() bool {
 		return request.Schema != "" && request.Object == "" && objectKindValid && request.Identity == ""
 	case "columns":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view" || objectKind == "type") && request.Identity == ""
+	case "referencingTables":
+		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table") && request.Identity == ""
 	case "keys", "foreignKeys", "indexes", "constraints", "triggers":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view") && request.Identity == ""
 	case "definition":
@@ -550,12 +557,12 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 			}
 		}
 	}
-	if request.Kind == "name" || request.Kind == "foreignKeys" {
+	if request.Kind == "name" || request.Kind == "foreignKeys" || request.Kind == "referencingTables" {
 		for name := range fields {
 			if name != "kind" && name != "schema" && name != "object" && name != "objectKind" && name != "identity" {
 				return request, false
 			}
-			if request.Kind == "foreignKeys" && name == "identity" {
+			if (request.Kind == "foreignKeys" || request.Kind == "referencingTables") && name == "identity" {
 				return request, false
 			}
 		}
@@ -577,6 +584,14 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 			if !required(fields, name) || json.Unmarshal(fields[name], &request.Page) != nil {
 				return request, false
 			}
+			continue
+		}
+		if name == "relationshipScope" {
+			var scope SQLiteRelationshipScope
+			if !required(fields, name) || json.Unmarshal(fields[name], &scope) != nil {
+				return request, false
+			}
+			request.RelationshipScope = &scope
 			continue
 		}
 		if name == "filterExpression" {

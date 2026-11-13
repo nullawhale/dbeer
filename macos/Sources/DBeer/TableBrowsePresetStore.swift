@@ -28,7 +28,7 @@ struct TableBrowsePreset: Identifiable, Codable, Equatable, Sendable {
     var isValid: Bool {
         Self.validName(name) && configuration.isValid &&
             [table.schema, table.name].allSatisfy { !$0.isEmpty && $0.utf8.count <= 1_024 && !$0.contains("\0") } &&
-            ["table", "view"].contains(table.kind)
+            ["table", "view"].contains(table.kind) && (configuration.relationshipScope == nil || configuration.relationshipScope?.matches(table) == true)
     }
 
     static func validName(_ name: String) -> Bool {
@@ -49,7 +49,7 @@ struct TableBrowsePreset: Identifiable, Codable, Equatable, Sendable {
         try requirePresetKeys(reference, allowed: ["schema", "name", "kind"])
         table = try TableReference(from: reference)
         let configurationDecoder = try values.superDecoder(forKey: .configuration)
-        try requirePresetKeys(configurationDecoder, allowed: ["filterExpression", "sort"])
+        try requirePresetKeys(configurationDecoder, allowed: ["filterExpression", "sort", "relationshipScope"])
         let configurationValues = try configurationDecoder.container(keyedBy: PresetCodingKey.self)
         let sortKey = PresetCodingKey(stringValue: "sort")!
         var sorting = try configurationValues.nestedUnkeyedContainer(forKey: sortKey)
@@ -59,11 +59,14 @@ struct TableBrowsePreset: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+enum TableBrowsePresetFormat { static let currentVersion = 2 }
+
 private struct StoredTableBrowsePresets: Codable, Sendable {
-    var version = 1
+    var version = TableBrowsePresetFormat.currentVersion
     var presets: [TableBrowsePreset] = []
     var isValid: Bool {
-        version == 1 && presets.count <= 256 && Set(presets.map(\.id)).count == presets.count &&
+        (1...2).contains(version) && (version >= 2 || !presets.contains(where: { $0.configuration.relationshipScope != nil })) &&
+            presets.count <= 256 && Set(presets.map(\.id)).count == presets.count &&
             presets.allSatisfy(\.isValid) && presets.enumerated().allSatisfy { index, preset in
                 !presets.prefix(index).contains { $0.profileID == preset.profileID && $0.table == preset.table && presetNameKey($0.name) == presetNameKey(preset.name) }
             }

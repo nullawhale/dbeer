@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Discover declared incoming PostgreSQL/MySQL/SQLite foreign keys and open child
+  rows from a stored parent row in the current view or an independent tab.
+  Preserve complete composite mappings, canonical target identity and exact key
+  bytes. Keep SQLite parent-affinity/collation semantics in a visible, removable
+  relationship restriction through history, saved views and disconnected restore;
+  retain it on profile changes and expose removal in unloaded or failed views.
+  Add explicit schema/all-visible table-name discovery and ER neighbour candidates
+  with progress, deadlines, Stop and partial reports. Keep client retention bounds
+  separate from initial helper capture cost and require Add then Build for the
+  100-table diagram area. Preserve active ER work through cancelled close decisions.
+
 - Add bounded PostgreSQL/MySQL/SQLite metadata paging and selected-object batches
   beyond the ordinary result display limit. Retain immutable observations and
   complete composite foreign keys, surface access gaps, source changes and MySQL

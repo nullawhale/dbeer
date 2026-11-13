@@ -154,6 +154,8 @@ final class ERDiagramModel: ObservableObject {
     @Published var stored: StoredERDiagram
     @Published private(set) var metadata: [ERTableID: ERTableMetadata] = [:]
     @Published var notice: String? = "Not loaded. Build explicitly to read metadata. Incoming keys from unselected tables are outside this diagram's scope."
+    @Published var visibleTableDiscovery: VisibleTableDiscoveryModel?
+    @Published var neighbourDiscovery: IncomingRelationshipDiscoveryModel?
     @Published var isLoading = false
     @Published var progress = 0
     @Published var selectedRelationshipID: String?
@@ -193,6 +195,21 @@ final class ERDiagramModel: ObservableObject {
         guard stored.tables.count < ERDiagramLimits.tables else { notice = "Select at most 100 tables."; return }
         stored.tables.append(table); changed?()
     }
+    func adoptCanonicalIdentity(_ original: ERTableID, resolved: ERTableID) {
+        guard original != resolved, original.profileID == resolved.profileID, resolved.profileID == stored.profileID,
+              resolved.isValid, stored.tables.contains(original) else { return }
+        let alreadyPresent = stored.tables.contains(resolved)
+        stored.tables = stored.tables.compactMap { $0 == original ? (alreadyPresent ? nil : resolved) : $0 }
+        if alreadyPresent { stored.placements.removeAll { $0.table == original } }
+        else { stored.placements = stored.placements.map { $0.table == original ? .init(table: resolved, point: $0.point, manual: $0.manual) : $0 } }
+        let wasCollapsed = stored.collapsed.contains(original)
+        stored.collapsed.removeAll { $0 == original }
+        if wasCollapsed && !stored.collapsed.contains(resolved) { stored.collapsed.append(resolved) }
+        if stored.selected == original { stored.selected = resolved }
+        selectedRelationshipID = nil
+        changed?()
+    }
+
     func remove(_ table: ERTableID) {
         stored.tables.removeAll { $0 == table }; stored.placements.removeAll { $0.table == table }
         stored.collapsed.removeAll { $0 == table }
@@ -216,6 +233,7 @@ final class ERDiagramModel: ObservableObject {
     }
 
     func invalidate(_ reason: String) {
+        visibleTableDiscovery?.stop(); neighbourDiscovery?.stop()
         generation &+= 1; isLoading = false; context = nil; notice = reason
         for table in metadata.keys {
             metadata[table]?.columnState = .stale(reason); metadata[table]?.relationshipState = .stale(reason)

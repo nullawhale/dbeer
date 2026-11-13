@@ -1,0 +1,113 @@
+{
+  "valid": [
+    {
+      "type": "catalog",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "catalog": {
+        "kind": "browse",
+        "schema": "main",
+        "object": "child",
+        "objectKind": "table",
+        "relationshipScope": {
+          "child": {
+            "schema": "main",
+            "name": "child"
+          },
+          "parent": {
+            "schema": "main",
+            "name": "parent"
+          },
+          "name": "fk_0",
+          "columns": [
+            {
+              "source": "parent_id",
+              "target": "id",
+              "position": 1,
+              "value": {
+                "type": "integer",
+                "value": "9223372036854775807"
+              }
+            },
+            {
+              "source": "code",
+              "target": "code",
+              "position": 2,
+              "value": {
+                "type": "blob",
+                "value": "AP8="
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "catalog",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "catalog": {
+        "kind": "browse",
+        "schema": "main",
+        "object": "child",
+        "objectKind": "table",
+        "relationshipScope": {
+          "child": {
+            "schema": "main",
+            "name": "child"
+          },
+          "parent": {
+            "schema": "main",
+            "name": "parent"
+          },
+          "name": "fk_0",
+          "columns": [
+            {
+              "source": "parent_id",
+              "target": "id",
+              "position": 1,
+              "value": {
+                "type": "integer",
+                "value": "9223372036854775807"
+              }
+            },
+            {
+              "source": "code",
+              "target": "code",
+              "position": 2,
+              "value": {
+                "type": "blob",
+                "value": "AP8="
+              }
+            }
+          ]
+        },
+        "page": 1,
+        "filters": [
+          {
+            "column": "label",
+            "operator": "contains",
+            "value": "chosen"
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":null}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"columns\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"9223372036854775807\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"other\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"9223372036854775807\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"9223372036854775807\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}],\"unknown\":true}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"9223372036854775807\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"temp\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"9223372036854775807\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":0,\"value\":{\"type\":\"integer\",\"value\":\"9223372036854775807\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"9223372036854775807\"}},{\"source\":\"parent_id\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"null\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"01\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"text\",\"value\":null}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"blob\",\"value\":\"AP8\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"child\",\"objectKind\":\"table\",\"relationshipScope\":{\"child\":{\"schema\":\"main\",\"name\":\"child\"},\"parent\":{\"schema\":\"main\",\"name\":\"parent\"},\"name\":\"fk_0\",\"columns\":[{\"source\":\"parent_id\",\"target\":\"id\",\"position\":1,\"value\":{\"type\":\"integer\",\"value\":\"1\",\"sql\":\"x\"}},{\"source\":\"code\",\"target\":\"code\",\"position\":2,\"value\":{\"type\":\"blob\",\"value\":\"AP8=\"}}]}}}"
+  ]
+}

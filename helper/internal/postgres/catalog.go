@@ -210,6 +210,14 @@ FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespac
 JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
 WHERE n.nspname::text=$1::text AND c.relname::text=$2::text AND c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + ` ORDER BY a.attnum`, objectParams, ""
+	case "referencingTables":
+		return `SELECT DISTINCT n.nspname::text COLLATE pg_catalog."C" AS schema,
+c.relname::text COLLATE pg_catalog."C" AS name,'table'::text AS kind
+FROM pg_catalog.pg_constraint k
+JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+JOIN pg_catalog.pg_class tc ON tc.oid=k.confrelid JOIN pg_catalog.pg_namespace tn ON tn.oid=tc.relnamespace
+WHERE k.contype='f' AND tn.nspname::text=$1::text AND tc.relname::text=$2::text
+AND ` + relationAccess + ` ORDER BY schema,name`, objectParams, ""
 	case "foreignKeys":
 		return `SELECT k.conname::text AS name, tn.nspname::text AS "targetSchema", tc.relname::text AS "targetTable",
 sa.attname::text AS "sourceColumn", ta.attname::text AS "targetColumn", pair.ordinality::text AS position

@@ -927,6 +927,19 @@ struct SQLDocumentPane: View {
                         Text("\(document.page + 1)").monospacedDigit()
                     }
                 }.font(.callout)
+                if let scope = document.tableRelationshipScope {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Saved relationship restriction").font(.headline)
+                        Text("Related rows from \(scope.parent.schema).\(scope.parent.name) · \(scope.name)")
+                            .font(.callout).textSelection(.enabled)
+                        Text(scope.parentKeyDescription).font(.caption).textSelection(.enabled)
+                        Button("Remove Relationship Restriction") { document.removeUnloadedRelationshipScope() }
+                            .controlHover().disabled(!workspace.canStartOperation(document) || document.isNavigatingTable || document.isApplyingBrowse)
+                            .accessibilityIdentifier("removeUnloadedRelationshipRestriction")
+                        Text("Removing this restriction changes saved settings. Load Data separately to read rows.")
+                            .font(.caption).appSecondaryText()
+                    }
+                }
                 if let expression = document.tableFilterExpression {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Saved filters").font(.headline)

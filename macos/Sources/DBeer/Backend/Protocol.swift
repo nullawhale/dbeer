@@ -120,6 +120,7 @@ struct CatalogRequest: Codable, Sendable, Equatable {
     var filterExpression: CatalogFilterExpression?
     /// PostgreSQL-only, read-only DDL generation. Empty enum labels are values.
     var typeChange: TypeChange?
+    var relationshipScope: SQLiteRelationshipScope? = nil
 }
 
 extension CatalogRequest {
@@ -138,7 +139,18 @@ extension CatalogRequest {
         typeChange = try values.decodeIfPresent(TypeChange.self, forKey: .typeChange)
         filterExpression = values.contains(.filterExpression)
             ? try values.decode(CatalogFilterExpression.self, forKey: .filterExpression) : nil
-        let settings = TableBrowseConfiguration(filterExpression: filterExpression ?? .conjunction(filters ?? []), sort: sort ?? [])
+        if ["referencingTables", "foreignKeys", "name"].contains(kind) {
+            let fields = try decoder.container(keyedBy: RelationshipSelectorCodingKey.self)
+            let allowed: Set<String> = kind == "name" ? ["kind", "schema", "object", "objectKind", "identity"] : ["kind", "schema", "object", "objectKind"]
+            guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: allowed),
+                  fields.allKeys.allSatisfy({ (try? fields.decodeNil(forKey: $0)) == false }) else { throw BackendTransportError(.invalidMessage) }
+            if kind != "name" { guard supportsMetadataPaging else { throw BackendTransportError(.invalidMessage) } }
+        }
+        relationshipScope = values.contains(.relationshipScope) ? try values.decode(SQLiteRelationshipScope.self, forKey: .relationshipScope) : nil
+        if let relationshipScope {
+            guard kind == "browse", relationshipScope.matches(.init(schema: schema ?? "", name: object ?? "", kind: objectKind ?? "")) else { throw BackendTransportError(.invalidMessage) }
+        }
+        let settings = TableBrowseConfiguration(filterExpression: filterExpression ?? .conjunction(filters ?? []), sort: sort ?? [], relationshipScope: relationshipScope)
         guard settings.isValid, filterExpression == nil || ((filters ?? []).isEmpty && kind == "browse") else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid browse settings."))
         }
@@ -161,6 +173,57 @@ struct CatalogFilter: Codable, Sendable, Equatable {
     var column: String
     var `operator`: String
     var value: String?
+    var sqliteValue: SQLiteValue?
+
+    init(column: String, operator operation: String, value: String? = nil, sqliteValue: SQLiteValue? = nil) {
+        self.column = column
+        self.operator = operation
+        self.value = value
+        self.sqliteValue = sqliteValue
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        guard Data(lhs.column.utf8) == Data(rhs.column.utf8), lhs.operator == rhs.operator, lhs.sqliteValue == rhs.sqliteValue else { return false }
+        switch (lhs.value, rhs.value) {
+        case (nil, nil): return true
+        case let (left?, right?): return Data(left.utf8) == Data(right.utf8)
+        default: return false
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case column, `operator`, value, sqliteValue }
+    private struct Key: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+    }
+
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: Key.self)
+        guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value", "sqliteValue"]) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown filter condition field."))
+        }
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        column = try values.decode(String.self, forKey: .column)
+        self.operator = try values.decode(String.self, forKey: .operator)
+        value = try values.decodeIfPresent(String.self, forKey: .value)
+        sqliteValue = nil
+        if values.contains(.sqliteValue) {
+            guard !values.contains(.value) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Ambiguous filter operands."))
+            }
+            let nested = try values.superDecoder(forKey: .sqliteValue).container(keyedBy: Key.self)
+            guard Set(nested.allKeys.map(\.stringValue)).isSubset(of: ["type", "value"]) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown SQLite operand field."))
+            }
+            if let key = Key(stringValue: "value"), nested.contains(key) { _ = try nested.decode(String.self, forKey: key) }
+            sqliteValue = try values.decode(SQLiteValue.self, forKey: .sqliteValue)
+        }
+        guard isValid else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid filter operand."))
+        }
+    }
 }
 
 struct ExportDestination: Codable, Sendable, Equatable {
@@ -741,4 +804,11 @@ struct NDJSONFramer: Sendable {
         try reply.validate()
         return reply
     }
+}
+
+private struct RelationshipSelectorCodingKey: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
 }

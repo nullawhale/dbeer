@@ -17,7 +17,7 @@ extension CatalogRequest {
 
     var supportsMetadataPaging: Bool {
         guard ["schemas", "objects", "search", "columns", "foreignKeys", "referencingTables", "keys", "indexes", "constraints", "triggers"].contains(kind),
-              page == nil, cursor == nil, sort == nil, filters == nil, filterExpression == nil, typeChange == nil,
+              page == nil, cursor == nil, sort == nil, filters == nil, filterExpression == nil, typeChange == nil, relationshipScope == nil,
               (identity ?? "").isEmpty, !["foreignKeys", "referencingTables"].contains(kind) || identity == nil,
               [schema, object, objectKind, search].allSatisfy({ value in
                   value.map { $0.utf8.count <= 1_024 && !$0.contains("\0") } ?? true

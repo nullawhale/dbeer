@@ -55,6 +55,16 @@ struct TableBrowseControls: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Filter and Sort").font(.headline)
+                if let scope = configuration.relationshipScope {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Related rows from \(scope.parent.schema).\(scope.parent.name)").fontWeight(.medium)
+                        Text(scope.parentKeyDescription)
+                            .font(.caption).textSelection(.enabled)
+                        Button("Remove Relationship Restriction") { change { $0.relationshipScope = nil } }.controlHover()
+                    }
+                    Divider()
+                }
+
                 if let expression = configuration.filterExpression {
                     expressionEditor(expression, path: [])
                     if expression.kind == "condition" {
@@ -63,14 +73,14 @@ struct TableBrowseControls: View {
                             .accessibilityIdentifier("tableFilterAddCondition-root")
                     }
                 } else {
-                    Text("No filters").appSecondaryText()
+                    Text(configuration.relationshipScope == nil ? "No filters" : "No additional filters").appSecondaryText()
                     Button("Add Condition") { addCondition(path: []) }
                         .controlHover().disabled(filterColumns.isEmpty)
                         .accessibilityIdentifier("tableAddFilter")
                 }
                 HStack {
-                    Button("Clear Filters") { change { $0.filterExpression = nil } }
-                        .controlHover().disabled(configuration.filterExpression == nil)
+                    Button("Clear Filters") { change { $0.filterExpression = nil; $0.relationshipScope = nil } }
+                        .controlHover().disabled(configuration.filterExpression == nil && configuration.relationshipScope == nil)
                         .accessibilityIdentifier("tableBrowseClearFilters")
                     Spacer()
                     Text("Changes apply together.").font(.caption).appSecondaryText()
@@ -461,7 +471,19 @@ enum TableBrowseNavigation {
         guard configuration.isValid else {
             return "Choose valid conditions and unique sort columns. Use at most 32 conditions, 4 levels and 32 sort columns."
         }
-        let required = (configuration.filterExpression?.columns ?? []).union(configuration.sort.map(\.column))
+        if let scope = configuration.relationshipScope {
+            guard document.runtime?.engine == .sqlite, document.runtime?.capabilities.contains(SQLiteRelationshipScope.capability) == true,
+                  let table = document.table, scope.matches(table) else {
+                return "Connect the original SQLite table with a helper that supports relationship restrictions, or remove this restriction."
+            }
+        }
+        if configuration.filterExpression?.hasSQLiteOperands == true {
+            guard document.runtime?.engine == .sqlite,
+                  document.runtime?.capabilities.contains("sqliteCellFilterV1") == true else {
+                return "Connect with a helper that supports typed SQLite cell filters before applying this view."
+            }
+        }
+        let required = (configuration.filterExpression?.columns ?? []).union(configuration.sort.map(\.column)).union(configuration.relationshipScope?.columns.map(\.source) ?? [])
         if !document.tableColumns.isEmpty {
             let missing = required.subtracting(document.tableColumns.compactMap { $0["name"] })
             if !missing.isEmpty {
@@ -483,6 +505,7 @@ enum TableBrowseNavigation {
             document.tableNavigationError = error
             return nil
         }
+        document.tableRelationshipScope = configuration.relationshipScope
         document.tableFilterExpression = configuration.filterExpression
         document.tableSort = configuration.sort
         document.tableBrowseDraft = nil

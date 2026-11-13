@@ -42,13 +42,22 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 			err = session.catalogDefinition(collector, request)
 		case "name":
 			err = session.catalogName(collector, request)
-		case "foreignKeys":
-			object, lookupErr := session.work.client.Execute(`SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=? LIMIT 1`, request.Schema, request.Object)
+		case "foreignKeys", "referencingTables":
+			object, lookupErr := session.work.client.Execute(`SELECT TABLE_SCHEMA,TABLE_NAME FROM information_schema.TABLES WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ? LIMIT 1`, request.Schema, request.Object)
 			if lookupErr != nil {
 				return lookupErr
 			}
 			exists := object.RowNumber() == 1
+			if exists && request.Kind == "referencingTables" {
+				request.Schema, lookupErr = object.GetString(0, 0)
+				if lookupErr == nil {
+					request.Object, lookupErr = object.GetString(0, 1)
+				}
+			}
 			object.Close()
+			if lookupErr != nil {
+				return lookupErr
+			}
 			if !exists {
 				return &wire.MyError{Code: 1146, State: "42S02", Message: "object unavailable"}
 			}
@@ -88,7 +97,7 @@ func (session *Session) catalog(ctx context.Context, command protocol.Command, s
 		}
 		return err
 	}, sinks...)
-	if unavailable && response.Connected && request.Kind != "browse" && request.Kind != "foreignKeys" {
+	if unavailable && response.Connected && request.Kind != "browse" && request.Kind != "foreignKeys" && request.Kind != "referencingTables" {
 		response.Type, response.Category, response.Message, response.SQLState = "query.result", "", "", ""
 		response.Columns, response.Rows = nil, [][]*string{}
 		response.RowCount, response.DisplayedRowCount = 0, 0
@@ -373,10 +382,16 @@ WHEN c.DATA_TYPE NOT IN ('tinyint','smallint','mediumint','int','bigint','decima
 FROM information_schema.COLUMNS c JOIN information_schema.TABLES t ON t.TABLE_SCHEMA=c.TABLE_SCHEMA AND t.TABLE_NAME=c.TABLE_NAME
 LEFT JOIN information_schema.KEY_COLUMN_USAGE k ON k.TABLE_SCHEMA=c.TABLE_SCHEMA AND k.TABLE_NAME=c.TABLE_NAME AND k.COLUMN_NAME=c.COLUMN_NAME AND k.CONSTRAINT_NAME='PRIMARY'
 WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? ORDER BY c.ORDINAL_POSITION LIMIT 1001`, args
+	case "referencingTables":
+		return `SELECT MIN(k.TABLE_SCHEMA) AS ` + "`schema`" + `,MIN(k.TABLE_NAME) AS name,'table' AS kind
+FROM information_schema.KEY_COLUMN_USAGE k
+WHERE BINARY k.REFERENCED_TABLE_SCHEMA=BINARY ? AND BINARY k.REFERENCED_TABLE_NAME=BINARY ?
+GROUP BY BINARY k.TABLE_SCHEMA,BINARY k.TABLE_NAME
+ORDER BY BINARY k.TABLE_SCHEMA,BINARY k.TABLE_NAME LIMIT 1001`, args
 	case "foreignKeys":
 		return `SELECT k.CONSTRAINT_NAME AS name, k.REFERENCED_TABLE_SCHEMA AS targetSchema, k.REFERENCED_TABLE_NAME AS targetTable,
 k.COLUMN_NAME AS sourceColumn, k.REFERENCED_COLUMN_NAME AS targetColumn, k.ORDINAL_POSITION AS position
-FROM information_schema.KEY_COLUMN_USAGE k WHERE k.TABLE_SCHEMA=? AND k.TABLE_NAME=? AND k.REFERENCED_TABLE_NAME IS NOT NULL
+FROM information_schema.KEY_COLUMN_USAGE k WHERE BINARY k.TABLE_SCHEMA=BINARY ? AND BINARY k.TABLE_NAME=BINARY ? AND k.REFERENCED_TABLE_NAME IS NOT NULL
 ORDER BY k.CONSTRAINT_NAME,k.ORDINAL_POSITION LIMIT 1001`, args
 	case "keys":
 		return `SELECT k.CONSTRAINT_NAME AS name, CASE WHEN k.CONSTRAINT_NAME='PRIMARY' THEN 'primaryKey' WHEN MAX(k.REFERENCED_TABLE_NAME) IS NOT NULL THEN 'foreignKey' ELSE 'unique' END AS kind,

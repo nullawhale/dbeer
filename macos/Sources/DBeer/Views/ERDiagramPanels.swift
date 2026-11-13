@@ -20,9 +20,10 @@ struct ERDiagramAreaPanel: View {
     }
 
     private var connected: Bool { workspace.erDiagramContext(model) != nil }
-    private var canSearch: Bool {
-        connected && !model.isLoading && !model.isSearching && ERTableID.validName(schemaState.wrappedValue)
+    private var canDiscoverAll: Bool {
+        connected && !model.isLoading && !model.isSearching && model.visibleTableDiscovery?.isBusy != true && model.neighbourDiscovery?.isBusy != true
     }
+    private var canSearch: Bool { canDiscoverAll && ERTableID.validName(schemaState.wrappedValue) }
     private var tables: [ERTableID] {
         model.stored.tables.filter { listSearchState.wrappedValue.isEmpty || $0.label.localizedCaseInsensitiveContains(listSearchState.wrappedValue) }
     }
@@ -108,6 +109,17 @@ struct ERDiagramAreaPanel: View {
                 }.disabled(!canSearch).help("Search table metadata in the exact schema or database")
                     .accessibilityLabel("Search tables")
             }
+            HStack(spacing: 6) {
+                Button("Discover Schema") { Task { await workspace.discoverERVisibleTables(document, schema: schemaState.wrappedValue) } }
+                    .controlHover().disabled(!canSearch || !workspace.supportsRelationshipDiscovery(profileID: model.stored.profileID))
+                Button("Discover All Visible") { Task { await workspace.discoverERVisibleTables(document) } }
+                    .controlHover().disabled(!canDiscoverAll || !workspace.supportsRelationshipDiscovery(profileID: model.stored.profileID))
+            }
+            Text("Explicit discovery retains up to 256 schemas and 10,000 table names for two minutes. Stop keeps a partial list. Add tables, then Build (100 tables maximum).")
+                .font(.caption2).appSecondaryText()
+            if let discovery = model.visibleTableDiscovery {
+                VisibleTableDiscoveryPanel(discovery: discovery, diagram: model)
+            }
             if model.isSearching { ProgressView().controlSize(.small) }
             if let notice = model.candidateNotice {
                 Text(notice).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
@@ -164,7 +176,7 @@ struct ERDiagramInspector: View {
                 else {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Inspector", systemImage: "info.circle").font(.headline)
-                        Text("Select a table to inspect its columns and declared relationships.")
+                        Text("Select a table to inspect its columns and relationships.")
                             .font(.caption).appSecondaryText()
                     }
                 }
@@ -196,6 +208,13 @@ struct ERDiagramInspector: View {
                 } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton).fixedSize().controlHover().accessibilityLabel("Table actions")
             }.controlSize(.small)
+            Button("Find Neighbours") { Task { await workspace.discoverERNeighbours(document) } }
+                .controlHover().controlSize(.small)
+                .disabled(!connected || model.isLoading || model.isSearching || model.neighbourDiscovery?.isBusy == true ||
+                    model.visibleTableDiscovery?.isBusy == true || !workspace.supportsRelationshipDiscovery(profileID: table.profileID))
+            if let discovery = model.neighbourDiscovery, (discovery.resolvedTarget ?? discovery.target) == table {
+                ERNeighbourDiscoveryPanel(discovery: discovery, diagram: model)
+            }
             if let facts = model.metadata[table] {
                 metadataState(facts)
                 Divider()
@@ -306,7 +325,7 @@ struct ERDiagramInspector: View {
             }
             if !model.stored.tables.contains(edge.target) {
                 Text("Referenced table is outside the diagram.").font(.caption2).appSecondaryText()
-                Button("Add to Diagram") { model.add(edge.target) }.controlHover().controlSize(.small).disabled(model.isLoading)
+                Button("Add to Diagram") { model.add(edge.target) }.controlHover().controlSize(.small).disabled(model.isLoading || edge.target.profileID != model.stored.profileID)
             } else if model.metadata[edge.target]?.columnState.isAvailable != true {
                 Text("Target columns are unavailable or stale. Table-level reference only.")
                     .font(.caption2).foregroundStyle(.orange)

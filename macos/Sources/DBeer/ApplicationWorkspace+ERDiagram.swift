@@ -18,6 +18,24 @@ extension ApplicationWorkspace {
         return addDocument(document)
     }
 
+    func erConnectedProfileContext(_ profileID: UUID) -> ERDiagramLoadContext? {
+        guard relationshipServiceContextIsAvailable,
+              let profile = library.savedConnections.first(where: { $0.id == profileID }),
+              let service = services[profile.id], service.connectionState == .connected,
+              let sessionID = service.sessionId, let revision = typeProfileRevisions[profile.id],
+              let serviceGeneration = typeServiceGenerations[profile.id], service.activeConnectionId == profile.id else { return nil }
+        let settings = ConnectionSettings(host: service.host, port: Int(service.port) ?? -1, database: service.database,
+            user: service.user, password: "", sslMode: service.sslMode,
+            sslRootCert: service.sslRootCert.isEmpty ? nil : service.sslRootCert, engine: service.engine,
+            policy: service.policy, contactPoints: service.contactPoints, localDatacenter: service.localDatacenter,
+            consistency: service.consistency, ssh: service.ssh, passwordCommand: service.passwordCommand, mongodb: service.mongodb, sqlite: service.sqlite)
+        let connected = SavedConnection(id: profile.id, name: profile.name, settings: settings)
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        guard let savedBytes = try? encoder.encode(profile), let connectedBytes = try? encoder.encode(connected), savedBytes == connectedBytes else { return nil }
+        return .init(profileID: profile.id, sessionID: sessionID, serviceGeneration: serviceGeneration,
+                     settingsRevision: revision, engine: profile.engine, database: profile.database)
+    }
+
     func erDiagramContext(_ model: ERDiagramModel) -> ERDiagramLoadContext? {
         guard canInspectPostgresTypes,
               let profile = library.savedConnections.first(where: { $0.id == model.stored.profileID }),
@@ -119,6 +137,7 @@ extension ApplicationWorkspace {
     }
 
     func stopERDiagram(_ model: ERDiagramModel, reason: String = "Stopped loading. Build explicitly to retry.") {
+        model.visibleTableDiscovery?.stop(); model.neighbourDiscovery?.stop()
         let requests = [(model.request, model.context), (model.searchRequest, model.searchContext)]
         model.invalidate(reason); model.isSearching = false
         for (pending, context) in requests {
@@ -143,6 +162,7 @@ extension ApplicationWorkspace {
     }
     func invalidateERDiagrams(profileID: UUID? = nil, reason: String) {
         for document in documents {
+            if profileID == nil || document.profileID == profileID { document.incomingRelationships?.stop() }
             guard let model = document.erDiagramModel, model.context != nil || model.searchContext != nil,
                   profileID == nil || model.stored.profileID == profileID else { continue }
             stopERDiagram(model, reason: reason)

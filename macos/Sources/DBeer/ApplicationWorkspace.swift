@@ -25,6 +25,8 @@ final class SQLDocument: ObservableObject, Identifiable {
             if profileID != oldValue {
                 invalidateSQLiteCompletion()
                 clearExecutionSuccess()
+                incomingRelationships?.stop()
+                incomingRelationships = nil
                 tableForeignKeys = []
                 foreignKeysError = nil
                 tableResult = nil
@@ -154,11 +156,12 @@ final class SQLDocument: ObservableObject, Identifiable {
         get { tableFilterExpression?.flattenedConjunction ?? [] }
         set { tableFilterExpression = .conjunction(newValue) }
     }
+    @Published var tableRelationshipScope: SQLiteRelationshipScope? { didSet { if tableRelationshipScope != oldValue { resetTablePaging() } } }
     @Published var tableBrowseDraft: TableBrowseConfiguration?
     @Published var isApplyingBrowse = false
     @Published var tableLoadedConfiguration: TableBrowseConfiguration?
     var browseConfiguration: TableBrowseConfiguration {
-        TableBrowseConfiguration(filterExpression: tableFilterExpression, sort: tableSort)
+        TableBrowseConfiguration(filterExpression: tableFilterExpression, sort: tableSort, relationshipScope: tableRelationshipScope)
     }
     var browseDraftConfiguration: TableBrowseConfiguration {
         get { tableBrowseDraft ?? browseConfiguration }
@@ -169,6 +172,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var tableResult: BackendMessage?
     @Published var tableSnapshotSource: ResultSnapshotSource?
     @Published var tableFailure: WorkspaceModel.QueryFailure?
+    @Published var incomingRelationships: IncomingRelationshipDiscoveryModel?
     @Published var tableForeignKeys: [TableForeignKey] = []
     @Published var foreignKeysError: String?
     @Published var tableNavigationError: String?
@@ -238,6 +242,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         if let savedTable = stored.table, stored.kind == .table {
             table = savedTable.reference
             tableFilterExpression = savedTable.filterExpression
+            tableRelationshipScope = savedTable.relationshipScope
             tableSort = savedTable.sort
             page = savedTable.page
             tableNeedsExplicitLoad = true
@@ -266,7 +271,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         }
         return StoredSQLDocument(id: id, title: title, text: text, profileID: profileID,
             kind: table == nil ? .sql : .table,
-            table: table.map { StoredTableDocument(reference: $0, page: page, filterExpression: tableFilterExpression, sort: tableSort) },
+            table: table.map { StoredTableDocument(reference: $0, page: page, filterExpression: tableFilterExpression, sort: tableSort, relationshipScope: tableRelationshipScope) },
             fileURL: table == nil ? fileURL : nil,
             fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil,
             fileDocumentID: table == nil ? (fileDocument?.id ?? restoredFileDocumentID) : nil,
@@ -312,6 +317,23 @@ final class SQLDocument: ObservableObject, Identifiable {
     func detachFileDocument() {
         fileObservations = []
         fileDocument = nil
+    }
+
+    /// An unloaded or failed view can change its saved restriction locally.
+    /// Loading data remains a separate, explicit action.
+    @discardableResult
+    func removeUnloadedRelationshipScope() -> Bool {
+        guard table != nil, grid == nil, tableRelationshipScope != nil,
+              !isRunning, !isNavigatingTable, !isApplyingBrowse else { return false }
+        tableRelationshipScope = nil
+        if var draft = tableBrowseDraft {
+            draft.relationshipScope = nil
+            tableBrowseDraft = draft == browseConfiguration ? nil : draft
+        }
+        tableLoadedConfiguration = nil
+        tableNeedsExplicitLoad = true
+        tableNavigationError = nil
+        return true
     }
 
     func resetTablePaging() {
@@ -1528,6 +1550,7 @@ final class ApplicationWorkspace: ObservableObject {
     @discardableResult
     private func closeDocumentImmediately(_ document: SQLDocument, remember: Bool = false) async -> Bool {
         if let model = document.erDiagramModel { stopERDiagram(model, reason: "This diagram was closed.") }
+        document.incomingRelationships?.stop()
         let runtimeDocuments = runtimeDocuments(in: document)
         for child in runtimeDocuments {
             await child.runtime?.shutdown()
@@ -1676,6 +1699,10 @@ final class ApplicationWorkspace: ObservableObject {
         guard document.table != nil || !statements.isEmpty else { return }
         document.showsExecutionPlan = false
         guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
+        if document.table != nil, document.tableRelationshipScope != nil, profile.engine != .sqlite {
+            document.localError = "The saved relationship restriction requires SQLite. Remove it explicitly before loading this table with another database engine."
+            return
+        }
         let libraryBinding = sqlLibraryExecutionBinding(document)
         let boundText = document.text
         if document.table == nil {
@@ -1804,6 +1831,11 @@ final class ApplicationWorkspace: ObservableObject {
                 guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested else { return }
                 let historyProfile = SQLHistoryProfile(profile, currentKeyspace: runtime.currentKeyspace)
                 let configuration = document.browseConfiguration
+                if let scope = configuration.relationshipScope,
+                   runtime.engine != .sqlite || !runtime.capabilities.contains(SQLiteRelationshipScope.capability) || !scope.matches(table) {
+                    document.localError = "This helper cannot apply the saved relationship restriction. Update the helper or remove the restriction explicitly."
+                    return
+                }
                 let supportsTree = runtime.capabilities.contains("browseFilterTreeV1")
                 if !supportsTree, let expression = configuration.filterExpression, expression.flattenedConjunction == nil {
                     document.localError = "This helper does not support grouped filters. Update the application and helper together."
@@ -1813,7 +1845,7 @@ final class ApplicationWorkspace: ObservableObject {
                     object: table.name, objectKind: table.kind, page: runtime.usesCursorPagination ? 0 : document.page,
                     cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: configuration.sort,
                     filters: supportsTree ? nil : configuration.filterExpression?.flattenedConjunction,
-                    filterExpression: supportsTree ? configuration.filterExpression : nil))
+                    filterExpression: supportsTree ? configuration.filterExpression : nil, relationshipScope: configuration.relationshipScope))
                 if runtime.queryFailure == nil, let result = runtime.result {
                     document.tableFailure = nil
                     document.tableResult = result
@@ -2440,6 +2472,7 @@ final class ApplicationWorkspace: ObservableObject {
             document.$table.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$page.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$tableFilterExpression.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$tableRelationshipScope.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$tableSort.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$sqlLibraryEntryID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
@@ -3058,6 +3091,11 @@ final class ApplicationWorkspace: ObservableObject {
         shutdownTask == nil && !isClosing && !disconnectingProfiles.contains(profileID)
     }
 
+    func canStartERSource(_ profileID: UUID) -> Bool {
+        shutdownTask == nil && !disconnectingProfiles.contains(profileID) &&
+            !isClosing
+    }
+
     func recordStructureOutcome(_ profileID: UUID, schema: String, table: String, review: TableStructureExecutionReview) {
         if let index = structureOutcomeReports.firstIndex(where: { $0.outcome.executionId == review.outcome.executionId }) {
             structureOutcomeReports[index].review = review
@@ -3493,7 +3531,7 @@ final class ApplicationWorkspace: ObservableObject {
         document.tableNavigationError = nil
         do {
             let columns = try await navigationColumns(target.reference, profileID: target.profileID,
-                required: (target.filterExpression?.columns ?? []).union(target.sort.map(\.column)))
+                required: (target.filterExpression?.columns ?? []).union(target.sort.map(\.column)).union(target.relationshipScope?.columns.map(\.source) ?? []))
             guard navigationIsCurrent(document, source: source),
                   try await prepareNavigationDraft(document, grid: grid) else { return }
             if await moveTable(document, from: source, to: target, columns: columns) {
@@ -3508,9 +3546,9 @@ final class ApplicationWorkspace: ObservableObject {
         } catch { if navigationIsCurrent(document, source: source) { document.tableNavigationError = error.localizedDescription } }
     }
 
-    private func navigationColumns(_ reference: TableReference, profileID: UUID, required: Set<String>) async throws -> [[String: String]] {
+    func navigationColumns(_ reference: TableReference, profileID: UUID, required: Set<String>, connectedSessionID: String? = nil) async throws -> [[String: String]] {
         let response = try await catalog(CatalogRequest(kind: "columns", schema: reference.schema,
-            object: reference.name, objectKind: reference.kind), profileID: profileID)
+            object: reference.name, objectKind: reference.kind), profileID: profileID, connectedSessionID: connectedSessionID)
         let columns = response.catalogRecords
         guard response.truncated != true, !columns.isEmpty,
               required.isSubset(of: Set(columns.compactMap { $0["name"] })) else {
@@ -3519,7 +3557,7 @@ final class ApplicationWorkspace: ObservableObject {
         return columns
     }
 
-    private func navigationIsCurrent(_ document: SQLDocument, source: TableViewLocation) -> Bool {
+    func navigationIsCurrent(_ document: SQLDocument, source: TableViewLocation) -> Bool {
         canStartOperation(document, forNavigating: true) && TableViewLocation(document) == source
     }
 
@@ -3553,7 +3591,7 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
-    private func navigationFiltersAfterReview(_ document: SQLDocument, grid: GridDraft,
+    func navigationFiltersAfterReview(_ document: SQLDocument, grid: GridDraft,
                                         key: TableForeignKey, row: GridRow) async throws -> [CatalogFilter]? {
         let pending = grid.pendingCount > 0 || grid.outcomeUnknown
         let before = grid.rows.map { ($0.id, $0.values) }
@@ -3572,9 +3610,12 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func installTableLocation(_ location: TableViewLocation, in document: SQLDocument) {
+        document.incomingRelationships?.stop()
+        document.incomingRelationships = nil
         document.table = location.reference
         document.profileID = location.profileID
         document.title = location.title
+        document.tableRelationshipScope = location.relationshipScope
         document.tableFilterExpression = location.filterExpression
         document.tableSort = location.sort
         document.tableBrowseDraft = nil
@@ -3587,7 +3628,7 @@ final class ApplicationWorkspace: ObservableObject {
         document.isLoadingForeignKeys = false
     }
 
-    private func moveTable(_ document: SQLDocument, from source: TableViewLocation, to target: TableViewLocation,
+    func moveTable(_ document: SQLDocument, from source: TableViewLocation, to target: TableViewLocation,
                            columns: [[String: String]]) async -> Bool {
         guard navigationIsCurrent(document, source: source) else { return false }
         let oldGrid = document.grid
@@ -3643,7 +3684,7 @@ final class ApplicationWorkspace: ObservableObject {
         return true
     }
 
-    private func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument,
+    func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument,
                                   context: PaneSelectionContext) async {
         guard canStartOperation(source, forNavigating: true) else { return }
         let document = SQLDocument(title: "SQL \(documents.count + 1)", text: "Table data", profileID: location.profileID)
@@ -3773,6 +3814,14 @@ final class ApplicationWorkspace: ObservableObject {
         }
         return reply
     }
+
+    var relationshipServiceContextIsAvailable: Bool { shutdownTask == nil && !helperFailed }
+
+    func relationshipDocumentIsCurrent(_ document: SQLDocument) -> Bool {
+        relationshipServiceContextIsAvailable && documents.contains(where: { $0 === document })
+    }
+
+    /// Local export ownership does not depend on a live helper or connection.
 
     var canInspectPostgresTypes: Bool { shutdownTask == nil && !isClosing && !helperFailed }
 

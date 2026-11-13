@@ -26,7 +26,8 @@ struct CatalogFilterExpression: Codable, Equatable, Sendable {
             guard depth <= 4, nodes <= 64 else { return false }
             if expression.kind == "condition" {
                 conditions += 1
-                return conditions <= 32 && expression.children == nil && expression.condition?.isValid == true
+                guard conditions <= 32, expression.children == nil, let condition = expression.condition, condition.isValid else { return false }
+                return true
             }
             guard ["and", "or"].contains(expression.kind), expression.condition == nil,
                   let children = expression.children, !children.isEmpty else { return false }
@@ -56,7 +57,7 @@ struct CatalogFilterExpression: Codable, Equatable, Sendable {
     var conditionCount: Int { kind == "condition" ? 1 : (children ?? []).reduce(0) { $0 + $1.conditionCount } }
 
     var displayText: String {
-        if let condition { return "\(condition.column) \(condition.operator)" + (condition.value.map { " \($0)" } ?? "") }
+        if let condition { return "\(condition.column) \(condition.operator)" + (condition.operandDisplayText.map { " \($0)" } ?? "") }
         return "(" + (children ?? []).map(\.displayText).joined(separator: kind == "or" ? " OR " : " AND ") + ")"
     }
 
@@ -86,7 +87,7 @@ struct CatalogFilterExpression: Codable, Equatable, Sendable {
         children = try values.decodeIfPresent([Self].self, forKey: .children)
         if values.contains(.condition) {
             let operand = try values.superDecoder(forKey: .condition).container(keyedBy: BrowseCodingKey.self)
-            guard Set(operand.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value"]) else {
+            guard Set(operand.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value", "sqliteValue"]) else {
                 throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown condition field."))
             }
         }
@@ -104,14 +105,33 @@ private struct BrowseCodingKey: CodingKey {
 }
 
 extension CatalogFilter {
+    var operandDisplayText: String? {
+        guard let sqliteValue else { return value }
+        return sqliteValue.type == "blob" ? "Base64 \(sqliteValue.value)" : sqliteValue.displayText
+    }
+
     var isValid: Bool {
         guard validBrowseName(column) else { return false }
+        if let sqliteValue {
+            guard value == nil, sqliteValue.valid, sqliteValue.type != "null", sqliteValue.value.utf8.count <= 1_024 * 1_024,
+                  ["eq", "ne"].contains(self.operator) else { return false }
+            if sqliteValue.type == "real", let bits = UInt64(sqliteValue.value, radix: 16) {
+                return !Double(bitPattern: bits).isNaN
+            }
+            return true
+        }
         switch self.operator {
         case "isNull", "isNotNull": return value == nil
         case "eq", "ne", "lt", "lte", "gt", "gte", "contains":
             return value.map { $0.utf8.count <= 1_024 * 1_024 && !$0.contains("\0") } == true
         default: return false
         }
+    }
+}
+
+extension CatalogFilterExpression {
+    var hasSQLiteOperands: Bool {
+        condition?.sqliteValue != nil || (children ?? []).contains(where: \.hasSQLiteOperands)
     }
 }
 
@@ -122,29 +142,32 @@ func validBrowseName(_ name: String) -> Bool {
 struct TableBrowseConfiguration: Codable, Equatable, Sendable {
     var filterExpression: CatalogFilterExpression?
     var sort: [CatalogSort]
+    var relationshipScope: SQLiteRelationshipScope?
 
-    init(filterExpression: CatalogFilterExpression? = nil, sort: [CatalogSort] = []) {
+    init(filterExpression: CatalogFilterExpression? = nil, sort: [CatalogSort] = [], relationshipScope: SQLiteRelationshipScope? = nil) {
         self.filterExpression = filterExpression
         self.sort = sort
+        self.relationshipScope = relationshipScope
     }
 
     var isValid: Bool {
-        (filterExpression == nil || filterExpression?.isValid == true) && sort.count <= 32 &&
+        (relationshipScope == nil || relationshipScope?.isValid == true) && (filterExpression == nil || filterExpression?.isValid == true) && sort.count <= 32 &&
             Set(sort.map(\.column)).count == sort.count && sort.allSatisfy {
                 validBrowseName($0.column) && ["asc", "desc"].contains($0.direction)
             }
     }
 
-    private enum CodingKeys: String, CodingKey { case filterExpression, sort }
+    private enum CodingKeys: String, CodingKey { case filterExpression, sort, relationshipScope }
 
     init(from decoder: Decoder) throws {
         let all = try decoder.container(keyedBy: BrowseCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["filterExpression", "sort"]) else {
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["filterExpression", "sort", "relationshipScope"]) else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown browse setting."))
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         filterExpression = try values.decodeIfPresent(CatalogFilterExpression.self, forKey: .filterExpression)
         sort = try values.decode([CatalogSort].self, forKey: .sort)
+        relationshipScope = values.contains(.relationshipScope) ? try values.decode(SQLiteRelationshipScope.self, forKey: .relationshipScope) : nil
         var orders = try values.nestedUnkeyedContainer(forKey: .sort)
         while !orders.isAtEnd {
             let fields = try orders.superDecoder().container(keyedBy: BrowseCodingKey.self)

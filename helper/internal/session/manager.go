@@ -669,6 +669,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					owner.manager.forgetPending(command)
 					owner.invalidateGrant()
 					response = rejectedCommand(command, "validation", queryParameterError(engine, command).Error())
+				} else if command.Catalog != nil && command.Catalog.RelationshipScope != nil && engine != "sqlite" {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "capability", "Incoming relationship scopes require the SQLite adapter.")
 				} else if !owner.authorize(command, engine, policy, physical) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
