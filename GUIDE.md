@@ -393,6 +393,29 @@ staged row edits.
 
 ## Table filters, sorting and saved views
 
+Right-click a loaded table cell and choose **Add Filter Condition** to show only
+that value, hide it, include the selected values in that column, or match SQL
+NULL/non-NULL values. These actions add to the current filter draft. Use
+**Apply View** to read matching data. Hiding a non-NULL value keeps NULL rows;
+selected values keep SQL NULL separate from empty strings and the text `NULL`.
+Existing AND/OR groups retain their meaning. Unavailable actions explain type,
+engine or filter-size restrictions in their tooltips.
+
+SQLite cell filters retain the loaded storage class and bytes for bound
+operands. The filter editor labels these operands and offers **Edit as Text**
+for an explicit text operand instead. Saved views and restored table documents
+retain typed operands and require a compatible connected helper before Apply.
+SQLite uses its normal comparison and column-affinity rules. Incoming-FK
+navigation uses a separate, visible relationship restriction so matching child
+rows follow the referenced parent's affinity and collation. Ordinary child-column
+conditions remain additional filters. **Remove Relationship Restriction** stages
+its removal in a loaded view; use **Apply View** to read the resulting rows.
+A restored or failed view also shows the saved parent/key restriction and offers
+removal without connecting or reading; **Load Data** remains a separate action.
+Changing the selected profile preserves the restriction. An incompatible engine
+or helper remains blocked until it supports the restriction or you remove it
+explicitly.
+
 Open **Filter** above a loaded table to prepare conditions and sorting
 without reading the database. **Apply** starts one read from the first page;
 **Reset** restores the last applied settings. Header clicks edit the sort draft,
@@ -757,7 +780,8 @@ filters, page or pending changes. **Open in New Tab**, available in the catalog
 and a table tab's context menu, opens a separate view with its own session and
 clean browsing settings. Opening one view does not copy another view's edits.
 
-Select one loaded row and use **Related Rows** to follow a declared PostgreSQL or MySQL foreign key in the current view or a new tab. **Find Incoming
+Select one loaded row and use **Related Rows** to follow a declared PostgreSQL,
+MySQL or SQLite foreign key in the current view or a new tab. **Find Incoming
 Relations…** explicitly discovers child tables referencing the current table.
 Select a stored parent row, then choose **Open Child Rows in New Tab** or **Open
 in This Tab** in the incoming-relations list. Discovery shows source progress,

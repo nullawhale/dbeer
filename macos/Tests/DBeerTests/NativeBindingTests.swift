@@ -20,6 +20,25 @@ struct NativeBindingTests {
         #expect(change.original?[1].value == "1234567890.123456789")
     }
 
+    @Test func unsupportedOriginalNeverBecomesEditFilterOrKeyAuthority() throws {
+        let columns = [ResultColumn(index: 0, name: "id", nativeType: "bigint"), ResultColumn(index: 1, name: "value", nativeType: "custom")]
+        for native in [NativeValue(kind: "opaque", value: "AP8=", engine: "postgresql", nativeType: "custom"),
+                       .init(kind: "text", value: "actual", typeIdentity: "unresolved:custom"),
+                       .init(kind: "list", items: [.init(kind: "integer", value: "1")]),
+                       .init(kind: "float64", value: "8000000000000000")] {
+            let grid = GridDraft(reference: .init(schema: "public", name: "values", kind: "table"),
+                result: .init(type: "query.result", requestId: "r", columns: columns, rows: [["1", "formatted"]],
+                    nativeValues: [[.init(kind: "integer", value: "1"), native]]),
+                metadata: [["name":"id", "primaryKey":"1", "editable":"false"], ["name":"value", "editable":"true"]])
+            grid.supportsEditing = true // Runtime capability cannot overrule missing value evidence.
+            #expect(!grid.canEditRow(0) && grid.rowReadOnlyReason(0)?.contains("lossless edit binding") == true)
+            #expect(grid.rows[0].values[1].kind == "unresolved")
+            #expect(grid.nativeValues?[0][1] == native)
+            #expect(throws: TableCellFilterError.self) {
+                try TableCellFilters.adding(.equal, column: columns[1], values: [grid.rows[0].values[1]], to: .init())
+            }
+        }
+    }
 
     @Test func sqliteStorageAndNativeTreesMustAgreeBeforeTheyAreTransported() throws {
         let columns = [ResultColumn(index: 0, name: "value", engine: .sqlite)]

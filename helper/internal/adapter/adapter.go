@@ -77,7 +77,7 @@ func Capabilities(engine string) []string {
 	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.NativeResultValuesCapability, protocol.BrowseFilterTreeCapability}
 	switch engine {
 	case "sqlite":
-		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.SQLiteRelationshipBrowseCapability, protocol.IncomingRelationsCapability)
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SQLiteCellFilterCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.SQLiteRelationshipBrowseCapability, protocol.IncomingRelationsCapability)
 	case "mongodb":
 		return append(common, "localReadOnly", "cursorPagination", "documentModelV1", "canonicalExtendedJSONV1")
 	case "cassandra":

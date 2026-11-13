@@ -337,7 +337,15 @@ func buildBrowse(r protocol.CatalogRequest, cols []columnInfo) (string, []any, e
 				return q + op + "?", nil
 			}
 			if f.SQLiteValue != nil {
-				return "", errors.New("SQLite cell filter operands are unavailable.")
+				if !f.Valid() {
+					return "", errors.New("Invalid SQLite filter operand.")
+				}
+				args = append(args, *f.SQLiteValue)
+				op := "="
+				if f.Operator == "ne" {
+					op = "<>"
+				}
+				return q + op + "?", nil
 			}
 			if f.Value == nil {
 				return "", errors.New("Missing filter operand.")

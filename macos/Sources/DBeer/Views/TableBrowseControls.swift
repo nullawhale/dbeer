@@ -495,7 +495,7 @@ enum TableBrowseNavigation {
         }
         if configuration.filterExpression?.hasSQLiteOperands == true {
             guard document.runtime?.engine == .sqlite,
-                  document.runtime?.capabilities.contains("sqliteCellFilterV1") == true else {
+                  document.runtime?.capabilities.contains(TableCellFilters.sqliteCapability) == true else {
                 return "Connect with a helper that supports typed SQLite cell filters before applying this view."
             }
         }

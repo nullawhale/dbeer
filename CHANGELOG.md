@@ -32,6 +32,12 @@
   separate from initial helper capture cost and require Add then Build for the
   100-table diagram area. Preserve active ER work through cancelled close decisions.
 
+- Add table-cell context actions for equality, exclusion, selected-value lists
+  and NULL predicates through the existing filter draft and explicit Apply.
+  Preserve nested groups, exact numbers and binary values, and bind SQLite
+  storage values without converting them to display text. Retain source row
+  mapping while loaded-result search is active.
+
 - Add bounded PostgreSQL/MySQL/SQLite metadata paging and selected-object batches
   beyond the ordinary result display limit. Retain immutable observations and
   complete composite foreign keys, surface access gaps, source changes and MySQL

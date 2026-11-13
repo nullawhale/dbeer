@@ -106,7 +106,12 @@ struct NativeResultIntegrationTests {
             try #require(await workspace.applyGrid(table))
             let refreshed = try #require(table.grid)
             #expect(refreshed.nativeValues?[0][2].value == "edited")
-
+            let filter = try TableCellFilters.adding(.equal, column: refreshed.columns[0], values: [refreshed.rows[0].values[0]],
+                to: .init(), typedSQLite: engine == .sqlite)
+            table.browseDraftConfiguration = filter
+            let filteredRead = try #require(TableBrowseNavigation.apply(document: table, workspace: workspace))
+            await filteredRead.value
+            #expect(table.tableNavigationError == nil && table.grid?.nativeValues?[0][0].value == "9007199254740993" && table.grid?.rows.count == 1)
 
             let profile = try #require(workspace.library.savedConnections.first { $0.id == profileID })
             let coordinator = AgentAccessCoordinator(profiles: { [profile] }, settings: { _ in settings }, backendFactory: {

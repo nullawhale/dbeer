@@ -160,6 +160,17 @@ struct DataGridView: View {
                 TableBrowseNavigation.sort(column: grid.columns[index].name, document: document, workspace: workspace)
             }
         }
+        if document.table != nil {
+            view.onCellFilter = { request in
+                TableBrowseNavigation.addCellFilter(request, document: document, workspace: workspace, grid: grid)
+            }
+            view.cellFilterUnavailableReason = { request in
+                do {
+                    _ = try TableBrowseNavigation.cellFilter(request, document: document, workspace: workspace, grid: grid)
+                    return nil
+                } catch { return error.localizedDescription }
+            }
+        }
         view.documentID = document.id
         view.copySettings = workspace.copySettings
         view.copyAllowed = !document.isRunning && !document.isNavigatingTable && !workspace.isClosing && !grid.isApplying && !grid.isReloading && !grid.isClosing

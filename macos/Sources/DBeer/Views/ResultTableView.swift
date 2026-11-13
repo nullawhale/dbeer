@@ -331,6 +331,24 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
         let copyAs = NSMenuItem(title: "Copy as", action: nil, keyEquivalent: "")
         copyAs.submenu = formats
         menu.addItem(copyAs)
+        if copyCoordinator.onCellFilter != nil {
+            menu.addItem(.separator())
+            let filters = NSMenu(title: "Add Filter Condition")
+            filters.autoenablesItems = false
+            for (index, action) in TableCellFilterAction.allCases.enumerated() {
+                let item = NSMenuItem(title: action.title, action: #selector(ResultTableView.Coordinator.filterContextCell(_:)), keyEquivalent: "")
+                item.target = copyCoordinator
+                item.tag = index
+                let request = copyCoordinator.cellFilterRequest(action)
+                let reason = request.flatMap { copyCoordinator.cellFilterUnavailableReason?($0) }
+                item.isEnabled = request != nil && reason == nil
+                item.toolTip = reason ?? "Add a condition to the filter draft, then choose Apply View."
+                filters.addItem(item)
+            }
+            let filter = NSMenuItem(title: "Add Filter Condition", action: nil, keyEquivalent: "")
+            filter.submenu = filters
+            menu.addItem(filter)
+        }
         if copyCoordinator.onShowRowDetails != nil {
             menu.addItem(.separator())
             let details = NSMenuItem(title: "Row Details", action: #selector(ResultTableView.Coordinator.showContextRowDetails(_:)), keyEquivalent: "")
@@ -523,6 +541,8 @@ struct ResultTableView: NSViewRepresentable {
     var sortAscending = true
     var sortOrders: [CatalogSort] = []
     var onSortColumn: ((Int) -> Void)?
+    var onCellFilter: ((TableCellFilterRequest) -> Void)?
+    var cellFilterUnavailableReason: ((TableCellFilterRequest) -> String?)?
     var onCoordinatorReady: ((Coordinator) -> Void)?
     var onSQLInsertCopy: ((ResultClipboardPayload, NSPasteboard) -> Void)?
     var onCopyError: ((String) -> Void)?
@@ -565,6 +585,8 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onShowRowDetails = onShowRowDetails
         coordinator.onToggleRowDetails = onToggleRowDetails
         coordinator.onSortColumn = onSortColumn
+        coordinator.onCellFilter = onCellFilter
+        coordinator.cellFilterUnavailableReason = cellFilterUnavailableReason
         coordinator.sortColumn = sortColumn
         coordinator.sortAscending = sortAscending
         coordinator.sortOrders = sortOrders
@@ -638,6 +660,8 @@ struct ResultTableView: NSViewRepresentable {
         var sortAscending = true
         var sortOrders: [CatalogSort] = []
         var onSortColumn: ((Int) -> Void)?
+        var onCellFilter: ((TableCellFilterRequest) -> Void)?
+        var cellFilterUnavailableReason: ((TableCellFilterRequest) -> String?)?
         private var previousSelection: IndexSet = []
         private var isSynchronizingSelection = false
         private var previousDataIdentity: AnyObject?
@@ -978,6 +1002,20 @@ struct ResultTableView: NSViewRepresentable {
             copy(rowIndices: [point.row], columnIndices: [point.column])
         }
 
+        func cellFilterRequest(_ action: TableCellFilterAction) -> TableCellFilterRequest? {
+            guard let table, let displayed = table.contextCell ?? table.cellSelection?.focus,
+                  let source = searchResult.sourceCell(displayed), rows.indices.contains(source.row),
+                  columns.indices.contains(source.column) else { return nil }
+            let selected = searchResult.sourceSelection(table.selectedRowIndexes)
+            return .init(action: action, cell: source, rows: selected.isEmpty ? [source.row] : Array(selected))
+        }
+
+        @objc func filterContextCell(_ sender: NSMenuItem) {
+            let actions = TableCellFilterAction.allCases
+            guard actions.indices.contains(sender.tag), let request = cellFilterRequest(actions[sender.tag]),
+                  cellFilterUnavailableReason?(request) == nil else { return }
+            onCellFilter?(request)
+        }
 
         func canEditCell(_ cell: ResultGridCell) -> Bool {
             guard nativePresentationIsValid, let source = searchResult.sourceCell(cell),
