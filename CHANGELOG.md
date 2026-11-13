@@ -32,6 +32,13 @@
   separate from initial helper capture cost and require Add then Build for the
   100-table diagram area. Preserve active ER work through cancelled close decisions.
 
+- Choose referenced records while editing declared PostgreSQL/MySQL/SQLite foreign
+  keys, including eligible PostgreSQL/MySQL SQL results with aliases or reordered
+  columns. Add bounded descriptive-column search, complete composite-key details,
+  exact typed operands and explicit SQLite storage types. Stage every key
+  component atomically in the local Preview/Apply draft, preserve original values
+  and reject changed or uneditable source contexts.
+
 - Add table-cell context actions for equality, exclusion, selected-value lists
   and NULL predicates through the existing filter draft and explicit Apply.
   Preserve nested groups, exact numbers and binary values, and bind SQLite

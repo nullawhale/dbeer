@@ -61,6 +61,31 @@ finishes by releasing its temporary observation; expiry and disconnect also clea
 it up. Existing ER selection and layout limits still apply. Workspace restoration
 keeps metadata unloaded until an explicit action.
 
+## Choosing referenced records (unreleased)
+
+Open an editable foreign-key cell and choose **Choose Related Record…** in its
+editor or context menu. Declared PostgreSQL, MySQL and SQLite foreign keys support
+this picker, including composite keys. Eligible PostgreSQL/MySQL SQL results use
+the same [source-row editing rules](#sql-result-source-rows-and-editing): a complete,
+verified single-table projection and an idle source session. Aliases and shuffled
+result columns retain their verified source-column mappings.
+
+Choose a search column and descriptive **Display Columns**. Text searches can
+match part of a value; **Exact Match** supports exact text, numbers, UUIDs and
+Base64 binary keys. For SQLite exact searches, explicitly choose Text, Integer,
+Real or BLOB storage to match the stored value, including heterogeneous `ANY` and
+typeless keys. Key values are always shown, with the complete selected key
+available for inspection. Results load in pages of 200, up to 10,000 per search;
+permission failures and incomplete results remain visible. Narrow the search
+when a limit is reached, or use **Stop** to cancel its current read.
+
+**Stage Related Key** places all composite-key components into one local row
+draft while preserving the original values. Review **Preview SQL**, then
+explicitly **Apply** to save it. Selection checks the captured source row,
+result, profile and session, and rejects protected columns. Search reads remain
+separate from SQL-tab transactions; opening restored documents never connects
+or starts a picker search.
+
 
 ## Repeatable data transfers (unreleased)
 

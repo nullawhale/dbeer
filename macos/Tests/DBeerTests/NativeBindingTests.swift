@@ -54,6 +54,24 @@ struct NativeBindingTests {
     }
 
 
+    @Test func referencedKeyChoiceUsesNativeEvidenceInsteadOfFormattedRows() async throws {
+        let key = TableForeignKey(name: "key", target: .init(schema: "public", name: "parent", kind: "table"),
+            columns: [.init(source: "fk", target: "id", position: 1)])
+        let source = [ResultColumn(index: 0, name: "fk", typeOid: 20, nativeType: "int8")]
+        let target = [ResultColumn(index: 0, name: "id", typeOid: 20, nativeType: "int8")]
+        let fields = [ResultColumn(index: 0, name: "name"), ResultColumn(index: 1, name: "nativeType")]
+        var staged: [Int: ChangeValue]?
+        let model = ForeignKeyPickerModel(key: key, engine: .postgresql, sourceColumns: source, isCurrent: { true }, read: { request in
+            if request.kind == "columns" { return .init(type: "query.result", requestId: "metadata", columns: fields, rows: [["id", "bigint"]]) }
+            return .init(type: "query.result", requestId: "browse", columns: target, rows: [["rounded"]],
+                nativeValues: [[.init(kind: "integer", value: "9007199254740993")]])
+        }, cancel: {}, stage: { staged = $0 })
+        await model.load()
+        let row = try #require(model.rows.first)
+        #expect(model.choose(row))
+        #expect(staged?[0]?.value == "9007199254740993")
+        await model.close()
+    }
 
     @Test func insertCopyUsesProvenNativePrimitivesAndRejectsRepresentations() throws {
         let columns = [ResultColumn(index: 0, name: "value", nativeType: "numeric")]

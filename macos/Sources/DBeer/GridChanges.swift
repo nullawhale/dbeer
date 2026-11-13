@@ -123,6 +123,7 @@ final class GridDraft: ObservableObject {
     @Published var error: String?
     @Published var notice: String?
     @Published var preview: BackendMessage?
+    @Published var foreignKeyPickerMetadata: ForeignKeyPickerMetadata?
     var policyReadOnly = false
     var supportsEditing = true
     private var capturedNative = false

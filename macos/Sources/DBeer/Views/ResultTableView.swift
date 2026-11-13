@@ -362,6 +362,12 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
             edit.target = copyCoordinator
             edit.isEnabled = contextCell.map(copyCoordinator.canEditCell) ?? false
             menu.addItem(edit)
+            if copyCoordinator.onChooseRelatedCell != nil {
+                let related = NSMenuItem(title: "Choose Related Record…", action: #selector(ResultTableView.Coordinator.chooseRelatedContextCell(_:)), keyEquivalent: "")
+                related.target = copyCoordinator
+                related.isEnabled = contextCell.map { copyCoordinator.canEditCell($0) && copyCoordinator.relatedKeyColumns.contains($0.column) } ?? false
+                menu.addItem(related)
+            }
             if copyCoordinator.onSetCellValue != nil {
                 for (title, action, allowed) in [
                     ("Set NULL", #selector(ResultTableView.Coordinator.setContextNull(_:)), copyCoordinator.canSetNullColumns),
@@ -529,6 +535,8 @@ struct ResultTableView: NSViewRepresentable {
     var dataIdentity: AnyObject?
     var partitionMarkers: [GridPartitionMarker?]?
     var onEditCell: ((ResultGridCell) -> Void)?
+    var onChooseRelatedCell: ((ResultGridCell) -> Void)?
+    var relatedKeyColumns: IndexSet = []
     var onCommitCell: ((ResultGridCell, String) -> Void)?
     var onInlineDraftChanged: ((Bool) -> Void)?
     var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
@@ -576,6 +584,8 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.nativeValues = nativeValues
         coordinator.partitionMarkers = partitionMarkers
         coordinator.onEditCell = onEditCell
+        coordinator.onChooseRelatedCell = onChooseRelatedCell
+        coordinator.relatedKeyColumns = relatedKeyColumns
         coordinator.onCommitCell = onCommitCell
         coordinator.onInlineDraftChanged = onInlineDraftChanged
         coordinator.onSetCellValue = onSetCellValue
@@ -647,6 +657,8 @@ struct ResultTableView: NSViewRepresentable {
         var nativeValues: [[NativeValue]]?
         var partitionMarkers: [GridPartitionMarker?]?
         var onEditCell: ((ResultGridCell) -> Void)?
+        var onChooseRelatedCell: ((ResultGridCell) -> Void)?
+        var relatedKeyColumns: IndexSet = []
         var onCommitCell: ((ResultGridCell, String) -> Void)?
         var onInlineDraftChanged: ((Bool) -> Void)?
         var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
@@ -1224,6 +1236,15 @@ struct ResultTableView: NSViewRepresentable {
             guard let source = searchResult.sourceCell(cell), nativeValues == nil, let valueKinds,
                   valueKinds.indices.contains(source.row), valueKinds[source.row].indices.contains(source.column) else { return false }
             return valueKinds[source.row][source.column] == "default"
+        }
+        func chooseRelatedCell(_ cell: ResultGridCell) {
+            guard canEditCell(cell), relatedKeyColumns.contains(cell.column),
+                  let source = searchResult.sourceCell(cell) else { return }
+            finishInlineEdit()
+            onChooseRelatedCell?(source)
+        }
+        @objc func chooseRelatedContextCell(_ sender: Any?) {
+            if let cell = table?.contextCell ?? table?.cellSelection?.focus { chooseRelatedCell(cell) }
         }
         @objc func editContextCell(_ sender: Any?) {
             if let cell = table?.contextCell ?? table?.cellSelection?.focus { editCell(cell) }
