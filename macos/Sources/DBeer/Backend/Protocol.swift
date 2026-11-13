@@ -516,6 +516,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var dataComparison: DataComparisonResponse? = nil
     @OptionalTransportPayload var explain: ExplainResult? = nil
     @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
+    @OptionalTransportPayload var operationSupport: OperationSupport? = nil
     var structure: StructureReply?
     var tableImport: TableImportReply?
     var monitor: SessionMonitorSnapshot?
@@ -543,6 +544,14 @@ struct BackendMessage: Codable, Sendable, Equatable {
             throw BackendTransportError(.invalidMessage)
         }
         let valid: Bool
+        if let operationSupport {
+            guard operationSupport.valid,
+                  type == "connect.result" ? operationSupport.scope == .session && operationSupport.engine == engine :
+                    type.hasPrefix("structure.") && operationSupport.scope == .structure &&
+                    (structure?.baseline.map { $0.engine == operationSupport.engine.rawValue } ?? true) else {
+                throw BackendTransportError(.invalidMessage)
+            }
+        }
         switch type {
         case "hello.ack": valid = protocolVersion != nil
         case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":

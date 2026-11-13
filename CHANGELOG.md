@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Check operation availability using current adapter/server support, readonly
+  policy and object metadata for Explain, structure and result-source actions.
+
 - Add reviewed CSV/TSV table creation with checked type suggestions, reusable
   mapping settings for creation and append imports, and immutable PostgreSQL/MySQL
   table-copy jobs across connections. Show validation, progress, schema omissions,

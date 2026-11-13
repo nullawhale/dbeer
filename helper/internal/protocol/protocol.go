@@ -838,6 +838,7 @@ type Response struct {
 	Structure             *tableedit.Reply
 	Explain               *ExplainResult
 	ExplainSupport        *ExplainSupport
+	OperationSupport      *OperationSupport
 	Source                *ResultSource
 	StorageTokens         []string
 	DataComparison        *DataComparisonResponse
@@ -888,6 +889,14 @@ type Response struct {
 
 func (response Response) MarshalJSON() ([]byte, error) {
 	fields := map[string]any{"type": response.Type, "requestId": response.RequestID}
+	if response.OperationSupport != nil {
+		if !response.OperationSupport.Valid() ||
+			response.Type == "connect.result" && (response.OperationSupport.Scope != "session" || response.OperationSupport.Engine != response.Engine) ||
+			response.Type != "connect.result" && (!strings.HasPrefix(response.Type, "structure.") || response.OperationSupport.Scope != "structure") {
+			return nil, errors.New("invalid operation support response")
+		}
+		fields["operationSupport"] = response.OperationSupport
+	}
 	if response.AppliedChangeCount != nil && (response.Type == "query.result" || response.Type == "error") {
 		fields["appliedChangeCount"] = *response.AppliedChangeCount
 	}

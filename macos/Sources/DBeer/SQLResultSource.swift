@@ -6,15 +6,17 @@ struct SQLResultSource: Codable, Sendable, Equatable {
     var table: String
     var columns: [SQLResultSourceColumn]
     var readOnlyReason: String?
+    var operationSupport: OperationSupport?
 
-    var canOpenRow: Bool { !schema.isEmpty && !table.isEmpty && columns.contains { $0.primaryKey > 0 } }
-    var isEditable: Bool { canOpenRow && (readOnlyReason ?? "").isEmpty }
+    var canOpenRow: Bool { !schema.isEmpty && !table.isEmpty && columns.contains { $0.primaryKey > 0 } && (operationSupport?.availability("resultSource.open").map { $0.state == .available } ?? true) }
+    var isEditable: Bool { canOpenRow && (readOnlyReason ?? "").isEmpty && (operationSupport?.availability("resultSource.edit").map { $0.state == .available } ?? true) }
 
     func valid(for resultColumns: [ResultColumn]) -> Bool {
         func validText(_ text: String, limit: Int) -> Bool {
             text.utf8.count <= limit && !text.contains("\0")
         }
         guard validText(schema, limit: 256), validText(table, limit: 256),
+              operationSupport.map({ $0.valid && $0.scope == .result && (resultColumns.isEmpty || resultColumns.allSatisfy { $0.engine == operationSupport?.engine }) }) ?? true,
               readOnlyReason.map({ !$0.isEmpty && validText($0, limit: 1_024) }) ?? true else { return false }
         if schema.isEmpty || table.isEmpty {
             return schema.isEmpty && table.isEmpty && columns.isEmpty && readOnlyReason != nil
@@ -30,7 +32,7 @@ struct SQLResultSource: Codable, Sendable, Equatable {
                   (!$0.generated || !$0.editable) }) else { return false }
         let keys = columns.filter { $0.primaryKey > 0 }.map(\.primaryKey).sorted()
         guard !keys.isEmpty, keys == Array(1...keys.count) else { return false }
-        return !isEditable || columns.map(\.tableIndex).sorted() == Array(columns.indices)
+        return !(readOnlyReason ?? "").isEmpty || columns.map(\.tableIndex).sorted() == Array(columns.indices)
     }
 
     func filters(row: [ChangeValue]) -> [CatalogFilter]? {

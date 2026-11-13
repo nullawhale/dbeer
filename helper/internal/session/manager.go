@@ -588,6 +588,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					outgoing = append(outgoing, protocol.ErrorResponse(pending, "cancelled", "Connection attempt was cancelled."))
 				} else {
 					response := protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id, Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus}
+					support := adapter.SessionOperationSupport(engine, physical, policy)
+					response.OperationSupport = &support
+					response.Capabilities = append(response.Capabilities, protocol.OperationSupportCapability)
 					if explain, ok := physical.(adapter.ExplainSession); ok {
 						support := explain.ExplainSupport()
 						response.ExplainSupport = &support
@@ -601,6 +604,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			} else {
 				response := completed.response
+				attachOperationSupport(&response, engine, policy)
 				if transportFailed && response.Type == "error" {
 					response.Connected = false
 				}

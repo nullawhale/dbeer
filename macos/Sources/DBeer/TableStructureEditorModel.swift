@@ -28,6 +28,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     @Published var draft = StructureDraft(columns: [TableStructureEditorModel.emptyColumn]) { didSet { preview = nil } }
     @Published private(set) var baseline: StructureBaseline?
     @Published private(set) var preview: StructurePlan?
+    @Published private(set) var operationSupport: OperationSupport?
     @Published private(set) var outcome: StructureOutcome?
     @Published private(set) var history: [StructureOutcome]
     @Published private(set) var outcomeReview: TableStructureExecutionReview?
@@ -65,8 +66,8 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
         return preview != nil || draft != initial
     }
 
-    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && outcome == nil }
-    var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && outcome == nil && !profile.policy.readOnly }
+    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
+    var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && outcome == nil && !profile.policy.readOnly && (operationSupport?.availability("structure.apply").map { $0.state == .available } ?? true) }
     var target: StructureTarget { .init(schema: schema, table: table, create: create) }
 
     @discardableResult func validateBinding() -> Bool {
@@ -89,6 +90,10 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
         let response = try await send(.init(type: "structure." + operation, requestId: UUID().uuidString,
             sessionId: sessionID, queryId: query, authorization: authorization, structure: payload))
         guard let reply = response.structure else { throw BackendTransportError(.invalidMessage) }
+        if let support = response.operationSupport, support.engine != profile.engine || support.scope != .structure {
+            throw BackendTransportError(.invalidMessage)
+        }
+        operationSupport = response.operationSupport
         return reply
     }
     func load() async {

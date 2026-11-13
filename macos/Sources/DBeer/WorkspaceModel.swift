@@ -96,6 +96,7 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var currentKeyspace: String?
     @Published private(set) var capabilities: Set<String> = []
     @Published private(set) var explainSupport: ExplainSupport?
+    @Published private(set) var operationSupport: OperationSupport?
     @Published var sql = "SELECT 1 AS id, 'hello'::text AS name;"
 
     @Published private(set) var state: HelperState = .starting
@@ -181,7 +182,10 @@ final class WorkspaceModel: ObservableObject {
         return "\(user)@\(host):\(port)/\(database)"
     }
 
-    var supportsGridEditing: Bool { capabilities.contains("gridEditing") }
+    var supportsGridEditing: Bool { permitsOperation("gridEditing", legacyAllowed: capabilities.contains("gridEditing")) }
+    func permitsOperation(_ operation: String, legacyAllowed: Bool) -> Bool {
+        operationSupport?.permits(operation, legacyAllowed: legacyAllowed) ?? legacyAllowed
+    }
     var usesCursorPagination: Bool { capabilities.contains("cursorPagination") }
     var readOnlyScope: String { capabilities.contains("localReadOnly") ? "Local readonly" : "Readonly" }
 
@@ -267,6 +271,7 @@ final class WorkspaceModel: ObservableObject {
             transactionStatus = reply.transactionStatus
             capabilities = Set(reply.capabilities ?? [])
             explainSupport = reply.explainSupport
+            operationSupport = reply.operationSupport
             currentKeyspace = reply.currentKeyspace ?? (engine == .cassandra ? database : nil)
             connectionState = .connected
             let connectedSession = reply.sessionId
@@ -757,6 +762,7 @@ final class WorkspaceModel: ObservableObject {
         currentKeyspace = nil
         capabilities = []
         explainSupport = nil
+        operationSupport = nil
         connectionState = .disconnected
     }
 

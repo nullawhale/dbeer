@@ -8,7 +8,8 @@ private final class TableStructureSessionLease {
 extension ApplicationWorkspace {
     func canEditTableStructure(_ node: CatalogNode) -> Bool {
         guard tableImporter == nil, canStartTableStructure(node.profileID), let service = services[node.profileID], service.connectionState == .connected,
-              [.postgresql, .mysql, .sqlite].contains(service.engine), service.capabilities.contains("tableStructureEditorV1") else { return false }
+              [.postgresql, .mysql, .sqlite].contains(service.engine),
+              service.permitsOperation("structure.preview", legacyAllowed: service.capabilities.contains("tableStructureEditorV1")) else { return false }
         return node.kind == .schema || node.kind == .group && node.objectKind == "table" || node.kind == .object && node.objectKind == "table"
     }
     func openTableStructure(_ node: CatalogNode, create: Bool) async {
@@ -51,7 +52,7 @@ extension ApplicationWorkspace {
                 guard current() else { throw ExecutionPolicyError(message: "The connection changed during SSH preparation.") }
                 let response = try await client.request(.connect(settings))
                 guard let session = response.sessionId else { throw BackendTransportError(.invalidMessage) }
-                guard current(), response.capabilities?.contains("tableStructureEditorV1") == true else {
+                guard current(), response.operationSupport?.permits("structure.preview", legacyAllowed: response.capabilities?.contains("tableStructureEditorV1") == true) ?? (response.capabilities?.contains("tableStructureEditorV1") == true) else {
                     _ = try? await client.request(.disconnect(sessionId: session))
                     throw ExecutionPolicyError(message: "The connection changed or the helper does not support structure editing.")
                 }

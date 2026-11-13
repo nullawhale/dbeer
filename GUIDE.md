@@ -384,7 +384,9 @@ Source Row** to load its complete row in a new, independent table tab. The helpe
 verifies the table and column origins using server metadata and requires every
 primary-key column, including composite and binary keys. Display aliases never
 identify a source table or column. A projection containing the complete key can
-open its source row even when it omits other columns.
+open its source row even when it omits other columns. Server support and current
+source metadata determine availability. Editing also respects the connection's
+readonly policy. Incomplete source metadata keeps the affected action unavailable.
 
 A direct SELECT containing every table column exactly once can edit supported
 cells through the existing **Preview SQL**, **Apply**, and **Discard** controls.

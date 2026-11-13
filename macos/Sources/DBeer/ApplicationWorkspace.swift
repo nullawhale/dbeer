@@ -1966,9 +1966,9 @@ final class ApplicationWorkspace: ObservableObject {
                   runtime.activeConnectionId == profileID, profileBinding.matchesRuntime(runtime) else {
                 throw ExecutionPolicyError(message: "The SQL or connection context changed. Review it and reconnect before Explain.")
             }
-            guard runtime.capabilities.contains("visualExplainV1"),
+            guard runtime.permitsOperation("explain." + mode.rawValue, legacyAllowed: runtime.capabilities.contains("visualExplainV1")),
                   let support = runtime.explainSupport, support.modes.contains(mode) else {
-                throw ExecutionPolicyError(message: runtime.explainSupport?.unavailableReason ?? "This helper does not support Visual Explain. Update the app and helper together.")
+                throw ExecutionPolicyError(message: runtime.operationSupport?.availability("explain." + mode.rawValue)?.reason ?? runtime.explainSupport?.unavailableReason ?? "This helper does not support Visual Explain. Update the app and helper together.")
             }
             guard let sessionID = runtime.sessionId else { throw CancellationError() }
             document.explainPlan?.sessionID = sessionID
