@@ -15,7 +15,7 @@ func TestAdvancedIndexDraftVersionBoundsAndEffectConfirmation(t *testing.T) {
 	if draft.Validate() != nil || !draft.HasAuthoredExpressions() || !draft.RequiresEffectConfirmation() {
 		t.Fatal("valid advanced index intent was not admitted as a confirmed effect")
 	}
-	for _, version := range []int{0, 2, 5} {
+	for _, version := range []int{0, 2, 6} {
 		other := draft
 		other.AuthoringVersion = version
 		if other.Validate() == nil {

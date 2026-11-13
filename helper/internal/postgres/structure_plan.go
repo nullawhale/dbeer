@@ -10,6 +10,9 @@ import (
 )
 
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	if d.NeedsAuthoringV5() {
+		return s.prepareStructureReconstruction(ctx, b, d)
+	}
 	var guards []tableedit.TypeGuard
 	var e error
 	d, guards, e = s.resolveAuthoredTypes(ctx, b, d)
@@ -193,6 +196,9 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	return out, nil
 }
 func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline, plan tableedit.Plan) []tableedit.Execution {
+	if plan.Reconstruction != nil {
+		return s.applyPGRebuild(ctx, b, plan)
+	}
 	if len(plan.Conditions) != len(plan.SQL) {
 		return []tableedit.Execution{{State: "notStarted", Message: "The retained plan conditions are invalid."}}
 	}

@@ -64,11 +64,11 @@ struct TableStructureIntentEditors: View {
                 }
             }
             if model.draft.destructive {
-                Toggle("Include these removals/replacements in Preview", isOn: Binding(get: { model.draft.allowDestructive == true }, set: {
+                Toggle("Include destructive changes in Preview", isOn: Binding(get: { model.draft.allowDestructive == true }, set: {
                     guard canEdit else { return }
                     model.draft.allowDestructive = $0
                 })).controlHover()
-                Text("Removals, replacements and lossy conversions require confirmation of the exact generated SQL. Editing the selected operation clears this opt-in.")
+                Text("Removals, replacements, conversions, backfills and physical layout changes require confirmation of the exact generated SQL. Editing the selected operation clears this opt-in.")
                     .font(.caption).foregroundStyle(.orange)
             }
             if model.draft.requiresDestructiveAuthoring && !model.destructiveAvailable {

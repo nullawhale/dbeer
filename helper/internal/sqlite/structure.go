@@ -5,13 +5,14 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 
 	"dbeer/helper/internal/tableedit"
 )
 
 func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tableedit.Baseline, error) {
 	b := tableedit.Baseline{Target: t, Engine: "sqlite", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Changes run in one dedicated transaction. Unsupported definitions or dependencies block reconstruction."}, Attributes: map[string]map[string]any{}}
-	if !t.Valid() || t.Schema != "main" {
+	if s.closed || s.structureUncertain || !t.Valid() || t.Schema != "main" {
 		return b, tableedit.ErrUnsupported
 	}
 	rows, _, err := s.query(ctx, `SELECT type,name,tbl_name,sql FROM main.sqlite_schema ORDER BY type,name`)
@@ -193,6 +194,14 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 	return p.SQL, p.Risks, e
 }
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	if d.NeedsAuthoringV5() {
+		if _, err := tableedit.ReconstructionOrder(b, d); err != nil {
+			return tableedit.Prepared{}, err
+		}
+		p := tableedit.Prepared{Risks: []string{"SQLite reconstruction runs all displayed statements in one BEGIN IMMEDIATE transaction on the dedicated session. It copies native values, preserves rowids and AUTOINCREMENT counters, recreates retained indexes/triggers, compares retained definitions and typed values and runs foreign_key_check before COMMIT. Preview reads schema only; expressions run during Apply. Extra disk space and the database write lock are required.", "PRAGMA foreign_keys=OFF runs only on this dedicated physical structure session outside the transaction; PRAGMA foreign_keys=ON restores and verifies its known captured setting. Copying does not fire retained INSERT/UPDATE triggers; constraints and generated/backfill expressions run during the copy. Unknown COMMIT, rollback or setting-restoration outcomes retire the connection; no replay is authorized."}}
+		p.Consequences, p.ValidationChecks = tableedit.ReconstructionReview(b, d)
+		return s.preparePreservedRebuild(ctx, b, d, p)
+	}
 	if d.NeedsAuthoringV3() {
 		return tableedit.Prepared{}, errors.New("Advanced index definitions are currently available for PostgreSQL/MySQL only; SQLite index intent is never ignored. Use an explicit reviewed SQLite migration for expressions or partial indexes.")
 	}
@@ -567,15 +576,44 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	}
 	nativeDrop := p.DroppedTarget || len(structureDroppedColumns(p)) > 0
 	if !nativeDrop {
+		settings, _, e := s.query(ctx, "PRAGMA foreign_keys")
+		if e != nil || len(settings) != 1 || cellInt(settings[0][0]) != 1 {
+			return fail("notStarted", "Reconstruction requires known foreign_keys=ON on this dedicated session.")
+		}
 		if err := s.exec(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
 			return fail("notStarted", "Cannot prepare foreign-key verification.")
 		}
-		defer func() { _ = s.exec(context.Background(), "PRAGMA foreign_keys=ON") }()
+		defer func() {
+			if s.closed {
+				return
+			}
+			cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			err := s.exec(cleanup, "PRAGMA foreign_keys=ON")
+			rows, _, verify := s.query(cleanup, "PRAGMA foreign_keys")
+			if err != nil || verify != nil || len(rows) != 1 || cellInt(rows[0][0]) != 1 {
+				s.structureUncertain = true
+				s.Close()
+			}
+		}()
+		settings, _, e = s.query(ctx, "PRAGMA foreign_keys")
+		if e != nil || len(settings) != 1 || cellInt(settings[0][0]) != 0 {
+			return fail("notStarted", "Foreign-key suspension could not be verified.")
+		}
 	}
 	if err := s.exec(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return fail("notStarted", "Cannot acquire the database write lock.")
 	}
-	defer func() { _ = s.exec(context.Background(), "ROLLBACK") }()
+	defer func() {
+		if !s.closed && !s.conn.AutocommitEnabled() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if s.exec(cleanup, "ROLLBACK") != nil || !s.conn.AutocommitEnabled() {
+				s.structureUncertain = true
+				s.Close()
+			}
+		}
+	}()
 	current, err := s.StructureLoad(ctx, b.Target)
 	if err != nil || current.Fingerprint != b.Fingerprint {
 		return fail("notStarted", "The captured schema changed; prepare a new preview.")
@@ -584,6 +622,9 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	var original string
 	var originalCount int64
 	retainedColumns := append([]tableedit.ObservedColumn(nil), b.Columns...)
+	if p.Reconstruction != nil && p.Reconstruction.RowID != "" {
+		retainedColumns = append([]tableedit.ObservedColumn{{Name: p.Reconstruction.RowID}}, retainedColumns...)
+	}
 	if nativeDrop {
 		dropped := structureDroppedColumns(p)
 		retainedColumns = nil
@@ -602,11 +643,55 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 			return fail("notStarted", "Cannot capture exact original values.")
 		}
 	}
-	for _, sql := range p.SQL {
-		if err = s.exec(ctx, sql); err != nil {
-			return fail("rolledBack", "The structure transaction failed and was rolled back.")
+	var schemaBefore []structureSchemaRow
+	var sequenceBefore string
+	if p.Reconstruction != nil {
+		schemaBefore, err = s.structureSchema(ctx, false)
+		if err != nil {
+			return fail("notStarted", "Cannot capture retained schema definitions.")
+		}
+		if parsed, e := parseDDLTable(p.Reconstruction.ExpectedDefinition); e == nil && parsed.autoincrement {
+			rows, _, e := s.query(ctx, "SELECT seq,typeof(seq) FROM main.sqlite_sequence WHERE name=?", b.Target.Table)
+			if e != nil || len(rows) > 1 || len(rows) == 1 && cellText(rows[0][1]) != "integer" {
+				return fail("notStarted", "Cannot capture a known integer sequence counter.")
+			}
+			if len(rows) == 1 {
+				sequenceBefore = cellText(rows[0][0])
+			}
 		}
 	}
+	rollback := func(message string) []tableedit.Execution {
+		cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if s.exec(cleanup, "ROLLBACK") != nil || !s.conn.AutocommitEnabled() {
+			s.structureUncertain = true
+			s.Close()
+			return fail("unknown", "Rollback could not be confirmed. Reconcile explicitly; no replay is authorized.")
+		}
+		for i := range out {
+			if out[i].State == "applied" {
+				out[i] = tableedit.Execution{State: "rolledBack", Message: message}
+			}
+		}
+		return out
+	}
+	for i, sql := range p.SQL {
+		if ctx.Err() != nil {
+			return rollback("Cancelled and rolled back before the next statement.")
+		}
+		if err = s.exec(ctx, sql); err != nil {
+			out[i] = tableedit.Execution{State: "rolledBack", Message: "The statement failed inside the reconstruction transaction."}
+			return rollback("The structure transaction failed and was rolled back.")
+		}
+		out[i].State = "applied"
+		if s.structureAfterStep != nil {
+			s.structureAfterStep(i)
+		}
+	}
+	if p.Reconstruction != nil && !s.verifyReconstructionSchema(ctx, b, p, schemaBefore, sequenceBefore) {
+		return rollback("Retained definitions, dependent objects, order or sequence counter could not be verified; no changes were committed.")
+	}
+
 	if !b.Target.Create && !p.DroppedTarget {
 		observedTable := b.Target.Table
 		if p.ResultTarget != nil {
@@ -620,13 +705,13 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		}
 		after, afterCount, e := s.structureValueDigest(ctx, observedTable, copiedColumns)
 		if e != nil || original != after || originalCount != afterCount {
-			return fail("rolledBack", "The change would alter stored values or storage classes; no changes were committed.")
+			return rollback("The change would alter stored values or storage classes; no changes were committed.")
 		}
 	}
 	if p.DroppedTarget {
 		absent, e := s.StructureLoad(ctx, tableedit.Target{Schema: b.Target.Schema, Table: b.Target.Table, Create: true})
 		if e != nil || !absent.Target.Create {
-			return fail("rolledBack", "The table removal could not be verified; no changes were committed.")
+			return rollback("The table removal could not be verified; no changes were committed.")
 		}
 	}
 	foreignCheck := "PRAGMA main.foreign_key_check"
@@ -638,9 +723,17 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	}
 	violations, _, err := s.query(ctx, foreignCheck)
 	if err != nil || len(violations) > 0 {
-		return fail("rolledBack", "Foreign-key validation failed; no changes were committed.")
+		return rollback("Foreign-key validation failed; no changes were committed.")
 	}
-	if err = s.exec(ctx, "COMMIT"); err != nil {
+	commit := func() error { return s.exec(ctx, "COMMIT") }
+	if s.structureCommitOverride != nil {
+		err = s.structureCommitOverride(commit)
+	} else {
+		err = commit()
+	}
+	if err != nil {
+		s.structureUncertain = true
+		s.Close()
 		return fail("unknown", "The structure COMMIT outcome is unknown. Inspect the schema before preparing another change.")
 	}
 	return fail("applied", "")

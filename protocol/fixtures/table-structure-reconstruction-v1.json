@@ -1,0 +1,80 @@
+{
+  "valid": [
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 5,
+          "columns": [],
+          "allowDestructive": true,
+          "reconstruct": true
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 5,
+          "columns": [],
+          "allowDestructive": true,
+          "reconstruct": true,
+          "columnOrder": [
+            "value",
+            "id"
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 5,
+          "columns": [
+            {
+              "name": "required",
+              "type": {
+                "kind": "text"
+              },
+              "nullable": false,
+              "default": {
+                "kind": "none"
+              }
+            }
+          ],
+          "allowDestructive": true,
+          "reconstruct": true,
+          "backfills": [
+            {
+              "column": "required",
+              "expression": "'NULL'"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":[{\"column\":\"required\",\"expression\":\"'NULL'\"}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":6,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":[{\"column\":\"required\",\"expression\":\"'NULL'\"}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":5,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":null}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":5,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":[{\"column\":\"required\",\"expression\":\"'NULL'\",\"future\":true}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":5,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":[]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":5,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":[{\"column\":\"required\",\"expression\":\"'NULL'\"},{\"column\":\"required\",\"expression\":\"'NULL'\"}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":5,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":[{\"column\":\"required\",\"expression\":\"'NULL'\"}],\"dropTable\":true}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":5,\"columns\":[{\"name\":\"required\",\"type\":{\"kind\":\"text\"},\"nullable\":false,\"default\":{\"kind\":\"none\"}}],\"allowDestructive\":true,\"reconstruct\":true,\"backfills\":[{\"column\":\"required\",\"expression\":\"'NULL'\"}],\"columnOrder\":[\"required\",null]}}}"
+  ]
+}

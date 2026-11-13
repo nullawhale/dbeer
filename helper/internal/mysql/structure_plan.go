@@ -11,6 +11,9 @@ import (
 )
 
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	if d.NeedsAuthoringV5() {
+		return s.prepareStructureReconstruction(ctx, b, d)
+	}
 	var enable []tableedit.Operation
 	var e error
 	d, enable, e = mysqlAuthoredDraft(b, d)
@@ -265,6 +268,9 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		target := tableedit.StepTarget(current.Target, plan.Conditions[i])
 		fresh, e := s.StructureLoad(ctx, target)
 		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) })
+		if plan.Conditions[i].Operation.Kind == "reorder" {
+			verified = verified && mysqlReconstructionPreserved(current, fresh)
+		}
 		if !verified {
 			out[len(out)-1].Message = "The DDL step was acknowledged, but observed structure did not match the expected change and preservation conditions. Reconcile before continuing."
 			break

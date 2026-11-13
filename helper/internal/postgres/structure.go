@@ -91,6 +91,15 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	for _, k := range []string{"relpages", "reltuples", "relallvisible", "relallfrozen", "relfrozenxid", "relminmxid", "relhasindex"} {
 		delete(class, k)
 	}
+	// row_to_json(pg_attribute) describes attmissingval, which can call a
+	// custom element output routine even when expression deparsing is disabled.
+	var unsafeMissing bool
+	if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_type t ON t.oid=a.atttypid WHERE a.attrelid=$1 AND a.attnum>0 AND NOT a.attisdropped AND a.atthasmissing AND (t.oid>=16384 OR t.typoutput>=16384 OR t.typmodout>=16384 OR t.typtype='p'))`, oid).Scan(&unsafeMissing); err != nil {
+		return b, tableedit.ErrUnsupported
+	}
+	if unsafeMissing {
+		return b, errors.New("Stored fast-default metadata requires custom type support; use an explicit reviewed migration without evaluating that support during structure observation.")
+	}
 	rows, e := q.Query(ctx, `SELECT a.attname, pg_catalog.format_type(a.atttypid,NULL), NOT a.attnotnull, NULL::pg_catalog.text, pg_catalog.row_to_json(a)::pg_catalog.text, a.attisdropped FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=$1 AND a.attnum>0 ORDER BY a.attnum LIMIT 130`, oid)
 	if e != nil {
 		return b, tableedit.ErrUnsupported

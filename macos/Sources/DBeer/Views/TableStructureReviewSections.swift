@@ -106,6 +106,12 @@ struct TableStructureDraftSummary: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if draft.dropTable { Text("Drop table and all stored data").foregroundStyle(.orange).textSelection(.enabled) }
+            if draft.reconstruct == true { Text("Explicit table reconstruction").foregroundStyle(.orange).textSelection(.enabled) }
+            if let order = draft.columnOrder { StructureOrderedNamesSummary(title: "Physical column order", names: order) }
+            ForEach(Array((draft.backfills ?? []).enumerated()), id: \.offset) { _, backfill in
+                Text("Backfill " + backfill.column + ": " + backfill.expression)
+                    .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+            }
             if let name = draft.renameTable { Text("Rename table to: " + name).textSelection(.enabled) }
             ForEach(Array(draft.columns.enumerated()), id: \.offset) { _, column in
                 VStack(alignment: .leading, spacing: 2) {

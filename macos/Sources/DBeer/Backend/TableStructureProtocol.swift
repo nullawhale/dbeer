@@ -88,6 +88,20 @@ extension StructureColumn {
     }
 }
 
+struct StructureBackfill: Codable, Equatable, Sendable {
+    var column: String
+    var expression: String
+    private enum CodingKeys: String, CodingKey { case column, expression }
+    init(column: String, expression: String) { self.column = column; self.expression = expression }
+    init(from decoder: any Decoder) throws {
+        let all = try decoder.container(keyedBy: StructureCodingKey.self)
+        guard Set(all.allKeys.map(\.stringValue)) == ["column", "expression"] else { throw BackendTransportError(.invalidMessage) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        column = try c.decode(String.self, forKey: .column)
+        expression = try c.decode(String.self, forKey: .expression)
+    }
+}
+
 struct StructureDraft: Codable, Equatable, Sendable {
     var columns: [StructureColumn]
     var changes: [StructureColumnChange]?
@@ -97,12 +111,15 @@ struct StructureDraft: Codable, Equatable, Sendable {
     var renameTable: String? = nil
     var authoringVersion: Int? = nil
     var dropTable: Bool = false
+    var backfills: [StructureBackfill]? = nil
+    var columnOrder: [String]? = nil
+    var reconstruct: Bool? = nil
 }
 extension StructureDraft {
-    private enum CodingKeys: String, CodingKey { case columns, changes, indexes, keys, allowDestructive, renameTable, authoringVersion, dropTable }
+    private enum CodingKeys: String, CodingKey { case columns, changes, indexes, keys, allowDestructive, renameTable, authoringVersion, dropTable, backfills, columnOrder, reconstruct }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["columns", "changes", "indexes", "keys", "allowDestructive", "renameTable", "authoringVersion", "dropTable"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["columns", "changes", "indexes", "keys", "allowDestructive", "renameTable", "authoringVersion", "dropTable", "backfills", "columnOrder", "reconstruct"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         columns = try c.decode([StructureColumn].self, forKey: .columns)
         if c.contains(.changes), try c.decodeNil(forKey: .changes) { throw BackendTransportError(.invalidMessage) }
@@ -119,7 +136,14 @@ extension StructureDraft {
         authoringVersion = try c.decodeIfPresent(Int.self, forKey: .authoringVersion)
         if c.contains(.dropTable), try c.decodeNil(forKey: .dropTable) { throw BackendTransportError(.invalidMessage) }
         dropTable = try c.decodeIfPresent(Bool.self, forKey: .dropTable) ?? false
-        if authoringVersion != 4 {
+        for key in [CodingKeys.backfills, .columnOrder, .reconstruct] {
+            if c.contains(key), try c.decodeNil(forKey: key) { throw BackendTransportError(.invalidMessage) }
+            if c.contains(key), authoringVersion != 5 { throw BackendTransportError(.invalidMessage) }
+        }
+        backfills = try c.decodeIfPresent([StructureBackfill].self, forKey: .backfills)
+        columnOrder = try c.decodeIfPresent([String].self, forKey: .columnOrder)
+        reconstruct = try c.decodeIfPresent(Bool.self, forKey: .reconstruct)
+        if authoringVersion != 4 && authoringVersion != 5 {
             guard !c.contains(.dropTable) else { throw BackendTransportError(.invalidMessage) }
             if c.contains(.changes) {
                 var entries = try c.nestedUnkeyedContainer(forKey: .changes)
@@ -561,11 +585,11 @@ extension StructureKeyEdit {
     }
 }
 extension StructureDraft {
-    var destructive: Bool { requiresDestructiveAuthoring || (indexes ?? []).contains { $0.action != "add" } || (keys ?? []).contains { $0.action != "add" } }
+    var destructive: Bool { hasReconstructionIntent || requiresDestructiveAuthoring || (indexes ?? []).contains { $0.action != "add" } || (keys ?? []).contains { $0.action != "add" } }
     var valid: Bool {
         let changes = changes ?? []; let indexes = indexes ?? []; let keys = keys ?? []
-        guard (authoringVersion == nil || authoringVersion == 2 || authoringVersion == 3 || authoringVersion == 4), !requiresAuthoringV2 || (authoringVersion ?? 0) >= 2, !requiresIndexAuthoring || (authoringVersion ?? 0) >= 3, !requiresDestructiveAuthoring || authoringVersion == 4, !dropTable || columns.isEmpty && changes.isEmpty && indexes.isEmpty && keys.isEmpty && renameTable == nil, columns.count <= 128, changes.count + indexes.count + keys.count <= 64,
-              columns.count + changes.count + indexes.count + keys.count > 0 || renameTable != nil || dropTable,
+        guard (authoringVersion == nil || authoringVersion == 2 || authoringVersion == 3 || authoringVersion == 4 || authoringVersion == 5), !requiresAuthoringV2 || (authoringVersion ?? 0) >= 2, !requiresIndexAuthoring || (authoringVersion ?? 0) >= 3, !requiresDestructiveAuthoring || (authoringVersion ?? 0) >= 4, reconstructionIntentValid, !dropTable || columns.isEmpty && changes.isEmpty && indexes.isEmpty && keys.isEmpty && renameTable == nil, columns.count <= 128, changes.count + indexes.count + keys.count <= 64,
+              columns.count + changes.count + indexes.count + keys.count > 0 || renameTable != nil || dropTable || hasReconstructionIntent,
               renameTable.map(StructureTarget.identifier) ?? true,
               Set((columns.map(\.name) + changes.map(\.name)).map { Data($0.utf8) }).count == columns.count + changes.count,
               Set(indexes.map { Data($0.name.utf8) }).count == indexes.count, Set(keys.map { Data($0.name.utf8) }).count == keys.count,
@@ -611,7 +635,8 @@ extension StructureOutcome {
               ["applied", "failed", "partiallyApplied", "cancelled", "outcomeUnknown", "applying"].contains(state),
               steps.allSatisfy({ ["notStarted", "applied", "failed", "rolledBack", "unknown"].contains($0.state) && ($0.message?.utf8.count ?? 0) <= 4096 }),
               (refreshError?.utf8.count ?? 0) <= 4096, observed?.valid ?? true else { return false }
-        let atomicTerminal = steps.allSatisfy { $0.state == "rolledBack" } || steps.allSatisfy { $0.state == "unknown" }
+        let atomicRollback = steps.first?.state == "rolledBack" && steps.drop(while: { $0.state == "rolledBack" }).allSatisfy { $0.state == "notStarted" }
+        let atomicTerminal = atomicRollback || steps.allSatisfy { $0.state == "unknown" }
         var stopped = false
         for step in steps { if !atomicTerminal && stopped && step.state != "notStarted" { return false }; if step.state != "applied" { stopped = true } }
         let applied = steps.filter { $0.state == "applied" }.count; let unknown = steps.contains { $0.state == "unknown" }
@@ -727,10 +752,10 @@ extension StructureColumn {
 }
 
 extension StructureDraft {
-    var minimumAuthoringVersion: Int? { hasDestructiveIntent ? 4 : requiresIndexAuthoring ? 3 : requiresAuthoringV2 ? 2 : nil }
+    var minimumAuthoringVersion: Int? { hasReconstructionIntent ? 5 : hasDestructiveIntent ? 4 : requiresIndexAuthoring ? 3 : requiresAuthoringV2 ? 2 : nil }
     var requiresIndexAuthoring: Bool { (indexes ?? []).contains { $0.definition != nil } }
     var requiresAuthoringV2: Bool {
-        renameTable != nil || columns.contains { $0.type.reference != nil || $0.generated != nil || $0.identity != nil || $0.default.kind == "expression" } ||
+        !(backfills ?? []).isEmpty || renameTable != nil || columns.contains { $0.type.reference != nil || $0.generated != nil || $0.identity != nil || $0.default.kind == "expression" } ||
         (changes ?? []).contains { $0.renameTo != nil || $0.generated != nil || $0.identity != nil || $0.type?.reference != nil || $0.default?.kind == "expression" }
     }
 }
@@ -862,6 +887,9 @@ extension StructureDraft {
         try c.encodeIfPresent(renameTable, forKey: .renameTable)
         try c.encodeIfPresent(authoringVersion, forKey: .authoringVersion)
         if dropTable { try c.encode(true, forKey: .dropTable) }
+        try c.encodeIfPresent(backfills, forKey: .backfills)
+        try c.encodeIfPresent(columnOrder, forKey: .columnOrder)
+        try c.encodeIfPresent(reconstruct, forKey: .reconstruct)
     }
 }
 
@@ -1018,7 +1046,7 @@ extension StructureColumnChange {
     }
 }
 extension StructureDraft {
-    var hasDestructiveIntent: Bool { dropTable || (changes ?? []).contains { $0.requiresDestructiveAuthoring || authoringVersion == 4 && $0.type != nil } }
+    var hasDestructiveIntent: Bool { dropTable || (changes ?? []).contains { $0.requiresDestructiveAuthoring || (authoringVersion ?? 0) >= 4 && $0.type != nil } }
     var requiresDestructiveAuthoring: Bool { authoringVersion == 4 || hasDestructiveIntent }
 }
 extension StructureBaseline {
@@ -1029,4 +1057,27 @@ extension StructurePlan {
 }
 extension StructureOutcome {
     var requiresDestructiveAuthoring: Bool { droppedTarget || observed?.requiresDestructiveAuthoring == true }
+}
+
+extension StructureBackfill {
+    var valid: Bool { StructureTarget.identifier(column) && !expression.isEmpty && expression.utf8.count <= 4096 && !expression.contains("\0") }
+}
+extension StructureDraft {
+    var hasReconstructionIntent: Bool { !(backfills ?? []).isEmpty || !(columnOrder ?? []).isEmpty || reconstruct == true }
+    var requiresReconstructionAuthoring: Bool { authoringVersion == 5 || backfills != nil || columnOrder != nil || reconstruct != nil }
+    private var reconstructionIntentValid: Bool {
+        guard !requiresReconstructionAuthoring || authoringVersion == 5 else { return false }
+        guard hasReconstructionIntent else { return true }
+        let fills = backfills ?? []; let order = columnOrder ?? []
+        guard !dropTable, renameTable == nil, (changes ?? []).isEmpty, (keys ?? []).isEmpty, (indexes ?? []).isEmpty,
+              fills.count <= 128, order.count <= 128, fills.allSatisfy(\.valid),
+              order.allSatisfy(StructureTarget.identifier),
+              Set(fills.map { Data($0.column.utf8) }).count == fills.count,
+              Set(order.map { Data($0.utf8) }).count == order.count else { return false }
+        guard fills.count == columns.count else { return false }
+        return columns.allSatisfy { column in
+            !column.nullable && column.default.kind == "none" && column.type.reference == nil && column.generated == nil && column.identity == nil &&
+            fills.contains { StructureTarget.sameIdentifier($0.column, column.name) }
+        }
+    }
 }

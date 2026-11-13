@@ -64,6 +64,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     private var sessionNeedsReplacement = false
     private var queryID: String?
     private var cancelRequested = false
+    private let reconstructionSupported: () -> Bool
     private let destructiveSupported: () -> Bool
     private let confirmPlan: (StructurePlan, StructureDraft) async -> Bool
     private let authorizeValidation: (StructureApply, StructurePlan, String) async throws -> String?
@@ -81,10 +82,10 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
          connect: @escaping () async throws -> String,
          send: @escaping (BackendCommand) async throws -> BackendMessage,
          authorize: @escaping (StructureApply, StructurePlan, String) async throws -> String?,
-         bindingIsCurrent: @escaping () -> Bool, authoringSupported: @escaping () -> Bool = { false }, indexAuthoringSupported: @escaping () -> Bool = { false }, destructiveSupported: @escaping () -> Bool = { false }, confirmPlan: @escaping (StructurePlan, StructureDraft) async -> Bool = { _, _ in false }, authorizeValidation: @escaping (StructureApply, StructurePlan, String) async throws -> String? = { _, _, _ in nil }, operationsAllowed: @escaping () -> Bool = { true }, sessionIsKnownClosed: @escaping () async -> Bool = { false }, changed: @escaping (TableStructureExecutionReview) -> Void) {
+         bindingIsCurrent: @escaping () -> Bool, authoringSupported: @escaping () -> Bool = { false }, indexAuthoringSupported: @escaping () -> Bool = { false }, destructiveSupported: @escaping () -> Bool = { false }, reconstructionSupported: @escaping () -> Bool = { false }, confirmPlan: @escaping (StructurePlan, StructureDraft) async -> Bool = { _, _ in false }, authorizeValidation: @escaping (StructureApply, StructurePlan, String) async throws -> String? = { _, _, _ in nil }, operationsAllowed: @escaping () -> Bool = { true }, sessionIsKnownClosed: @escaping () async -> Bool = { false }, changed: @escaping (TableStructureExecutionReview) -> Void) {
         self.profile = profile; self.schema = schema; self.table = table; self.create = create; self.originalCreate = create; self.history = history + historyReviews.map(\.outcome); self.historyReviews = historyReviews
         self.connect = connect; self.send = send; self.authorize = authorize; self.authoringSupported = authoringSupported; self.indexAuthoringSupported = indexAuthoringSupported
-        self.destructiveSupported = destructiveSupported; self.confirmPlan = confirmPlan; self.authorizeValidation = authorizeValidation
+        self.reconstructionSupported = reconstructionSupported; self.destructiveSupported = destructiveSupported; self.confirmPlan = confirmPlan; self.authorizeValidation = authorizeValidation
         self.bindingIsCurrent = bindingIsCurrent; self.operationsAllowed = operationsAllowed; self.sessionIsKnownClosed = sessionIsKnownClosed; self.changed = changed
     }
     static var emptyColumn: StructureColumn {
@@ -97,19 +98,34 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     }
 
     var destructiveAvailable: Bool { [.postgresql, .mysql, .sqlite].contains(profile.engine) && destructiveSupported() }
+    var reconstructionAvailable: Bool { [.postgresql, .mysql, .sqlite].contains(profile.engine) && reconstructionSupported() }
     var conversionAvailable: Bool { [.postgresql, .mysql].contains(profile.engine) && destructiveAvailable }
     var targetWasDropped: Bool { outcomeReview?.plan.droppedTarget == true && outcome?.state == "applied" }
     var indexAuthoringAvailable: Bool { profile.engine != .sqlite && indexAuthoringSupported() }
-    private var authoringPermitted: Bool { (!needsAuthoring || authoringAvailable) && (!draft.requiresIndexAuthoring || indexAuthoringAvailable) && (!draft.requiresDestructiveAuthoring || destructiveAvailable) }
+    private var authoringPermitted: Bool { (!needsAuthoring || authoringAvailable) && (!draft.requiresIndexAuthoring || indexAuthoringAvailable) && (!draft.requiresDestructiveAuthoring || destructiveAvailable) && (!draft.requiresReconstructionAuthoring || reconstructionAvailable) }
     var authoringAvailable: Bool { authoringSupported() }
     private var needsAuthoring: Bool { draft.requiresAuthoringV2 || !create && draft.columns.count > 1 }
     var canReconcileRenamedTarget: Bool { outcomeReview?.plan.resultTarget != nil && outcome?.state == "outcomeUnknown" }
-    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && authoringPermitted && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
+    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && hasExactReconstructionOrder && authoringPermitted && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
     var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && authoringPermitted && outcome == nil && !profile.policy.readOnly && (operationSupport?.availability("structure.apply").map { $0.state == .available } ?? true) }
     var canValidateData: Bool {
         !isBusy && !closing && operationsAllowed() && !invalidated && destructiveAvailable &&
             preview?.validationChecks.isEmpty == false && authoringPermitted && outcome == nil &&
             (operationSupport?.permits("structure.validate", legacyAllowed: true) ?? true)
+    }
+    var reconstructionColumnNames: [String] { (baseline?.columns.map(\.name) ?? []) + draft.columns.map(\.name) }
+    var hasExactReconstructionOrder: Bool {
+        guard let order = draft.columnOrder else { return true }
+        let expected = reconstructionColumnNames.map { Data($0.utf8) }
+        let actual = order.map { Data($0.utf8) }
+        return expected.count == actual.count && Set(expected).count == expected.count && Set(actual) == Set(expected)
+    }
+    func moveReconstructionColumn(at index: Int, by offset: Int) {
+        guard !isBusy, !closing, !invalidated, outcome == nil, reconstructionAvailable,
+              var order = draft.columnOrder, order.indices.contains(index), order.indices.contains(index + offset) else { return }
+        order.swapAt(index, index + offset)
+        draft.columnOrder = order
+        draft.allowDestructive = nil
     }
     var target: StructureTarget { .init(schema: schema, table: table, create: create) }
     var canCheckExecutionStatus: Bool {
@@ -271,7 +287,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
         let apply = StructureApply(planId: plan.id, digest: plan.digest, executionId: UUID().uuidString)
         defer { isBusy = false; isApplying = false }
         do {
-            if plan.requiresDestructiveAuthoring || reviewedDraft.requiresDestructiveAuthoring {
+            if plan.requiresDestructiveAuthoring || reviewedDraft.requiresDestructiveAuthoring || reviewedDraft.hasReconstructionIntent {
                 guard await confirmPlan(plan, reviewedDraft) else { return }
                 try requireBinding()
                 guard preview == plan, draft == reviewedDraft, authoringPermitted else {

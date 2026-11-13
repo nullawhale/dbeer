@@ -115,6 +115,9 @@ func changeAuthoredValid(c ColumnChange) bool {
 }
 
 func (d Draft) HasAuthoredExpressions() bool {
+	if len(d.Backfills) > 0 {
+		return true
+	}
 	for _, x := range d.Indexes {
 		if x.Definition != nil {
 			if x.Definition.Predicate != nil {
@@ -156,7 +159,7 @@ func (d Draft) MayExecuteUserCode() bool {
 }
 
 func (d Draft) RequiresEffectConfirmation() bool {
-	if d.MayExecuteUserCode() {
+	if d.MayExecuteUserCode() || d.NeedsAuthoringV5() {
 		return true
 	}
 	for _, change := range d.Changes {

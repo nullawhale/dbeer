@@ -7,8 +7,9 @@ import (
 )
 
 type Condition struct {
-	Operation Operation
-	Columns   []Column
+	Operation   Operation
+	ColumnOrder []string
+	Columns     []Column
 }
 
 func cloneFacts(f *Facts) *Facts {
@@ -34,6 +35,12 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		return false
 	}
 	op := c.Operation
+	if op.Kind == "backfill" {
+		return before.Fingerprint == after.Fingerprint
+	}
+	if op.Kind == "reorder" {
+		return VerifyColumnOrder(before, after, c.ColumnOrder, false)
+	}
 	if op.Kind == "renameColumn" || op.Kind == "renameTable" {
 		return verifyRename(before, after, c)
 	}
@@ -63,7 +70,7 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 			if storage == "" {
 				return false
 			}
-			if attrs["attstorage"] != storage || attrs["attcompression"] != "" || attrs["attacl"] != nil || attrs["attoptions"] != nil || attrs["attfdwoptions"] != nil || (attrs["attstattarget"] != nil && attrs["attstattarget"] != float64(-1)) || attrs["attndims"] != float64(0) || attrs["attinhcount"] != float64(0) || attrs["attislocal"] != true {
+			if attrs["attstorage"] != storage || (attrs["attcompression"] != "" && attrs["attcompression"] != "\x00") || attrs["attacl"] != nil || !EmptyPostgresOptions(attrs["attoptions"]) || attrs["attfdwoptions"] != nil || (attrs["attstattarget"] != nil && attrs["attstattarget"] != float64(-1)) || attrs["attndims"] != float64(0) || attrs["attinhcount"] != float64(0) || attrs["attislocal"] != true {
 				return false
 			}
 		}
@@ -85,6 +92,16 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 	}
 	a, b := cloneFacts(before.Facts), cloneFacts(after.Facts)
 	attrsA, attrsB := copyAttrs(before.Attributes), copyAttrs(after.Attributes)
+	if before.Engine == "postgresql" {
+		for _, attrs := range []map[string]map[string]any{attrsA, attrsB} {
+			for _, a := range attrs {
+				if a == nil {
+					continue
+				}
+				a["attoptions"] = SemanticPostgresAttributeOptions(a["attoptions"])
+			}
+		}
+	}
 	stripColumn := func(name string, remove bool, change *ColumnChange) {
 		for _, f := range []*Facts{a, b} {
 			out := []sc.Column{}

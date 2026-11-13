@@ -45,6 +45,7 @@ func (s *Session) preparePreservedRebuild(ctx context.Context, b tableedit.Basel
 		changes[c.Name] = c
 	}
 	parts := []string{}
+	partNames := []string{}
 	constraints := []string{}
 	seen := map[string]bool{}
 	for _, term := range parsed.terms {
@@ -68,6 +69,7 @@ func (s *Session) preparePreservedRebuild(ctx context.Context, b tableedit.Basel
 			}
 		}
 		parts = append(parts, text)
+		partNames = append(partNames, term.name)
 	}
 	if len(seen) != len(observed) {
 		return p, tableedit.ErrUnsupported
@@ -84,7 +86,22 @@ func (s *Session) preparePreservedRebuild(ctx context.Context, b tableedit.Basel
 			return p, e
 		}
 		parts = append(parts, text)
+		partNames = append(partNames, c.Name)
 		seen[c.Name] = true
+	}
+	if len(d.ColumnOrder) > 0 {
+		byName := map[string]string{}
+		for i, n := range partNames {
+			byName[n] = parts[i]
+		}
+		parts = nil
+		for _, n := range d.ColumnOrder {
+			text, ok := byName[n]
+			if !ok {
+				return p, tableedit.ErrInvalid
+			}
+			parts = append(parts, text)
+		}
 	}
 	parts = append(parts, constraints...)
 	// Generated values must be recomputed by SQLite, never explicitly inserted.
@@ -101,6 +118,7 @@ func (s *Session) preparePreservedRebuild(ctx context.Context, b tableedit.Basel
 	if len(copyNames) == 0 {
 		return p, tableedit.ErrUnsupported
 	}
+	rowID := ""
 	if !parsed.without {
 		pk := []columnInfo{}
 		used := map[string]bool{}
@@ -133,11 +151,28 @@ func (s *Session) preparePreservedRebuild(ctx context.Context, b tableedit.Basel
 				return p, tableedit.ErrUnsupported
 			}
 			copyNames = append([]string{name}, copyNames...)
+			rowID = name
 		}
+	}
+	selectNames := append([]string(nil), copyNames...)
+	for _, backfill := range d.Backfills {
+		expression, e := tableedit.ExpressionSlot("sqlite", backfill.Expression)
+		if e != nil {
+			return p, e
+		}
+		copyNames = append(copyNames, quote(backfill.Column))
+		selectNames = append(selectNames, expression)
 	}
 	temp := "__dbeer_rebuild_" + b.Fingerprint[:12]
 	target := "main." + quote(b.Target.Table)
-	p.SQL = []string{"CREATE TABLE main." + quote(temp) + " (\n" + strings.Join(parts, "\n,\n") + "\n) " + parsed.suffix + ";", "INSERT INTO main." + quote(temp) + " (" + strings.Join(copyNames, ",") + ") SELECT " + strings.Join(copyNames, ",") + " FROM " + target + ";", "DROP TABLE " + target + ";", "ALTER TABLE main." + quote(temp) + " RENAME TO " + quote(b.Target.Table) + ";"}
+	p.SQL = []string{"CREATE TABLE main." + quote(temp) + " (\n" + strings.Join(parts, "\n,\n") + "\n) " + parsed.suffix + ";", "INSERT INTO main." + quote(temp) + " (" + strings.Join(copyNames, ",") + ") SELECT " + strings.Join(selectNames, ",") + " FROM " + target + ";", "DROP TABLE " + target + ";", "ALTER TABLE main." + quote(temp) + " RENAME TO " + quote(b.Target.Table) + ";"}
+	if d.NeedsAuthoringV5() {
+		order, e := tableedit.ReconstructionOrder(b, d)
+		if e != nil {
+			return p, e
+		}
+		p.Reconstruction = &tableedit.Reconstruction{Method: "sqlite-copy", ColumnOrder: order, ExpectedDefinition: p.SQL[0], RowID: rowID}
+	}
 	if parsed.autoincrement {
 		oldLiteral := "'" + strings.ReplaceAll(b.Target.Table, "'", "''") + "'"
 		tempLiteral := "'" + temp + "'"

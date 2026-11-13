@@ -85,6 +85,7 @@ type Facts struct {
 	Proof                      bool
 }
 type Prepared struct {
+	Reconstruction   *Reconstruction
 	DroppedTarget    bool
 	Consequences     []Consequence
 	ValidationChecks []ValidationCheck
@@ -116,7 +117,7 @@ func columnsValid(names []string) bool {
 }
 func Action(a string) bool { return a == "add" || a == "drop" || a == "replace" }
 func (d Draft) Destructive() bool {
-	if d.NeedsAuthoringV4() {
+	if d.NeedsAuthoringV4() || d.NeedsAuthoringV5() {
 		return true
 	}
 	for _, x := range d.Indexes {
@@ -132,10 +133,13 @@ func (d Draft) Destructive() bool {
 	return false
 }
 func (d Draft) Validate() error {
-	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 && d.AuthoringVersion != 3 && d.AuthoringVersion != 4 || d.NeedsAuthoringV2() && d.AuthoringVersion < 2 || d.NeedsAuthoringV3() && d.AuthoringVersion < 3 || d.NeedsAuthoringV4() && d.AuthoringVersion != 4 {
+	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 && d.AuthoringVersion != 3 && d.AuthoringVersion != 4 && d.AuthoringVersion != 5 || d.NeedsAuthoringV2() && d.AuthoringVersion < 2 || d.NeedsAuthoringV3() && d.AuthoringVersion < 3 || d.NeedsAuthoringV4() && d.AuthoringVersion < 4 {
 		return ErrInvalid
 	}
-	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 && d.RenameTable == nil && !d.DropTable || d.RenameTable != nil && !Identifier(*d.RenameTable) {
+	if err := d.validateReconstruction(); err != nil {
+		return err
+	}
+	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 && d.RenameTable == nil && !d.DropTable && !d.NeedsAuthoringV5() || d.RenameTable != nil && !Identifier(*d.RenameTable) {
 		return ErrInvalid
 	}
 	if d.DropTable && (len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) != 0 || d.RenameTable != nil) {

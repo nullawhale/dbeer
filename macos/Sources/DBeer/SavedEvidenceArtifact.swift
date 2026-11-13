@@ -90,7 +90,7 @@ struct SavedStructureEvidence: Codable, Equatable, Sendable {
 }
 
 struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
-    static let currentVersion = 3
+    static let currentVersion = 4
     static let maximumBytes = 8 * 1_024 * 1_024
     var version = Self.currentVersion
     var id: UUID
@@ -174,7 +174,11 @@ struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
         var value = try decoder.decode(Self.self, from: data)
-        guard [1, 2, Self.currentVersion].contains(value.version),
+        if value.version < 4, let structure = fields["structure"] as? [String: Any], let draft = structure["draft"] as? [String: Any] {
+            guard !draft.keys.contains(where: { ["backfills", "columnOrder", "reconstruct"].contains($0) }),
+                  value.structure?.draft.authoringVersion != 5 else { throw PlanArtifactError.invalid }
+        }
+        guard [1, 2, 3, Self.currentVersion].contains(value.version),
               value.version != 1 || (value.structure.map { !$0.draft.requiresIndexAuthoring && $0.draft.authoringVersion != 3 && !($0.observed?.indexes ?? []).contains { $0.definition != nil } } ?? true),
               value.version >= 3 || (value.structure.map { !$0.draft.requiresDestructiveAuthoring && $0.draft.authoringVersion != 4 && $0.droppedTarget == nil && $0.consequences == nil && $0.validationChecks == nil && $0.validation == nil && !($0.observed?.displayBaseline.requiresDestructiveAuthoring ?? false) } ?? true) else { throw PlanArtifactError.invalid }
         value.version = Self.currentVersion

@@ -157,6 +157,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 		return b, tableedit.ErrUnsupported
 	}
 	definition, _ := ownedStructureString(ddl, 0, 1)
+	b.NativeDefinition = definition
 	if len(definition) > tableedit.MaxSQLBytes {
 		return b, tableedit.ErrUnsupported
 	}

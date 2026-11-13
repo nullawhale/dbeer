@@ -17,6 +17,7 @@ const Capability = "tableStructureEditorV1"
 const AuthoringCapability = "tableStructureAuthoringV2"
 const IndexAuthoringCapability = "tableStructureIndexAuthoringV1"
 const DestructiveCapability = "tableStructureDestructiveV1"
+const ReconstructionCapability = "tableStructureReconstructionV1"
 const MaxColumns = 128
 const MaxSQLBytes = 1024 * 1024
 
@@ -94,6 +95,9 @@ func (c Column) Valid() bool {
 }
 
 type Draft struct {
+	Backfills        []Backfill     `json:"backfills,omitempty"`
+	ColumnOrder      []string       `json:"columnOrder,omitempty"`
+	Reconstruct      bool           `json:"reconstruct,omitempty"`
 	DropTable        bool           `json:"dropTable,omitempty"`
 	AuthoringVersion int            `json:"authoringVersion,omitempty"`
 	RenameTable      *string        `json:"renameTable,omitempty"`
@@ -118,22 +122,24 @@ type ObservedColumn struct {
 	DefaultExpression *string        `json:"defaultExpression,omitempty"`
 }
 type Baseline struct {
-	Identity        string                    `json:"-"`
-	Scope           string                    `json:"-"`
-	Guard           string                    `json:"-"`
-	Attributes      map[string]map[string]any `json:"-"`
-	Facts           *Facts                    `json:"-"`
-	Keys            []Key                     `json:"keys"`
-	Indexes         []Index                   `json:"indexes"`
-	DependencyProof bool                      `json:"dependencyProof"`
-	ID              string                    `json:"id"`
-	Target          Target                    `json:"target"`
-	Engine          string                    `json:"engine"`
-	Fingerprint     string                    `json:"fingerprint"`
-	Columns         []ObservedColumn          `json:"columns"`
-	Limitations     []string                  `json:"limitations"`
+	NativeDefinition string                    `json:"-"`
+	Identity         string                    `json:"-"`
+	Scope            string                    `json:"-"`
+	Guard            string                    `json:"-"`
+	Attributes       map[string]map[string]any `json:"-"`
+	Facts            *Facts                    `json:"-"`
+	Keys             []Key                     `json:"keys"`
+	Indexes          []Index                   `json:"indexes"`
+	DependencyProof  bool                      `json:"dependencyProof"`
+	ID               string                    `json:"id"`
+	Target           Target                    `json:"target"`
+	Engine           string                    `json:"engine"`
+	Fingerprint      string                    `json:"fingerprint"`
+	Columns          []ObservedColumn          `json:"columns"`
+	Limitations      []string                  `json:"limitations"`
 }
 type Plan struct {
+	Reconstruction   *Reconstruction   `json:"-"`
 	DroppedTarget    bool              `json:"droppedTarget,omitempty"`
 	Consequences     []Consequence     `json:"consequences,omitempty"`
 	ValidationChecks []ValidationCheck `json:"validationChecks,omitempty"`
@@ -297,6 +303,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	var indexGuards []IndexGuard
 	var resultTarget *Target
 	var droppedTarget bool
+	var reconstruction *Reconstruction
 	var consequences []Consequence
 	var validationChecks []ValidationCheck
 	var err error
@@ -307,8 +314,9 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 		types, resultTarget = prepared.Types, prepared.ResultTarget
 		indexGuards = prepared.IndexGuards
 		droppedTarget, consequences, validationChecks = prepared.DroppedTarget, prepared.Consequences, prepared.ValidationChecks
+		reconstruction = prepared.Reconstruction
 	} else {
-		if d.NeedsAuthoringV2() || d.NeedsAuthoringV3() || d.NeedsAuthoringV4() || len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
+		if d.NeedsAuthoringV2() || d.NeedsAuthoringV3() || d.NeedsAuthoringV4() || d.NeedsAuthoringV5() || len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
 			return Reply{}, ErrUnsupported
 		}
 		sql, risks, err = a.StructureRender(*s.baseline, d)
@@ -346,7 +354,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	if !validReview(consequences, validationChecks) || droppedTarget != d.DropTable {
 		return Reply{}, ErrInvalid
 	}
-	p := &Plan{DroppedTarget: droppedTarget, Consequences: consequences, ValidationChecks: validationChecks, ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, IndexGuards: indexGuards, Conditions: conditions, Created: time.Now()}
+	p := &Plan{Reconstruction: reconstruction, DroppedTarget: droppedTarget, Consequences: consequences, ValidationChecks: validationChecks, ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, IndexGuards: indexGuards, Conditions: conditions, Created: time.Now()}
 	identities := []string{}
 	for _, b := range references {
 		identities = append(identities, b.Fingerprint)
@@ -357,7 +365,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 			p.RenamedColumns[c.Name] = *c.RenameTo
 		}
 	}
-	p.Digest = Fingerprint([]any{p, identities, conditions, types, indexGuards, p.RenamedColumns})
+	p.Digest = Fingerprint([]any{p, identities, conditions, types, indexGuards, p.RenamedColumns, reconstruction})
 	s.plan = p
 	return Reply{Plan: p}, nil
 }

@@ -99,7 +99,7 @@ struct TableStructureIndexAuthoringIntegrationTests {
             #expect(offline.structure?.observed?.indexes?.first { StructureTarget.sameIdentifier($0.name, indexName) }?.definition == observed)
             #expect(offline.structure?.displayReview.plan.baselineId == "offline-evidence")
             let text = try offline.encoded()
-            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 1")) }
+            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : 1")) }
             await model.load()
             try #require(model.error == nil && model.historyReviews.last?.outcome.executionId == addReview.outcome.executionId)
             let current = try #require(model.baseline?.indexes?.first { StructureTarget.sameIdentifier($0.name, indexName) })

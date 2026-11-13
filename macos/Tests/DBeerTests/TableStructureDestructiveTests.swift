@@ -274,12 +274,12 @@ struct TableStructureDestructivePersistenceTests {
         #expect(document.valid && document.draft.authoringVersion == 4 && document.draft.allowDestructive == nil && !document.draft.valid)
         let text = try StructureDraftStore.text(document)
         let restored = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.utf8))
-        #expect(restored == document && restored.formatVersion == 4 && restored.draft.changes?.first?.name.utf8.elementsEqual("é".utf8) == true)
+        #expect(restored == document && restored.formatVersion == StructureDraftDocument.currentFormatVersion && restored.draft.changes?.first?.name.utf8.elementsEqual("é".utf8) == true)
         #expect(restored.draft.changes?[1].unsigned == false && restored.draft.changes?[1].charset == "" && restored.draft.changes?[0].usingExpression == "")
         #expect(!text.contains("authorization") && !text.contains("validation") && !text.contains("baselineId"))
         for version in [1, 2, 3] {
             #expect(throws: (any Error).self) {
-                try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 4", with: "\"formatVersion\" : \(version)").utf8))
+                try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 5", with: "\"formatVersion\" : \(version)").utf8))
             }
         }
     }
@@ -287,7 +287,7 @@ struct TableStructureDestructivePersistenceTests {
         for version in [1, 2, 3] {
             let text = "{\"formatVersion\":\(version),\"engine\":\"postgresql\",\"target\":{\"schema\":\"public\",\"table\":\"synthetic\",\"create\":false},\"draft\":{\"columns\":[]}}"
             let value = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.utf8))
-            #expect(value.formatVersion == 4 && value.draft.authoringVersion == nil)
+            #expect(value.formatVersion == StructureDraftDocument.currentFormatVersion && value.draft.authoringVersion == nil)
             for fragment in [",\"authoringVersion\":4", ",\"dropTable\":false", ",\"changes\":[{\"name\":\"x\",\"drop\":false}]"] {
                 let newFields = text.replacingOccurrences(of: "\"columns\":[]", with: "\"columns\":[]" + fragment)
                 #expect(throws: (any Error).self) { try JSONDecoder().decode(StructureDraftDocument.self, from: Data(newFields.utf8)) }
@@ -312,7 +312,7 @@ struct TableStructureDestructivePersistenceTests {
         #expect(model.canPreview)
     }
 
-    @Test func versionThreeSavedEvidenceRetainsValidationAndReadsOldArtifactsOffline() throws {
+    @Test func currentSavedEvidenceRetainsValidationAndReadsOldArtifactsOffline() throws {
         let check = StructureValidationCheck(id: "range", summary: "Observed range", sql: "SELECT synthetic_check", risks: ["Full table scan."])
         let plan = StructurePlan(id: "plan", baselineId: "must-not-survive", digest: String(repeating: "b", count: 64), target: target,
             sql: ["synthetic DDL"], risks: ["Conversion changes values."], destructive: true,
@@ -325,25 +325,25 @@ struct TableStructureDestructivePersistenceTests {
             environment: .unspecified, sourceWasStale: false, structure: try SavedStructureEvidence(review))
         let text = try artifact.encoded()
         let restored = try SavedEvidenceArtifact.decode(text)
-        #expect(restored.version == 3 && restored.structure?.validation == validation && restored.structure?.consequences == plan.consequences)
+        #expect(restored.version == SavedEvidenceArtifact.currentVersion && restored.structure?.validation == validation && restored.structure?.consequences == plan.consequences)
         #expect(restored.structure?.displayReview.validation == validation && restored.structure?.displayReview.plan.validationChecks == plan.validationChecks)
         #expect(!text.contains("must-not-survive") && !text.contains("sessionId") && !text.contains("authorization"))
         for version in [1, 2] {
-            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : \(version)")) }
+            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : \(version)")) }
         }
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let fixture = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("protocol/fixtures/saved-evidence-v1.json"))) as? [String: Any])
         for record in try #require(fixture["artifacts"] as? [[String: Any]]) {
             let original = String(decoding: try JSONSerialization.data(withJSONObject: record), as: UTF8.self)
-            #expect(try SavedEvidenceArtifact.decode(original).version == 3)
-            #expect(try SavedEvidenceArtifact.decode(original.replacingOccurrences(of: "\"version\":1", with: "\"version\":2")).version == 3)
+            #expect(try SavedEvidenceArtifact.decode(original).version == SavedEvidenceArtifact.currentVersion)
+            #expect(try SavedEvidenceArtifact.decode(original.replacingOccurrences(of: "\"version\":1", with: "\"version\":2")).version == SavedEvidenceArtifact.currentVersion)
             if record["kind"] as? String == "structure" {
                 var wireOnly = try SavedEvidenceArtifact.decode(original)
                 wireOnly.structure?.draft.authoringVersion = 4
                 wireOnly.structure?.draft.allowDestructive = true
                 let current = try wireOnly.encoded()
                 for version in [1, 2] {
-                    #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(current.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : \(version)")) }
+                    #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(current.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : \(version)")) }
                 }
             }
         }

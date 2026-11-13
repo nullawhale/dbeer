@@ -18,7 +18,7 @@ enum StructureDraftFileError: LocalizedError {
 /// Portable intent deliberately excludes server baselines, execution plans and grants.
 struct StructureDraftDocument: Codable, Equatable, Sendable {
     static let maximumBytes = 1_048_576
-    static let currentFormatVersion = 4
+    static let currentFormatVersion = 5
     let formatVersion: Int
     let engine: DatabaseEngine
     let target: StructureTarget
@@ -30,6 +30,9 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
         self.target = .init(schema: target.schema, table: target.table, create: target.create)
         var retained = draft
         retained.allowDestructive = nil
+        if retained.backfills?.isEmpty == true { retained.backfills = nil }
+        if retained.columnOrder?.isEmpty == true { retained.columnOrder = nil }
+        if retained.reconstruct == false { retained.reconstruct = nil }
         retained.authoringVersion = retained.minimumAuthoringVersion
         self.draft = retained
     }
@@ -43,12 +46,17 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard [1, 2, 3, Self.currentFormatVersion].contains(version) else {
+        guard [1, 2, 3, 4, Self.currentFormatVersion].contains(version) else {
             throw StructureDraftFileError.invalidDocument
         }
         let target = try values.decode(StructureTarget.self, forKey: .target)
         guard target.reconcile == nil else { throw StructureDraftFileError.invalidDocument }
         let draft = try values.decode(StructureDraft.self, forKey: .draft)
+        if version < 5 {
+            let intent = try values.nestedContainer(keyedBy: DraftFileCodingKey.self, forKey: .draft)
+            guard !intent.allKeys.contains(where: { ["backfills", "columnOrder", "reconstruct"].contains($0.stringValue) }),
+                  draft.authoringVersion != 5 else { throw StructureDraftFileError.invalidDocument }
+        }
         if version < 4 {
             let intent = try values.nestedContainer(keyedBy: DraftFileCodingKey.self, forKey: .draft)
             guard !intent.allKeys.contains(where: { $0.stringValue == "dropTable" }) else { throw StructureDraftFileError.invalidDocument }
@@ -60,9 +68,10 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
                 }
             }
         }
-        guard [nil, 2, 3, 4].contains(draft.authoringVersion),
-              !draft.requiresDestructiveAuthoring || draft.authoringVersion == 4,
-              !draft.requiresIndexAuthoring || [3, 4].contains(draft.authoringVersion) else { throw StructureDraftFileError.invalidDocument }
+        guard [nil, 2, 3, 4, 5].contains(draft.authoringVersion),
+              !draft.requiresReconstructionAuthoring || draft.authoringVersion == 5,
+              !draft.requiresDestructiveAuthoring || [4, 5].contains(draft.authoringVersion),
+              !draft.requiresIndexAuthoring || [3, 4, 5].contains(draft.authoringVersion) else { throw StructureDraftFileError.invalidDocument }
         guard (version != 1 || !draft.requiresAuthoringV2 && !draft.requiresIndexAuthoring && !draft.requiresDestructiveAuthoring && draft.authoringVersion == nil),
               (version >= 3 || !draft.requiresIndexAuthoring && draft.authoringVersion != 3),
               (version >= 4 || !draft.requiresDestructiveAuthoring && draft.authoringVersion != 4) else { throw StructureDraftFileError.invalidDocument }
@@ -75,9 +84,12 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
               StructureTarget.identifier(target.schema),
               StructureTarget.identifier(target.table) || target.create && target.table.isEmpty,
               draft.columns.count <= 128,
-              [nil, 2, 3, 4].contains(draft.authoringVersion),
+              [nil, 2, 3, 4, 5].contains(draft.authoringVersion),
               draft.renameTable.map(Self.name) ?? true,
-              (draft.changes?.count ?? 0) + (draft.indexes?.count ?? 0) + (draft.keys?.count ?? 0) <= 64 else { return false }
+              (draft.changes?.count ?? 0) + (draft.indexes?.count ?? 0) + (draft.keys?.count ?? 0) <= 64,
+              (draft.backfills?.count ?? 0) <= 128, (draft.columnOrder?.count ?? 0) <= 128,
+              (draft.backfills ?? []).allSatisfy({ Self.name($0.column) && Self.text($0.expression, maximum: 4096) }),
+              (draft.columnOrder ?? []).allSatisfy(Self.name) else { return false }
         // Incomplete editor fields remain saveable, while imported collections and text stay bounded.
         return draft.columns.allSatisfy { column in
             Self.name(column.name) && Self.type(column.type) && Self.defaultValue(column.default) && Self.generation(column.generated) && Self.identity(column.identity)

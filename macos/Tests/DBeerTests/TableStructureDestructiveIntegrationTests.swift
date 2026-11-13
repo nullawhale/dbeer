@@ -124,7 +124,7 @@ struct TableStructureDestructiveIntegrationTests {
             let artifact = try SavedEvidenceArtifact.capture(model, title: "Destructive outcome")
             let reference = try #require(await workspace.savedEvidence.save(artifact))
             let offline = try await plans.loadEvidence(reference.id)
-            #expect(starts == startsBeforeEvidence && offline.version == 3 && offline.structure?.validation == review.validation)
+            #expect(starts == startsBeforeEvidence && offline.version == SavedEvidenceArtifact.currentVersion && offline.structure?.validation == review.validation)
             #expect(offline.structure?.displayReview.plan.consequences == review.plan.consequences)
             await model.load()
             model.draft = .init(columns: [], allowDestructive: true, dropTable: true)

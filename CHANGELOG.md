@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Review explicit required-column backfills, complete physical column order and
+  table reconstruction through exact SQL and destructive confirmation. Add native
+  MySQL FIRST/AFTER and FORCE, guarded transactional PostgreSQL reconstruction,
+  and source-preserving SQLite reconstruction with typed-value, rowid, counter,
+  constraint/index and dependent-schema checks. Keep Preview catalog-only and
+  retain partial, cancelled and uncertain outcomes without implicit replay.
+
 - Choose capability-checked PostgreSQL Explain collection options, including
   PostgreSQL 17 MEMORY/SERIALIZE and explicit TIMING off, while retaining actual
   counts and whole-query timing. Add Oracle MySQL 5.7 estimated JSON plans,

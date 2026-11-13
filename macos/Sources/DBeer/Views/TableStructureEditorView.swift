@@ -183,7 +183,10 @@ struct TableStructureEditorView: View {
                 TableStructureNewColumnEditor(column: columnBinding(i), number: i + 1, engine: model.profile.engine,
                     create: model.create, authoringAvailable: model.authoringAvailable, canRemove: !model.create || model.draft.columns.count > 1) {
                     guard canEdit, model.draft.columns.indices.contains(i) else { return }
-                    model.draft.columns.remove(at: i)
+                    let removed = model.draft.columns.remove(at: i)
+                    let fills = (model.draft.backfills ?? []).filter { !StructureTarget.sameIdentifier($0.column, removed.name) }
+                    model.draft.backfills = fills.isEmpty ? nil : fills
+                    model.draft.columnOrder = model.draft.columnOrder?.filter { !StructureTarget.sameIdentifier($0, removed.name) }
                     if model.draft.destructive { model.draft.allowDestructive = nil }
                 }
             }
@@ -194,6 +197,7 @@ struct TableStructureEditorView: View {
                 }.controlHover().disabled(!canEdit || model.draft.columns.count >= 128)
             }
             TableStructureIntentEditors(model: model)
+            if !model.create { TableStructureReconstructionEditor(model: model) }
             }.disabled(model.draft.dropTable)
             if model.draft.dropTable {
                 Toggle("Include table deletion in Preview", isOn: Binding(get: { model.draft.allowDestructive == true }, set: { model.draft.allowDestructive = $0 })).controlHover()
@@ -249,7 +253,15 @@ struct TableStructureEditorView: View {
     private func columnBinding(_ i: Int) -> Binding<StructureColumn> {
         Binding(get: { model.draft.columns.indices.contains(i) ? model.draft.columns[i] : TableStructureEditorModel.emptyColumn }, set: {
             guard canEdit, model.draft.columns.indices.contains(i) else { return }
+            let oldName = model.draft.columns[i].name
             model.draft.columns[i] = $0
+            let newName = $0.name
+            model.draft.backfills = model.draft.backfills?.map { fill in
+                var updated = fill
+                if StructureTarget.sameIdentifier(fill.column, oldName) { updated.column = newName }
+                return updated
+            }
+            model.draft.columnOrder = model.draft.columnOrder?.map { StructureTarget.sameIdentifier($0, oldName) ? newName : $0 }
             if model.draft.destructive { model.draft.allowDestructive = nil }
         })
     }

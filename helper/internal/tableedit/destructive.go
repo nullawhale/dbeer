@@ -43,7 +43,7 @@ func (d Draft) NeedsAuthoringV4() bool {
 		return true
 	}
 	for _, c := range d.Changes {
-		if c.Drop || c.UsingExpression != nil || c.Unsigned != nil || c.Charset != nil || c.Collation != nil || d.AuthoringVersion == 4 && c.Type != nil {
+		if c.Drop || c.UsingExpression != nil || c.Unsigned != nil || c.Charset != nil || c.Collation != nil || d.AuthoringVersion >= 4 && c.Type != nil {
 			return true
 		}
 	}

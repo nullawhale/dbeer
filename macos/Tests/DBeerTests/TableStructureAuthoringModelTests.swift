@@ -120,7 +120,7 @@ struct TableStructureAuthoringModelTests {
         let old = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(legacy.utf8))
         #expect(old.formatVersion == StructureDraftDocument.currentFormatVersion && old.draft.authoringVersion == nil)
         #expect(throws: (any Error).self) {
-            _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 4", with: "\"formatVersion\" : 1").utf8))
+            _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 5", with: "\"formatVersion\" : 1").utf8))
         }
     }
 }

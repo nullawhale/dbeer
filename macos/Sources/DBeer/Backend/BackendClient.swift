@@ -109,6 +109,9 @@ actor BackendClient {
     private var nativeResultValuesSupported = false
     private var destructiveStructureSupported = false
     private var indexAuthoringSupported = false
+    private var reconstructionSupported = false
+    // One admission bit per logical owner, independent of preview count or plan IDs.
+    private var reconstructionSessions: [String: Bool] = [:]
     private var sessionCapabilities: [String: Set<String>] = [:]
     // Physical loss retires active admission; retained status stays on its logical helper owner.
     private var retainedStructureCapabilities: [String: Set<String>] = [:]
@@ -220,6 +223,17 @@ actor BackendClient {
     }
     private func supportsDestructiveStructure(sessionId: String?, retainedStatus: Bool = false) -> Bool {
         destructiveStructureSupported && sessionId.flatMap { retainedStatus ? retainedStructureCapabilities[$0] : sessionCapabilities[$0] }?.contains("tableStructureDestructiveV1") == true
+    }
+    private func supportsReconstruction(sessionId: String?, retainedStatus: Bool = false) -> Bool {
+        reconstructionSupported && sessionId.flatMap { retainedStatus ? retainedStructureCapabilities[$0] : sessionCapabilities[$0] }?.contains("tableStructureReconstructionV1") == true
+    }
+    private func reconstructionOwnerIsKnown(_ sessionId: String?) -> Bool {
+        sessionId.flatMap { reconstructionSessions[$0] } != nil
+    }
+    private func requiresReconstruction(_ command: BackendCommand) -> Bool {
+        command.structure?.draft?.requiresReconstructionAuthoring == true ||
+            command.sessionId.flatMap { reconstructionSessions[$0] } == true &&
+                ["structure.apply", "structure.validate", "structure.status"].contains(command.type)
     }
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
@@ -348,6 +362,12 @@ actor BackendClient {
             catch { throw BackendRequestError.invalidCommand }
         }
         for operation in command.operations ?? [] {
+            if operation.structure != nil {
+                guard !reconstructionSupported || reconstructionOwnerIsKnown(command.sessionId),
+                      command.sessionId.flatMap({ reconstructionSessions[$0] }) != true || supportsReconstruction(sessionId: command.sessionId) else {
+                    throw BackendRequestError.invalidCommand
+                }
+            }
             if operation.type == "structure.validate" {
                 guard command.type == "operation.assess", operation.structure?.valid == true,
                       operation.sql == nil, operation.export == nil, operation.changes == nil, operation.explain == nil,
@@ -398,6 +418,10 @@ actor BackendClient {
                   command.insert == nil, command.sshTrust == nil else { throw BackendRequestError.invalidCommand }
         } else if command.explain != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("structure.") {
+            guard !reconstructionSupported || reconstructionOwnerIsKnown(command.sessionId) else { throw BackendRequestError.invalidCommand }
+            if requiresReconstruction(command), !supportsReconstruction(sessionId: command.sessionId, retainedStatus: command.type == "structure.status") {
+                throw BackendRequestError.invalidCommand
+            }
             if command.structure?.draft?.requiresIndexAuthoring == true || command.structure?.draft?.authoringVersion == 3,
                !supportsIndexAuthoring(sessionId: command.sessionId) {
                 throw BackendRequestError.invalidCommand
@@ -566,6 +590,8 @@ actor BackendClient {
         let command = request.command
         let destructiveStructureAdmitted = supportsDestructiveStructure(sessionId: command.sessionId, retainedStatus: command.type == "structure.status")
         let indexAuthoringAdmitted = supportsIndexAuthoring(sessionId: command.sessionId, retainedStatus: command.type == "structure.status")
+        let reconstructionRequired = requiresReconstruction(command)
+        let reconstructionAdmitted = supportsReconstruction(sessionId: command.sessionId, retainedStatus: command.type == "structure.status")
         guard (command.sessionId == nil || command.sessionId == reply.sessionId),
               (command.queryId == nil || command.queryId == reply.queryId) else {
             fail(BackendTransportError(.invalidMessage))
@@ -663,22 +689,27 @@ actor BackendClient {
             nativeResultValuesSupported = reply.capabilities?.contains(NativeValue.capability) == true
             destructiveStructureSupported = reply.capabilities?.contains("tableStructureDestructiveV1") == true
             indexAuthoringSupported = reply.capabilities?.contains("tableStructureIndexAuthoringV1") == true
+            reconstructionSupported = reply.capabilities?.contains("tableStructureReconstructionV1") == true
         }
         if reply.type == "connect.result", let session = reply.sessionId {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
+            reconstructionSessions[session] = false
             if let support = reply.explainSupport,
                ExplainOptionsAdmission.validOwner(support: support, engine: reply.engine,
                  capabilities: Set(reply.capabilities ?? []), helperSupports: explainOptionsSupported) {
                 sessionExplainOptionSupport[session] = support
             } else { sessionExplainOptionSupport.removeValue(forKey: session) }
-            let structureCapabilities = Set(reply.capabilities ?? []).intersection(["tableStructureIndexAuthoringV1", "tableStructureDestructiveV1"])
+            let structureCapabilities = Set(reply.capabilities ?? []).intersection(["tableStructureIndexAuthoringV1", "tableStructureDestructiveV1", "tableStructureReconstructionV1"])
             if !structureCapabilities.isEmpty { retainedStructureCapabilities[session] = structureCapabilities }
             else { retainedStructureCapabilities.removeValue(forKey: session) }
             if reply.transactionStatus == .unsupported, let support = reply.explainSupport, support.engine.hasEngineDiagnostics {
                 sessionDiagnosticSupport[session] = support
             } else { sessionDiagnosticSupport.removeValue(forKey: session) }
         }
-        if reply.type == "disconnect.ack", let session = reply.sessionId { retainedStructureCapabilities.removeValue(forKey: session) }
+        if reply.type == "disconnect.ack", let session = reply.sessionId {
+            retainedStructureCapabilities.removeValue(forKey: session)
+            reconstructionSessions.removeValue(forKey: session)
+        }
         if reply.type == "disconnect.ack" || reply.connected == false, let session = reply.sessionId {
             sessionCapabilities.removeValue(forKey: session)
             sessionExplainOptionSupport.removeValue(forKey: session)
@@ -732,7 +763,8 @@ actor BackendClient {
                 if let row = imported.row, row > (command.tableImport?.rows?.count ?? 0) { throw BackendTransportError(.invalidMessage) }
             }
             if reply.type != "error", command.type.hasPrefix("structure.") {
-                guard request.started, reply.structure?.valid(for: reply.type) == true else { throw BackendTransportError(.invalidMessage) }
+                guard request.started, reply.structure?.valid(for: reply.type) == true,
+                      !reconstructionRequired || reconstructionAdmitted else { throw BackendTransportError(.invalidMessage) }
                 if reply.structure?.baseline?.requiresIndexAuthoring == true || reply.structure?.outcome?.observed?.requiresIndexAuthoring == true {
                     guard indexAuthoringAdmitted else { throw BackendTransportError(.invalidMessage) }
                 }
@@ -757,6 +789,10 @@ actor BackendClient {
             terminal = try hydrate(reply, request: request)
         }
         catch { fail(BackendTransportError(.invalidMessage)); return }
+        if reply.type == "structure.preview.result", command.structure?.draft?.requiresReconstructionAuthoring == true,
+           let session = command.sessionId {
+            reconstructionSessions[session] = true
+        }
         pending.removeValue(forKey: reply.requestId)
         if terminal.type == "error" {
             request.continuation.resume(throwing: BackendRemoteError(reply: terminal))
@@ -951,6 +987,7 @@ actor BackendClient {
 
     private func outputEnded() {
         retainedStructureCapabilities.removeAll()
+        reconstructionSessions.removeAll()
         if shuttingDown {
             failPending(BackendTransportError(.unexpectedEOF))
         } else if let process, !process.isRunning {
@@ -975,6 +1012,7 @@ actor BackendClient {
         failure = error
         ready = false
         retainedStructureCapabilities.removeAll()
+        reconstructionSessions.removeAll()
         failPending(error)
         for waiter in failureWaiters { waiter.resume(returning: error) }
         failureWaiters.removeAll()

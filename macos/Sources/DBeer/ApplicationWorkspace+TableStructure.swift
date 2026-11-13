@@ -71,7 +71,7 @@ extension ApplicationWorkspace {
                 return try await self.authorizeOperations([.init(type: "structure.apply", structure: apply)],
                     sessionID: session, profile: profile, client: client,
                     generatedPreview: plan.sql.joined(separator: "\n") + "\n\n" + plan.risks.joined(separator: "\n"))
-            }, bindingIsCurrent: current, authoringSupported: { [weak service] in service?.capabilities.contains("tableStructureAuthoringV2") == true }, indexAuthoringSupported: { [weak service] in service?.capabilities.contains("tableStructureIndexAuthoringV1") == true }, destructiveSupported: { [weak service] in service?.capabilities.contains("tableStructureDestructiveV1") == true }, confirmPlan: { [weak self] plan, _ in
+            }, bindingIsCurrent: current, authoringSupported: { [weak service] in service?.capabilities.contains("tableStructureAuthoringV2") == true }, indexAuthoringSupported: { [weak service] in service?.capabilities.contains("tableStructureIndexAuthoringV1") == true }, destructiveSupported: { [weak service] in service?.capabilities.contains("tableStructureDestructiveV1") == true }, reconstructionSupported: { [weak service] in service?.capabilities.contains("tableStructureReconstructionV1") == true }, confirmPlan: { [weak self] plan, _ in
                 guard let self, current() else { return false }
                 let consequences = plan.consequences.map { $0.object + ": " + $0.message }
                 let review = ["Apply this exact reviewed structure plan?", "Plan: " + plan.id, "Digest: " + plan.digest,

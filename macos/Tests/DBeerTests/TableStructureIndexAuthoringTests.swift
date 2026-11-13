@@ -55,7 +55,7 @@ struct TableStructureIndexAuthoringContractTests {
             }
             for oldVersion in [1, 2] {
                 #expect(throws: (any Error).self) {
-                    _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 4", with: "\"formatVersion\" : \(oldVersion)").utf8))
+                    _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 5", with: "\"formatVersion\" : \(oldVersion)").utf8))
                 }
             }
         }
@@ -178,7 +178,7 @@ struct TableStructureIndexEvidenceVersionTests {
         #expect(decoded == value && decoded.structure?.historicalExecutionID == value.structure?.historicalExecutionID)
         #expect(decoded.structure?.steps == value.structure?.steps && decoded.structure?.state == value.structure?.state)
         for version in [0, 99] {
-            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : \(version)")) }
+            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : \(version)")) }
         }
     }
     @Test func richIntentAndObservationKeepVersionTwoBoundaryAndRemainOffline() throws {
@@ -188,8 +188,8 @@ struct TableStructureIndexEvidenceVersionTests {
         #expect(value.valid)
         var text = try value.encoded()
         #expect(try SavedEvidenceArtifact.decode(text).structure?.draft == value.structure?.draft)
-        #expect(try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 2")).structure?.draft == value.structure?.draft)
-        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 1")) }
+        #expect(try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : 2")).structure?.draft == value.structure?.draft)
+        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : 1")) }
         value = try legacy()
         let target = try #require(value.structure?.target)
         value.structure?.observed = SavedStructureObservation(.init(id: "must-not-survive", target: target, engine: "postgresql", fingerprint: String(repeating: "a", count: 64), columns: [], limitations: [], indexes: [.init(name: "é", columns: [], unique: false, supported: true, definition: definition)]))
@@ -197,7 +197,7 @@ struct TableStructureIndexEvidenceVersionTests {
         text = try value.encoded()
         let decoded = try SavedEvidenceArtifact.decode(text)
         #expect(decoded.structure?.observed?.indexes?.first?.definition == definition && !text.contains("must-not-survive"))
-        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 1")) }
+        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 4", with: "\"version\" : 1")) }
         #expect(decoded.structure?.displayReview.plan.baselineId == "offline-evidence")
     }
 }

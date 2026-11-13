@@ -9,6 +9,7 @@ import (
 const StructureAuthoringCapability = tableedit.AuthoringCapability
 const StructureIndexAuthoringCapability = tableedit.IndexAuthoringCapability
 const StructureDestructiveCapability = tableedit.DestructiveCapability
+const StructureReconstructionCapability = tableedit.ReconstructionCapability
 
 func parseStructure(raw json.RawMessage, command string) (tableedit.Request, bool) {
 	var r tableedit.Request
@@ -87,18 +88,34 @@ func structureAuthoredShape(fields map[string]json.RawMessage) bool {
 	return true
 }
 func structureDraftShape(raw json.RawMessage) bool {
-	f, ok := changesObject(raw, "columns|changes|indexes|keys|allowDestructive|renameTable|authoringVersion|dropTable", "columns")
+	f, ok := changesObject(raw, "columns|changes|indexes|keys|allowDestructive|renameTable|authoringVersion|dropTable|backfills|columnOrder|reconstruct", "columns")
 	if !ok {
 		return false
 	}
 	value := 0
 	if version, present := f["authoringVersion"]; present {
-		if json.Unmarshal(version, &value) != nil || value != 2 && value != 3 && value != 4 {
+		if json.Unmarshal(version, &value) != nil || value != 2 && value != 3 && value != 4 && value != 5 {
 			return false
 		}
 	}
-	if _, present := f["dropTable"]; present && value != 4 {
+	if _, present := f["dropTable"]; present && value < 4 {
 		return false
+	}
+	for _, key := range []string{"backfills", "columnOrder", "reconstruct"} {
+		if _, present := f[key]; present && value != 5 {
+			return false
+		}
+	}
+	if raw, present := f["backfills"]; present {
+		var items []json.RawMessage
+		if len(raw) == 0 || bytes.TrimSpace(raw)[0] != '[' || json.Unmarshal(raw, &items) != nil {
+			return false
+		}
+		for _, item := range items {
+			if _, ok := changesObject(item, "column|expression", "column", "expression"); !ok {
+				return false
+			}
+		}
 	}
 	for _, key := range []string{"columns", "changes", "indexes", "keys"} {
 		raw, present := f[key]
@@ -127,7 +144,7 @@ func structureDraftShape(raw json.RawMessage) bool {
 			if !ok {
 				return false
 			}
-			if key == "changes" && value != 4 {
+			if key == "changes" && value < 4 {
 				for _, field := range []string{"drop", "usingExpression", "unsigned", "charset", "collation"} {
 					if _, present := fields[field]; present {
 						return false

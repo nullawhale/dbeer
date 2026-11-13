@@ -748,7 +748,7 @@ The editor's **Draft** menu saves local typed changes in a versioned
 `.dbeerstructure` file through **Save Draft** or **Save Draft As…**. Incomplete
 fields, including expressions and qualified type references, can be saved for
 later editing. Files contain engine, exact target names and typed intent with a
-1 MiB limit. The current writer uses version 4 and reads versions 1, 2 and 3. Save
+1 MiB limit. The current writer uses version 5 and reads versions 1–5. Save
 checks the previous file version and preserves concurrent external changes.
 
 Use **Open Draft…** in **Create Table…** for a matching schema or in
@@ -834,7 +834,7 @@ accounts retain eligible additive and narrow column operations. A proven
 unrelated direct column reference can permit a rename while an uncertain or
 dependent expression still requires an explicit reviewed migration. Catalogs
 cannot prove the absence of dynamic SQL dependencies. Backfills and physical
-reordering require a separate reviewed reconstruction plan.
+reordering use the separate reviewed workflow described below.
 
 Destructive drafts can explicitly remove a table or column and convert ordinary
 built-in columns. Review each named dependency and data-loss consequence before
@@ -863,6 +863,72 @@ reconstruction. The remaining exact native values are verified during Apply.
 Direct type, USING, signedness and per-column encoding conversions are not
 provided by SQLite ALTER TABLE and require a separate reconstruction plan.
 
+Backfill, physical column order and explicit reconstruction use an exact reviewed
+plan with separate destructive permission and confirmation, including in a
+development profile. Review the full SQL, locks, copy costs and consequences.
+Preview reads catalog metadata only; it never scans data, evaluates backfill
+expressions or invokes custom type support code. A required appended ordinary
+built-in column can have an explicit backfill expression, without DEFAULT,
+generation or identity. Set a persistent DEFAULT in a separate plan. Every
+required appended column needs its own backfill. Reordering lists every retained
+and appended column exactly once and is reviewed separately from unrelated edits.
+
+PostgreSQL and MySQL backfill displays independent ADD-nullable, UPDATE-NULL-rows
+and NOT NULL enforcement steps. Each acknowledged step survives later failure or
+Stop. Concurrent inserts can make final enforcement fail; functions and UPDATE
+triggers can modify other values or external state. Such effects are part of the
+explicitly reviewed write and may not roll back. MySQL requires an already strict
+session SQL mode and does not change it. A separate validation request does not
+evaluate arbitrary backfill code: the report marks expression acceptance and
+side effects unavailable. It cannot authorize Apply or guarantee success.
+
+MySQL physical reordering uses full captured column definitions and native
+FIRST/AFTER in one ALTER TABLE with ALGORITHM=INPLACE and LOCK=EXCLUSIVE.
+Explicit reconstruction includes native FORCE with the same algorithm and lock,
+even with unchanged column order or when only virtual columns move. Moving a
+virtual generated column on MySQL before 8.4 requires a separate COPY migration;
+Preview rejects that native INPLACE limitation with a prerequisite.
+Captured defaults, generation, identity, character sets, collations, visibility,
+comments, keys, indexes and dependent metadata remain guarded and are checked
+after acknowledgement. Unsupported attributes block Preview; the helper does not
+discard them. The operation can rebuild the table and block other users. MySQL
+metadata checks remain best effort against concurrent DDL, and lost acknowledgement
+remains unknown. See the [MySQL ALTER TABLE reference](https://dev.mysql.com/doc/refman/8.0/en/alter-table.html).
+
+PostgreSQL has no direct ALTER COLUMN position. Eligible ordinary tables use
+transactional CREATE, INSERT SELECT, binary-value/multiplicity verification,
+DROP RESTRICT, RENAME and exact retained primary/unique key and plain btree-index
+recreation. Every retained catalog fact and ordinary column attribute is verified
+before COMMIT. The relation OID and physical row locations change. This deliberately
+bounded path requires ordinary built-in columns, default storage and privileges,
+and no generation, identity, default expressions, owned sequences, incoming
+foreign keys or other dependent objects. Custom permissions, statistics, comments,
+security labels, publications, policies, triggers and unproven properties require
+an explicit migration that preserves them. No CASCADE repair is generated.
+See the [PostgreSQL column-position guidance](https://wiki.postgresql.org/wiki/Alter_column_position).
+
+SQLite uses its established source-definition reconstruction: retained column and
+constraint clauses keep their original text, backfill expressions appear in the
+reviewed INSERT SELECT, and original indexes and triggers are recreated after the
+copy. Copying does not fire those retained triggers. STRICT/WITHOUT ROWID behavior,
+hidden rowids, INTEGER PRIMARY KEY alias behavior and AUTOINCREMENT high-water
+marks are preserved. Apply verifies the complete retained schema and dependent
+objects, exact typed values with duplicate multiplicity, requested order, sequence
+counters and foreign keys before COMMIT. Views or definitions that cannot be
+proven safe block reconstruction with a prerequisite. Foreign-key enforcement is
+suspended only on the dedicated physical structure session, outside the
+transaction, and its captured setting is restored and verified. Unknown COMMIT,
+rollback or restoration state retires that connection; SQL-tab sessions are
+independent. See the [SQLite generalized ALTER TABLE procedure](https://www.sqlite.org/lang_altertable.html#otheralter).
+
+A failed or cancelled atomic reconstruction rolls back its executed statements;
+later statements remain not started. Historical partial/unknown outcomes are
+retained and never implicitly replayed. An older helper without the dedicated
+reconstruction capability cannot receive a silently downgraded intent. Portable
+drafts retain backfill text, exact order and reconstruction intent in writer
+version 5 (readers 1–5), while saved evidence uses writer version 4 (readers 1–4).
+Restoring either artifact remains disconnected and grants no execution authority.
+
 **Validate Data** is a separate, explicitly confirmed read operation against
 the exact preview ID and digest. Its displayed SQL, costs and limitations are
 reviewed before scanning stored values. Checks use a read-only snapshot, are
@@ -875,8 +941,8 @@ Changing the draft requires a new Preview and fresh validation evidence.
 Destructive authoring and validation require the helper capability advertised
 for that engine; an older helper does not receive a silently downgraded intent.
 The explicit Apply confirmation shows the plan ID, digest, SQL and consequences;
-cancelling it sends no DDL. Saved structure evidence uses writer version 3, reads
-versions 1 and 2, and retains historical consequences and validation reports
+cancelling it sends no DDL. Saved structure evidence uses writer version 4, reads
+versions 1–4, and retains historical consequences and validation reports
 offline without a runtime session or execution grant.
 
 An acknowledged DROP TABLE retains its review and execution history without
