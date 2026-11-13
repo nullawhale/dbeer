@@ -73,7 +73,7 @@ struct SavedEvidenceTests {
         for artifact in try fixtures() {
             let text = try artifact.encoded()
             #expect(try SavedEvidenceArtifact.decode(text) == artifact)
-            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 1", with: "\"version\" : 99")) }
+            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : \(SavedEvidenceArtifact.currentVersion)", with: "\"version\" : 99")) }
             var object = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
             object["authorization"] = "must not survive"
             #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(String(decoding: JSONSerialization.data(withJSONObject: object), as: UTF8.self)) }

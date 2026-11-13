@@ -16,11 +16,11 @@ func (r *schemaCapture) expressionProjection(node, relation string) string {
 	}
 	unsafe := `EXISTS(WITH RECURSIVE expression_types AS (
  SELECT et.oid,et.typtype,et.typbasetype,et.typoutput,et.typmodout
- FROM pg_catalog.regexp_matches((` + node + `)::text,':[[:alpha:]_]*[tT][yY][pP][eE][[:alpha:]_]*[[:space:]]+([0-9]+)','g') AS m
- JOIN pg_catalog.pg_type et ON et.oid=(m[1])::oid
+ FROM pg_catalog.regexp_matches((` + node + `)::pg_catalog.text,':[[:alpha:]_]*[tT][yY][pP][eE][[:alpha:]_]*[[:space:]]+([0-9]+)','g') AS m
+ JOIN pg_catalog.pg_type et ON et.oid=(m[1])::pg_catalog.oid
  UNION SELECT b.oid,b.typtype,b.typbasetype,b.typoutput,b.typmodout FROM expression_types d JOIN pg_catalog.pg_type b ON b.oid=d.typbasetype WHERE d.typtype='d'
  ) SELECT 1 FROM expression_types t WHERE t.typtype='p' OR t.typoutput>=16384 OR t.typmodout>=16384 OR (t.oid>=16384 AND t.typtype NOT IN ('e','d')))`
-	return "CASE WHEN " + node + " IS NULL THEN '' WHEN " + unsafe + " THEN pg_catalog.chr(1)||'catalog:'||(" + node + ")::text ELSE " + deparse + " END"
+	return "CASE WHEN " + node + " IS NULL THEN '' WHEN " + unsafe + " THEN pg_catalog.chr(1)||'catalog:'||(" + node + ")::pg_catalog.text ELSE " + deparse + " END"
 }
 
 func (r *schemaCapture) unavailableExpression(text, class, oid string) (sc.Expression, bool) {

@@ -18,7 +18,7 @@ enum StructureDraftFileError: LocalizedError {
 /// Portable intent deliberately excludes server baselines, execution plans and grants.
 struct StructureDraftDocument: Codable, Equatable, Sendable {
     static let maximumBytes = 1_048_576
-    static let currentFormatVersion = 2
+    static let currentFormatVersion = 3
     let formatVersion: Int
     let engine: DatabaseEngine
     let target: StructureTarget
@@ -30,7 +30,7 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
         self.target = .init(schema: target.schema, table: target.table, create: target.create)
         var retained = draft
         retained.allowDestructive = nil
-        if retained.requiresAuthoringV2 { retained.authoringVersion = 2 }
+        retained.authoringVersion = retained.minimumAuthoringVersion
         self.draft = retained
     }
 
@@ -43,13 +43,15 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard [1, Self.currentFormatVersion].contains(version) else {
+        guard [1, 2, Self.currentFormatVersion].contains(version) else {
             throw StructureDraftFileError.invalidDocument
         }
         let target = try values.decode(StructureTarget.self, forKey: .target)
         guard target.reconcile == nil else { throw StructureDraftFileError.invalidDocument }
         let draft = try values.decode(StructureDraft.self, forKey: .draft)
-        guard version != 1 || !draft.requiresAuthoringV2 && draft.authoringVersion == nil else { throw StructureDraftFileError.invalidDocument }
+        guard draft.authoringVersion == nil || draft.authoringVersion == 2 || draft.authoringVersion == 3,
+              !draft.requiresIndexAuthoring || draft.authoringVersion == 3 else { throw StructureDraftFileError.invalidDocument }
+        guard (version != 1 || !draft.requiresAuthoringV2 && !draft.requiresIndexAuthoring && draft.authoringVersion == nil), (version == 3 || !draft.requiresIndexAuthoring && draft.authoringVersion != 3) else { throw StructureDraftFileError.invalidDocument }
         self.init(engine: try values.decode(DatabaseEngine.self, forKey: .engine), target: target, draft: draft)
         guard valid else { throw StructureDraftFileError.invalidDocument }
     }
@@ -59,7 +61,7 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
               StructureTarget.identifier(target.schema),
               StructureTarget.identifier(target.table) || target.create && target.table.isEmpty,
               draft.columns.count <= 128,
-              draft.authoringVersion == nil || draft.authoringVersion == 2,
+              draft.authoringVersion == nil || draft.authoringVersion == 2 || draft.authoringVersion == 3,
               draft.renameTable.map(Self.name) ?? true,
               (draft.changes?.count ?? 0) + (draft.indexes?.count ?? 0) + (draft.keys?.count ?? 0) <= 64 else { return false }
         // Incomplete editor fields remain saveable, while imported collections and text stay bounded.
@@ -70,7 +72,7 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
                 (change.default.map(Self.defaultValue) ?? true) && (change.renameTo.map(Self.name) ?? true) && Self.generation(change.generated) && Self.identity(change.identity)
         } && (draft.indexes ?? []).allSatisfy { index in
             ["add", "drop", "replace"].contains(index.action) && Self.name(index.name) &&
-                Self.names(index.columns ?? [])
+                Self.names(index.columns ?? []) && (index.definition.map { index.columns == nil && Self.indexDefinition($0) } ?? true)
         } && (draft.keys ?? []).allSatisfy { key in
             ["add", "drop", "replace"].contains(key.action) &&
                 ["primary", "unique", "foreign"].contains(key.kind) && Self.name(key.name) &&
@@ -88,6 +90,18 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
             (value.reference.map { name($0.schema) && name($0.name) } ?? true) &&
             [value.length, value.precision, value.scale].allSatisfy { $0.map { (-1_000_000...1_000_000).contains($0) } ?? true }
     }
+    private static func indexDefinition(_ value: StructureIndexDefinition) -> Bool {
+        name(value.method) && value.terms.count <= 32 && names(value.includes ?? []) &&
+            text(value.predicate, maximum: 4096) && indexOptions(value.options) && value.terms.allSatisfy { term in
+                (term.column.map(name) ?? true) && text(term.expression, maximum: 4096) &&
+                    (term.prefixLength.map { (-65_535...65_535).contains($0) } ?? true) &&
+                    [term.collation, term.opclass].allSatisfy { $0.map { name($0.schema) && name($0.name) } ?? true } && indexOptions(term.options)
+            }
+    }
+    private static func indexOptions(_ values: [StructureIndexOption]?) -> Bool {
+        (values?.count ?? 0) <= 32 && (values ?? []).allSatisfy { name($0.name) && text($0.value, maximum: 1024) }
+    }
+    private static func text(_ value: String?, maximum: Int) -> Bool { value.map { $0.utf8.count <= maximum && !$0.contains("\0") } ?? true }
     private static func defaultValue(_ value: StructureDefault) -> Bool {
         ["none", "null", "text", "numeric", "boolean", "expression"].contains(value.kind) &&
             (value.value.map { $0.utf8.count <= 4096 && !$0.contains("\0") } ?? true)

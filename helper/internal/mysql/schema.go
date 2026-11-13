@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"dbeer/helper/internal/protocol"
 	sc "dbeer/helper/internal/schemacompare"
+	"dbeer/helper/internal/tableedit"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -20,14 +21,16 @@ type mysqlSchemaRead struct {
 	digest string
 }
 type mysqlSchemaCapture struct {
-	s                 *Session
-	spec              sc.CaptureSpec
-	sink              sc.Sink
-	reads             []mysqlSchemaRead
-	members           int
-	sqlMode           string
-	explicitTimestamp bool
-	gipk              bool
+	indexAttributes      map[string]map[string]string
+	indexDefinitionReads []mysqlIndexDefinitionRead
+	s                    *Session
+	spec                 sc.CaptureSpec
+	sink                 sc.Sink
+	reads                []mysqlSchemaRead
+	members              int
+	sqlMode              string
+	explicitTimestamp    bool
+	gipk                 bool
 }
 
 func (s *Session) ReadSchema(ctx context.Context, spec sc.CaptureSpec, sink sc.Sink) error {
@@ -201,6 +204,20 @@ func (r *mysqlSchemaCapture) capture() error {
 			break
 		}
 	}
+	for _, read := range r.indexDefinitionReads {
+		raw, err := r.readIndexDefinition(read.schema, read.table)
+		if err != nil {
+			return err
+		}
+		attributes, known, parsed := mysqlIndexAttributeEvidence(raw, r.sqlMode)
+		if tableedit.Fingerprint([]any{attributes, known, parsed}) != read.digest {
+			capture.Visibility = "partial"
+			if err := r.issue(nil, "capture", "concurrentDDL", "Index definition metadata changed during the best-effort capture."); err != nil {
+				return err
+			}
+			break
+		}
+	}
 	capture.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	return r.sink.Context(capture)
 }
@@ -351,6 +368,13 @@ func (r *mysqlSchemaCapture) indexes(table sc.Ref, constraints []sc.Constraint) 
 	if e != nil {
 		return nil, e
 	}
+	rawDefinition, err := r.readIndexDefinition(table.Schema, table.Name)
+	if err != nil {
+		return nil, err
+	}
+	attributes, known, parsed := mysqlIndexAttributeEvidence(rawDefinition, r.sqlMode)
+	r.indexAttributes = attributes
+	r.indexDefinitionReads = append(r.indexDefinitionReads, mysqlIndexDefinitionRead{schema: table.Schema, table: table.Name, digest: tableedit.Fingerprint([]any{attributes, known, parsed})})
 	out := []sc.Index{}
 	for _, v := range rows {
 		name := myText(v, 0)
@@ -361,11 +385,25 @@ func (r *mysqlSchemaCapture) indexes(table sc.Ref, constraints []sc.Constraint) 
 					x.Constraint = sc.Known(c.Ref)
 				}
 			}
-			if method := myText(v, 6); method != "BTREE" && method != "HASH" && method != "SPATIAL" && method != "RTREE" {
+			if method := myText(v, 6); method != "BTREE" && method != "HASH" && method != "SPATIAL" && method != "RTREE" && method != "FULLTEXT" {
 				x.Method = sc.Unknown[string]("indexMethod")
 			}
 			if myText(v, 9) != "" {
 				x.Options.Items = append(x.Options.Items, sc.Option{Name: "comment", Value: myText(v, 9)})
+			}
+			if !parsed || !known[name] {
+				if r.indexAttributes == nil {
+					r.indexAttributes = map[string]map[string]string{}
+				}
+				r.indexAttributes[name] = map[string]string{"reason": "unrecognized SHOW CREATE index metadata", "definition": rawDefinition}
+			}
+			if attrs := r.indexAttributes[name]; len(attrs) > 0 {
+				x.Options.Complete = false
+				x.Options.State = "unavailable"
+				x.Options.Code = "unmodeledIndexProperties"
+				if err := r.issue(&x.Ref, "index", "unmodeledIndexProperties", "Index properties require an explicit reviewed migration: "+attrs["reason"]); err != nil {
+					return nil, err
+				}
 			}
 			out = append(out, x)
 		}

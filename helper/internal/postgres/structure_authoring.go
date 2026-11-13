@@ -18,13 +18,13 @@ func resolveStructureType(ctx context.Context, q structureReader, ref tableedit.
 	}
 	var oid, storage, collationOID string
 	var allowed bool
-	if q.QueryRow(ctx, `SELECT t.oid::text,t.typstorage::text,t.typcollation::text,t.typisdefined AND t.typtype<>'p' AND pg_catalog.has_type_privilege(t.oid,'USAGE') AND pg_catalog.has_schema_privilege(n.oid,'USAGE') FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typname=$2`, ref.Schema, ref.Name).Scan(&oid, &storage, &collationOID, &allowed) != nil || !allowed {
+	if q.QueryRow(ctx, `SELECT t.oid::pg_catalog.text,t.typstorage::pg_catalog.text,t.typcollation::pg_catalog.text,t.typisdefined AND t.typtype<>'p' AND pg_catalog.has_type_privilege(t.oid,'USAGE') AND pg_catalog.has_schema_privilege(n.oid,'USAGE') FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typname=$2`, ref.Schema, ref.Name).Scan(&oid, &storage, &collationOID, &allowed) != nil || !allowed {
 		return guard, tableedit.ErrUnsupported
 	}
 	limits := sc.Limits{Nodes: 128, Members: 1024, Bytes: 1 << 20, Scalar: 65536}
 	sink := sc.NewCollector(ctx, limits)
 	r := &schemaCapture{ctx: ctx, tx: q, sink: sink, spec: sc.CaptureSpec{Limits: limits}, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}, skipCustomTypeFormatting: true}
-	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::int").Scan(&r.version) != nil {
+	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::pg_catalog.int4").Scan(&r.version) != nil {
 		return guard, tableedit.ErrUnsupported
 	}
 	u, err := r.typeUse(oid, -1, 0)
@@ -187,7 +187,7 @@ func pgIdentityChange(b tableedit.Baseline, c tableedit.ColumnChange, target str
 }
 
 func readStructureSequences(ctx context.Context, q structureReader, t tableedit.Target, oid uint32) ([]sc.Sequence, error) {
-	rows, err := q.Query(ctx, `SELECT n.nspname,s.relname,a.attname,q.seqtypid::text,q.seqstart::text,q.seqincrement::text,q.seqmin::text,q.seqmax::text,q.seqcache::text,q.seqcycle FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class s ON d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND s.oid=d.objid AND s.relkind='S' JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace JOIN pg_catalog.pg_sequence q ON q.seqrelid=s.oid JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid WHERE d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND d.refobjid=$1 AND d.deptype IN ('a','i') ORDER BY n.nspname,s.relname`, oid)
+	rows, err := q.Query(ctx, `SELECT n.nspname,s.relname,a.attname,q.seqtypid::pg_catalog.text,q.seqstart::pg_catalog.text,q.seqincrement::pg_catalog.text,q.seqmin::pg_catalog.text,q.seqmax::pg_catalog.text,q.seqcache::pg_catalog.text,q.seqcycle FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class s ON d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND s.oid=d.objid AND s.relkind='S' JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace JOIN pg_catalog.pg_sequence q ON q.seqrelid=s.oid JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid WHERE d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND d.refobjid=$1 AND d.deptype IN ('a','i') ORDER BY n.nspname,s.relname`, oid)
 	if err != nil {
 		return nil, tableedit.ErrUnsupported
 	}

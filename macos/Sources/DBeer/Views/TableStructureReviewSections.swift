@@ -34,7 +34,8 @@ struct TableStructureBaselineDetails: View {
                     }
                     ForEach(Array((baseline.indexes ?? []).enumerated()), id: \.offset) { _, index in
                         DisclosureGroup((index.unique ? "Unique index · " : "Index · ") + index.name) {
-                            StructureOrderedNamesSummary(title: "Columns", names: index.columns)
+                            if let definition = index.definition { TableStructureIndexDefinitionSummary(definition: definition) }
+                            else { StructureOrderedNamesSummary(title: "Columns", names: index.columns) }
                             if let owner = index.owner { Text("Owned by key: " + owner + ". Change the key as one operation.").font(.caption).appSecondaryText() }
                             if !index.supported { Text("Read-only: this index has unsupported attributes or incomplete metadata.").font(.caption).appSecondaryText() }
                         }
@@ -121,7 +122,8 @@ struct TableStructureDraftSummary: View {
             ForEach(Array((draft.indexes ?? []).enumerated()), id: \.offset) { _, index in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(index.action.capitalized + " index: " + index.name + (index.unique == true ? " · unique" : "")).font(.subheadline)
-                    if let columns = index.columns { StructureOrderedNamesSummary(title: "Columns", names: columns) }
+                    if let definition = index.definition { TableStructureIndexDefinitionSummary(definition: definition) }
+                    else if let columns = index.columns { StructureOrderedNamesSummary(title: "Columns", names: columns) }
                 }.textSelection(.enabled)
             }
             ForEach(Array((draft.keys ?? []).enumerated()), id: \.offset) { _, key in
@@ -189,6 +191,36 @@ private enum StructureReviewPresentation {
         case "boolean": return "Boolean default: " + (value.value ?? "")
         case "expression": return "Expression default: " + (value.value ?? "")
         default: return "Default kind: " + value.kind
+        }
+    }
+}
+
+struct TableStructureIndexDefinitionSummary: View {
+    let definition: StructureIndexDefinition
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Access method / index type: " + definition.method)
+            ForEach(Array(definition.terms.enumerated()), id: \.offset) { i, term in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Term \(i + 1): " + (term.column.map { "column · " + $0 } ?? "expression · " + (term.expression ?? "")))
+                    if let descending = term.descending { Text(descending ? "Descending" : "Ascending") }
+                    if let nullsFirst = term.nullsFirst { Text(nullsFirst ? "NULLS FIRST" : "NULLS LAST") }
+                    if let prefix = term.prefixLength { Text("Prefix length: \(prefix)") }
+                    if let collation = term.collation { Text("Collation: " + collation.schema + "." + collation.name) }
+                    if let opclass = term.opclass { Text("Operator class: " + opclass.schema + "." + opclass.name) }
+                    optionSummary(term.options, title: "Operator class option")
+                }.padding(.leading, 8)
+            }
+            if let includes = definition.includes { StructureOrderedNamesSummary(title: "INCLUDE columns", names: includes) }
+            if let predicate = definition.predicate { Text("Predicate: " + predicate) }
+            if let distinct = definition.nullsDistinct { Text(distinct ? "NULLS DISTINCT" : "NULLS NOT DISTINCT") }
+            if let visible = definition.visible { Text(visible ? "Visible" : "Invisible") }
+            optionSummary(definition.options, title: "Index option")
+        }.font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+    }
+    private func optionSummary(_ values: [StructureIndexOption]?, title: String) -> some View {
+        ForEach(Array((values ?? []).enumerated()), id: \.offset) { _, option in
+            Text(title + ": " + option.name + " = " + option.value)
         }
     }
 }

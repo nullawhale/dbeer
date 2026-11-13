@@ -42,7 +42,7 @@ struct TableStructureIntentEditors: View {
             }
             ForEach(indexes.indices, id: \.self) { i in
                 StructureIndexIntentEditor(edit: indexBinding(i), existing: model.baseline?.indexes ?? [], names: names,
-                    engine: model.profile.engine) {
+                    engine: model.profile.engine, advancedAvailable: model.indexAuthoringAvailable) {
                     guard canEdit, indexes.indices.contains(i) else { return }
                     model.draft.indexes?.remove(at: i)
                     model.draft.allowDestructive = nil
@@ -186,11 +186,12 @@ private struct StructureIndexIntentEditor: View {
     let existing: [StructureIndex]
     let names: [String]
     let engine: DatabaseEngine
+    let advancedAvailable: Bool
     let remove: () -> Void
-    private var available: [StructureIndex] { existing.filter { $0.supported && $0.owner == nil } }
+    private var available: [StructureIndex] { existing.filter { $0.editIntent(action: "replace", engine: engine, advancedAllowed: advancedAvailable) != nil } }
 
     var body: some View {
-        GroupBox("Ordinary BTREE Index") {
+        GroupBox(engine == .sqlite ? "Ordinary BTREE Index" : "Index") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     StructureActionPicker(action: Binding(get: { edit.action }, set: {
@@ -209,8 +210,20 @@ private struct StructureIndexIntentEditor: View {
                     if engine == .postgresql {
                         Toggle("Unique index", isOn: Binding(get: { edit.unique == true }, set: { edit.unique = $0 ? true : nil })).controlHover()
                     }
-                    StructureOrderedColumnsEditor(title: "Columns in index order", options: names,
-                        columns: Binding(get: { edit.columns ?? [] }, set: { edit.columns = $0 }))
+                    if advancedAvailable || edit.definition != nil {
+                        Toggle("Advanced definition", isOn: Binding(get: { edit.definition != nil }, set: { enabled in
+                            if enabled { edit.definition = .init(method: "btree", terms: (edit.columns ?? []).map { .init(column: $0) }); edit.columns = nil }
+                            else { edit.columns = edit.definition?.terms.compactMap(\.column) ?? []; edit.definition = nil }
+                        })).controlHover().disabled(!advancedAvailable)
+                    }
+                    if edit.definition != nil {
+                        StructureIndexDefinitionEditor(definition: Binding(get: { edit.definition ?? .init(method: "btree", terms: []) }, set: { edit.definition = $0 }), names: names, engine: engine)
+                            .disabled(!advancedAvailable)
+                        if !advancedAvailable { Text("This helper does not advertise advanced index authoring. The definition is retained; reconnect with a compatible helper before Preview.").font(.caption).appSecondaryText() }
+                    } else {
+                        StructureOrderedColumnsEditor(title: "Columns in index order", options: names,
+                            columns: Binding(get: { edit.columns ?? [] }, set: { edit.columns = $0 }))
+                    }
                 }
                 if edit.action != "add", available.isEmpty {
                     Text("There are no supported standalone indexes to select. Indexes owned by a key must be changed through that key.").font(.caption).appSecondaryText()
@@ -221,10 +234,9 @@ private struct StructureIndexIntentEditor: View {
     }
     private func selectExisting(_ name: String) {
         if name.isEmpty { edit = .init(action: edit.action, name: "", columns: edit.action == "drop" ? nil : []); return }
-        guard let index = available.first(where: { StructureTarget.sameIdentifier($0.name, name) }) else { return }
-        edit.name = index.name
-        edit.columns = edit.action == "drop" ? nil : index.columns
-        edit.unique = edit.action == "replace" && engine == .postgresql && index.unique ? true : nil
+        guard let index = available.first(where: { StructureTarget.sameIdentifier($0.name, name) }),
+              let intent = index.editIntent(action: edit.action, engine: engine, advancedAllowed: advancedAvailable) else { return }
+        edit = intent
     }
 }
 
@@ -330,7 +342,7 @@ private struct StructureActionPicker: View {
 
 /// Data tags distinguish canonical-equivalent Unicode identifiers. Strings are
 /// never split or normalized before they reach the typed draft.
-private struct StructureExactNamePicker: View {
+struct StructureExactNamePicker: View {
     let title: String
     let placeholder: String
     let names: [String]
@@ -353,7 +365,7 @@ private struct StructureExactNamePicker: View {
     }
 }
 
-private struct StructureOrderedColumnsEditor: View {
+struct StructureOrderedColumnsEditor: View {
     let title: String
     let options: [String]?
     @Binding var columns: [String]

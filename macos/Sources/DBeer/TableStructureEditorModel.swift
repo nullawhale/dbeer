@@ -30,7 +30,15 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     @Published private(set) var closing = false
     @Published private(set) var create: Bool
     @Published var table: String { didSet { if !StructureTarget.sameIdentifier(table, oldValue) { baseline = nil; preview = nil } } }
-    @Published var draft = StructureDraft(columns: [TableStructureEditorModel.emptyColumn]) { didSet { if draft.requiresAuthoringV2 && draft.authoringVersion != 2 { draft.authoringVersion = 2 }; preview = nil } }
+    @Published var draft = StructureDraft(columns: [TableStructureEditorModel.emptyColumn]) {
+        didSet {
+            let required = draft.minimumAuthoringVersion
+            if draft.authoringVersion != required {
+                var normalized = draft; normalized.authoringVersion = required; draft = normalized
+            }
+            preview = nil
+        }
+    }
     @Published private(set) var baseline: StructureBaseline?
     @Published private(set) var preview: StructurePlan?
     @Published private(set) var operationSupport: OperationSupport?
@@ -53,6 +61,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     private var sessionNeedsReplacement = false
     private var queryID: String?
     private var cancelRequested = false
+    private let indexAuthoringSupported: () -> Bool
     private let authoringSupported: () -> Bool
     private let connect: () async throws -> String
     private let send: (BackendCommand) async throws -> BackendMessage
@@ -66,9 +75,9 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
          connect: @escaping () async throws -> String,
          send: @escaping (BackendCommand) async throws -> BackendMessage,
          authorize: @escaping (StructureApply, StructurePlan, String) async throws -> String?,
-         bindingIsCurrent: @escaping () -> Bool, authoringSupported: @escaping () -> Bool = { false }, operationsAllowed: @escaping () -> Bool = { true }, sessionIsKnownClosed: @escaping () async -> Bool = { false }, changed: @escaping (TableStructureExecutionReview) -> Void) {
+         bindingIsCurrent: @escaping () -> Bool, authoringSupported: @escaping () -> Bool = { false }, indexAuthoringSupported: @escaping () -> Bool = { false }, operationsAllowed: @escaping () -> Bool = { true }, sessionIsKnownClosed: @escaping () async -> Bool = { false }, changed: @escaping (TableStructureExecutionReview) -> Void) {
         self.profile = profile; self.schema = schema; self.table = table; self.create = create; self.originalCreate = create; self.history = history + historyReviews.map(\.outcome); self.historyReviews = historyReviews
-        self.connect = connect; self.send = send; self.authorize = authorize; self.authoringSupported = authoringSupported
+        self.connect = connect; self.send = send; self.authorize = authorize; self.authoringSupported = authoringSupported; self.indexAuthoringSupported = indexAuthoringSupported
         self.bindingIsCurrent = bindingIsCurrent; self.operationsAllowed = operationsAllowed; self.sessionIsKnownClosed = sessionIsKnownClosed; self.changed = changed
     }
     static var emptyColumn: StructureColumn {
@@ -80,11 +89,13 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
         return preview != nil || draft != initial
     }
 
+    var indexAuthoringAvailable: Bool { profile.engine != .sqlite && indexAuthoringSupported() }
+    private var authoringPermitted: Bool { (!needsAuthoring || authoringAvailable) && (!draft.requiresIndexAuthoring || indexAuthoringAvailable) }
     var authoringAvailable: Bool { authoringSupported() }
     private var needsAuthoring: Bool { draft.requiresAuthoringV2 || !create && draft.columns.count > 1 }
     var canReconcileRenamedTarget: Bool { outcomeReview?.plan.resultTarget != nil && outcome?.state == "outcomeUnknown" }
-    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && (!needsAuthoring || authoringAvailable) && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
-    var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && (!needsAuthoring || authoringAvailable) && outcome == nil && !profile.policy.readOnly && (operationSupport?.availability("structure.apply").map { $0.state == .available } ?? true) }
+    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && authoringPermitted && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
+    var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && authoringPermitted && outcome == nil && !profile.policy.readOnly && (operationSupport?.availability("structure.apply").map { $0.state == .available } ?? true) }
     var target: StructureTarget { .init(schema: schema, table: table, create: create) }
     var canCheckExecutionStatus: Bool {
         guard !isBusy, !closing, !invalidated, operationsAllowed(),

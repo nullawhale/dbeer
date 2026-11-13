@@ -115,6 +115,18 @@ func changeAuthoredValid(c ColumnChange) bool {
 }
 
 func (d Draft) HasAuthoredExpressions() bool {
+	for _, x := range d.Indexes {
+		if x.Definition != nil {
+			if x.Definition.Predicate != nil {
+				return true
+			}
+			for _, term := range x.Definition.Terms {
+				if term.Expression != nil {
+					return true
+				}
+			}
+		}
+	}
 	for _, c := range d.Columns {
 		if c.Default.Kind == "expression" || c.Generated != nil && c.Generated.Storage != "none" {
 			return true
@@ -129,6 +141,9 @@ func (d Draft) HasAuthoredExpressions() bool {
 }
 
 func (d Draft) MayExecuteUserCode() bool {
+	if d.NeedsAuthoringV3() {
+		return true
+	}
 	if d.HasAuthoredExpressions() {
 		return true
 	}

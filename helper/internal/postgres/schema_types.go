@@ -119,9 +119,9 @@ func (r *schemaCapture) typeFunction(oid, role string) (*sc.TypeFunction, error)
 	}
 	body := "CASE WHEN p.prosqlbody IS NULL THEN '' ELSE pg_catalog.pg_get_functiondef(p.oid) END"
 	if r.skipCustomTypeFormatting {
-		body = "COALESCE(p.prosqlbody::text,'')"
+		body = "COALESCE(p.prosqlbody::pg_catalog.text,'')"
 	}
-	rows, e := r.rows("SELECT n.nspname,p.proname,rn.nspname,rt.typname,l.lanname,p.prosrc,COALESCE(p.probin,''),p.provolatile::pg_catalog.text,p.proisstrict::pg_catalog.text,p.prosecdef::pg_catalog.text,p.proleakproof::pg_catalog.text,p.proparallel::pg_catalog.text,COALESCE(pg_catalog.array_to_json(p.proconfig)::pg_catalog.text,'[]'),p.procost::pg_catalog.text,p.prorows::pg_catalog.text,"+body+",COALESCE(p.proargdefaults::text,'') FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace JOIN pg_catalog.pg_type rt ON rt.oid=p.prorettype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace JOIN pg_catalog.pg_language l ON l.oid=p.prolang WHERE p.oid=$1::pg_catalog.oid", oid)
+	rows, e := r.rows("SELECT n.nspname,p.proname,rn.nspname,rt.typname,l.lanname,p.prosrc,COALESCE(p.probin,''),p.provolatile::pg_catalog.text,p.proisstrict::pg_catalog.text,p.prosecdef::pg_catalog.text,p.proleakproof::pg_catalog.text,p.proparallel::pg_catalog.text,COALESCE(pg_catalog.array_to_json(p.proconfig)::pg_catalog.text,'[]'),p.procost::pg_catalog.text,p.prorows::pg_catalog.text,"+body+",COALESCE(p.proargdefaults::pg_catalog.text,'') FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace JOIN pg_catalog.pg_type rt ON rt.oid=p.prorettype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace JOIN pg_catalog.pg_language l ON l.oid=p.prolang WHERE p.oid=$1::pg_catalog.oid", oid)
 	if e != nil || len(rows) != 1 {
 		return nil, sc.ErrInvalid
 	}

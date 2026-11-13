@@ -7,6 +7,7 @@ import (
 )
 
 const StructureAuthoringCapability = tableedit.AuthoringCapability
+const StructureIndexAuthoringCapability = tableedit.IndexAuthoringCapability
 
 func parseStructure(raw json.RawMessage, command string) (tableedit.Request, bool) {
 	var r tableedit.Request
@@ -85,6 +86,12 @@ func structureDraftShape(raw json.RawMessage) bool {
 	if !ok {
 		return false
 	}
+	if version, present := f["authoringVersion"]; present {
+		var value int
+		if json.Unmarshal(version, &value) != nil || value != 2 && value != 3 {
+			return false
+		}
+	}
 	for _, key := range []string{"columns", "changes", "indexes", "keys"} {
 		raw, present := f[key]
 		if !present {
@@ -102,7 +109,7 @@ func structureDraftShape(raw json.RawMessage) bool {
 				allowed = "name|renameTo|nullable|default|type|generated|identity"
 				required = []string{"name"}
 			case "indexes":
-				allowed = "action|name|columns|unique"
+				allowed = "action|name|columns|unique|definition"
 				required = []string{"action", "name"}
 			case "keys":
 				allowed = "action|name|kind|columns|reference|referenceColumns|onUpdate|onDelete"
@@ -114,6 +121,11 @@ func structureDraftShape(raw json.RawMessage) bool {
 			}
 			if key == "columns" || key == "changes" {
 				if !structureAuthoredShape(fields) {
+					return false
+				}
+			}
+			if key == "indexes" {
+				if v, present := fields["definition"]; present && !structureIndexDefinitionShape(v) {
 					return false
 				}
 			}
@@ -155,4 +167,44 @@ func structureNoNull(raw json.RawMessage) bool {
 		return true
 	}
 	return valid(value)
+}
+
+func structureIndexDefinitionShape(raw json.RawMessage) bool {
+	f, ok := changesObject(raw, "method|terms|includes|predicate|nullsDistinct|visible|options", "method", "terms")
+	if !ok || !structureIndexOptionsShape(f["options"]) {
+		return false
+	}
+	var terms []json.RawMessage
+	if len(f["terms"]) == 0 || bytes.TrimSpace(f["terms"])[0] != '[' || json.Unmarshal(f["terms"], &terms) != nil {
+		return false
+	}
+	for _, term := range terms {
+		t, ok := changesObject(term, "column|expression|descending|nullsFirst|prefixLength|collation|opclass|options")
+		if !ok || !structureIndexOptionsShape(t["options"]) {
+			return false
+		}
+		for _, key := range []string{"collation", "opclass"} {
+			if v, present := t[key]; present {
+				if _, ok := changesObject(v, "schema|name", "schema", "name"); !ok {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+func structureIndexOptionsShape(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var options []json.RawMessage
+	if bytes.TrimSpace(raw)[0] != '[' || json.Unmarshal(raw, &options) != nil {
+		return false
+	}
+	for _, option := range options {
+		if _, ok := changesObject(option, "name|value", "name", "value"); !ok {
+			return false
+		}
+	}
+	return true
 }

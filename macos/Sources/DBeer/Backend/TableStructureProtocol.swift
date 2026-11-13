@@ -349,12 +349,13 @@ struct StructureIndex: Codable, Equatable, Sendable {
     var unique: Bool
     var supported: Bool
     var owner: String?
+    var definition: StructureIndexDefinition? = nil
 }
 extension StructureIndex {
-    private enum CodingKeys: String, CodingKey { case name, columns, unique, supported, owner }
+    private enum CodingKeys: String, CodingKey { case name, columns, unique, supported, owner, definition }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["name", "columns", "unique", "supported", "owner"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["name", "columns", "unique", "supported", "owner", "definition"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         columns = try c.decode([String].self, forKey: .columns)
@@ -362,6 +363,8 @@ extension StructureIndex {
         supported = try c.decode(Bool.self, forKey: .supported)
         if c.contains(.owner), try c.decodeNil(forKey: .owner) { throw BackendTransportError(.invalidMessage) }
         owner = try c.decodeIfPresent(String.self, forKey: .owner)
+        if c.contains(.definition), try c.decodeNil(forKey: .definition) { throw BackendTransportError(.invalidMessage) }
+        definition = try c.decodeIfPresent(StructureIndexDefinition.self, forKey: .definition)
     }
 }
 
@@ -370,12 +373,13 @@ struct StructureIndexEdit: Codable, Equatable, Sendable {
     var name: String
     var columns: [String]?
     var unique: Bool?
+    var definition: StructureIndexDefinition? = nil
 }
 extension StructureIndexEdit {
-    private enum CodingKeys: String, CodingKey { case action, name, columns, unique }
+    private enum CodingKeys: String, CodingKey { case action, name, columns, unique, definition }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["action", "name", "columns", "unique"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["action", "name", "columns", "unique", "definition"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         action = try c.decode(String.self, forKey: .action)
         name = try c.decode(String.self, forKey: .name)
@@ -383,6 +387,8 @@ extension StructureIndexEdit {
         columns = try c.decodeIfPresent([String].self, forKey: .columns)
         if c.contains(.unique), try c.decodeNil(forKey: .unique) { throw BackendTransportError(.invalidMessage) }
         unique = try c.decodeIfPresent(Bool.self, forKey: .unique)
+        if c.contains(.definition), try c.decodeNil(forKey: .definition) { throw BackendTransportError(.invalidMessage) }
+        definition = try c.decodeIfPresent(StructureIndexDefinition.self, forKey: .definition)
     }
 }
 
@@ -482,7 +488,12 @@ extension StructureColumnChange {
     var valid: Bool { StructureTarget.identifier(name) && (nullable != nil || self.default != nil || type != nil || renameTo != nil || generated != nil || identity != nil) && (self.default?.valid ?? true) && (type?.valid ?? true) && !(nullable == false && self.default?.kind == "null") && (renameTo.map { StructureTarget.identifier($0) && !StructureTarget.sameIdentifier($0, name) } ?? true) && (generated?.valid ?? true) && (identity?.valid ?? true) && !(generated?.storage != nil && generated?.storage != "none" && (self.default != nil || identity?.kind != nil && identity?.kind != "none")) }
 }
 extension StructureIndexEdit {
-    var valid: Bool { ["add", "drop", "replace"].contains(action) && StructureTarget.identifier(name) && (action == "drop" ? (columns?.isEmpty ?? true) && unique != true : StructureTarget.columns(columns ?? [])) }
+    var valid: Bool {
+        guard ["add", "drop", "replace"].contains(action), StructureTarget.identifier(name) else { return false }
+        if action == "drop" { return (columns?.isEmpty ?? true) && unique != true && definition == nil }
+        if let definition { return columns == nil && definition.valid }
+        return StructureTarget.columns(columns ?? [])
+    }
 }
 extension StructureKeyEdit {
     static let actions = ["NO ACTION", "RESTRICT", "CASCADE", "SET NULL"]
@@ -498,7 +509,7 @@ extension StructureDraft {
     var destructive: Bool { (indexes ?? []).contains { $0.action != "add" } || (keys ?? []).contains { $0.action != "add" } }
     var valid: Bool {
         let changes = changes ?? []; let indexes = indexes ?? []; let keys = keys ?? []
-        guard (authoringVersion == nil || authoringVersion == 2), !requiresAuthoringV2 || authoringVersion == 2, columns.count <= 128, changes.count + indexes.count + keys.count <= 64,
+        guard (authoringVersion == nil || authoringVersion == 2 || authoringVersion == 3), !requiresAuthoringV2 || authoringVersion == 2 || authoringVersion == 3, !requiresIndexAuthoring || authoringVersion == 3, columns.count <= 128, changes.count + indexes.count + keys.count <= 64,
               columns.count + changes.count + indexes.count + keys.count > 0 || renameTable != nil,
               renameTable.map(StructureTarget.identifier) ?? true,
               Set((columns.map(\.name) + changes.map(\.name)).map { Data($0.utf8) }).count == columns.count + changes.count,
@@ -522,13 +533,14 @@ extension StructureRequest {
     }
 }
 extension StructureBaseline {
+    var requiresIndexAuthoring: Bool { (indexes ?? []).contains { $0.definition != nil } }
     static func digest(_ s: String) -> Bool { s.utf8.count == 64 && s.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
     var valid: Bool {
-        BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql", "sqlite"].contains(engine) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
+        BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql", "sqlite"].contains(engine) && (engine != "sqlite" || !requiresIndexAuthoring) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
             StructureTarget.identifier($0.name) && $0.nativeType.utf8.count <= 4096 && ($0.defaultExpression?.utf8.count ?? 0) <= 65_536 && ($0.editableType?.valid ?? true)
         } && (keys?.count ?? 0) <= 256 && (indexes?.count ?? 0) <= 256 && (keys ?? []).allSatisfy {
             StructureTarget.identifier($0.name) && ["primary", "unique", "foreign", "unsupported"].contains($0.kind) && $0.columns.count <= 32 && $0.columns.allSatisfy(StructureTarget.identifier) && ($0.reference?.valid ?? true) && ($0.referenceColumns?.count ?? 0) <= 32
-        } && (indexes ?? []).allSatisfy { StructureTarget.identifier($0.name) && $0.columns.count <= 32 && $0.columns.allSatisfy(StructureTarget.identifier) && ($0.owner.map(StructureTarget.identifier) ?? true) }
+        } && (indexes ?? []).allSatisfy { StructureTarget.identifier($0.name) && $0.columns.count <= 32 && $0.columns.allSatisfy(StructureTarget.identifier) && ($0.owner.map(StructureTarget.identifier) ?? true) && ($0.definition?.valid ?? true) }
     }
 }
 extension StructurePlan {
@@ -657,8 +669,126 @@ extension StructureColumn {
 }
 
 extension StructureDraft {
+    var minimumAuthoringVersion: Int? { requiresIndexAuthoring ? 3 : requiresAuthoringV2 ? 2 : nil }
+    var requiresIndexAuthoring: Bool { (indexes ?? []).contains { $0.definition != nil } }
     var requiresAuthoringV2: Bool {
         renameTable != nil || columns.contains { $0.type.reference != nil || $0.generated != nil || $0.identity != nil || $0.default.kind == "expression" } ||
         (changes ?? []).contains { $0.renameTo != nil || $0.generated != nil || $0.identity != nil || $0.type?.reference != nil || $0.default?.kind == "expression" }
+    }
+}
+
+struct StructureIndexOption: Codable, Equatable, Sendable {
+    var name: String
+    var value: String
+}
+extension StructureIndexOption {
+    private enum CodingKeys: String, CodingKey { case name, value }
+    init(from decoder: any Decoder) throws {
+        let all = try decoder.container(keyedBy: StructureCodingKey.self)
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["name", "value"]) else { throw BackendTransportError(.invalidMessage) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        value = try c.decode(String.self, forKey: .value)
+    }
+}
+
+struct StructureIndexTerm: Codable, Equatable, Sendable {
+    var column: String? = nil
+    var expression: String? = nil
+    var descending: Bool? = nil
+    var nullsFirst: Bool? = nil
+    var prefixLength: Int64? = nil
+    var collation: StructureTypeReference? = nil
+    var opclass: StructureTypeReference? = nil
+    var options: [StructureIndexOption]? = nil
+}
+extension StructureIndexTerm {
+    private enum CodingKeys: String, CodingKey { case column, expression, descending, nullsFirst, prefixLength, collation, opclass, options }
+    init(from decoder: any Decoder) throws {
+        let all = try decoder.container(keyedBy: StructureCodingKey.self)
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["column", "expression", "descending", "nullsFirst", "prefixLength", "collation", "opclass", "options"]) else { throw BackendTransportError(.invalidMessage) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if c.contains(.column), try c.decodeNil(forKey: .column) { throw BackendTransportError(.invalidMessage) }
+        column = try c.decodeIfPresent(String.self, forKey: .column)
+        if c.contains(.expression), try c.decodeNil(forKey: .expression) { throw BackendTransportError(.invalidMessage) }
+        expression = try c.decodeIfPresent(String.self, forKey: .expression)
+        if c.contains(.descending), try c.decodeNil(forKey: .descending) { throw BackendTransportError(.invalidMessage) }
+        descending = try c.decodeIfPresent(Bool.self, forKey: .descending)
+        if c.contains(.nullsFirst), try c.decodeNil(forKey: .nullsFirst) { throw BackendTransportError(.invalidMessage) }
+        nullsFirst = try c.decodeIfPresent(Bool.self, forKey: .nullsFirst)
+        if c.contains(.prefixLength), try c.decodeNil(forKey: .prefixLength) { throw BackendTransportError(.invalidMessage) }
+        prefixLength = try c.decodeIfPresent(Int64.self, forKey: .prefixLength)
+        if c.contains(.collation), try c.decodeNil(forKey: .collation) { throw BackendTransportError(.invalidMessage) }
+        collation = try c.decodeIfPresent(StructureTypeReference.self, forKey: .collation)
+        if c.contains(.opclass), try c.decodeNil(forKey: .opclass) { throw BackendTransportError(.invalidMessage) }
+        opclass = try c.decodeIfPresent(StructureTypeReference.self, forKey: .opclass)
+        if c.contains(.options), try c.decodeNil(forKey: .options) { throw BackendTransportError(.invalidMessage) }
+        options = try c.decodeIfPresent([StructureIndexOption].self, forKey: .options)
+    }
+}
+
+struct StructureIndexDefinition: Codable, Equatable, Sendable {
+    var method: String
+    var terms: [StructureIndexTerm]
+    var includes: [String]? = nil
+    var predicate: String? = nil
+    var nullsDistinct: Bool? = nil
+    var visible: Bool? = nil
+    var options: [StructureIndexOption]? = nil
+}
+extension StructureIndexDefinition {
+    private enum CodingKeys: String, CodingKey { case method, terms, includes, predicate, nullsDistinct, visible, options }
+    init(from decoder: any Decoder) throws {
+        let all = try decoder.container(keyedBy: StructureCodingKey.self)
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["method", "terms", "includes", "predicate", "nullsDistinct", "visible", "options"]) else { throw BackendTransportError(.invalidMessage) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        method = try c.decode(String.self, forKey: .method)
+        terms = try c.decode([StructureIndexTerm].self, forKey: .terms)
+        if c.contains(.includes), try c.decodeNil(forKey: .includes) { throw BackendTransportError(.invalidMessage) }
+        includes = try c.decodeIfPresent([String].self, forKey: .includes)
+        if c.contains(.predicate), try c.decodeNil(forKey: .predicate) { throw BackendTransportError(.invalidMessage) }
+        predicate = try c.decodeIfPresent(String.self, forKey: .predicate)
+        if c.contains(.nullsDistinct), try c.decodeNil(forKey: .nullsDistinct) { throw BackendTransportError(.invalidMessage) }
+        nullsDistinct = try c.decodeIfPresent(Bool.self, forKey: .nullsDistinct)
+        if c.contains(.visible), try c.decodeNil(forKey: .visible) { throw BackendTransportError(.invalidMessage) }
+        visible = try c.decodeIfPresent(Bool.self, forKey: .visible)
+        if c.contains(.options), try c.decodeNil(forKey: .options) { throw BackendTransportError(.invalidMessage) }
+        options = try c.decodeIfPresent([StructureIndexOption].self, forKey: .options)
+    }
+}
+
+extension StructureIndexOption {
+    var valid: Bool { StructureTarget.identifier(name) && value.utf8.count <= 1024 && !value.contains("\0") }
+    static func valid(_ options: [Self]?) -> Bool {
+        guard let options else { return true }
+        return options.count <= 32 && options.allSatisfy(\.valid) && Set(options.map { Data($0.name.utf8) }).count == options.count
+    }
+}
+extension StructureIndexTerm {
+    var valid: Bool {
+        (column != nil) != (expression != nil) && (column.map(StructureTarget.identifier) ?? true) &&
+            (expression.map { !$0.isEmpty && $0.utf8.count <= 4096 && !$0.contains("\0") } ?? true) &&
+            (prefixLength.map { $0 > 0 && $0 <= 65_535 } ?? true) &&
+            (collation?.valid ?? true) && (opclass?.valid ?? true) && StructureIndexOption.valid(options)
+    }
+}
+extension StructureIndexDefinition {
+    var valid: Bool {
+        StructureTarget.identifier(method) && !terms.isEmpty && terms.count <= 32 && terms.allSatisfy(\.valid) &&
+            (includes.map { $0.isEmpty || StructureTarget.columns($0) } ?? true) &&
+            (predicate.map { !$0.isEmpty && $0.utf8.count <= 4096 && !$0.contains("\0") } ?? true) && StructureIndexOption.valid(options)
+    }
+}
+extension StructureIndexDefinition { static func == (a: Self, b: Self) -> Bool { StructureTarget.intentBytes(a) == StructureTarget.intentBytes(b) } }
+extension StructureIndexTerm { static func == (a: Self, b: Self) -> Bool { StructureTarget.intentBytes(a) == StructureTarget.intentBytes(b) } }
+extension StructureIndexOption { static func == (a: Self, b: Self) -> Bool { StructureTarget.intentBytes(a) == StructureTarget.intentBytes(b) } }
+
+extension StructureIndex {
+    func editIntent(action: String, engine: DatabaseEngine, advancedAllowed: Bool) -> StructureIndexEdit? {
+        guard ["drop", "replace"].contains(action), supported, owner == nil,
+              definition == nil || advancedAllowed && engine != .sqlite else { return nil }
+        return .init(action: action, name: name, columns: action == "drop" || definition != nil ? nil : columns,
+                     unique: action == "replace" && engine == .postgresql && unique ? true : nil,
+                     definition: action == "replace" ? definition : nil)
     }
 }

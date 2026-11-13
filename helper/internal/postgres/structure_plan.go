@@ -21,12 +21,16 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			return tableedit.Prepared{}, e
 		}
 	}
+	indexGuards, e := s.prepareAuthoredIndexes(ctx, b, d)
+	if e != nil {
+		return tableedit.Prepared{}, e
+	}
 	ops, refs, e := tableedit.PlanOperations(b, d, "postgresql", func(t tableedit.Target) (tableedit.Baseline, error) { return s.StructureLoad(ctx, t) })
 	if e != nil {
 		return tableedit.Prepared{}, e
 	}
-	out := tableedit.Prepared{Types: guards, ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"Every displayed statement is an independent execution unit using a dedicated session: BEGIN, SET LOCAL lock_timeout='5s', ordered ACCESS EXCLUSIVE locks, metadata rechecks, the reviewed DDL and COMMIT. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, scan or rewrite tables. No backfill, CASCADE or automatic replay is generated. Catalogs cannot prove the absence of dynamic SQL dependencies."}}
-	if d.HasAuthoredExpressions() || len(guards) > 0 {
+	out := tableedit.Prepared{Types: guards, IndexGuards: indexGuards, ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"Every displayed statement is an independent execution unit using a dedicated session: BEGIN, SET LOCAL lock_timeout='5s', ordered ACCESS EXCLUSIVE locks, metadata rechecks, the reviewed DDL and COMMIT. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, scan or rewrite tables. No backfill, CASCADE or automatic replay is generated. Catalogs cannot prove the absence of dynamic SQL dependencies."}}
+	if d.HasAuthoredExpressions() || len(guards) > 0 || len(indexGuards) > 0 {
 		out.Risks = append(out.Risks, pgExpressionRisk())
 	}
 	target := pgx.Identifier{b.Target.Schema, b.Target.Table}.Sanitize()
@@ -121,6 +125,14 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		case "dropIndex":
 			out.SQL = append(out.SQL, "DROP INDEX "+pgx.Identifier{b.Target.Schema, op.Index.Name}.Sanitize()+";")
 		case "addIndex":
+			if op.Index.Definition != nil {
+				sql, err := renderPGIndex(ctx, b.Target, *op.Index)
+				if err != nil {
+					return out, err
+				}
+				out.SQL = append(out.SQL, sql)
+				break
+			}
 			x := op.Index
 			unique := ""
 			if x.Unique {
@@ -182,14 +194,14 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		if ctx.Err() != nil {
 			return append(out, tableedit.Execution{State: "notStarted", Message: "Cancelled before the next DDL step."})
 		}
-		x := s.applyStructureStep(ctx, current, []string{step}, refs, plan.Types)
+		x := s.applyStructureStep(ctx, current, []string{step}, refs, structureGuards{Types: plan.Types, Indexes: plan.IndexGuards})
 		out = append(out, x)
 		if x.State != "applied" {
 			break
 		}
 		target := tableedit.StepTarget(current.Target, plan.Conditions[i])
 		fresh, e := s.StructureLoad(ctx, target)
-		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) })
+		verified := e == nil && tableedit.ValidBaseline(fresh) && verifyIndexGuards(ctx, s.conn, plan.IndexGuards) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) })
 		if !verified {
 			out[len(out)-1].Message = "The DDL step was acknowledged, but observed structure did not match the expected change and preservation conditions. Reconcile before continuing."
 			break

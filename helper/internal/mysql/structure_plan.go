@@ -22,8 +22,15 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		return tableedit.Prepared{}, e
 	}
 	ops = insertMySQLIdentityOperations(ops, enable)
+	for _, edit := range d.Indexes {
+		if edit.Definition != nil {
+			if err := validateMySQLIndexDefinition(tableedit.PlanningSource(b, d, "mysql"), *edit.Definition); err != nil {
+				return tableedit.Prepared{}, err
+			}
+		}
+	}
 	out := tableedit.Prepared{ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"MySQL DDL implicitly commits. Each displayed statement is an independent step on a dedicated session with lock_wait_timeout=5. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, rebuild or scan tables. Metadata rechecks are best effort and cannot close concurrent DDL races or prove drop/recreate identity. Catalogs cannot prove absence of dynamic SQL dependencies. No backfill, disabled checks, CASCADE removal or automatic replay is generated.", "Foreign keys are generated only against a supported primary/unique key; any required supporting index is an explicit reviewed step. MySQL may normalize nullable defaults and key-owned backing structures."}}
-	if d.HasAuthoredExpressions() || len(enable) > 0 {
+	if d.HasAuthoredExpressions() || len(enable) > 0 || d.NeedsAuthoringV3() {
 		out.Risks = append(out.Risks, "Expressions and value generation run only during Apply or later writes. Preview reads metadata and validates boundaries; it does not evaluate expressions. AUTO_INCREMENT uses only an explicitly selected leading key and does not guarantee gap-free values.")
 	}
 	existingIdentityEnable := !b.Target.Create && len(enable) > 0
@@ -69,6 +76,14 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		case "dropIndex":
 			out.SQL = append(out.SQL, "ALTER TABLE "+target+" DROP INDEX "+QuoteIdentifier(op.Index.Name)+";")
 		case "addIndex":
+			if op.Index.Definition != nil {
+				sql, err := renderMySQLIndex(ctx, b, *op.Index)
+				if err != nil {
+					return out, err
+				}
+				out.SQL = append(out.SQL, sql)
+				break
+			}
 			x := op.Index
 			unique := ""
 			if x.Unique {

@@ -41,6 +41,15 @@ func mysqlAuthoredDraft(b tableedit.Baseline, d tableedit.Draft) (tableedit.Draf
 					expressions = append(expressions, c.Generated.Expression)
 				}
 			}
+			for _, edit := range d.Indexes {
+				if edit.Definition != nil {
+					for _, term := range edit.Definition.Terms {
+						if term.Expression != nil {
+							expressions = append(expressions, *term.Expression)
+						}
+					}
+				}
+			}
 			for _, expression := range expressions {
 				if doubledApostrophe(expression) {
 					return d, nil, errors.New("MySQL 8 rejects doubled apostrophes in stored expressions under NO_BACKSLASH_ESCAPES (server parser issue111892). Review SQL mode or author an explicit CHAR(39) expression; no rewrite or mode change is generated.")
@@ -121,14 +130,14 @@ func mysqlAuthoredDraft(b tableedit.Baseline, d tableedit.Draft) (tableedit.Draf
 			for _, e := range d.Indexes {
 				removed = removed || e.Action != "add" && x.Name == e.Name
 			}
-			leading = leading || !removed && x.Supported && len(x.Columns) > 0 && x.Columns[0] == name
-			survivingLeading = survivingLeading || !removed && x.Supported && len(x.Columns) > 0 && x.Columns[0] == name
+			leading = leading || !removed && tableedit.SupportingIndex(x, []string{name})
+			survivingLeading = survivingLeading || !removed && tableedit.SupportingIndex(x, []string{name})
 		}
 		for _, k := range d.Keys {
 			leading = leading || k.Action != "drop" && (k.Kind == "primary" || k.Kind == "unique") && len(k.Columns) > 0 && k.Columns[0] == name
 		}
 		for _, x := range d.Indexes {
-			leading = leading || x.Action != "drop" && len(x.Columns) > 0 && x.Columns[0] == name
+			leading = leading || tableedit.IndexEditSupports(x, []string{name})
 		}
 		if originalIdentity && !survivingLeading {
 			return d, nil, errors.New("MySQL cannot drop the only leading AUTO_INCREMENT key before its replacement. Add an explicit alternative leading index in a separate reviewed plan first; identity and its counter are not toggled implicitly.")

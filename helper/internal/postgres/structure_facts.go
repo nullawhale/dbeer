@@ -12,7 +12,7 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 	limits := sc.Limits{Nodes: 256, Members: 2048, Bytes: 2 << 20, Scalar: 65536}
 	sink := sc.NewCollector(ctx, limits)
 	var version int
-	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::int").Scan(&version) != nil {
+	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::pg_catalog.int4").Scan(&version) != nil {
 		return nil, tableedit.ErrUnsupported
 	}
 	r := &schemaCapture{ctx: ctx, tx: q, sink: sink, spec: sc.CaptureSpec{Schemas: []string{t.Schema}, Limits: limits}, version: version, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}, skipCustomTypeFormatting: true}
@@ -35,7 +35,7 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 		return nil, tableedit.ErrUnsupported
 	}
 	var defaultOID string
-	if q.QueryRow(ctx, "SELECT oid::text FROM pg_catalog.pg_collation WHERE collname='default' AND collnamespace='pg_catalog'::pg_catalog.regnamespace").Scan(&defaultOID) != nil {
+	if q.QueryRow(ctx, "SELECT oid::pg_catalog.text FROM pg_catalog.pg_collation WHERE collname='default' AND collnamespace='pg_catalog'::pg_catalog.regnamespace").Scan(&defaultOID) != nil {
 		return nil, tableedit.ErrUnsupported
 	}
 	defaultProperties, e := r.typeCollation(defaultOID)
@@ -58,12 +58,29 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 		}
 	}
 	f := &tableedit.Facts{ServerVersion: version, Sequences: sequences, TypeStorage: storage, DefaultCollationProperties: defaultProperties, Table: sc.Table{Ref: ref, Kind: sc.Known("r"), Storage: sc.Known("p"), Columns: sc.Complete(columns), Constraints: sc.Complete(keys), Indexes: sc.Complete(indexes)}, Types: sink.Capture.Types, Proof: true, Dependents: map[string][]string{}}
+	defaults, err := r.rows(`SELECT c.relname,o.opcdefault::pg_catalog.text FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid CROSS JOIN LATERAL pg_catalog.unnest(i.indclass) WITH ORDINALITY k(opclass,ord) JOIN pg_catalog.pg_opclass o ON o.oid=k.opclass WHERE i.indrelid=$1::pg_catalog.oid ORDER BY c.relname COLLATE pg_catalog."C",k.ord`, id)
+	if err != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	for _, entry := range defaults {
+		if f.IndexDefaultOpclasses == nil {
+			f.IndexDefaultOpclasses = map[string][]bool{}
+		}
+		f.IndexDefaultOpclasses[entry[0]] = append(f.IndexDefaultOpclasses[entry[0]], pgBool(entry[1]))
+	}
+	f.IndexCatalogGuards, e = captureIndexGuards(ctx, q, id)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	f.IndexAttributes = r.indexAttributes
+	f.IndexDefaultCollations = r.indexDefaultCollations
+	f.IndexBuiltinFunctions = r.indexBuiltinFunctions
 	f.RawExpressions = r.rawExpressions
 	f.ExpressionKeywords = []string{}
 	for _, keyword := range keywords {
 		f.ExpressionKeywords = append(f.ExpressionKeywords, keyword[0])
 	}
-	incoming, e := q.Query(ctx, `SELECT n.nspname,c.relname,k.conname,COALESCE((SELECT json_agg(a.attname ORDER BY x.ord)::text FROM pg_catalog.unnest(k.confkey) WITH ORDINALITY x(num,ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.num),'[]') FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE k.confrelid=$1 AND k.contype='f' ORDER BY n.nspname,c.relname,k.conname LIMIT 257`, oid)
+	incoming, e := q.Query(ctx, `SELECT n.nspname,c.relname,k.conname,COALESCE((SELECT pg_catalog.json_agg(a.attname ORDER BY x.ord)::pg_catalog.text FROM pg_catalog.unnest(k.confkey) WITH ORDINALITY x(num,ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.num),'[]') FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE k.confrelid=$1 AND k.contype='f' ORDER BY n.nspname,c.relname,k.conname LIMIT 257`, oid)
 	if e != nil {
 		return nil, tableedit.ErrUnsupported
 	}
@@ -119,11 +136,11 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 func readStructureDefaults(ctx context.Context, q structureReader, t tableedit.Target) (*tableedit.Facts, error) {
 	limits := sc.Limits{Nodes: 32, Members: 128, Bytes: 65536, Scalar: 4096}
 	r := &schemaCapture{ctx: ctx, tx: q, sink: sc.NewCollector(ctx, limits), spec: sc.CaptureSpec{Limits: limits}, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}, skipCustomTypeFormatting: true}
-	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::int").Scan(&r.version) != nil {
+	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::pg_catalog.int4").Scan(&r.version) != nil {
 		return nil, tableedit.ErrUnsupported
 	}
 	var oid string
-	if q.QueryRow(ctx, "SELECT oid::text FROM pg_catalog.pg_collation WHERE collname='default' AND collnamespace='pg_catalog'::pg_catalog.regnamespace").Scan(&oid) != nil {
+	if q.QueryRow(ctx, "SELECT oid::pg_catalog.text FROM pg_catalog.pg_collation WHERE collname='default' AND collnamespace='pg_catalog'::pg_catalog.regnamespace").Scan(&oid) != nil {
 		return nil, tableedit.ErrUnsupported
 	}
 	properties, e := r.typeCollation(oid)
@@ -138,7 +155,7 @@ func readStructureDefaults(ctx context.Context, q structureReader, t tableedit.T
 }
 
 func structureTypeStorage(ctx context.Context, q structureReader) (map[string]string, error) {
-	rows, e := q.Query(ctx, "SELECT typname,typstorage::text FROM pg_catalog.pg_type WHERE typnamespace='pg_catalog'::pg_catalog.regnamespace AND typname IN ('int4','int8','bool','numeric','varchar','text')")
+	rows, e := q.Query(ctx, "SELECT typname,typstorage::pg_catalog.text FROM pg_catalog.pg_type WHERE typnamespace='pg_catalog'::pg_catalog.regnamespace AND typname IN ('int4','int8','bool','numeric','varchar','text')")
 	if e != nil {
 		return nil, tableedit.ErrUnsupported
 	}

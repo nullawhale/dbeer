@@ -37,7 +37,7 @@ func (s *Session) readStructureFacts(t tableedit.Target, engine, collation, opti
 	if r.table(ref, row) != nil || len(sink.Capture.Tables) != 1 {
 		return nil, tableedit.ErrUnsupported
 	}
-	f := &tableedit.Facts{EngineContext: []sc.Option{{Name: "sqlMode", Value: mode}}, Table: sink.Capture.Tables[0], Types: sink.Capture.Types, Dependents: map[string][]string{}}
+	f := &tableedit.Facts{IndexAttributes: r.indexAttributes, EngineContext: []sc.Option{{Name: "sqlMode", Value: mode}}, Table: sink.Capture.Tables[0], Types: sink.Capture.Types, Dependents: map[string][]string{}}
 	keywords, keywordErr := r.rows(`SELECT WORD FROM information_schema.KEYWORDS WHERE RESERVED=1`)
 	if keywordErr != nil {
 		return nil, tableedit.ErrUnsupported

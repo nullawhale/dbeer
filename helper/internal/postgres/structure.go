@@ -63,7 +63,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	var oid uint32
 	var eligible bool
 	var facts string
-	e = q.QueryRow(ctx, `SELECT c.oid, c.relkind='r' AND c.relpersistence='p' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity AND c.reloftype=0 AND NOT c.relispartition AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid=c.oid OR i.inhparent=c.oid), pg_catalog.row_to_json(c)::text FROM pg_catalog.pg_class c WHERE c.relnamespace=$1 AND c.relname=$2`, schemaOID, t.Table).Scan(&oid, &eligible, &facts)
+	e = q.QueryRow(ctx, `SELECT c.oid, c.relkind='r' AND c.relpersistence='p' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity AND c.reloftype=0 AND NOT c.relispartition AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid=c.oid OR i.inhparent=c.oid), pg_catalog.row_to_json(c)::pg_catalog.text FROM pg_catalog.pg_class c WHERE c.relnamespace=$1 AND c.relname=$2`, schemaOID, t.Table).Scan(&oid, &eligible, &facts)
 	if errors.Is(e, pgx.ErrNoRows) {
 		if !t.Create {
 			return b, tableedit.ErrUnsupported
@@ -91,7 +91,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	for _, k := range []string{"relpages", "reltuples", "relallvisible", "relallfrozen", "relfrozenxid", "relminmxid", "relhasindex"} {
 		delete(class, k)
 	}
-	rows, e := q.Query(ctx, `SELECT a.attname, pg_catalog.format_type(a.atttypid,NULL), NOT a.attnotnull, NULL::text, pg_catalog.row_to_json(a)::text, a.attisdropped FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=$1 AND a.attnum>0 ORDER BY a.attnum LIMIT 130`, oid)
+	rows, e := q.Query(ctx, `SELECT a.attname, pg_catalog.format_type(a.atttypid,NULL), NOT a.attnotnull, NULL::pg_catalog.text, pg_catalog.row_to_json(a)::pg_catalog.text, a.attisdropped FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=$1 AND a.attnum>0 ORDER BY a.attnum LIMIT 130`, oid)
 	if e != nil {
 		return b, tableedit.ErrUnsupported
 	}
@@ -259,7 +259,13 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 func (s *Session) StructureApply(ctx context.Context, b tableedit.Baseline, sql []string) tableedit.Execution {
 	return s.applyStructureStep(ctx, b, sql, nil)
 }
-func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline, typeGuards ...[]tableedit.TypeGuard) tableedit.Execution {
+
+type structureGuards struct {
+	Types   []tableedit.TypeGuard
+	Indexes []tableedit.IndexGuard
+}
+
+func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline, guardSets ...structureGuards) tableedit.Execution {
 	fail := func(state, message string) tableedit.Execution {
 		return tableedit.Execution{State: state, Message: message}
 	}
@@ -301,9 +307,9 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 	if e != nil || fresh.Fingerprint != b.Fingerprint {
 		return fail("notStarted", tableedit.ErrStale.Error())
 	}
-	for _, guards := range typeGuards {
-		if !verifyStructureTypes(ctx, tx, guards) {
-			return fail("notStarted", "A referenced type or its privileges changed. Prepare a fresh preview.")
+	for _, guards := range guardSets {
+		if !verifyStructureTypes(ctx, tx, guards.Types) || !verifyIndexGuards(ctx, tx, guards.Indexes) {
+			return fail("notStarted", "A referenced type, index method, operator class, collation or its privileges changed. Prepare a fresh preview.")
 		}
 	}
 	if ctx.Err() != nil {

@@ -163,10 +163,10 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 						continue
 					}
 					for _, old := range b.Indexes {
-						if old.Name == x.Name && prefix(old.Columns, k.Columns) {
+						if old.Name == x.Name && SupportingIndex(old, k.Columns) {
 							alternative := false
 							for _, other := range b.Indexes {
-								if other.Name != x.Name && prefix(other.Columns, k.Columns) {
+								if other.Name != x.Name && SupportingIndex(other, k.Columns) {
 									alternative = true
 								}
 							}
@@ -268,7 +268,19 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		if x.Action == "drop" {
 			continue
 		}
-		if !existsColumn(x.Columns) {
+		if x.Definition != nil {
+			if engine != "postgresql" && engine != "mysql" {
+				return nil, nil, errors.New("Advanced index definitions are not supported by this adapter.")
+			}
+			for _, term := range x.Definition.Terms {
+				if term.Column != nil && !existsColumn([]string{*term.Column}) {
+					return nil, nil, ErrInvalid
+				}
+			}
+			if !existsColumn(x.Definition.Includes) {
+				return nil, nil, ErrInvalid
+			}
+		} else if !existsColumn(x.Columns) {
 			return nil, nil, ErrInvalid
 		}
 		for _, old := range b.Indexes {
@@ -282,7 +294,7 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 			}
 		}
 		ops = append(ops, Operation{Kind: "addIndex", Index: x})
-		source.Indexes = append(source.Indexes, Index{Name: x.Name, Columns: x.Columns, Unique: x.Unique, Supported: true})
+		source.Indexes = append(source.Indexes, Index{Name: x.Name, Columns: x.Columns, Unique: x.Unique, Supported: true, Definition: x.Definition})
 	}
 	for i := range d.Keys {
 		k := &d.Keys[i]
@@ -319,7 +331,7 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		if engine == "mysql" {
 			support := false
 			for _, x := range source.Indexes {
-				if x.Supported && prefix(x.Columns, k.Columns) {
+				if SupportingIndex(x, k.Columns) {
 					support = true
 				}
 			}

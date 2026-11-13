@@ -106,21 +106,21 @@ struct TableStructureAuthoringModelTests {
         }
         #expect(backend.commands.allSatisfy { $0.type == "structure.load" })
     }
-    @Test func writerTwoReadsLegacyAndRetainsExactAuthoredIntent() throws {
+    @Test func writerThreeReadsLegacyAndRetainsExactAuthoredIntent() throws {
         let target = StructureTarget(schema: "public", table: "before", create: false)
         let draft = StructureDraft(columns: [], changes: [.init(name: "id", identity: .init(kind: "byDefault", start: "9007199254740993"))], renameTable: "é")
         let document = StructureDraftDocument(engine: .postgresql, target: target, draft: draft)
         let text = try StructureDraftStore.text(document)
         let decoded = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.utf8))
-        #expect(decoded.formatVersion == 2 && decoded.draft.authoringVersion == 2)
+        #expect(decoded.formatVersion == 3 && decoded.draft.authoringVersion == 2)
         #expect(decoded.draft.renameTable?.utf8.elementsEqual("é".utf8) == true)
         #expect(decoded.draft.changes?.first?.identity?.start == "9007199254740993")
         #expect(!text.contains("authorization") && !text.contains("baselineId"))
         let legacy = "{\"formatVersion\":1,\"engine\":\"postgresql\",\"target\":{\"schema\":\"public\",\"table\":\"before\",\"create\":false},\"draft\":{\"columns\":[]}}"
         let old = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(legacy.utf8))
-        #expect(old.formatVersion == 2 && old.draft.authoringVersion == nil)
+        #expect(old.formatVersion == 3 && old.draft.authoringVersion == nil)
         #expect(throws: (any Error).self) {
-            _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 2", with: "\"formatVersion\" : 1").utf8))
+            _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 3", with: "\"formatVersion\" : 1").utf8))
         }
     }
 }

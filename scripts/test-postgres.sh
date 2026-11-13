@@ -32,6 +32,11 @@ for ((attempt = 0; attempt < 60; attempt++)); do
     sleep 1
 done
 if [[ "$ready" != 1 ]]; then printf 'PostgreSQL test container did not become ready.\n' >&2; exit 1; fi
+if [[ "${DBEER_TEST_POSTGRES_INDEX_TABLESPACE:-0}" == 1 ]]; then
+    # Owned by this disposable server; no host database directory is touched.
+    docker exec "$container_id" sh -ec 'mkdir -p /tmp/dbeer-index-tablespace; chown postgres:postgres /tmp/dbeer-index-tablespace'
+    export DBEER_TEST_POSTGRES_INDEX_TABLESPACE_PATH="/tmp/dbeer-index-tablespace"
+fi
 port_mapping="$(docker port "$container_id" 5432/tcp)"
 export DBEER_TEST_DSN="postgresql://dbeer:$(cat "$fixture_root/password")@127.0.0.1:${port_mapping##*:}/dbeer?sslmode=disable"
 export DBEER_REQUIRE_POSTGRES=1

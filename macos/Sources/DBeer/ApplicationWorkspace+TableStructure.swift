@@ -68,7 +68,7 @@ extension ApplicationWorkspace {
                 return try await self.authorizeOperations([.init(type: "structure.apply", structure: apply)],
                     sessionID: session, profile: profile, client: client,
                     generatedPreview: plan.sql.joined(separator: "\n") + "\n\n" + plan.risks.joined(separator: "\n"))
-            }, bindingIsCurrent: current, authoringSupported: { [weak service] in service?.capabilities.contains("tableStructureAuthoringV2") == true }, operationsAllowed: { [weak self] in self?.canStartTableStructure(profile.id) == true }, sessionIsKnownClosed: {
+            }, bindingIsCurrent: current, authoringSupported: { [weak service] in service?.capabilities.contains("tableStructureAuthoringV2") == true }, indexAuthoringSupported: { [weak service] in service?.capabilities.contains("tableStructureIndexAuthoringV1") == true }, operationsAllowed: { [weak self] in self?.canStartTableStructure(profile.id) == true }, sessionIsKnownClosed: {
                 guard let client = lease.client else { return false }
                 return await client.hasExited()
             }, changed: { [weak self] review in

@@ -102,6 +102,7 @@ actor BackendClient {
     private var dataTransferSupported = false
     private var nativeCommandsSupported = false
     private var nativeResultValuesSupported = false
+    private var indexAuthoringSupported = false
     private var sessionCapabilities: [String: Set<String>] = [:]
     private var shuttingDown = false
     private var wasForced = false
@@ -205,6 +206,9 @@ actor BackendClient {
         nativeCommandsSupported && nativeResultValuesSupported &&
             sessionCapabilities[sessionId]?.contains(NativeCommand.capability) == true &&
             sessionCapabilities[sessionId]?.contains(NativeValue.capability) == true
+    }
+    private func supportsIndexAuthoring(sessionId: String?) -> Bool {
+        indexAuthoringSupported && sessionId.flatMap { sessionCapabilities[$0] }?.contains("tableStructureIndexAuthoringV1") == true
     }
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
@@ -349,6 +353,9 @@ actor BackendClient {
                   command.insert == nil, command.sshTrust == nil else { throw BackendRequestError.invalidCommand }
         } else if command.explain != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("structure.") {
+            if command.structure?.draft?.authoringVersion == 3, !supportsIndexAuthoring(sessionId: command.sessionId) {
+                throw BackendRequestError.invalidCommand
+            }
             guard command.structure?.valid(for: command.type) == true,
                   command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
                   command.sql == nil, command.catalog == nil, command.connection == nil, command.stream == nil,
@@ -509,6 +516,7 @@ actor BackendClient {
             return
         }
         let command = request.command
+        let indexAuthoringAdmitted = supportsIndexAuthoring(sessionId: command.sessionId)
         guard (command.sessionId == nil || command.sessionId == reply.sessionId),
               (command.queryId == nil || command.queryId == reply.queryId) else {
             fail(BackendTransportError(.invalidMessage))
@@ -567,6 +575,7 @@ actor BackendClient {
             dataTransferSupported = reply.capabilities?.contains("dataTransferV1") == true
             nativeCommandsSupported = reply.capabilities?.contains(NativeCommand.capability) == true
             nativeResultValuesSupported = reply.capabilities?.contains(NativeValue.capability) == true
+            indexAuthoringSupported = reply.capabilities?.contains("tableStructureIndexAuthoringV1") == true
         }
         if reply.type == "connect.result", let session = reply.sessionId {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
@@ -624,6 +633,9 @@ actor BackendClient {
             }
             if reply.type != "error", command.type.hasPrefix("structure.") {
                 guard request.started, reply.structure?.valid(for: reply.type) == true else { throw BackendTransportError(.invalidMessage) }
+                if reply.structure?.baseline?.requiresIndexAuthoring == true || reply.structure?.outcome?.observed?.requiresIndexAuthoring == true {
+                    guard indexAuthoringAdmitted else { throw BackendTransportError(.invalidMessage) }
+                }
                 if let target = command.structure?.target {
                     guard let observed = reply.structure?.baseline?.target else { throw BackendTransportError(.invalidMessage) }
                     if target.reconcile == true {

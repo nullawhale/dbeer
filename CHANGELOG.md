@@ -127,6 +127,14 @@
   storage values without converting them to display text. Retain source row
   mapping while loaded-result search is active.
 
+- Add reviewed advanced index definitions: PostgreSQL expression/partial indexes,
+  INCLUDE, qualified collations/operator classes, parameters, access methods and
+  version-aware NULL semantics; MySQL prefix/order/functional/visibility/comment,
+  FULLTEXT and SPATIAL indexes. Preserve key ownership and exact execution evidence,
+  keep Preview non-executing, and reject replacement of indexes whose unexposed
+  attributes cannot be retained. Read earlier portable drafts and evidence while
+  saving the new typed formats with explicit version admission.
+
 - Expand reviewed structure authoring with multiple appended columns, explicit
   table/column renames, qualified PostgreSQL custom types, expression defaults,
   generated columns and version-aware identity/sequence/AUTO_INCREMENT settings.

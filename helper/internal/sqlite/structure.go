@@ -189,6 +189,9 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 	return p.SQL, p.Risks, e
 }
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	if d.NeedsAuthoringV3() {
+		return tableedit.Prepared{}, errors.New("Advanced index definitions are currently available for PostgreSQL/MySQL only; SQLite index intent is never ignored. Use an explicit reviewed SQLite migration for expressions or partial indexes.")
+	}
 	p := tableedit.Prepared{Risks: []string{"Apply uses BEGIN IMMEDIATE and rechecks the captured schema. Table reconstruction copies all rows and validates foreign keys before COMMIT."}}
 	if !d.Valid() || b.Engine != "sqlite" || b.Target.Schema != "main" {
 		return p, tableedit.ErrInvalid

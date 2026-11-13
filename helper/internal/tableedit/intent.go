@@ -20,17 +20,19 @@ type ColumnChange struct {
 	Type      *DataType   `json:"type,omitempty"`
 }
 type Index struct {
-	Name      string   `json:"name"`
-	Columns   []string `json:"columns"`
-	Unique    bool     `json:"unique"`
-	Supported bool     `json:"supported"`
-	Owner     string   `json:"owner,omitempty"`
+	Definition *IndexDefinition `json:"definition,omitempty"`
+	Name       string           `json:"name"`
+	Columns    []string         `json:"columns"`
+	Unique     bool             `json:"unique"`
+	Supported  bool             `json:"supported"`
+	Owner      string           `json:"owner,omitempty"`
 }
 type IndexEdit struct {
-	Action  string   `json:"action"`
-	Name    string   `json:"name"`
-	Columns []string `json:"columns,omitempty"`
-	Unique  bool     `json:"unique,omitempty"`
+	Definition *IndexDefinition `json:"definition,omitempty"`
+	Action     string           `json:"action"`
+	Name       string           `json:"name"`
+	Columns    []string         `json:"columns,omitempty"`
+	Unique     bool             `json:"unique,omitempty"`
 }
 type Key struct {
 	Kind             string   `json:"kind"`
@@ -59,6 +61,11 @@ type Incoming struct {
 	Columns []string
 }
 type Facts struct {
+	IndexAttributes            map[string]map[string]string
+	IndexBuiltinFunctions      map[string][]string
+	IndexDefaultCollations     map[string][]bool
+	IndexCatalogGuards         map[string][]IndexGuard
+	IndexDefaultOpclasses      map[string][]bool
 	RawExpressions             map[string]string
 	ExpressionKeywords         []string
 	ServerVersion              int
@@ -73,6 +80,7 @@ type Facts struct {
 	Proof                      bool
 }
 type Prepared struct {
+	IndexGuards  []IndexGuard
 	Conditions   []Condition
 	SQL          []string
 	Risks        []string
@@ -113,7 +121,7 @@ func (d Draft) Destructive() bool {
 	return false
 }
 func (d Draft) Validate() error {
-	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 || d.NeedsAuthoringV2() && d.AuthoringVersion != 2 {
+	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 && d.AuthoringVersion != 3 || d.NeedsAuthoringV2() && d.AuthoringVersion < 2 || d.NeedsAuthoringV3() && d.AuthoringVersion != 3 {
 		return ErrInvalid
 	}
 	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 && d.RenameTable == nil || d.RenameTable != nil && !Identifier(*d.RenameTable) {
@@ -134,7 +142,7 @@ func (d Draft) Validate() error {
 	}
 	seen = map[string]bool{}
 	for _, x := range d.Indexes {
-		if !Action(x.Action) || !Identifier(x.Name) || seen[x.Name] || x.Action != "drop" && !columnsValid(x.Columns) || x.Action == "drop" && (len(x.Columns) > 0 || x.Unique) {
+		if !Action(x.Action) || !Identifier(x.Name) || seen[x.Name] || x.Action != "drop" && (x.Definition == nil && !columnsValid(x.Columns) || x.Definition != nil && (x.Columns != nil || !x.Definition.Valid())) || x.Action == "drop" && (len(x.Columns) > 0 || x.Unique || x.Definition != nil) {
 			return ErrInvalid
 		}
 		seen[x.Name] = true
@@ -265,8 +273,26 @@ func Summarize(b *Baseline) {
 			b.Columns[i].CanModify = c.Generated.Value != nil && c.Generated.Value.Kind == "none" && c.Identity.Value != nil && c.Identity.Value.Kind == "none" && !unavailableColumnExpression(c)
 		}
 	}
+	if len(f.IndexAttributes) > 0 {
+		const limitation = "Indexes with unexposed comments, tablespaces, cluster/replica identity, statistics or parser/engine attributes are read-only. Preview explains the selected index's prerequisite; use an explicit reviewed migration."
+		present := false
+		for _, value := range b.Limitations {
+			present = present || strings.Contains(value, limitation)
+		}
+		if !present {
+			if len(b.Limitations) < 64 {
+				b.Limitations = append(b.Limitations, limitation)
+			} else if len(b.Limitations[63])+len(limitation)+1 <= 4096 {
+				b.Limitations[63] += "\n" + limitation
+			}
+		}
+	}
 	for _, x := range f.Table.Indexes.Items {
 		item := Index{Name: x.Ref.Name, Columns: []string{}, Supported: IndexSupported(x)}
+		if definition, ok := ObservedIndexDefinition(b.Engine, x); ok {
+			item.Definition = definition
+			item.Supported = true
+		}
 		if x.Unique.Value != nil {
 			item.Unique = *x.Unique.Value
 		}
@@ -387,6 +413,18 @@ func CheckRemoval(b Baseline, d Draft, name string, key bool) error {
 	if b.Facts == nil || sensitive && !b.Facts.Proof {
 		return errors.New("Removal requires complete incoming-dependency visibility.")
 	}
+	attributeName := name
+	if key {
+		for _, index := range b.Indexes {
+			if index.Owner == name {
+				attributeName = index.Name
+				break
+			}
+		}
+	}
+	if attributes := b.Facts.IndexAttributes[attributeName]; len(attributes) > 0 {
+		return fmt.Errorf("Index %s has unexposed %s; removal/replacement requires an explicit reviewed migration so those properties cannot be silently lost.", attributeName, attributes["reason"])
+	}
 	for _, incoming := range b.Facts.Incoming {
 		if !sensitive {
 			continue
@@ -417,7 +455,7 @@ func CheckRemoval(b Baseline, d Draft, name string, key bool) error {
 			}
 		}
 	}
-	return errors.New("Unsupported keys or constraint-owned/advanced indexes cannot be removed independently.")
+	return errors.New("Unsupported keys or constraint-owned indexes cannot be removed independently.")
 }
 func ValidateForeign(source Baseline, k KeyEdit, target Baseline) error {
 	if target.Facts == nil || !target.Facts.Table.Columns.Complete || !target.Facts.Table.Constraints.Complete {

@@ -83,7 +83,7 @@ func Capabilities(engine string) []string {
 	case "cassandra":
 		return append(common, "localReadOnly", "cursorPagination", "gridEditing")
 	case "", "postgresql", "mysql":
-		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SessionMonitorCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.IncomingRelationsCapability)
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureIndexAuthoringCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SessionMonitorCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.IncomingRelationsCapability)
 	default:
 		return nil
 	}

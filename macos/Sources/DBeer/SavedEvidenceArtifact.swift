@@ -82,7 +82,7 @@ struct SavedStructureEvidence: Codable, Equatable, Sendable {
 }
 
 struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
-    static let currentVersion = 1
+    static let currentVersion = 2
     static let maximumBytes = 8 * 1_024 * 1_024
     var version = Self.currentVersion
     var id: UUID
@@ -165,7 +165,10 @@ struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
             for wait in record["waits"] as? [Any] ?? [] { _ = try closed(wait, keys: ["waitingId", "blockingId", "kind", "object", "lockMode"]) }
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
-        let value = try decoder.decode(Self.self, from: data)
+        var value = try decoder.decode(Self.self, from: data)
+        guard [1, Self.currentVersion].contains(value.version),
+              value.version != 1 || (value.structure.map { !$0.draft.requiresIndexAuthoring && $0.draft.authoringVersion != 3 && !($0.observed?.indexes ?? []).contains { $0.definition != nil } } ?? true) else { throw PlanArtifactError.invalid }
+        value.version = Self.currentVersion
         guard value.valid else { throw PlanArtifactError.invalid }
         return value
     }

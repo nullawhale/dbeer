@@ -491,19 +491,24 @@ func (r pgDefinition) index(x sc.Index, table sc.Ref) {
 		} else if len(sc.DefinitionItems(r.w, "index key options", k.Options)) > 0 {
 			r.w.Note("Index key options require an available operator class.")
 		}
-		if desc := pgDefinitionRequired(r.w, "index order", k.Descending); desc != nil {
-			if *desc {
-				r.write(" DESC")
-			} else {
-				r.write(" ASC")
+		ordered := x.Method.Value != nil && *x.Method.Value == "btree"
+		if ordered {
+			if desc := pgDefinitionRequired(r.w, "index order", k.Descending); desc != nil {
+				if *desc {
+					r.write(" DESC")
+				} else {
+					r.write(" ASC")
+				}
 			}
-		}
-		if first := pgDefinitionRequired(r.w, "index null order", k.NullsFirst); first != nil {
-			if *first {
-				r.write(" NULLS FIRST")
-			} else {
-				r.write(" NULLS LAST")
+			if first := pgDefinitionRequired(r.w, "index null order", k.NullsFirst); first != nil {
+				if *first {
+					r.write(" NULLS FIRST")
+				} else {
+					r.write(" NULLS LAST")
+				}
 			}
+		} else if k.Descending.Value != nil && *k.Descending.Value {
+			r.w.Note("This access method does not support descending index terms.")
 		}
 	}
 	r.write(")")

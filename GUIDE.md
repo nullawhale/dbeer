@@ -632,7 +632,7 @@ The editor's **Draft** menu saves local typed changes in a versioned
 `.dbeerstructure` file through **Save Draft** or **Save Draft As…**. Incomplete
 fields, including expressions and qualified type references, can be saved for
 later editing. Files contain engine, exact target names and typed intent with a
-1 MiB limit. The current writer uses version 2 and still reads version 1. Save
+1 MiB limit. The current writer uses version 3 and still reads versions 1 and 2. Save
 checks the previous file version and preserves concurrent external changes.
 
 Use **Open Draft…** in **Create Table…** for a matching schema or in
@@ -655,8 +655,35 @@ and USAGE checks before execution. Identity sequences retain exact start,
 increment, minimum, maximum, cache and cycle settings. PostgreSQL generated
 expression replacement requires version 17+; virtual generation requires 18+.
 
-Ordinary ordered BTREE indexes and supported primary/unique/foreign keys can be
-added, explicitly removed or replaced. Foreign keys preserve composite order,
+Index drafts can use ordered column or expression terms. PostgreSQL supports
+expression and partial indexes, INCLUDE columns, qualified collations and
+operator classes with parameters, direction and NULL placement, and storage
+options for BTREE, HASH, GiST, SP-GiST, GIN and BRIN. Installed access methods can
+be selected when their bounded catalog metadata is available. Uniqueness uses
+BTREE; NULLS NOT DISTINCT requires PostgreSQL 15+. Preview checks method-specific
+constraints and binds referenced method/operator-class/collation metadata before
+Apply, without invoking their handlers or evaluating indexed expressions.
+
+For ordinary InnoDB tables, MySQL supports BTREE prefixes, ASC/DESC order,
+functional terms, visibility and exact index comments, plus FULLTEXT and SPATIAL
+indexes with their applicable column restrictions. HASH is rejected because
+InnoDB normalizes it to BTREE. Use key operations for MySQL uniqueness so the
+constraint and backing index remain one unit. Constraint-owned indexes cannot be
+removed or replaced independently.
+MySQL functional-index expressions retain their exact catalog text, but their
+unresolved dependencies keep schema comparison indeterminate and require manual
+review even when two captured expressions are identical.
+
+Indexes with properties outside the exposed definition remain read-only with a
+concrete prerequisite. This includes PostgreSQL index comments, non-default
+tablespaces, cluster/replica-identity flags and custom statistics, and MySQL
+FULLTEXT parsers, engine attributes or unrecognized index syntax. Their raw
+metadata stays bound to the baseline; eligible additive operations preserve it.
+No hidden property is silently discarded during replacement. Changing a draft
+invalidates its Preview; imported index intent requires fresh loading, capability
+checks and exact-plan confirmation before Apply.
+
+Supported primary/unique/foreign keys can be added, explicitly removed or replaced. Foreign keys preserve composite order,
 require a supported referenced primary/unique key and matching types/collations,
 and show any required MySQL supporting index as an explicit step. MySQL
 AUTO_INCREMENT likewise requires an explicitly selected leading key. Before
@@ -690,8 +717,7 @@ TRIGGER metadata visibility without active roles or partial revokes; narrower
 accounts retain eligible additive and narrow column operations. A proven
 unrelated direct column reference can permit a rename while an uncertain or
 dependent expression still requires an explicit reviewed migration. Catalogs
-cannot prove the absence of dynamic SQL dependencies. Advanced index definitions,
-lossy conversions, backfills, reordering and column/table deletion remain outside
+cannot prove the absence of dynamic SQL dependencies. Lossy conversions, backfills, reordering and column/table deletion remain outside
 this authoring stage.
 
 Apply uses a dedicated session and bounded lock waits. PostgreSQL/MySQL statements

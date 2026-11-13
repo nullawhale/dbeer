@@ -15,6 +15,7 @@ import (
 
 const Capability = "tableStructureEditorV1"
 const AuthoringCapability = "tableStructureAuthoringV2"
+const IndexAuthoringCapability = "tableStructureIndexAuthoringV1"
 const MaxColumns = 128
 const MaxSQLBytes = 1024 * 1024
 
@@ -128,6 +129,7 @@ type Baseline struct {
 	Limitations     []string                  `json:"limitations"`
 }
 type Plan struct {
+	IndexGuards    []IndexGuard      `json:"-"`
 	ResultTarget   *Target           `json:"resultTarget,omitempty"`
 	Types          []TypeGuard       `json:"-"`
 	RenamedColumns map[string]string `json:"-"`
@@ -272,6 +274,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	var references []Baseline
 	var conditions []Condition
 	var types []TypeGuard
+	var indexGuards []IndexGuard
 	var resultTarget *Target
 	var err error
 	if advanced, ok := a.(AdvancedAdapter); ok {
@@ -279,8 +282,9 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 		prepared, err = advanced.StructurePrepare(ctx, *s.baseline, d)
 		sql, risks, references, conditions = prepared.SQL, prepared.Risks, prepared.References, prepared.Conditions
 		types, resultTarget = prepared.Types, prepared.ResultTarget
+		indexGuards = prepared.IndexGuards
 	} else {
-		if d.NeedsAuthoringV2() || len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
+		if d.NeedsAuthoringV2() || d.NeedsAuthoringV3() || len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
 			return Reply{}, ErrUnsupported
 		}
 		sql, risks, err = a.StructureRender(*s.baseline, d)
@@ -315,7 +319,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	if referenceBytes > 8<<20 {
 		return Reply{}, ErrUnsupported
 	}
-	p := &Plan{ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, Conditions: conditions, Created: time.Now()}
+	p := &Plan{ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, IndexGuards: indexGuards, Conditions: conditions, Created: time.Now()}
 	identities := []string{}
 	for _, b := range references {
 		identities = append(identities, b.Fingerprint)
@@ -326,7 +330,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 			p.RenamedColumns[c.Name] = *c.RenameTo
 		}
 	}
-	p.Digest = Fingerprint([]any{p, identities, conditions, types, p.RenamedColumns})
+	p.Digest = Fingerprint([]any{p, identities, conditions, types, indexGuards, p.RenamedColumns})
 	s.plan = p
 	return Reply{Plan: p}, nil
 }

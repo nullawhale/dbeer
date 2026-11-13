@@ -3,9 +3,11 @@ package postgres
 import (
 	"context"
 	sc "dbeer/helper/internal/schemacompare"
+	"dbeer/helper/internal/tableedit"
 	"encoding/json"
 	"fmt"
 	"github.com/jackc/pgx/v5"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,9 @@ type schemaQuery interface {
 }
 
 type schemaCapture struct {
+	indexAttributes          map[string]map[string]string
+	indexBuiltinFunctions    map[string][]string
+	indexDefaultCollations   map[string][]bool
 	skipCustomTypeFormatting bool
 	rawExpressions           map[string]string
 	ctx                      context.Context
@@ -597,18 +602,63 @@ func (r *schemaCapture) constraints(table sc.Ref, field, oid string) ([]sc.Const
 	return out, nil
 }
 func (r *schemaCapture) indexes(table sc.Ref, oid string) ([]sc.Index, error) {
+	previousSafety := r.skipCustomTypeFormatting
+	r.skipCustomTypeFormatting = true
+	defer func() { r.skipCustomTypeFormatting = previousSafety }()
 	nulls := "false"
 	if r.version >= 150000 {
 		nulls = "i.indnullsnotdistinct"
 	}
-	rows, e := r.rows("SELECT c.oid::pg_catalog.text,c.relname,am.amname,i.indisunique::pg_catalog.text,"+nulls+"::pg_catalog.text,i.indisvalid::pg_catalog.text,i.indisready::pg_catalog.text,"+r.expressionProjection("i.indpred", "i.indrelid")+",COALESCE(pg_catalog.array_to_json(c.reloptions)::pg_catalog.text,'[]'),COALESCE(con.conname,''),i.indnkeyatts::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_depend WHERE classid='pg_catalog.pg_class'::pg_catalog.regclass AND objid=c.oid AND deptype='e')::pg_catalog.text FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am am ON am.oid=c.relam LEFT JOIN pg_catalog.pg_constraint con ON con.conindid=c.oid AND con.conrelid=i.indrelid AND con.contype IN ('p','u','x') WHERE i.indrelid=$1::pg_catalog.oid ORDER BY c.relname COLLATE pg_catalog.\"C\"", oid)
+	rows, e := r.rows("SELECT c.oid::pg_catalog.text,c.relname,am.amname,i.indisunique::pg_catalog.text,"+nulls+"::pg_catalog.text,i.indisvalid::pg_catalog.text,i.indisready::pg_catalog.text,"+r.expressionProjection("i.indpred", "i.indrelid")+",COALESCE(pg_catalog.array_to_json(c.reloptions)::pg_catalog.text,'[]'),COALESCE(con.conname,''),i.indnkeyatts::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_depend WHERE classid='pg_catalog.pg_class'::pg_catalog.regclass AND objid=c.oid AND deptype='e')::pg_catalog.text,"+r.expressionProjection("i.indexprs", "i.indrelid")+",COALESCE(i.indexprs::pg_catalog.text,''),COALESCE(pg_catalog.obj_description(c.oid,'pg_class'),''),c.reltablespace::pg_catalog.text,i.indisclustered::pg_catalog.text,i.indisreplident::pg_catalog.text,COALESCE((SELECT pg_catalog.json_agg(pg_catalog.json_build_array(a.attnum,a.attstattarget) ORDER BY a.attnum)::pg_catalog.text FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND a.attstattarget<>-1),'[]') FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am am ON am.oid=c.relam LEFT JOIN pg_catalog.pg_constraint con ON con.conindid=c.oid AND con.conrelid=i.indrelid AND con.contype IN ('p','u','x') WHERE i.indrelid=$1::pg_catalog.oid ORDER BY c.relname COLLATE pg_catalog.\"C\"", oid)
 	if e != nil {
 		return nil, e
+	}
+	functions, err := r.rows(`SELECT oid::pg_catalog.text,proname FROM pg_catalog.pg_proc WHERE pronamespace='pg_catalog'::pg_catalog.regnamespace AND proname IN ('lower','upper') AND proargtypes='25'::pg_catalog.oidvector AND prorettype=25`)
+	if err != nil {
+		return nil, err
+	}
+	builtinFunctions := map[string]string{}
+	for _, function := range functions {
+		builtinFunctions[function[0]] = function[1]
 	}
 	out := []sc.Index{}
 	for _, v := range rows {
 		ref := sc.Ref{Kind: "index", Schema: table.Schema, Table: table.Name, Name: v[1]}
 		x := sc.Index{Ref: ref, Method: sc.Known(v[2]), Unique: sc.Known(pgBool(v[3])), NullsDistinct: sc.Known(!pgBool(v[4])), Keys: sc.Complete[sc.IndexKey](nil), Includes: sc.Complete[sc.Ref](nil), Predicate: sc.Absent[sc.Expression](), Options: pgOptions(v[8]), Visible: sc.Known(true), Valid: sc.Known(pgBool(v[5])), Ready: sc.Known(pgBool(v[6])), Constraint: sc.Absent[sc.Ref]()}
+		attributes := map[string]string{}
+		if v[14] != "" {
+			attributes["comment"] = v[14]
+		}
+		if v[15] != "0" {
+			attributes["tablespace"] = v[15]
+		}
+		if pgBool(v[16]) {
+			attributes["clustered"] = v[16]
+		}
+		if pgBool(v[17]) {
+			attributes["replicaIdentity"] = v[17]
+		}
+		if v[18] != "[]" {
+			attributes["statisticsTargets"] = v[18]
+		}
+		if len(attributes) > 0 {
+			names := []string{}
+			for key := range attributes {
+				names = append(names, key)
+			}
+			sort.Strings(names)
+			attributes["reason"] = strings.Join(names, ", ")
+			if r.indexAttributes == nil {
+				r.indexAttributes = map[string]map[string]string{}
+			}
+			r.indexAttributes[v[1]] = attributes
+			x.Options.Complete = false
+			x.Options.State = "unavailable"
+			x.Options.Code = "unmodeledIndexProperties"
+			if err := r.issue(&ref, "index", "unmodeledIndexProperties", "Index properties outside the exposed definition require an explicit reviewed migration: "+attributes["reason"]); err != nil {
+				return nil, err
+			}
+		}
 		if v[7] != "" {
 			expr, e := r.expression(v[7], "pg_class", v[0])
 			if e != nil {
@@ -619,42 +669,70 @@ func (r *schemaCapture) indexes(table sc.Ref, oid string) ([]sc.Index, error) {
 		if v[9] != "" {
 			x.Constraint = sc.Known(sc.Ref{Kind: "constraint", Schema: table.Schema, Table: table.Name, Name: v[9]})
 		}
-		if v[2] != "btree" || pgBool(v[11]) || len(x.Options.Items) > 0 {
+		if pgBool(v[11]) {
 			x.Method = sc.Unknown[string]("indexMethodOrOptions")
 			if e = r.issue(&ref, "index", "indexMethodOrOptions", "Index method or options require manual review."); e != nil {
 				return nil, e
 			}
 		}
-		keyDefinition := "pg_catalog.pg_get_indexdef(i.indexrelid,k.ord::pg_catalog.int4,false)"
-		if r.skipCustomTypeFormatting {
-			keyDefinition = "CASE WHEN k.num>0 THEN '' ELSE pg_catalog.chr(1)||'catalog:'||COALESCE(i.indexprs::text,'') END"
-		}
-		keys, e := r.rows("SELECT k.ord::pg_catalog.text,COALESCE(a.attname,''),"+keyDefinition+",COALESCE(onsp.nspname,''),COALESCE(op.opcname,''),COALESCE(cn.nspname,''),COALESCE(co.collname,''),COALESCE(i.indoption[k.ord::pg_catalog.int4-1],0)::pg_catalog.text,COALESCE(pg_catalog.array_to_json(ia.attoptions)::pg_catalog.text,'[]') FROM pg_catalog.pg_index i CROSS JOIN pg_catalog.unnest(i.indkey) WITH ORDINALITY k(num,ord) LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.num LEFT JOIN pg_catalog.pg_opclass op ON op.oid=i.indclass[k.ord::pg_catalog.int4-1] LEFT JOIN pg_catalog.pg_namespace onsp ON onsp.oid=op.opcnamespace LEFT JOIN pg_catalog.pg_collation co ON co.oid=i.indcollation[k.ord::pg_catalog.int4-1] LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=co.collnamespace LEFT JOIN pg_catalog.pg_attribute ia ON ia.attrelid=i.indexrelid AND ia.attnum=k.ord WHERE i.indexrelid=$1::pg_catalog.oid ORDER BY k.ord", v[0])
+		expressions, expressionsOK := tableedit.SplitExpressionList("postgresql", v[12])
+		expressionOrdinal := 0
+		expressionCollations, collationsOK := catalogIndexExpressionCollations(v[13])
+		keyDefinition := "CASE WHEN k.num>0 THEN '' ELSE pg_catalog.chr(1)||'catalog:'||COALESCE(i.indexprs::pg_catalog.text,'') END"
+		keys, e := r.rows("SELECT k.ord::pg_catalog.text,COALESCE(a.attname,''),"+keyDefinition+",COALESCE(onsp.nspname,''),COALESCE(op.opcname,''),COALESCE(cn.nspname,''),COALESCE(co.collname,''),COALESCE(i.indoption[k.ord::pg_catalog.int4-1],0)::pg_catalog.text,COALESCE(pg_catalog.array_to_json(ia.attoptions)::pg_catalog.text,'[]'),COALESCE(a.attcollation::pg_catalog.text,'0'),COALESCE(i.indcollation[k.ord::pg_catalog.int4-1],0)::pg_catalog.text FROM pg_catalog.pg_index i CROSS JOIN pg_catalog.unnest(i.indkey) WITH ORDINALITY k(num,ord) LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=k.num LEFT JOIN pg_catalog.pg_opclass op ON op.oid=i.indclass[k.ord::pg_catalog.int4-1] LEFT JOIN pg_catalog.pg_namespace onsp ON onsp.oid=op.opcnamespace LEFT JOIN pg_catalog.pg_collation co ON co.oid=i.indcollation[k.ord::pg_catalog.int4-1] LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=co.collnamespace LEFT JOIN pg_catalog.pg_attribute ia ON ia.attrelid=i.indexrelid AND ia.attnum=k.ord WHERE i.indexrelid=$1::pg_catalog.oid ORDER BY k.ord", v[0])
 		if e != nil {
 			return nil, e
+		}
+		if r.indexDefaultCollations == nil {
+			r.indexDefaultCollations = map[string][]bool{}
+		}
+		if r.indexBuiltinFunctions == nil {
+			r.indexBuiltinFunctions = map[string][]string{}
 		}
 		for i, k := range keys {
 			if i >= int(pgInt(v[10])) {
 				x.Includes.Items = append(x.Includes.Items, pgColumn(table, k[1]))
 				continue
 			}
+			defaultCollation := k[10] == "0"
+			if k[1] != "" {
+				defaultCollation = k[9] == k[10]
+			} else if collationsOK && expressionOrdinal < len(expressionCollations) && expressionCollations[expressionOrdinal].known {
+				defaultCollation = expressionCollations[expressionOrdinal].oid == k[10]
+			}
+			r.indexDefaultCollations[v[1]] = append(r.indexDefaultCollations[v[1]], defaultCollation)
+			function := ""
+			if k[1] == "" && collationsOK && expressionOrdinal < len(expressionCollations) {
+				function = builtinFunctions[expressionCollations[expressionOrdinal].functionID]
+			}
+			r.indexBuiltinFunctions[v[1]] = append(r.indexBuiltinFunctions[v[1]], function)
 			key := sc.IndexKey{Column: sc.Absent[sc.Ref](), Expression: sc.Absent[sc.Expression](), Opclass: sc.Absent[sc.Ref](), Collation: sc.Absent[sc.Ref](), Descending: sc.Known(pgInt(k[7])&1 != 0), NullsFirst: sc.Known(pgInt(k[7])&2 != 0), PrefixLength: sc.Absent[int64](), Options: pgOptions(k[8])}
 			if k[1] != "" {
 				key.Column = sc.Known(pgColumn(table, k[1]))
 			} else {
-				if unavailable, ok := r.unavailableExpression(k[2], "pg_index", v[0]); ok {
-					k[2] = unavailable.Text
+				if expressionsOK && expressionOrdinal < len(expressions) {
+					expr, err := r.expression(expressions[expressionOrdinal], "pg_class", v[0])
+					if err != nil {
+						return nil, err
+					}
+					key.Expression = sc.Known(expr)
+
+				} else {
+					if r.rawExpressions == nil {
+						r.rawExpressions = map[string]string{}
+					}
+					r.rawExpressions["pg_index:"+v[0]] = v[13]
+					code := "indexExpressionSyntax"
+					if strings.HasPrefix(v[12], unavailableCatalogExpression) {
+						code = "customTypeSupport"
+					}
+					key.Expression = sc.Known(sc.Expression{Text: "/* index expression metadata unavailable */", Dependencies: sc.Collection[sc.Ref]{Items: []sc.Ref{}, State: "unavailable", Code: code}})
 				}
-				key.Expression = sc.Known(sc.Expression{Text: k[2], Dependencies: sc.Collection[sc.Ref]{Items: []sc.Ref{}, State: "unavailable", Code: "expressionIndexKey", Complete: false}})
-				if e = r.issue(&ref, "keys", "expressionIndexKey", "Expression index keys require manual review."); e != nil {
-					return nil, e
-				}
+				expressionOrdinal++
 			}
 			if k[4] != "" {
 				key.Opclass = sc.Known(sc.Ref{Kind: "opclass", Schema: k[3], Name: k[4]})
-				if k[3] != "pg_catalog" {
-					key.Opclass = sc.Unknown[sc.Ref]("extensionOpclass")
-				}
+
 			}
 			if k[6] != "" {
 				key.Collation = sc.Known(sc.Ref{Kind: "collation", Schema: k[5], Name: k[6]})

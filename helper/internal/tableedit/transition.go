@@ -154,6 +154,26 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 			out := []sc.Index{}
 			for _, x := range f.Table.Indexes.Items {
 				if x.Ref.Name == name || owner != "" && x.Constraint.Value != nil && x.Constraint.Value.Name == owner {
+					delete(f.IndexDefaultOpclasses, x.Ref.Name)
+					delete(f.IndexDefaultCollations, x.Ref.Name)
+					delete(f.IndexAttributes, x.Ref.Name)
+					if len(f.IndexAttributes) == 0 {
+						f.IndexAttributes = nil
+					}
+					delete(f.IndexBuiltinFunctions, x.Ref.Name)
+					if len(f.IndexBuiltinFunctions) == 0 {
+						f.IndexBuiltinFunctions = nil
+					}
+					if len(f.IndexDefaultCollations) == 0 {
+						f.IndexDefaultCollations = nil
+					}
+					delete(f.IndexCatalogGuards, x.Ref.Name)
+					if len(f.IndexCatalogGuards) == 0 {
+						f.IndexCatalogGuards = nil
+					}
+					if len(f.IndexDefaultOpclasses) == 0 {
+						f.IndexDefaultOpclasses = nil
+					}
 					continue
 				}
 				out = append(out, x)
@@ -224,7 +244,16 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 	case "addIndex":
 		found := false
 		for _, x := range after.Indexes {
-			if x.Name == op.Index.Name && x.Supported && x.Owner == "" && x.Unique == op.Index.Unique && reflect.DeepEqual(x.Columns, op.Index.Columns) {
+			if x.Name != op.Index.Name || !x.Supported || x.Owner != "" || x.Unique != op.Index.Unique {
+				continue
+			}
+			if op.Index.Definition != nil {
+				for _, fact := range after.Facts.Table.Indexes.Items {
+					if fact.Ref.Name == x.Name && IndexDefinitionMatches(before, after, fact, *op.Index.Definition) {
+						found = true
+					}
+				}
+			} else if reflect.DeepEqual(x.Columns, op.Index.Columns) {
 				found = true
 			}
 		}
