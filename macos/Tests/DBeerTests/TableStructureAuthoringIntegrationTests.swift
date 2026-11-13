@@ -90,6 +90,7 @@ struct TableStructureAuthoringIntegrationTests {
                 try #require(model.preview?.sql.count == 2)
                 await model.apply()
                 #expect(model.outcome?.state == "failed" && model.outcome?.steps.allSatisfy { $0.state == "rolledBack" } == true)
+                await model.checkExecutionStatus()
                 #expect(model.outcome?.state == "failed" && model.outcome?.observed?.columns.count == 5)
                 #expect(!model.canApply)
             }

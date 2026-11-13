@@ -25,7 +25,12 @@ func (owner *owner) runStructure(ctx context.Context, physical adapter.Session, 
 	if c.Structure == nil || !c.Structure.Valid(c.Type) {
 		return reject("protocol", "Invalid structure request.")
 	}
-	if !owner.structureOnly || physical.TransactionStatus() != "idle" {
+	if !owner.structureOnly {
+		return reject("policy", "Open a separate idle session for structure editing.")
+	}
+	// Status reads retained execution evidence without touching the database.
+	// It remains available if the original DDL connection has an unknown state.
+	if c.Type != "structure.status" && physical.TransactionStatus() != "idle" {
 		return reject("policy", "Open a separate idle session for structure editing.")
 	}
 	var result tableedit.Reply

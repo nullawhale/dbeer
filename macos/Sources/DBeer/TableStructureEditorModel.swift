@@ -44,10 +44,13 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     @Published private(set) var invalidated = false
     @Published private(set) var draftFileURL: URL?
     @Published private(set) var fileNotice: String?
+    @Published private(set) var statusNotice: String?
     private(set) var draftFileVersion: SQLFileVersion?
     private var savedDraftDocument: StructureDraftDocument?
     private var restoredDraftDocument: StructureDraftDocument?
     private var sessionID: String?
+    private var executionSessionID: String?
+    private var sessionNeedsReplacement = false
     private var queryID: String?
     private var cancelRequested = false
     private let authoringSupported: () -> Bool
@@ -83,6 +86,13 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && (!needsAuthoring || authoringAvailable) && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
     var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && (!needsAuthoring || authoringAvailable) && outcome == nil && !profile.policy.readOnly && (operationSupport?.availability("structure.apply").map { $0.state == .available } ?? true) }
     var target: StructureTarget { .init(schema: schema, table: table, create: create) }
+    var canCheckExecutionStatus: Bool {
+        guard !isBusy, !closing, !invalidated, operationsAllowed(),
+              let executionSessionID, sessionID == executionSessionID, let review = outcomeReview else { return false }
+        return StructureTarget.sameIdentifier(schema, review.plan.target.schema) &&
+            StructureTarget.sameIdentifier(table, review.plan.target.table)
+    }
+
     @discardableResult func validateBinding() -> Bool {
         guard bindingIsCurrent() else {
             invalidated = true; preview = nil; baseline = nil
@@ -100,8 +110,18 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
         guard let sessionID else { throw ExecutionPolicyError(message: "Open the dedicated structure session first.") }
         let query = UUID().uuidString; queryID = query
         defer { queryID = nil }
-        let response = try await send(.init(type: "structure." + operation, requestId: UUID().uuidString,
-            sessionId: sessionID, queryId: query, authorization: authorization, structure: payload))
+        let response: BackendMessage
+        do {
+            response = try await send(.init(type: "structure." + operation, requestId: UUID().uuidString,
+                sessionId: sessionID, queryId: query, authorization: authorization, structure: payload))
+        } catch {
+            if error is BackendTransportError || (error as? BackendRemoteError)?.reply.connected == false {
+                sessionNeedsReplacement = true
+            }
+            throw error
+        }
+        if response.connected == false { sessionNeedsReplacement = true }
+        else if response.connected == true && response.transactionStatus == .idle { sessionNeedsReplacement = false }
         guard let reply = response.structure else { throw BackendTransportError(.invalidMessage) }
         if let support = response.operationSupport, support.engine != profile.engine || support.scope != .structure {
             throw BackendTransportError(.invalidMessage)
@@ -111,10 +131,21 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     }
     func load(useResultTarget: Bool = false) async {
         guard !isBusy, !closing, operationsAllowed(), target.valid, validateBinding() else { return }
-        isBusy = true; cancelRequested = false; error = nil; preview = nil
+        isBusy = true; cancelRequested = false; error = nil; preview = nil; statusNotice = nil
+        let reconcilingExecution = outcomeReview != nil
         defer { isBusy = false }
         do {
-            if sessionID == nil { sessionID = try await connect() }
+            if sessionID != nil {
+                let helperClosed = await sessionIsKnownClosed()
+                try requireBinding()
+                if sessionNeedsReplacement || helperClosed {
+                    try await retireSessionForReload(helperClosed: helperClosed)
+                }
+            }
+            if sessionID == nil {
+                sessionID = try await connect()
+                sessionNeedsReplacement = false
+            }
             try requireBinding()
             let acknowledgedRename = outcome?.state == "applied"
             let renamedTarget = (useResultTarget || acknowledgedRename) ? outcomeReview?.plan.resultTarget : nil
@@ -139,11 +170,38 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
             baseline = freshBaseline; create = freshBaseline.target.create
             outcomeReview = nil
             outcome = nil
+            executionSessionID = nil
             draft = restoredDraftDocument?.draft ?? .init(columns: create ? [Self.emptyColumn] : [])
             restoredDraftDocument = nil
             fileNotice = nil
+            if reconcilingExecution {
+                statusNotice = "Current structure loaded. Review retained intent and step evidence in Execution History before preparing a new preview."
+            }
         } catch { self.error = error.localizedDescription }
     }
+    /// Explicit reconciliation may replace an unusable database connection only
+    /// after its owned session has positively closed or its helper has exited.
+    private func retireSessionForReload(helperClosed: Bool) async throws {
+        guard let originalSession = sessionID else { return }
+        if !helperClosed {
+            try requireBinding()
+            do {
+                let reply = try await send(.disconnect(sessionId: originalSession))
+                guard reply.type == "disconnect.ack", reply.sessionId == originalSession else {
+                    throw BackendTransportError(.invalidMessage)
+                }
+            } catch {
+                guard await sessionIsKnownClosed() else { throw error }
+            }
+        }
+        guard sessionID == originalSession else { throw BackendTransportError(.invalidMessage) }
+        sessionID = nil
+        executionSessionID = nil
+        sessionNeedsReplacement = false
+        operationSupport = nil
+        try requireBinding()
+    }
+
     func preparePreview() async {
         guard canPreview, let baseline else { return }
         isBusy = true; cancelRequested = false; error = nil; preview = nil
@@ -168,6 +226,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
             try requireBinding()
             guard preview == plan, draft == reviewedDraft else { throw ExecutionPolicyError(message: "The draft changed. Prepare a fresh preview.") }
             isApplying = true
+            executionSessionID = sessionID
             let reply = try await request("apply", .init(apply: apply), authorization: authorization)
             guard reply.valid(for: "structure.apply.result"), let acknowledged = reply.outcome,
                   matchesExecution(acknowledged, plan: plan, executionID: apply.executionId) else {
@@ -200,6 +259,64 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
             }
         }
     }
+    /// Reads the retained report from the original helper session. It never starts
+    /// another connection or executes a reviewed SQL step.
+    func checkExecutionStatus() async {
+        guard canCheckExecutionStatus, let review = outcomeReview, let originalSession = sessionID,
+              validateBinding() else { return }
+        let originalTarget = target
+        let originalDraft = draft
+        isBusy = true
+        cancelRequested = false
+        error = nil
+        statusNotice = nil
+        defer { isBusy = false }
+        do {
+            let helperClosed = await sessionIsKnownClosed()
+            try requireBinding()
+            guard !helperClosed else {
+                statusNotice = "The original structure helper is unavailable. Retained execution evidence is kept. Inspect the database before preparing another preview."
+                return
+            }
+            let reply = try await request("status", .init())
+            try requireBinding()
+            guard sessionID == originalSession, target == originalTarget, draft == originalDraft,
+                  outcomeReview?.id == review.id, outcomeReview?.plan == review.plan,
+                  reply.valid(for: "structure.status.result") else {
+                throw BackendTransportError(.invalidMessage)
+            }
+            guard let retained = reply.outcome else {
+                statusNotice = "The original helper has no retained report. Inspect and load the current structure to resolve the existing outcome."
+                return
+            }
+            guard matchesExecution(retained, plan: review.plan, executionID: review.id),
+                  preservesAcknowledgements(retained, from: review.outcome, plan: review.plan) else {
+                throw BackendTransportError(.invalidMessage)
+            }
+            var updated = review
+            updated.outcome = retained
+            outcomeReview = updated
+            outcome = retained
+            baseline = nil
+            preview = nil
+            if let observed = retained.observed { create = observed.target.create }
+            else if retained.state == "applied" { create = false }
+            if StructureTarget.intentBytes(retained) != StructureTarget.intentBytes(review.outcome) {
+                changed(updated)
+            }
+            switch retained.state {
+            case "applying":
+                statusNotice = "The original execution is still in progress. Check its status again after completion."
+            case "outcomeUnknown":
+                statusNotice = "The helper still reports an unknown outcome. Inspect and load the current structure before another preview."
+            default:
+                statusNotice = "Retained execution acknowledgement loaded. Load the current structure before preparing another preview."
+            }
+        } catch {
+            self.error = "Execution status could not be verified. Retained execution evidence is kept. " + error.localizedDescription
+        }
+    }
+
     private func matchesExecution(_ value: StructureOutcome, plan: StructurePlan, executionID: String) -> Bool {
         guard value.valid, value.executionId.utf8.elementsEqual(executionID.utf8),
               value.planId.utf8.elementsEqual(plan.id.utf8), value.steps.count == plan.sql.count else { return false }

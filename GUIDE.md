@@ -675,6 +675,19 @@ acknowledgements stay unknown even when a subsequent read finds matching schema;
 DBeer never retries them automatically. Rename reviews retain the original target
 and execution identity alongside the resulting target for explicit reconciliation.
 
+**Check Execution Status** reads retained acknowledgements from the original
+helper session. Recovered evidence must match the exact execution, reviewed
+plan and SQL step count, and preserves any already acknowledged steps. The
+lookup keeps the original session binding. An unavailable helper or missing
+report leaves the outcome unresolved; matching schema alone cannot confirm an
+uncertain execution.
+
+**Reconcile** explicitly loads current structure before another preview. If the
+original database connection is unusable, it waits for acknowledged session
+closure or confirmed helper exit, then opens a fresh dedicated connection.
+Execution reports and reviewed intent stay available through closure,
+connection and loading failures. A successful load keeps those reports in
+Execution History while the next draft receives a new baseline and preview.
 
 Reviewed drafts, SQL and execution/observation reports remain in memory for the
 workspace session, including after reconciliation or reopening a table. Closing

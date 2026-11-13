@@ -92,6 +92,7 @@ struct TableStructureEditorView: View {
                         legacyOutcome(outcome)
                     }
                     history
+                    if let notice = model.statusNotice { Text(notice).font(.caption).appSecondaryText().textSelection(.enabled) }
                     if let notice = model.fileNotice { Text(notice).font(.caption).appSecondaryText().textSelection(.enabled) }
                     if let error = model.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
@@ -206,6 +207,12 @@ struct TableStructureEditorView: View {
             if model.isBusy {
                 ProgressView().controlSize(.small)
                 Button("Stop") { if !model.closing { Task { await model.stop() } } }.controlHover().disabled(model.closing)
+            }
+            if model.outcomeReview != nil {
+                Button("Check Execution Status") { Task { await model.checkExecutionStatus() } }
+                    .controlHover().disabled(!model.canCheckExecutionStatus)
+                    .help("Read retained acknowledgement from the original helper session before loading current structure.")
+                    .accessibilityIdentifier("structureCheckExecutionStatus")
             }
             Button("Preview SQL") { Task { await model.preparePreview() } }.controlHover().disabled(!model.canPreview || model.closing)
             Button("Apply") { Task { await model.apply() } }.controlHover().disabled(!model.canApply || model.closing)

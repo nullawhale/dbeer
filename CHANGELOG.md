@@ -101,6 +101,13 @@
   component atomically in the local Preview/Apply draft, preserve original values
   and reject changed or uneditable source contexts.
 
+- Recover retained table-structure execution acknowledgements through explicit
+  original-session status checks. Match execution, plan and per-step evidence,
+  preserve unknown outcomes when evidence is unavailable, and let explicit
+  reconciliation retire an unusable connection before opening a fresh dedicated
+  session. Keep reviewed intent and reports through recovery failures and require
+  a fresh baseline and preview before another Apply.
+
 - Arrange ER diagrams in cancellable background tasks while preserving manual
   placements and rejecting obsolete layout results. Add explicit schema
   observation through dedicated readonly connections: reviewed PostgreSQL
