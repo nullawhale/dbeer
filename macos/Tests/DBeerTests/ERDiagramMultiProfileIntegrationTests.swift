@@ -108,6 +108,15 @@ struct ERDiagramMultiProfileIntegrationTests {
             workspace.rebindERDiagramTable(document, original: stale, replacement: right)
             await workspace.buildERDiagram(document, profileID: second.id)
             try #require(graph.metadata[right]?.columnState.isAvailable == true)
+            let snapshot = try workspace.erDiagramExportSnapshot(document, scope: .diagram)
+            let raw = try JSONSerialization.jsonObject(with: snapshot.originalMetadata()) as? [String: Any]
+            let tableMetadata = try #require(raw?["tables"] as? [[String: Any]])
+            #expect(tableMetadata.filter { $0["name"] as? String == parentName }.count == 2)
+            #expect(Set(tableMetadata.compactMap { $0["profileName"] as? String }) == Set([first.name, second.name]))
+            for format in [ERDiagramExportFormat.png, .pdf, .svg] {
+                let bytes = try ERDiagramExportRenderer.render(snapshot, format: format, options: .init())
+                #expect(!bytes.isEmpty)
+            }
             let firstFacts = graph.metadata[left]
             try #require(await workspace.disconnectProfile(second.id))
             #expect(graph.metadata[left]?.columnState == firstFacts?.columnState && graph.sourceState(first.id).context != nil)
@@ -118,6 +127,11 @@ struct ERDiagramMultiProfileIntegrationTests {
             await workspace.buildERDiagram(document, profileID: second.id, connect: true)
             try #require(graph.metadata[right]?.columnState.isAvailable == true && graph.sourceState(second.id).context != nil)
             graph.select(rightChild)
+            let remaining = try workspace.prepareERDiagramExport(document, scope: .selectedTable)
+            #expect(Set(remaining.sourceBindings.keys) == [second.id] && remaining.snapshot.profileName == second.name)
+            let remainingFile = root.appendingPathComponent("remaining-owner.svg")
+            await workspace.exportERDiagram(document, invocation: remaining, format: .svg, options: .init(scope: .selectedTable), to: remainingFile)
+            #expect(FileManager.default.fileExists(atPath: remainingFile.path))
             for sql in workspace.documents.filter({ !$0.isERDiagram }).reversed() {
                 await workspace.closeDocument(sql)
             }

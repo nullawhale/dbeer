@@ -92,6 +92,7 @@ struct ERDiagramView: View {
                 Button("Fit All", action: fit).buttonStyle(.borderless).controlHover().padding(.horizontal, 6)
             }
             Divider().frame(height: 22)
+            ERDiagramExportControls(document: document, graph: model, workspace: workspace)
             Menu {
                 Button("Auto Layout (Keep Manual Positions)") { model.autoLayout(); fit() }
                 Button("Reset Layout") { model.autoLayout(reset: true); fit() }

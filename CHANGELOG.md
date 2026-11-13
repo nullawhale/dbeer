@@ -39,6 +39,15 @@
   including external local-link endpoints, and distinguish pending decisions
   from accepted source retirement.
 
+- Export captured ER areas or the selected table to PNG, PDF and SVG with
+  Light/Dark appearance, PNG scale, manual placement and collapsed cards.
+  Include relationship kinds, external profile labels and incomplete metadata
+  notices; visibly escape control characters, mark shortened labels and retain
+  exact original names and graph facts in file metadata. Add bounded background
+  rendering, Stop, guarded new-file publication and owned cleanup through source
+  teardown. Preserve active work through cancelled close decisions and restore
+  export readiness after failed or cancelled cleanup.
+
 - Discover declared incoming PostgreSQL/MySQL/SQLite foreign keys and open child
   rows from a stored parent row in the current view or an independent tab.
   Preserve complete composite mappings, canonical target identity and exact key

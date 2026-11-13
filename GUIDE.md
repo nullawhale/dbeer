@@ -469,6 +469,38 @@ area still has a separate 100-table limit.
 Drag cards to preserve manual positions, drag or scroll the background to pan,
 and pinch, Option-scroll or use the toolbar to zoom. **Fit All**, **Focus** and
 **Auto Layout** help navigate the graph; **Reset Layout** clears manual placement.
+The diagram's **Export** menu saves PNG, PDF or SVG. Choose **All Tables in
+Diagram** or **Selected Table**, Light/Dark appearance and a 1×, 2× or 3× PNG
+scale. Selection, manual positions, collapsed cards and loaded facts are captured
+when Export is chosen, before selecting the destination. Export works with a
+disconnected diagram and uses its captured metadata; unloaded, partial, stale and
+unavailable facts remain visible in the legend. It never reads table rows or
+connects to fill missing facts.
+
+The exported area includes relationship routes, external profile labels and a
+coverage legend. Declared foreign keys and confirmed local relationships retain
+their distinct styles and validation notices. Long labels use an explicit **…**;
+control characters and backslashes use reversible escapes. Original UTF-8 names,
+ordered key mappings, column details, metadata states and positions are embedded
+in each format's metadata. These notices also describe columns hidden by collapsed
+cards and relationships outside the selected area.
+
+Choose a new filename; existing files are kept. Rendering and file verification
+run in the background with **Stop Export** and guarded publication. Cancelled
+close decisions and unrelated tab navigation preserve active exports. Accepted
+closure or Disconnect of their source and application shutdown wait for owned
+cleanup. Captured external local-link endpoints also retain their source owner.
+During a profile Disconnect decision, existing exports keep running; new exports
+wait only for decisions involving their captured owners. Changed source identities
+stop an outdated export; concurrent destination
+changes are preserved. Confirmed exports remain saved, and the menu becomes
+available again after failed or cancelled work finishes cleanup.
+
+Exports allow at most 16 MiB of text/metadata and 64 MiB of encoded output. PNG
+images are limited to 16,384 pixels per side and 32 million pixels in total.
+Very large vector arrangements are also bounded. Select fewer tables, collapse
+cards or reduce the PNG scale when an export exceeds these limits.
+
 The table list and relationship details provide keyboard-accessible navigation.
 **Open Data**, **Open Data in New Tab** and **Show Structure** reuse the existing
 catalog actions; diagram loading itself never reads table rows.

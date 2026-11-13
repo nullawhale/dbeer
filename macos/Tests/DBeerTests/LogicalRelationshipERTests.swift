@@ -72,6 +72,21 @@ struct LogicalRelationshipERTests {
         #expect(model.relationships.isEmpty && model.relationshipRoutes.isEmpty)
     }
 
+    @Test func confirmedViewMappingsExportWithoutRelaxingDeclaredForeignKeys() throws {
+        let first = profile(), second = profile("Target")
+        var relationship = link(first, second)
+        relationship.target = .init(profile: second, reference: .init(schema: "public", name: "readable_view", kind: "view"))
+        let table = relationship.source.tableID
+        let edge = try #require(LogicalRelationshipER.edges([relationship], tables: [table], metadata: [:], profiles: [first, second], metadataIsCurrent: false).first)
+        #expect(edge.kind == .logical && edge.key.target.kind == "view" && edge.isValid)
+        #expect(!ERRelationship(source: table, key: edge.key).isValid)
+        let snapshot = ERDiagramExportSnapshot(title: "View mapping", profileName: first.name, scope: .diagram,
+            tables: [table], metadata: [:], placements: [.init(table: table, point: .init(x: 0, y: 0))], collapsed: [],
+            relationships: [edge], relationshipDescriptions: [.init(id: edge.id, kind: .logical, targetProfileName: second.name)], notice: edge.validationNotice)
+        try snapshot.validate()
+        let original = String(decoding: try snapshot.originalMetadata(), as: UTF8.self)
+        #expect(original.contains("readable_view") && original.contains("logical"))
+    }
 
     @Test func combinedServerAndLocalEdgesStayBoundedWithVisibleExportedNotice() {
         let first = profile(), second = profile("Target"), relationship = link(first, second)

@@ -64,6 +64,7 @@ extension ApplicationWorkspace {
               expectedTables == nil || model.stored.tables.filter({ $0.profileID == profileID }) == expectedTables else { return }
         stopERDiagramSource(model, profileID: profileID, reason: "This source was removed from the diagram.")
         model.removeSource(profileID)
+        retireChangedERDiagramExports()
     }
 
     /// Called only after the user reviews the old and new exact ownership.
@@ -74,7 +75,7 @@ extension ApplicationWorkspace {
               expectedDestinationFingerprint == nil || LogicalRelationshipEndpoint.fingerprint(profile) == expectedDestinationFingerprint else { return }
         stopERDiagramSource(model, profileID: original.profileID, reason: "An object is being rebound.")
         if replacement.profileID != original.profileID { stopERDiagramSource(model, profileID: replacement.profileID, reason: "An object is being rebound.") }
-        do { try model.rebind(original, to: replacement, profile: profile) }
+        do { try model.rebind(original, to: replacement, profile: profile); retireChangedERDiagramExports() }
         catch { model.notice = error.localizedDescription }
     }
 

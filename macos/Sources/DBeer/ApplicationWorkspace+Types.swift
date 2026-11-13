@@ -27,9 +27,11 @@ extension ApplicationWorkspace {
                     }
                 } else {
                     stopERDiagramSource(model, profileID: source.profileID, reason: "The saved source is missing or changed. Rebind its objects explicitly before loading.")
+                    Task { await closeERDiagramExports(profileID: source.profileID) }
                 }
             }
         }
+        retireChangedERDiagramExports(profiles: profiles)
         if let model = typeInspection, revisions[model.reference.profileID] != model.reference.settingsRevision {
             invalidatePostgresTypeModel(model, reason: "The saved connection or its policy changed. Reopen the type with the current connection.")
         }

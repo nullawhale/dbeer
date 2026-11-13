@@ -499,6 +499,7 @@ final class ApplicationWorkspace: ObservableObject {
     var databaseSearchWindow: DatabaseValueSearchWindowController?
     var databaseSearchModel: DatabaseValueSearchModel?
     var gridProfileServers: [UUID: GridProfileServerOwner] = [:]
+    var erDiagramExports: [UUID: ERDiagramExportOwner] = [:]
     var databaseSearchProfileObservation: AnyCancellable?
     var databaseSearchPresentation = SessionMonitorPresentationIntent()
     var databaseSearchRequestedProfileID: UUID?
@@ -1471,10 +1472,12 @@ final class ApplicationWorkspace: ObservableObject {
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.profile(id)) else { return false }
+        retireERDiagramSourceOwners(profileID: id)
         invalidateERDiagrams(profileID: id, includePreparing: true, reason: "The profile is disconnecting. Connect and Build explicitly to reload metadata.")
         invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
         await closeDatabaseValueSearch(profileID: id)
         await closeGridProfileServers(profileID: id)
+        await closeERDiagramExports(profileID: id)
         if let connecting = profileConnections[id] {
             services[id]?.cancelConnection()
             connecting.cancel()
@@ -1610,6 +1613,7 @@ final class ApplicationWorkspace: ObservableObject {
         document.incomingRelationships?.stop()
         let runtimeDocuments = runtimeDocuments(in: document)
         await closeGridProfileServers(documentIDs: Set(([document] + runtimeDocuments).map(\.id)))
+        await closeERDiagramExports(documentIDs: [document.id])
         for child in runtimeDocuments {
             await child.runtime?.shutdown()
             child.runtime = nil
@@ -3902,6 +3906,10 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     /// Local export ownership does not depend on a live helper or connection.
+    func erExportDocumentIsCurrent(_ document: SQLDocument, model: ERDiagramModel) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && documents.contains(where: { $0 === document }) &&
+            document.erDiagramModel === model && document.profileID == model.stored.profileID
+    }
 
     var canInspectPostgresTypes: Bool { shutdownTask == nil && !isClosing && !helperFailed }
 
@@ -3939,6 +3947,7 @@ final class ApplicationWorkspace: ObservableObject {
         await closeSessionMonitor()
         await closeDatabaseValueSearch()
         await closeGridProfileServers()
+        await closeERDiagramExports()
         await stopLogicalRelationshipNavigations()
         await dataTransfer?.close(); dataTransfer = nil
         await databaseTools?.close(); databaseTools = nil
