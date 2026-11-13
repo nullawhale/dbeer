@@ -469,6 +469,10 @@ area still has a separate 100-table limit.
 Drag cards to preserve manual positions, drag or scroll the background to pan,
 and pinch, Option-scroll or use the toolbar to zoom. **Fit All**, **Focus** and
 **Auto Layout** help navigate the graph; **Reset Layout** clears manual placement.
+Arrangement runs in a cancellable background task over captured graph facts.
+Manual positions survive ordinary Auto Layout; moving a card or changing the
+selected area retires an obsolete arrangement before it can replace newer work.
+
 The diagram's **Export** menu saves PNG, PDF or SVG. Choose **All Tables in
 Diagram** or **Selected Table**, Light/Dark appearance and a 1×, 2× or 3× PNG
 scale. Selection, manual positions, collapsed cards and loaded facts are captured
@@ -504,6 +508,31 @@ cards or reduce the PNG scale when an export exceeds these limits.
 The table list and relationship details provide keyboard-accessible navigation.
 **Open Data**, **Open Data in New Tab** and **Show Structure** reuse the existing
 catalog actions; diagram loading itself never reads table rows.
+
+The bell menu offers **Observe Schema Changes** for a connected PostgreSQL or
+MySQL diagram. Enable it explicitly, then Build to refresh the diagram baseline.
+Observation uses its own readonly connection. Changes mark metadata stale;
+**Build / Update** explicitly refreshes the graph. **Stop Schema Observation**
+releases that connection. A changed profile or selected area, connection failure
+or incomplete observation stops collection and leaves a notice. Observation is
+session-only; reopen a saved diagram and enable it explicitly when needed.
+Pending or cancelled close decisions preserve active Build, search, discovery and
+observation. Accepted closure or disconnection of their source ends that work.
+
+For PostgreSQL, **Review Notification Installation SQL…** opens the exact setup
+script in an ordinary SQL tab. Review it and use **Run Script** through the normal
+execution policy. Installation requires a PostgreSQL superuser and creates the
+`dbeer_schema_watch_v1` schema, function and database-wide DDL event trigger.
+Committed DDL notifications are collected on the observer's connection. The
+expected function, schema marker and unfiltered trigger identity are checked;
+an altered or tag-filtered installation requires explicit inspection.
+**Review Notification Removal SQL…** opens guarded removal SQL for the same
+review and execution flow. The installed server objects remain until removal.
+
+MySQL checks fingerprints of the selected tables' columns, foreign keys and
+indexes every five seconds. Collections are bounded, separate best-effort reads.
+Permission gaps, server warnings and changing or limited metadata remain visible;
+these observations require a fresh explicit Build before relying on the graph.
 
 Diagrams retain at most 100 selected tables, 10,000 columns, 1,000 complete FKs
 and 16 MiB of normalized metadata. Existing per-response catalog limits still

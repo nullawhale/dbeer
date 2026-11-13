@@ -84,6 +84,13 @@
   component atomically in the local Preview/Apply draft, preserve original values
   and reject changed or uneditable source contexts.
 
+- Arrange ER diagrams in cancellable background tasks while preserving manual
+  placements and rejecting obsolete layout results. Add explicit schema
+  observation through dedicated readonly connections: reviewed PostgreSQL
+  notification installation/removal SQL and bounded MySQL selected-table
+  fingerprints. Mark changed metadata stale for explicit rebuilding, surface
+  incomplete observations and keep observer state transient.
+
 - Add table-cell context actions for equality, exclusion, selected-value lists
   and NULL predicates through the existing filter draft and explicit Apply.
   Preserve nested groups, exact numbers and binary values, and bind SQLite

@@ -175,6 +175,10 @@ extension ApplicationWorkspace {
 
     func stopERDiagramSource(_ model: ERDiagramModel, profileID: UUID, reason: String = "Stopped loading. Build this source explicitly to retry.") {
         let state = model.sourceState(profileID)
+        if let observation = state.observation {
+            model.sourceStates[profileID, default: .init()].observation = nil
+            Task { await observation.stop() }
+        }
         var requests: [(CatalogMetadataRequest?, ERDiagramLoadContext?)] = [(state.request, state.context)]
         if model.searchContext?.profileID == profileID {
             requests.append((model.searchRequest, model.searchContext)); model.isSearching = false
@@ -210,8 +214,81 @@ extension ApplicationWorkspace {
         model.visibleTableDiscovery?.stop(); model.neighbourDiscovery?.stop()
     }
 
+    func toggleERSchemaObservation(_ document: SQLDocument) async {
+        guard canStartOperation(document), let model = document.erDiagramModel else { return }
+        let id = model.activeSourceID
+        if let previous = model.sourceState(id).observation {
+            let wasEnabled = previous.enabled
+            await previous.stop()
+            if model.sourceState(id).observation === previous { model.sourceStates[id, default: .init()].observation = nil }
+            if wasEnabled { return }
+        }
+        guard canStartERSource(id), let observation = makeERSchemaObservation(document, profileID: id) else { return }
+        model.sourceStates[id, default: .init()].observation = observation
+        await observation.start()
+    }
 
+    func reviewERSchemaObservationSQL(_ document: SQLDocument, remove: Bool) async {
+        guard canStartOperation(document), let model = document.erDiagramModel else { return }
+        let id = model.activeSourceID
+        if let previous = model.sourceState(id).observation {
+            await previous.stop()
+            if model.sourceState(id).observation === previous { model.sourceStates[id, default: .init()].observation = nil }
+        }
+        guard canStartERSource(id), let observation = makeERSchemaObservation(document, profileID: id), let context = erDiagramContext(model, profileID: id),
+              let profile = library.savedConnections.first(where: { $0.id == context.profileID }) else { return }
+        model.sourceStates[id, default: .init()].observation = observation
+        do {
+            let result = try await observation.preview(remove: remove)
+            guard erDiagramBindingIsCurrent(document, model: model, context: context), let sql = result.sql else { return }
+            let draft = SQLDocument(title: remove ? "Remove Schema Notifications" : "Install Schema Notifications", text: sql, profileID: profile.id)
+            draft.historyConnectionNotice = "Review the exact generated PostgreSQL setup SQL and use Run Script explicitly. The normal execution policy applies. Enable observation separately after successful execution."
+            _ = addDocument(draft, in: pane(containing: document.id))
+        } catch { model.notice = error.localizedDescription }
+    }
 
+    private func makeERSchemaObservation(_ document: SQLDocument, profileID: UUID) -> ERSchemaObservation? {
+        guard canStartOperation(document), let model = document.erDiagramModel,
+              let context = erDiagramContext(model, profileID: profileID), [.postgresql, .mysql].contains(context.engine),
+              let profile = library.savedConnections.first(where: { $0.id == context.profileID }),
+              let binding = SessionMonitorProfileBinding(profile) else { return nil }
+        let tables = model.stored.tables.filter { $0.profileID == context.profileID }
+        guard !tables.isEmpty else { return nil }
+        let selection = tables.map { SchemaObservationTable(schema: $0.schema, name: $0.name) }
+        let attempt = UUID()
+        let reviewID = "schema-observation:\(attempt.uuidString)"
+        let lease = SessionMonitorClientLease()
+        let current: @MainActor () -> Bool = { [weak self, weak document, weak model] in
+            guard let self, let document, let model else { return false }
+            return self.erDiagramBindingIsCurrent(document, model: model, context: context) &&
+                model.stored.tables.filter { $0.profileID == context.profileID } == tables && binding.matches(in: self.library.savedConnections)
+        }
+        return ERSchemaObservation(engine: profile.engine, tables: selection, connect: { [weak self] in
+            guard let self, current() else { throw CancellationError() }
+            var settings = try await self.readonlyOperationSettings(profile, attempt: attempt)
+            guard current() else { throw CancellationError() }
+            let client = try await self.ensureHelper()
+            guard await client.supportsSchemaObservation() else { throw ERDiagramFailure("This helper does not support schema observation.") }
+            settings.sessionPurpose = "monitor"; settings.policy.readOnly = true
+            try await SSHConnectionReview.prepare(settings, client: client, ownerID: attempt, reviewID: reviewID)
+            guard current() else { throw CancellationError() }
+            lease.client = client
+            let reply = try await client.request(.connect(settings))
+            guard let session = reply.sessionId else { throw BackendTransportError(.invalidMessage) }
+            guard current(), reply.capabilities?.contains("schemaObservationV1") == true else {
+                _ = try? await client.request(.disconnect(sessionId: session)); throw CancellationError()
+            }
+            return session
+        }, send: { command in
+            guard let client = lease.client else { throw BackendTransportError(.notReady) }
+            return try await client.request(command)
+        }, isCurrent: current, cancelPreparation: {
+            SSHConnectionReview.cancel(ownerID: attempt)
+            SSHConnectionReview.cancel(profileId: reviewID)
+            SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, attempt))
+        }, metadataChanged: { [weak model] reason in model?.markObservedSchemaStale(reason, profileID: context.profileID) },
+            changed: { [weak model] in model?.objectWillChange.send() })
+    }
     func invalidateERDiagrams(profileID: UUID? = nil, includePreparing: Bool = false, reason: String) {
         for document in documents {
             if profileID == nil || document.profileID == profileID { document.incomingRelationships?.stop() }
@@ -219,7 +296,7 @@ extension ApplicationWorkspace {
             if let profileID {
                 guard model.ownsSource(profileID) else { continue }
                 let state = model.sourceState(profileID)
-                guard includePreparing || state.context != nil || state.request != nil ||
+                guard includePreparing || state.context != nil || state.request != nil || state.observation != nil ||
                     model.searchContext?.profileID == profileID || model.visibleTableDiscovery?.profileID == profileID ||
                     model.neighbourDiscovery?.target.profileID == profileID else { continue }
                 stopERDiagramSource(model, profileID: profileID, reason: reason)

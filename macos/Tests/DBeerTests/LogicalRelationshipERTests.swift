@@ -24,8 +24,9 @@ struct LogicalRelationshipERTests {
         #expect(Data(edge.key.columns[0].source.utf8) != Data(edge.key.columns[0].target.utf8))
         for table in [source, target] {
             let geometry = ERDiagramRouting.Geometry(tables: [table], placements: [.init(table: table, point: .init(x: 0, y: 0))], metadata: [:], collapsed: [])
-            let routes = ERDiagramRouting.routes(geometry, relationships: edges)
+            let routes = ERDiagramRouting.routes(geometry, relationships: edges, isCancelled: { false })
             #expect(routes.count == 1 && routes[0].points.count >= 2 && routes[0].relationshipID == edge.id)
+            #expect(ERDiagramRouting.routes(geometry, relationships: edges, isCancelled: { true }).isEmpty)
         }
     }
     @Test func changedOrMissingProfilesRemainVisibleWithReasonsAndNeverRebind() throws {

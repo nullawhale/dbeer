@@ -415,7 +415,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -431,6 +431,14 @@ func ParseCommand(frame []byte) (Command, error) {
 			if !required(fields, "sequence") || json.Unmarshal(fields["sequence"], &command.Sequence) != nil || command.Sequence < 1 {
 				return command, failure
 			}
+		}
+		if command.Type == "monitor.schema" {
+			allowed["schemaObservation"] = true
+			request, ok := parseSchemaObservation(fields["schemaObservation"])
+			if !ok {
+				return command, failure
+			}
+			command.SchemaObservation = request
 		}
 		if strings.HasPrefix(command.Type, "import.") {
 			allowed["tableImport"] = true
@@ -959,6 +967,13 @@ func (response Response) MarshalJSON() ([]byte, error) {
 			return nil, errors.New("invalid database tools response")
 		}
 		fields["databaseTools"] = response.DatabaseTools
+	case "monitor.schema.result":
+		if response.SchemaObservation == nil || !response.SchemaObservation.Valid() || !response.Connected || response.TransactionStatus != "idle" {
+			return nil, errors.New("invalid schema observation response")
+		}
+		fields["schemaObservation"] = response.SchemaObservation
+		fields["connected"] = response.Connected
+		fields["transactionStatus"] = response.TransactionStatus
 	case "monitor.result":
 		if response.Monitor == nil || !response.Monitor.Valid() || !response.Connected || response.TransactionStatus != "idle" {
 			return nil, errors.New("invalid session monitor response")

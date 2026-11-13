@@ -191,6 +191,11 @@ final class ERDiagramModel: ObservableObject {
     @Published var sourceStates: [UUID: ERDiagramSourceState] = [:]
     var isLoading: Bool { sourceStates.values.contains { $0.loading } }
     var activeSourceIsLoading: Bool { sourceState(activeSourceID).loading }
+    @Published private(set) var isLayingOut = false
+    var schemaObservation: ERSchemaObservation? {
+        get { sourceState(activeSourceID).observation }
+        set { sourceStates[activeSourceID, default: .init()].observation = newValue }
+    }
     @Published var visibleTableDiscovery: VisibleTableDiscoveryModel?
     @Published var neighbourDiscovery: IncomingRelationshipDiscoveryModel?
     var progress: Int {
@@ -219,6 +224,8 @@ final class ERDiagramModel: ObservableObject {
     var changed: (() -> Void)?
     var localRelationships: (() -> [ERRelationship])?
     private var routedRelationshipSignature: [[Data]] = []
+    private var layoutTask: Task<[ERPlacement], Never>?
+    private var layoutRevision: UInt64 = 0
     private var routedGeometry: ERDiagramRouting.Geometry?
     private var cachedRoutes: [ERDiagramRoute] = []
 
@@ -265,13 +272,14 @@ final class ERDiagramModel: ObservableObject {
     func add(_ table: ERTableID) {
         guard ownsSource(table.profileID), table.isValid, !stored.tables.contains(table) else { return }
         guard stored.tables.count < ERDiagramLimits.tables else { notice = "Select at most 100 tables."; return }
-        stored.tables.append(table); changed?()
+        cancelLayout(); stored.tables.append(table); changed?()
     }
     /// Explicit discovery may resolve an alias using the connected server's
     /// own identifier rules. Only draft identity/presentation changes here.
     func adoptCanonicalIdentity(_ original: ERTableID, resolved: ERTableID) {
         guard original != resolved, original.profileID == resolved.profileID, ownsSource(resolved.profileID),
               resolved.isValid, stored.tables.contains(original) else { return }
+        cancelLayout()
         let alreadyPresent = stored.tables.contains(resolved)
         stored.tables = stored.tables.compactMap { $0 == original ? (alreadyPresent ? nil : resolved) : $0 }
         if alreadyPresent { stored.placements.removeAll { $0.table == original } }
@@ -285,6 +293,7 @@ final class ERDiagramModel: ObservableObject {
     }
 
     func remove(_ table: ERTableID) {
+        cancelLayout()
         stored.tables.removeAll { $0 == table }; stored.placements.removeAll { $0.table == table }
         stored.collapsed.removeAll { $0 == table }
         if stored.selected == table { neighbourDiscovery?.stop(); neighbourDiscovery = nil; stored.selected = nil }
@@ -293,6 +302,7 @@ final class ERDiagramModel: ObservableObject {
     }
     func setMetadata(_ facts: ERTableMetadata) {
         logicalMetadataRevision &+= 1
+        cancelLayout()
         metadata[facts.table] = facts
         // Identifier matching uses exact UTF-8, while synthesized metadata
         // equality treats canonically equivalent Swift strings as equal.
@@ -338,6 +348,7 @@ final class ERDiagramModel: ObservableObject {
     }
     func removeSource(_ profileID: UUID) {
         guard ownsSource(profileID) else { return }
+        cancelLayout()
         let removed = Set(stored.tables.filter { $0.profileID == profileID })
         stored.tables.removeAll { removed.contains($0) }; stored.placements.removeAll { removed.contains($0.table) }
         stored.collapsed.removeAll { removed.contains($0) }
@@ -379,6 +390,7 @@ final class ERDiagramModel: ObservableObject {
         let id = profileID ?? activeSourceID
         logicalMetadataRevision &+= 1
         notice = nil
+        cancelLayout()
         sourceStates[id, default: .init()].generation &+= 1
         sourceStates[id, default: .init()].loading = true
         sourceStates[id, default: .init()].progress = 0
@@ -395,7 +407,7 @@ final class ERDiagramModel: ObservableObject {
         sourceStates[profileID, default: .init()].loading = false
     }
     func invalidateSource(_ profileID: UUID, reason: String) {
-        logicalMetadataRevision &+= 1
+        logicalMetadataRevision &+= 1; cancelLayout()
         sourceStates[profileID, default: .init()].generation &+= 1
         sourceStates[profileID, default: .init()].loading = false
         sourceStates[profileID, default: .init()].context = nil
@@ -410,17 +422,38 @@ final class ERDiagramModel: ObservableObject {
     }
     func move(_ table: ERTableID, to point: ERPoint, manual: Bool = true) {
         guard point.isValid, stored.tables.contains(table) else { return }
-        stored.placements.removeAll { $0.table == table }; stored.placements.append(.init(table: table, point: point, manual: manual)); changed?()
+        cancelLayout(); stored.placements.removeAll { $0.table == table }; stored.placements.append(.init(table: table, point: point, manual: manual)); changed?()
     }
     func select(_ table: ERTableID?) { if let table { selectSource(table.profileID) }; if stored.selected != table { neighbourDiscovery?.stop(); neighbourDiscovery = nil }; stored.selected = table; selectedRelationshipID = nil; changed?() }
-    func autoLayout(reset: Bool = false) {
-        stored.placements = ERDiagramLayout.positions(tables: stored.tables, relationships: relationships,
-            metadata: metadata, preserving: reset ? [] : stored.placements.filter(\.manual), collapsed: Set(stored.collapsed))
+    func autoLayout(reset: Bool = false) async {
+        cancelLayout()
+        let revision = layoutRevision
+        let loadGeneration = generation
+        let tables = stored.tables, edges = relationships, facts = metadata
+        let manual = reset ? [] : stored.placements.filter(\.manual)
+        let collapsed = Set(stored.collapsed)
+        isLayingOut = true
+        let task = Task.detached(priority: .userInitiated) {
+            ERDiagramLayout.positions(tables: tables, relationships: edges, metadata: facts, preserving: manual, collapsed: collapsed)
+        }
+        layoutTask = task
+        let placements = await withTaskCancellationHandler(operation: { await task.value }, onCancel: { task.cancel() })
+        guard revision == layoutRevision else { return }
+        layoutTask = nil; isLayingOut = false
+        guard !task.isCancelled, !Task.isCancelled, generation == loadGeneration, stored.tables == tables,
+              placements.count == tables.count else { return }
+        stored.placements = placements
         changed?()
     }
-
-
+    func cancelLayout() {
+        layoutRevision &+= 1; layoutTask?.cancel(); layoutTask = nil; isLayingOut = false
+    }
+    func markObservedSchemaStale(_ reason: String, profileID: UUID? = nil) {
+        let id = profileID ?? activeSourceID
+        invalidateSource(id, reason: reason)
+    }
     func toggleCollapse(_ table: ERTableID) {
+        cancelLayout()
         if stored.collapsed.contains(table) { stored.collapsed.removeAll { $0 == table } }
         else { stored.collapsed.append(table) }
         changed?()

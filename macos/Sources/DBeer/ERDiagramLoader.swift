@@ -54,7 +54,7 @@ enum ERDiagramLoader {
                   retained.reduce(0, { $0 + $1.retainedBytes }) + facts.retainedBytes <= ERDiagramLimits.metadataBytes else {
                 model.notice = "Diagram metadata limit reached. Remaining selected tables are not loaded; narrow the area and Build again."
                 model.sourceStates[profileID, default: .init()].notice = model.notice
-                model.autoLayout()
+                await model.autoLayout()
                 return
             }
             model.setMetadata(facts); model.sourceStates[profileID, default: .init()].progress += 1
@@ -63,7 +63,7 @@ enum ERDiagramLoader {
         guard current() else { return }
         let complete = tables.filter { model.metadata[$0]?.columnState.isAvailable == true && model.metadata[$0]?.relationshipState.isAvailable == true }.count
         model.sourceStates[profileID, default: .init()].notice = "Complete metadata for \(complete)/\(tables.count) selected tables. Metadata is a best-effort read. Arrows point from FK to referenced table; no cardinality is inferred. Incoming keys from unselected tables are outside this diagram's scope."
-        model.autoLayout()
+        await model.autoLayout()
     }
     private static func safeError(_ error: Error, collection: String) -> String {
         if let failure = error as? ERDiagramFailure { return failure.message }

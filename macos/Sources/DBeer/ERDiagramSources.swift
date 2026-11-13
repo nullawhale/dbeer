@@ -53,4 +53,5 @@ struct ERDiagramSourceState {
     var loading = false
     var progress = 0
     var notice: String? = "Not loaded. Build this source explicitly."
+    var observation: ERSchemaObservation?
 }

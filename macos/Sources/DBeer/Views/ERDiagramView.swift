@@ -18,6 +18,9 @@ struct ERDiagramView: View {
         VStack(spacing: 0) {
             toolbar.padding(8)
             Divider()
+            if let observationNotice = model.schemaObservation?.notice {
+                Text(observationNotice).font(.caption).appSecondaryText().frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 6)
+            }
             HSplitView {
                 if tablesPanel.wrappedValue {
                     ERDiagramAreaPanel(model: model, workspace: workspace, document: document, focus: focus)
@@ -82,6 +85,23 @@ struct ERDiagramView: View {
                 .accessibilityIdentifier("erBuild")
             }
             Spacer(minLength: 4)
+            if [.postgresql, .mysql].contains(model.activeEngine) {
+                Menu {
+                    Button(model.schemaObservation?.enabled == true ? "Stop Schema Observation" : "Observe Schema Changes") {
+                        Task { await workspace.toggleERSchemaObservation(document) }
+                    }.disabled(model.schemaObservation?.enabled != true && (!connected || model.activeSourceIsLoading || model.schemaObservation?.isBusy == true || model.stored.tables.isEmpty))
+                    if model.activeEngine == .postgresql {
+                        Button("Review Notification Installation SQL…") { Task { await workspace.reviewERSchemaObservationSQL(document, remove: false) } }
+                            .disabled(!connected || model.schemaObservation?.isBusy == true)
+                        Button("Review Notification Removal SQL…") { Task { await workspace.reviewERSchemaObservationSQL(document, remove: true) } }
+                            .disabled(!connected || model.schemaObservation?.isBusy == true)
+                    }
+                } label: { Image(systemName: model.schemaObservation?.enabled == true ? "bell.badge" : "bell") }
+                    .menuStyle(.borderlessButton).fixedSize().controlHover().help("Observe schema changes without rebuilding automatically")
+                    .accessibilityLabel("Schema observation")
+            }
+            ERDiagramExportControls(document: document, graph: model, workspace: workspace)
+            if model.isLayingOut { ProgressView().controlSize(.small).accessibilityLabel("Arranging diagram") }
             HStack(spacing: 2) {
                 ControlIconButton(systemName: "minus.magnifyingglass") { zoom(1 / 1.2) }.help("Zoom out").accessibilityLabel("Zoom out")
                 Button("\(Int(model.stored.viewport.zoom * 100))%") {
@@ -92,10 +112,9 @@ struct ERDiagramView: View {
                 Button("Fit All", action: fit).buttonStyle(.borderless).controlHover().padding(.horizontal, 6)
             }
             Divider().frame(height: 22)
-            ERDiagramExportControls(document: document, graph: model, workspace: workspace)
             Menu {
-                Button("Auto Layout (Keep Manual Positions)") { model.autoLayout(); fit() }
-                Button("Reset Layout") { model.autoLayout(reset: true); fit() }
+                Button("Auto Layout (Keep Manual Positions)") { Task { await model.autoLayout(); fit() } }
+                Button("Reset Layout") { Task { await model.autoLayout(reset: true); fit() } }
             } label: { Image(systemName: "rectangle.3.group") }
                 .menuStyle(.borderlessButton).fixedSize().controlHover().help("Arrange tables").accessibilityLabel("Diagram layout")
             ControlIconButton(systemName: "sidebar.left") { tablesPanel.wrappedValue.toggle() }
