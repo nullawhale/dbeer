@@ -11,6 +11,8 @@ final class ResultGridRowNumberRuler: NSRulerView {
     }
     private var isSelectingRows = false
     var partitionMarkers: [GridPartitionMarker?]?
+    var sourceRowNumbers: [Int] = []
+    var isFiltered = false
     private var numberWidth: CGFloat = 40
     private let selectionHelp = "Select rows. Shift-click to select a range; Command-click to toggle individual rows."
 
@@ -32,7 +34,7 @@ final class ResultGridRowNumberRuler: NSRulerView {
     required init(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func updateRowCount() {
-        let number = String(max(1, table?.numberOfRows ?? 0)) as NSString
+        let number = String(max(1, (sourceRowNumbers.last.map { $0 + 1 }) ?? table?.numberOfRows ?? 0)) as NSString
         numberWidth = max(40, ceil(number.size(withAttributes: [.font: font]).width) + 20)
         let width = numberWidth + (partitionMarkers == nil ? 0 : 88)
         if ruleThickness != width { ruleThickness = width }
@@ -51,6 +53,14 @@ final class ResultGridRowNumberRuler: NSRulerView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         needsDisplay = true
+    }
+
+    private func sourceRowNumber(_ row: Int) -> Int {
+        sourceRowNumbers.indices.contains(row) ? sourceRowNumbers[row] : row
+    }
+
+    private func partitionHelp(_ marker: GridPartitionMarker) -> String {
+        isFiltered ? "Partition \(marker.label)\n\(marker.keyDescription)\nClick to select visible rows in this partition." : marker.help
     }
 
     func partitionMarker(forRow row: Int) -> GridPartitionMarker? {
@@ -138,7 +148,7 @@ final class ResultGridRowNumberRuler: NSRulerView {
             let foreground = AppPalette.isCustom ? AppPalette.nsColor(selected ? .selectionText : .secondaryText) :
                 (selected ? NSColor.labelColor : NSColor.secondaryLabelColor)
             let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: foreground]
-            let number = String(row + 1) as NSString
+            let number = String(sourceRowNumber(row) + 1) as NSString
             let size = number.size(withAttributes: attributes)
             number.draw(at: NSPoint(x: numberWidth - size.width - 10, y: rowRect.midY - size.height / 2),
                 withAttributes: attributes)
@@ -234,7 +244,7 @@ final class ResultGridRowNumberRuler: NSRulerView {
         let point = convert(event.locationInWindow, from: nil)
         let help: String
         if partitionMarkers != nil, point.x >= numberWidth, let hoveredRow {
-            help = partitionMarker(forRow: hoveredRow)?.help ?? "A complete partition key is unavailable for this row."
+            help = partitionMarker(forRow: hoveredRow).map(partitionHelp) ?? "A complete partition key is unavailable for this row."
         } else { help = selectionHelp }
         if toolTip != help { toolTip = help }
     }
@@ -254,7 +264,7 @@ final class ResultGridRowNumberRuler: NSRulerView {
             }
             element.setAccessibilityParent(self)
             element.setAccessibilityRole(.button)
-            element.setAccessibilityLabel("Select row \(row + 1)")
+            element.setAccessibilityLabel("Select row \(sourceRowNumber(row) + 1)")
             element.setAccessibilitySelected(table?.selectedRowIndexes.contains(row) == true)
             element.setAccessibilityHelp(selectionHelp)
             var numberRect = visibleRect
@@ -268,9 +278,9 @@ final class ResultGridRowNumberRuler: NSRulerView {
             }
             partition.setAccessibilityParent(self)
             partition.setAccessibilityRole(.button)
-            partition.setAccessibilityLabel("Select all loaded rows in partition \(marker.label)")
+            partition.setAccessibilityLabel("Select \(isFiltered ? "visible" : "all loaded") rows in partition \(marker.label)")
             partition.setAccessibilityValue(marker.label)
-            partition.setAccessibilityHelp(marker.help)
+            partition.setAccessibilityHelp(partitionHelp(marker))
             partition.setAccessibilityIdentifier("gridPartitionMarker-\(row)")
             partition.setAccessibilitySelected(rows(in: marker).isSubset(of: table?.selectedRowIndexes ?? []))
             if let window {

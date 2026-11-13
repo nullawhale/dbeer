@@ -37,6 +37,10 @@
   complete composite foreign keys, surface access gaps, source changes and MySQL
   metadata warnings, and clean private captures after loading, expiry or disconnect.
 
+- Add local Command-F search to table, SQL-result and snapshot grids, with column
+  scope, matching-cell navigation, loaded-row counts and matching-only filtering.
+  Preserve source-row editing/copying and restore the original selection on clear
+  until another selection or result replaces it.
 - Check operation availability using current adapter/server support, readonly
   policy and object metadata for Explain, structure and result-source actions.
 

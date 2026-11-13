@@ -28,7 +28,8 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
   Change or clear each binding in **Settings → Shortcuts → Sidebar Panels**;
   the strip shows icons and names, with current bindings in tooltips. The commands are
   also in the **View** menu. With editor focus, **⌘F** opens local Find;
-  **Find in Connections** is a separate menu command with a configurable shortcut.
+  with grid focus it searches loaded result cells. **Find in Connections** is a
+  separate menu command with a configurable shortcut.
 - **⌘N** creates a PostgreSQL, MySQL, Cassandra, or MongoDB profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords use macOS Keychain by default; a local CLI can supply dynamic passwords. Settings live in `~/Library/Application Support/DBeer/connections.json`.
 - In **General**, paste a `postgresql://`, `postgres://`, `mysql://` or JDBC-prefixed address into **URL** and choose **Use URL**. Single-host URLs support an explicit database, optional user/password, port, IPv6 and encoded values. PostgreSQL accepts `sslmode` and `sslrootcert`; MySQL accepts `ssl-mode` (or JDBC `sslMode`) and `ssl-ca`. Unsupported options and TLS modes are rejected. Omitted credentials and TLS options keep their current field values. The URL preview excludes passwords; imported passwords move into the Password field and use Keychain on Save. Apply or reset a pending URL before saving or testing.
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
@@ -1025,6 +1026,22 @@ typed bindings and retain exact binary data. Conversion warnings roll back Apply
 Generated columns, missing keys and permissions retain their existing limits.
 Cassandra conditional grid editing retains its scalar, single-partition limits;
 complex values, counters and durations remain available through explicit CQL.
+
+## Find in loaded results (unreleased)
+
+Focus a table, SQL-result or snapshot grid and press **⌘F**. Search is
+case-insensitive and covers **All columns** or the columns selected when choosing
+**Selected columns**. The arrows and Return move between matching cells;
+**⌘G** and **⇧⌘G** navigate while the grid has focus. **Matches only** temporarily
+shows matching loaded rows. The search bar reports the number of loaded rows
+searched and highlights matching cells. Search runs locally over the displayed
+values and sends no SQL.
+
+Closing search or clearing its filter restores the previous selection if another
+cell or row has not been chosen. Replacing the result retires that selection
+bookmark. Filtered cells retain their original row numbers and editing, copying
+and inspection target their source rows. Pending changes keep the normal
+Preview/Apply workflow.
 
 ## Value inspector
 
