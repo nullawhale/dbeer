@@ -506,6 +506,7 @@ final class ApplicationWorkspace: ObservableObject {
     var databaseSearchRequestedProfileID: UUID?
     @Published var isSnapshotsPresented = false
     @Published var isSavedEvidencePresented = false
+    @Published var isPlansPresented = false
     @Published private(set) var isClosing = false
     private var activeProfileCloseReview: UUID?
     @Published var importPreview: [ImportedProfile]?
@@ -524,6 +525,7 @@ final class ApplicationWorkspace: ObservableObject {
     let tableBrowsePresets: TableBrowsePresetStore
     let logicalRelationships: LogicalRelationshipStore
     let resultSnapshots: ResultSnapshotsModel
+    let planArtifacts: PlanArtifactsModel
     let savedEvidence: SavedEvidenceModel
     let investigations: InvestigationLibraryModel
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
@@ -571,6 +573,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var folderSaveObservation: AnyCancellable?
     private var sqlLibraryObservation: AnyCancellable?
     private var sqlLibrarySaveObservation: AnyCancellable?
+    private var planArtifactsObservation: AnyCancellable?
     private var savedEvidenceObservation: AnyCancellable?
     private var resultSnapshotsObservation: AnyCancellable?
     private var investigationsObservation: AnyCancellable?
@@ -594,6 +597,7 @@ final class ApplicationWorkspace: ObservableObject {
          tableBrowsePresets: TableBrowsePresetStore? = nil,
          logicalRelationships: LogicalRelationshipStore? = nil,
          resultSnapshots: ResultSnapshotsModel? = nil,
+         planArtifacts: PlanArtifactsModel? = nil,
          investigations: InvestigationLibraryModel? = nil,
          automaticallyWatchFiles: Bool = true,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
@@ -612,7 +616,8 @@ final class ApplicationWorkspace: ObservableObject {
         self.logicalRelationships = logicalRelationships ?? LogicalRelationshipStore()
         let snapshots = resultSnapshots ?? ResultSnapshotsModel()
         self.resultSnapshots = snapshots
-        savedEvidence = SavedEvidenceModel(store: PlanArtifactStore())
+        self.planArtifacts = planArtifacts ?? PlanArtifactsModel()
+        savedEvidence = SavedEvidenceModel(store: self.planArtifacts.store)
         self.investigations = investigations ?? InvestigationLibraryModel(snapshotStore: snapshots.store)
         self.automaticallyWatchFiles = automaticallyWatchFiles
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
@@ -635,6 +640,7 @@ final class ApplicationWorkspace: ObservableObject {
         folderObservation = self.sqlFolders.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
         sqlLibraryObservation = self.sqlLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        planArtifactsObservation = self.planArtifacts.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         savedEvidenceObservation = savedEvidence.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         resultSnapshotsObservation = self.resultSnapshots.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         investigationsObservation = self.investigations.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -643,11 +649,16 @@ final class ApplicationWorkspace: ObservableObject {
             guard let self else { throw InvestigationReferenceError() }
             return try self.investigations.referencingInvestigations(snapshotID: id)
         }
+        self.planArtifacts.investigationReferences = { [weak self] id in
+            guard let self else { throw InvestigationReferenceError() }
+            return try await self.investigations.referencingInvestigations(planID: id)
+        }
         savedEvidence.investigationReferences = { [weak self] id in
             guard let self else { throw InvestigationReferenceError() }
             return try await self.investigations.referencingInvestigations(evidenceID: id)
         }
         snapshots.didDelete = { [weak self] id in
+            await self?.planArtifacts.snapshotDeleted(id)
             await self?.savedEvidence.snapshotDeleted(id)
         }
         sqlLibrarySaveObservation = self.sqlLibrary.$snapshot.dropFirst().sink { [weak self] snapshot in
@@ -2268,6 +2279,7 @@ final class ApplicationWorkspace: ObservableObject {
             isClosing = true
             defer { isClosing = false }
             guard commitNativeEditors(in: documents + affected) else { return false }
+            await planArtifacts.waitForPendingWork()
             await savedEvidence.waitForPendingWork()
             if investigations.isLoaded, !(await investigations.flush()) {
                 reportError(investigations.error ?? "The investigations could not be saved. Their drafts remain open.")
@@ -3951,6 +3963,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func finishShutdown() async {
+        await planArtifacts.waitForPendingWork()
         await savedEvidence.waitForPendingWork()
         cancelQueryParameterPrompt()
         if let model = tableImporter {

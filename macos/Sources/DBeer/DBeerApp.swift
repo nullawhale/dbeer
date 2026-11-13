@@ -124,6 +124,7 @@ private struct WorkspaceCommands: Commands {
             commandItem(.showSQLHistory)
             Button("Result Snapshots…") { workspace.isSnapshotsPresented = true }
                 .disabled(!workspace.canManageWorkspace)
+            Button("Saved Execution Plans…") { workspace.isPlansPresented = true }
             Button("Saved Operation Evidence…") { workspace.isSavedEvidencePresented = true }
                 .disabled(!workspace.canManageWorkspace)
             Button("Local Relationships…") { workspace.presentLogicalRelationships() }

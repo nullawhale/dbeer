@@ -128,6 +128,10 @@ struct ApplicationWorkspaceView: View {
         .sheet(isPresented: $workspace.isSavedEvidencePresented) {
             SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence).applicationTheme(appearance: appearance)
         }
+        .sheet(isPresented: $workspace.isPlansPresented) {
+            PlanArtifactsView(workspace: workspace, model: workspace.planArtifacts)
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(isPresented: $workspace.isLogicalRelationshipsPresented) {
             LogicalRelationshipsView(workspace: workspace)
                 .applicationTheme(appearance: appearance)
@@ -687,7 +691,9 @@ struct SQLDocumentPane: View {
                             }.pickerStyle(.segmented).padding(6)
                         }
                         if document.showsExecutionPlan, let plan = document.explainPlan {
-                            ExplainPlanView(plan: plan, stale: plan.isStale(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID })).id(plan.id)
+                            ExplainPlanView(plan: plan, stale: plan.isStale(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID }),
+                                planLibrary: workspace.planArtifacts, saveTitle: document.title,
+                                canSave: { workspace.canManageWorkspace }, openLibrary: { workspace.isPlansPresented = true }).id(plan.id)
                         } else { result }
                     }.frame(minHeight: 180, maxHeight: .infinity)
                 }

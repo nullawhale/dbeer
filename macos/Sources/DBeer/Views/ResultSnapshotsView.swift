@@ -158,6 +158,7 @@ struct ResultSnapshotDocumentView: View {
     @ObservedObject var model: ResultSnapshotDocumentModel
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var snapshots: ResultSnapshotsModel
+    private var plansPresented = SwiftUI.State(initialValue: false)
     private var evidencePresented = SwiftUI.State(initialValue: false)
 
     init(document: SQLDocument, model: ResultSnapshotDocumentModel, workspace: ApplicationWorkspace) {
@@ -258,6 +259,9 @@ struct ResultSnapshotDocumentView: View {
         .sheet(isPresented: evidencePresented.projectedValue) {
             SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence, snapshotID: model.snapshotID)
         }
+        .sheet(isPresented: plansPresented.projectedValue) {
+            PlanArtifactsView(workspace: workspace, model: workspace.planArtifacts, snapshotID: model.snapshotID)
+        }
         .task {
             snapshots.trackDocument(model)
             await model.revalidateCurrentPage()
@@ -274,6 +278,10 @@ struct ResultSnapshotDocumentView: View {
             Spacer(minLength: 0)
             Button("Evidence…") { evidencePresented.wrappedValue = true }.controlHover()
                 .disabled(!model.isAvailable || workspace.isClosing).accessibilityIdentifier("snapshotOperationEvidence")
+            Button("Plans…") { plansPresented.wrappedValue = true }.controlHover()
+                .disabled(!model.isAvailable || !workspace.canManageWorkspace)
+                .help("Open or attach saved execution plans for this snapshot")
+                .accessibilityIdentifier("snapshotExecutionPlans")
             ControlIconButton(systemName: "arrow.clockwise") { Task { await model.revalidateCurrentPage() } }
                 .disabled(model.isLoading).help("Reload saved snapshot from local storage")
                 .accessibilityLabel("Reload Local Snapshot").accessibilityIdentifier("reloadLocalSnapshot")

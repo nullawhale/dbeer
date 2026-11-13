@@ -108,6 +108,22 @@ final class InvestigationLibraryModel: ObservableObject {
         return references
     }
 
+    func referencingInvestigations(planID: UUID) async throws -> Set<UUID> {
+        guard isLoaded, !isLoading else { throw InvestigationStoreError.notLoaded }
+        // A fresh read also fences corruption or references published by a
+        // different library owner after this workspace originally restored.
+        let latest = try await store.load()
+        guard latest.isValid else { throw InvestigationStoreError.read }
+        func references(_ document: StoredInvestigation) -> Bool {
+            document.blocks.contains { block in
+                let markdown = block.kind == .markdown ? block.text : block.kind == .snapshot ? block.explanation : ""
+                return PlanArtifactReference.ids(in: markdown).contains(planID)
+            }
+        }
+        var result = Set((persisted + latest.documents).filter(references).map(\.id))
+        for model in models.values where references(model.storedState) { result.insert(model.id) }
+        return result
+    }
 
     func referencingInvestigations(evidenceID: UUID) async throws -> Set<UUID> {
         guard isLoaded, !isLoading else { throw InvestigationStoreError.notLoaded }

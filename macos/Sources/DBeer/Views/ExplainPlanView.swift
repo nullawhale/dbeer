@@ -3,6 +3,11 @@ import SwiftUI
 struct ExplainPlanView: View {
     let plan: ExplainPlanModel
     let stale: Bool
+    var planLibrary: PlanArtifactsModel? = nil
+    var saveTitle = "Execution Plan"
+    var canSave: () -> Bool = { true }
+    var openLibrary: (() -> Void)? = nil
+    private var saving = SwiftUI.State(initialValue: false)
     private var raw = SwiftUI.State(initialValue: false)
     private var selected = SwiftUI.State<String?>(initialValue: nil)
     private var collapsed = SwiftUI.State(initialValue: Set<String>())
@@ -24,6 +29,11 @@ struct ExplainPlanView: View {
                 Text("Execution Plan · \(plan.request.mode.title)").font(.headline)
                 Text(plan.status).foregroundStyle(.secondary)
                 Spacer()
+                if let planLibrary {
+                    Button("Save Plan…") { saving.wrappedValue = true }.controlHover()
+                        .disabled(plan.result == nil || planLibrary.isBusy || !canSave())
+                }
+                if let openLibrary { Button("Saved Plans…", action: openLibrary).controlHover().disabled(!canSave()) }
                 Picker("Plan display", selection: raw.projectedValue) { Text("Tree").tag(false); Text("Raw Plan").tag(true) }
                     .pickerStyle(.segmented).frame(width: 180)
             }
@@ -99,6 +109,14 @@ struct ExplainPlanView: View {
                 }
             } else { Text("Plan evidence will appear after the helper reports completion.").foregroundStyle(.secondary); Spacer() }
         }.padding(10)
+            .sheet(isPresented: saving.projectedValue) {
+                if let planLibrary {
+                    PlanArtifactNameView(title: "Save Execution Plan", initialName: saveTitle) { title, baseline in
+                        guard canSave() else { return false }
+                        return await planLibrary.save(plan, title: title, baselineName: baseline, sourceWasStale: stale) != nil
+                    }
+                }
+            }
     }
     private func reveal(_ id: String, in result: ExplainResult) {
         var parents: [String: String] = [:]

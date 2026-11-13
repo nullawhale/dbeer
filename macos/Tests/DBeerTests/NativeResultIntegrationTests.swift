@@ -38,6 +38,7 @@ struct NativeResultIntegrationTests {
         let snapshots = ResultSnapshotsModel(store: ResultSnapshotStore(rootURL: folder.appendingPathComponent("snapshots")))
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(), credentialStore: MemoryConnectionCredentialStore(),
             documentStore: MemorySQLDocumentStore(), resultSnapshots: snapshots,
+            planArtifacts: PlanArtifactsModel(store: PlanArtifactStore(rootURL: folder.appendingPathComponent("plans"))),
             automaticallyWatchFiles: false, closeDecision: { _ in .discard }, executionDecision: { _ in true },
             helperFactory: { BackendClient(executableURL: executable) })
         await workspace.start()

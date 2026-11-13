@@ -33,10 +33,11 @@ struct ExplainProfileBinding: Sendable {
     }
 }
 
-/// Transient source-bound evidence. Never included in document persistence,
-/// SQL history, result snapshots or diagnostics.
+/// Transient source-bound evidence. Explicit plan saves copy only the captured
+/// request and validated result. Runtime ownership stays process-local.
 struct ExplainPlanModel {
     let id = UUID()
+    let capturedAt = Date()
     var request: ExplainRequest
     var sourceText: String
     var sourceRange: NSRange

@@ -35,6 +35,18 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
         return seen.count == result.nodes.count
     }
 
+    static func capture(_ plan: ExplainPlanModel, title: String, baselineName: String? = nil, sourceWasStale: Bool = false) throws -> Self {
+        guard let result = plan.result else { throw PlanArtifactError.invalid }
+        // Artifact timestamps use millisecond UTC precision, matching existing
+        // snapshot files. Plan metric decimal strings retain every source digit.
+        let capturedAt = Date(timeIntervalSince1970: (plan.capturedAt.timeIntervalSince1970 * 1_000).rounded() / 1_000)
+        let artifact = Self(id: UUID(), title: title, capturedAt: capturedAt,
+            profileName: plan.profile?.name, environment: plan.profile?.policy.environment,
+            sourceWasStale: sourceWasStale, request: plan.request, result: result,
+            baselineName: baselineName.flatMap { $0.isEmpty ? nil : $0 })
+        guard artifact.valid else { throw PlanArtifactError.invalid }
+        return artifact
+    }
 
     var displayPlan: ExplainPlanModel {
         var plan = ExplainPlanModel(request: request, sourceText: request.sql,
@@ -148,14 +160,81 @@ actor PlanArtifactStore {
     private var lockedRootIdentity: SQLFileIdentity?
     init(rootURL: URL = PlanArtifactStore.defaultRootURL) { self.rootURL = rootURL.standardizedFileURL }
 
+    func list() throws -> [PlanArtifactSummary] {
+        try withRoot { try inventory().sorted { $0.capturedAt > $1.capturedAt } }
+    }
 
+    func load(_ id: UUID) throws -> PlanArtifact {
+        try withRoot { try read(id).artifact }
+    }
 
+    func save(_ artifact: PlanArtifact) throws -> PlanArtifact {
+        try withRoot {
+            let items = try inventory()
+            guard try allArtifactFiles().count < Self.maximumArtifacts, !items.contains(where: { $0.id == artifact.id }) else { throw PlanArtifactError.quota }
+            let text = try artifact.encoded()
+            let used = try allArtifactFiles().reduce(0) { total, url in
+                let loaded = try SQLFileBinding.read(url, maximumBytes: PlanArtifact.maximumBytes, expectedParent: lockedRootIdentity)
+                return total + loaded.text.utf8.count
+            }
+            guard used <= Self.quotaBytes - text.utf8.count else { throw PlanArtifactError.quota }
+            _ = try SQLFileBinding.write(text, to: file(artifact.id), expectedVersion: nil, expectedParent: lockedRootIdentity, maximumBytes: PlanArtifact.maximumBytes)
+            return artifact
+        }
+    }
 
+    func importArtifact(from source: URL) throws -> PlanArtifact {
+        let loaded = try SQLFileBinding.read(source, maximumBytes: PlanArtifact.maximumBytes)
+        var artifact = try PlanArtifact.decode(loaded.text)
+        artifact.id = UUID()
+        return try save(artifact)
+    }
 
+    func updateMetadata(id: UUID, title: String, baselineName: String?) throws -> PlanArtifact {
+        try withRoot {
+            let loaded = try read(id)
+            var updated = loaded.artifact
+            updated.title = title
+            updated.baselineName = baselineName.flatMap { $0.isEmpty ? nil : $0 }
+            let text = try updated.encoded()
+            let used = try allArtifactFiles().reduce(0) { sum, url in
+                sum + (try SQLFileBinding.read(url, maximumBytes: PlanArtifact.maximumBytes, expectedParent: lockedRootIdentity)).text.utf8.count
+            }
+            guard used - loaded.byteCount <= Self.quotaBytes - text.utf8.count else { throw PlanArtifactError.quota }
+            _ = try SQLFileBinding.write(text, to: file(id), expectedVersion: loaded.version, expectedParent: lockedRootIdentity, maximumBytes: PlanArtifact.maximumBytes)
+            return updated
+        }
+    }
 
+    func delete(id: UUID, investigationIDs: Set<UUID>) throws {
+        try withRoot {
+            guard investigationIDs.isEmpty, !(try readLinks()).links.contains(where: { $0.planID == id }) else { throw PlanArtifactError.referenced }
+            try deleteReviewedFile(file(id))
+        }
+    }
 
+    func links(snapshotID: UUID? = nil) throws -> [PlanSnapshotLink] {
+        try withRoot { try readLinks().links.filter { snapshotID == nil || $0.snapshotID == snapshotID } }
+    }
 
+    func attach(planID: UUID, snapshotID: UUID) throws {
+        try withRoot {
+            _ = try read(planID)
+            var value = try readLinks()
+            let link = PlanSnapshotLink(snapshotID: snapshotID, planID: planID)
+            guard !value.links.contains(link) else { return }
+            value.links.append(link)
+            try writeLinks(value)
+        }
+    }
 
+    func detach(planID: UUID, snapshotID: UUID) throws {
+        try withRoot {
+            var value = try readLinks()
+            value.links.removeAll { $0.planID == planID && $0.snapshotID == snapshotID }
+            try writeLinks(value)
+        }
+    }
 
     func removeSnapshotLinks(_ id: UUID) throws {
         try withRoot {

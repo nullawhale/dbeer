@@ -20,6 +20,13 @@ struct SavedEvidenceTests {
             try SavedEvidenceArtifact.decode(String(decoding: JSONSerialization.data(withJSONObject: $0), as: UTF8.self))
         }
     }
+    private func plan() throws -> PlanArtifact {
+        let result = try #require(ExplainFixture.load().results.first { $0.status == "tree" && $0.mode == .plan })
+        var model = ExplainPlanModel(request: .init(sql: "SELECT synthetic_plan", mode: .plan), sourceText: "SELECT synthetic_plan",
+            sourceRange: NSRange(location: 0, length: 21), profileID: UUID())
+        model.result = result
+        return try PlanArtifact.capture(model, title: "Existing plan")
+    }
 
     @Test func captureKeepsUnknownAcknowledgementAndStripsAllRuntimeHandles() async throws {
         let target = StructureTarget(schema: "public", table: "samples", create: false)
@@ -74,6 +81,31 @@ struct SavedEvidenceTests {
         }
     }
 
+    @Test func existingPlansAndNewEvidenceShareGuardedStorageAndVersionedLinks() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = PlanArtifactStore(rootURL: root)
+        let old = try plan(); _ = try await store.save(old)
+        let value = try #require(fixtures().first); _ = try await store.saveEvidence(value)
+        let snapshot = UUID()
+        try await store.attach(planID: old.id, snapshotID: snapshot)
+        let sidecar = root.appendingPathComponent("attachments.json")
+        #expect((try JSONSerialization.jsonObject(with: Data(contentsOf: sidecar)) as? [String: Any])?["version"] as? Int == 1)
+        try await store.attachEvidence(value.reference, snapshotID: snapshot)
+        let restarted = PlanArtifactStore(rootURL: root)
+        #expect(try await restarted.load(old.id) == old)
+        #expect(try await restarted.loadEvidence(value.id) == value)
+        #expect(try await restarted.links(snapshotID: snapshot).count == 1)
+        #expect(try await restarted.evidenceLinks(snapshotID: snapshot).map(\.evidence) == [value.reference])
+        await #expect(throws: PlanArtifactError.referenced) { try await restarted.deleteEvidence(id: value.id, investigationIDs: []) }
+        try await restarted.removeSnapshotLinks(snapshot)
+        #expect(try await restarted.links().isEmpty)
+        #expect(try await restarted.evidenceLinks().isEmpty)
+        try await restarted.deleteEvidence(id: value.id, investigationIDs: [])
+        #expect(try await restarted.listEvidence().isEmpty)
+        #expect(try await restarted.list().count == 1)
+        let permissions = try FileManager.default.attributesOfItem(atPath: root.path)[.posixPermissions] as? NSNumber
+        #expect(permissions?.intValue == 0o700)
+    }
 
     @Test func offlineDiagnosticOwnerNeverConnectsRefreshesOrStartsTimers() async throws {
         let artifact = try #require(fixtures().first { $0.kind == .diagnostic })

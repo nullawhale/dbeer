@@ -101,6 +101,12 @@
   component atomically in the local Preview/Apply draft, preserve original values
   and reject changed or uneditable source contexts.
 
+- Save explicit execution-plan artifacts with original SQL, raw and normalized
+  evidence, named baselines and local operation-aware history. Add portable
+  `.dbeerplan` import/export, byte-exact conservative comparison and offline
+  investigation/snapshot references with deletion protection. Keep partial
+  evidence visible and distinguish confirmed publication from refresh failures.
+
 - Recover retained table-structure execution acknowledgements through explicit
   original-session status checks. Match execution, plan and per-step evidence,
   preserve unknown outcomes when evidence is unavailable, and let explicit

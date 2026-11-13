@@ -566,8 +566,36 @@ parameters, known writes/side effects and locking queries are rejected; unknown
 functions still follow readonly/confirmation policy. Resolve pending grid edits
 before Explain. The tab retains its physical session, temporary tables and
 transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
-confirmed SQL completion, and a lost completion is never retried. Plans stay in
-memory and are excluded from restored documents, SQL history and snapshots.
+confirmed SQL completion, and a lost completion is never retried. The current
+plan is held by its SQL tab. **Save Plan…** explicitly creates a local artifact.
+
+### Saved execution plans
+
+Choose **Query → Saved Execution Plans…** to open the local plan library. Search
+titles and baseline names, filter by Explain or Explain Analyze, and use
+**Name / Baseline…** to label a saved observation. Select a second plan in
+**Compare with** to inspect changes in shape, native details and reported metrics.
+Duplicate matching candidates stay ambiguous. Identifiers and literal evidence
+are compared by their exact UTF-8 bytes. Different engine, version, format, mode
+or metric definitions are labelled so their values can be read independently.
+Raw-only and limited captures retain their availability and completeness labels.
+
+**Export…** and **Import…** transfer versioned `.dbeerplan` files containing the
+original captured SQL, server output, normalized nodes and exact metric strings.
+Recorded provenance includes the connection name, environment and an earlier-query
+marker when applicable. Imports receive a fresh local identity. Saving, opening,
+importing and comparing artifacts use local files. Plans share a local quota of up to 4,096 artifacts and 256 MiB with saved
+operation evidence. Plans have a 16 MiB per-file limit; deletion is explicit.
+
+An investigation's add-block menu offers **Saved Execution Plan…**, which inserts
+a local Markdown reference. Open that link inside DBeer to read the artifact.
+A result snapshot's **Plans…** button attaches or detaches saved plans through
+separate link metadata. Plan deletion checks saved and unsaved investigations
+and snapshot links; remove those references first and save the edited
+investigation. The library also lists snapshot attachments with **Remove Link**. Unreadable reference metadata blocks
+deletion until it can be checked. A confirmed file publication remains saved
+when a later library refresh fails, and the library displays the refresh warning.
+
 ## Saved operation evidence (unreleased)
 
 Use **Save Outcome Evidence** in a retained structure report or **Save Evidence**
