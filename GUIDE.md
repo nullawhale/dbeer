@@ -118,6 +118,42 @@ decision or closing an unrelated profile preserves the search. Restoration does
 not reconnect or replay a search; after helper failure, a fresh load or search
 requires an explicit action.
 
+## Data profiles (unreleased)
+
+Select loaded grid cells to see their count, SQL NULL count and exact numeric
+sum. **Profile Selection…** opens the frozen capture; the grid context menu's
+**Profile Visible Column…** profiles that column across locally visible rows.
+The matching-row filter retains original source indices. Profiles cover only
+captured loaded rows and exclude database rows outside that scope. Apply or
+discard pending edits and reload stale or uncertain results before profiling.
+
+Integer and decimal sums, averages and extrema retain all supported base-ten
+digits. Repeating averages appear as exact fractions. Arithmetic is bounded to
+4,096 input digits/exponent magnitude and a work budget; profiles allow at most
+100,000 cells and 8 MiB of captured values. Native floating-point, unsupported
+or mixed storage types show a reason instead of silently converting values.
+Frequency distributions preserve original bytes and value/storage kinds,
+including SQL NULL, text `NULL`, empty text, binary Base64 and SQLite native
+values. The report displays the 20 most frequent representations with bounded
+value previews and the remaining observed count.
+
+On an actual PostgreSQL/MySQL/SQLite table profile, **Capture First-N Server
+Sample…** offers an explicit fresh sample on a dedicated read-only connection.
+Choose up to 10,000 rows and a 15–300 second deadline; **Stop** cancels that
+capture's current read. Sampling uses the adapter's default table-browser order,
+ignores the tab's filters, relationship restrictions and custom sorting, and
+reads committed data independently
+from SQL-tab transactions. It is best effort across pages, with explicit bounds,
+partial coverage and capture times. It does not imply whole-table aggregates or
+a representative sample. Other engines retain loaded-value profiling. Pending
+workspace close decisions preserve active captures. Accepting a close of the
+source tab or Disconnect for its profile closes its owned sampler; unrelated
+accepted closes and cancelled decisions preserve it.
+
+**Copy Report** copies rendered Markdown with scope and coverage. **Attach to
+Investigation…** saves that frozen report in a new, saved or unsaved Investigation;
+a failed save can retry the same block. Reopening a report never connects to a
+database or repeats sampling.
 
 ## Repeatable data transfers (unreleased)
 

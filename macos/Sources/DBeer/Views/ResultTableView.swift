@@ -331,6 +331,13 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
         let copyAs = NSMenuItem(title: "Copy as", action: nil, keyEquivalent: "")
         copyAs.submenu = formats
         menu.addItem(copyAs)
+        if copyCoordinator.onProfileColumn != nil {
+            let profile = NSMenuItem(title: "Profile Visible Column…",
+                action: #selector(ResultTableView.Coordinator.profileVisibleColumn(_:)), keyEquivalent: "")
+            profile.target = copyCoordinator
+            profile.isEnabled = copyCoordinator.profileSelectionAllowed && copyCoordinator.isCopyAllowed && contextCell != nil
+            menu.addItem(profile)
+        }
         if copyCoordinator.onCellFilter != nil {
             menu.addItem(.separator())
             let filters = NSMenu(title: "Add Filter Condition")
@@ -542,6 +549,12 @@ struct ResultTableView: NSViewRepresentable {
     var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
     var onSelectedRows: ((IndexSet) -> Void)?
     var onInspectValue: ((InspectedValue?) -> Void)?
+    var onProfileSelection: ((GridProfileSelection) -> Void)?
+    var onProfileColumn: ((GridProfileSelection) -> Void)?
+    var profileSelectionAllowed = true
+    var profileSelectionNotice: String?
+    var profileContext = "Loaded result"
+    var profileRequestGeneration: UUID?
     var onDeleteRows: (() -> Void)?
     var onShowRowDetails: (() -> Void)?
     var onToggleRowDetails: (() -> Void)?
@@ -591,6 +604,12 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.onSetCellValue = onSetCellValue
         coordinator.onSelectedRows = onSelectedRows
         coordinator.onInspectValue = onInspectValue
+        coordinator.onProfileSelection = onProfileSelection
+        coordinator.onProfileColumn = onProfileColumn
+        coordinator.profileSelectionAllowed = profileSelectionAllowed
+        coordinator.profileSelectionNotice = profileSelectionNotice
+        coordinator.profileContext = profileContext
+        coordinator.profileRequestGeneration = profileRequestGeneration
         coordinator.onDeleteRows = onDeleteRows
         coordinator.onShowRowDetails = onShowRowDetails
         coordinator.onToggleRowDetails = onToggleRowDetails
@@ -664,6 +683,24 @@ struct ResultTableView: NSViewRepresentable {
         var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
         var onSelectedRows: ((IndexSet) -> Void)?
         var onInspectValue: ((InspectedValue?) -> Void)?
+        var onProfileSelection: ((GridProfileSelection) -> Void)?
+        var onProfileColumn: ((GridProfileSelection) -> Void)?
+        var profileSelectionAllowed = true
+        var profileSelectionNotice: String?
+        var profileContext = "Loaded result"
+        var profileRequestGeneration: UUID?
+        private var profileDataRevision: UInt64 = 0
+        private struct ProfileSelectionToken: Equatable {
+            let revision: UInt64
+            let rows: [Int]
+            let columns: [Int]
+            let visibleRows: [Int]
+            let allowed: Bool
+            let context: Data
+            let notice: Data?
+            let request: UUID?
+        }
+        private var profileSelectionToken: ProfileSelectionToken?
         private var inspectionRevision: UInt64 = 0
         var onDeleteRows: (() -> Void)?
         var onShowRowDetails: (() -> Void)?
@@ -885,6 +922,7 @@ struct ResultTableView: NSViewRepresentable {
             if schemaChanged || rowsChanged { searchSelectionBookmark = nil }
             let presentationChanged = renderedModifiedCells != modifiedCells || renderedDeletedRows != deletedRows || renderedUneditableRows != uneditableRows ||
                 (dataIdentity == nil && renderedValueKinds != valueKinds) || sqliteChanged || nativeChanged
+            if schemaChanged || rowsChanged || presentationChanged { profileDataRevision &+= 1 }
             let retainedSelection = searchResult.sourceSelection(tableView.selectedRowIndexes)
             let retainedAnchor = tableView.cellSelection.flatMap { searchResult.sourceCell($0.anchor) }
             let retainedFocus = tableView.cellSelection.flatMap { searchResult.sourceCell($0.focus) }
@@ -1280,13 +1318,14 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         func publishInspection() {
-            guard !isSynchronizingSelection, onInspectValue != nil else { return }
+            guard !isSynchronizingSelection, onInspectValue != nil || onProfileSelection != nil else { return }
             inspectionRevision &+= 1
             let revision = inspectionRevision
             // Representable updates may replace rows or clamp selection. Deliver
             // only the final snapshot after SwiftUI has finished that update.
             Task { @MainActor [weak self] in
                 guard let self, self.inspectionRevision == revision, let table = self.table else { return }
+                self.publishProfileSelection()
                 let cell = table.cellSelection?.focus
                 self.onInspectValue?(InspectedValue.capture(
                     cell: cell.flatMap { table.selectedRowIndexes.contains($0.row) ? self.searchResult.sourceCell($0) : nil },
@@ -1294,6 +1333,53 @@ struct ResultTableView: NSViewRepresentable {
             }
         }
 
+        /// Captures displayed ordinals through the same source mapping and typed values as Copy.
+        func captureProfileSelection(visibleColumn: Int? = nil) -> GridProfileSelection {
+            guard profileSelectionAllowed, isCopyAllowed else {
+                return .unavailable(profileSelectionNotice ?? "Profiling is unavailable while this result is changing.")
+            }
+            guard let table else { return .empty }
+            let rowIndices: [Int], columnIndices: [Int]
+            if let visibleColumn {
+                guard columns.indices.contains(visibleColumn) else { return .empty }
+                rowIndices = Array(searchResult.sourceRows.indices); columnIndices = [visibleColumn]
+            } else {
+                rowIndices = table.selectsWholeRows ? Array(table.selectedRowIndexes) :
+                    table.cellSelection.map { Array($0.rowRange) } ?? Array(table.selectedRowIndexes)
+                columnIndices = table.cellSelection.map { Array($0.columnRange) } ?? Array(columns.indices)
+            }
+            guard !rowIndices.isEmpty, !columnIndices.isEmpty else { return .empty }
+            let cells = rowIndices.count.multipliedReportingOverflow(by: columnIndices.count)
+            guard !cells.overflow, cells.partialValue <= GridProfileLimits.maximumCells else {
+                return .unavailable("Select at most 100,000 cells for a loaded-value profile.")
+            }
+            do {
+                let payload = try copyPayload(rowIndices: rowIndices, columnIndices: columnIndices)
+                let scope = GridProfileScope(title: profileContext,
+                    notice: "\(rowIndices.count) selected rows, \(columnIndices.count) columns; \(searchResult.sourceRows.count) visible of \(rows.count) loaded rows. " +
+                        "Statistics cover only these captured loaded values, after the local matching-row filter. Database rows outside this result are excluded.",
+                    partial: true)
+                return .values(GridProfileInput(payload: payload, scope: scope))
+            } catch { return .unavailable(error.localizedDescription) }
+        }
+
+        @objc func profileVisibleColumn(_ sender: Any?) {
+            guard let column = table?.contextCell?.column ?? table?.cellSelection?.focus.column else { return }
+            onProfileColumn?(captureProfileSelection(visibleColumn: column))
+        }
+
+        private func publishProfileSelection() {
+            guard onProfileSelection != nil, let table else { return }
+            let selectedRows = table.selectsWholeRows ? Array(table.selectedRowIndexes) :
+                table.cellSelection.map { Array($0.rowRange) } ?? Array(table.selectedRowIndexes)
+            let selectedColumns = table.cellSelection.map { Array($0.columnRange) } ?? Array(columns.indices)
+            let token = ProfileSelectionToken(revision: profileDataRevision, rows: selectedRows, columns: selectedColumns,
+                visibleRows: searchResult.sourceRows, allowed: profileSelectionAllowed && isCopyAllowed,
+                context: Data(profileContext.utf8), notice: profileSelectionNotice.map { Data($0.utf8) }, request: profileRequestGeneration)
+            guard token != profileSelectionToken else { return }
+            profileSelectionToken = token
+            onProfileSelection?(captureProfileSelection())
+        }
 
         private static func sameRows(_ left: [[String?]], _ right: [[String?]]) -> Bool {
             guard left.count == right.count else { return false }

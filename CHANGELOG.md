@@ -32,6 +32,16 @@
   separate from initial helper capture cost and require Add then Build for the
   100-table diagram area. Preserve active ER work through cancelled close decisions.
 
+- Profile loaded selections and locally visible columns with exact bounded
+  integer/decimal aggregates, SQL NULL counts and byte/storage-aware value
+  distributions. Preserve filtered source mapping, label unavailable arithmetic
+  and repeating averages, and exclude unresolved drafts or stale results.
+  Add explicit bounded first-N PostgreSQL/MySQL/SQLite samples on owned readonly
+  sessions with deadlines, Stop and committed-data coverage reports. Preserve
+  active captures through pending/cancelled or unrelated close decisions and
+  release registered owners after accepted source-tab/profile closure. Copy frozen
+  Markdown or attach it to saved/unsaved Investigations with retry-safe saves.
+
 - Add **Find Data…** across explicitly selected PostgreSQL/MySQL/SQLite tables
   and views, with exact typed values, SQL NULL, explicit SQLite storage and a
   separate text-contains mode. Use a dedicated read-only session, bounded

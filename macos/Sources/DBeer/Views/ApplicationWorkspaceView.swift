@@ -1137,7 +1137,8 @@ struct SQLDocumentPane: View {
                             onCopyError: { workspace.reportCopyError($0) },
                             copyAllowed: !document.isRunning && !workspace.isClosing,
                             commandHandler: { commands.handleKeyEvent($0, documentID: document.id) },
-                            documentID: document.id))
+                            documentID: document.id), profileTitle: "Loaded SQL result · " + document.title, investigations: workspace.investigations,
+                            mayAttach: { workspace.canManageWorkspace && !workspace.isClosing })
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }
             }

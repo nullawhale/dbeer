@@ -493,6 +493,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var sessionMonitorPresentation = SessionMonitorPresentationIntent()
     var databaseSearchWindow: DatabaseValueSearchWindowController?
     var databaseSearchModel: DatabaseValueSearchModel?
+    var gridProfileServers: [UUID: GridProfileServerOwner] = [:]
     var databaseSearchProfileObservation: AnyCancellable?
     var databaseSearchPresentation = SessionMonitorPresentationIntent()
     var databaseSearchRequestedProfileID: UUID?
@@ -920,6 +921,9 @@ final class ApplicationWorkspace: ObservableObject {
         !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
     }
 
+    func gridProfileBindingIsCurrent(_ binding: SessionMonitorProfileBinding) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
+    }
 
 
 
@@ -1503,6 +1507,7 @@ final class ApplicationWorkspace: ObservableObject {
         if parent.investigationModel?.isAvailable == true {
             guard await saveInvestigationContent(parent) else { return }
         }
+        await closeGridProfileServers(documentIDs: ids)
         guard await disconnectRuntimeDocuments(affected) else { return }
         await closeDocumentImmediately(parent, remember: true)
     }
@@ -1586,6 +1591,7 @@ final class ApplicationWorkspace: ObservableObject {
         if let model = document.erDiagramModel { stopERDiagram(model, reason: "This diagram was closed.") }
         document.incomingRelationships?.stop()
         let runtimeDocuments = runtimeDocuments(in: document)
+        await closeGridProfileServers(documentIDs: Set(([document] + runtimeDocuments).map(\.id)))
         for child in runtimeDocuments {
             await child.runtime?.shutdown()
             child.runtime = nil
@@ -3899,6 +3905,7 @@ final class ApplicationWorkspace: ObservableObject {
         invalidateERDiagrams(reason: "The workspace is shutting down.")
         await closeSessionMonitor()
         await closeDatabaseValueSearch()
+        await closeGridProfileServers()
         await dataTransfer?.close(); dataTransfer = nil
         await databaseTools?.close(); databaseTools = nil
         commands.shutdown()

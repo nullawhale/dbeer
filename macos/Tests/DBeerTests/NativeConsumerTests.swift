@@ -65,6 +65,34 @@ struct NativeConsumerValueTests {
         #expect(InspectedValue.capture(cell: .init(row: 0, column: 0), columns: [column], rows: [["x"]], nativeValues: [[]]) == nil)
     }
 
+    @Test func profilesRequireNumericSemanticsAndRetainExactRepresentations() throws {
+        let exact = try payload([.init(kind: "integer", value: "9007199254740993"), .init(kind: "decimal", value: "0.1"), .init(kind: "null")])
+        let report = try GridDataProfiler.profile(.init(payload: exact, scope: .init(title: "Native selection", notice: "Loaded only")))
+        #expect(report.columns[0].sum == "9007199254740993.1" && report.columns[0].nullCount == 1)
+        for (native, metadata) in [
+            (NativeValue(kind: "integer", value: "1700000000000", engine: "cassandra", nativeType: "timestamp"), ResultColumn(index: 0, name: "t", engine: .cassandra, nativeType: "timestamp")),
+            (NativeValue(kind: "integer", value: "1700000000000", engine: "cassandra", nativeType: "timestamp"), column),
+            (NativeValue(kind: "integer", value: "4", typeIdentity: "unresolved:custom"), column),
+            (NativeValue(kind: "native", value: "5", engine: "postgresql", nativeType: "custom"), column),
+            (NativeValue(kind: "opaque", value: "NQ==", engine: "mongodb", nativeType: "custom"), column)] {
+            let value = try GridDataProfiler.profile(.init(payload: payload([native], column: metadata), scope: .init(title: "Captured", notice: "")))
+            #expect(value.columns[0].sum == nil && value.columns[0].numericNotice != nil)
+        }
+        let floating = try GridDataProfiler.profile(.init(payload: payload([
+            .init(kind: "float64", value: "7ff8000000000001"), .init(kind: "float64", value: "7ff8000000000002")]),
+            scope: .init(title: "Captured floats", notice: "")))
+        #expect(floating.columns[0].sum == nil && floating.columns[0].distinctCount == 2)
+        #expect(floating.columns[0].frequencies.contains { $0.value?.contains("7ff8000000000001") == true })
+        let unicode = try GridDataProfiler.profile(.init(payload: payload([.init(kind: "text", value: "é"), .init(kind: "text", value: "e\u{301}")]),
+            scope: .init(title: "Captured text", notice: "")))
+        #expect(unicode.columns[0].distinctCount == 2)
+        let sqliteColumn = ResultColumn(index: 0, name: "stored", engine: .sqlite, nativeType: "INTEGER")
+        let stored = try ResultCopy.selection(columns: [sqliteColumn], rows: [["rounded"]],
+            sqliteValues: [[.init(type: "integer", value: "9007199254740993")]],
+            nativeValues: [[.init(kind: "integer", value: "9007199254740993", engine: "sqlite", nativeType: "integer")]],
+            rowIndices: [0], columnIndices: [0])
+        #expect(try GridDataProfiler.profile(.init(payload: stored, scope: .init(title: "SQLite storage", notice: ""))).columns[0].sum == "9007199254740993")
+    }
 
     @Test func validMaximumDepthCanBeCopiedAndInspected() throws {
         var nested = NativeValue(kind: "text", value: "end")
@@ -79,10 +107,69 @@ struct NativeConsumerValueTests {
 
 @MainActor
 struct NativeConsumerGridTests {
-
+    @Test func filteredSelectionInspectionAndProfileKeepOriginalNativeOrdinals() async throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let coordinator = ResultTableView.Coordinator(pasteboard: board)
+        let scroll = coordinator.makeScrollView()
+        let columns = [ResultColumn(index: 0, name: "n", typeOid: 1700, nativeType: "numeric"),
+                       ResultColumn(index: 1, name: "label", typeOid: 25, nativeType: "text")]
+        let matrix: [[NativeValue]] = [[.init(kind: "integer", value: "1"), .init(kind: "text", value: "hidden")],
+            [.init(kind: "integer", value: "9007199254740993"), .init(kind: "text", value: "shown")],
+            [.init(kind: "integer", value: "2"), .init(kind: "text", value: "hidden")],
+            [.init(kind: "integer", value: "3"), .init(kind: "text", value: "shown")]]
+        coordinator.nativeValues = matrix
+        coordinator.onShowRowDetails = {}
+        var inspected: InspectedValue?
+        coordinator.onInspectValue = { inspected = $0 }
+        coordinator.update(columns: columns, rows: Array(repeating: ["wrong", "wrong"], count: 4), in: scroll)
+        coordinator.setSearch(query: "shown", columns: [1], matchingOnly: true)
+        coordinator.activateCell(.init(row: 1, column: 0))
+        for _ in 0..<10 { await Task.yield() }
+        guard case .values(let selection) = coordinator.captureProfileSelection() else { Issue.record("Missing native selection"); return }
+        #expect(selection.payload.sourceRows == [3] && selection.payload.nativeValues == [[matrix[3][0]]])
+        #expect(inspected?.row == 3 && inspected?.nativeValue == matrix[3][0])
+        let copy = try #require(coordinator.captureCopy(format: .json))
+        await copy()
+        let copied = try #require(board.data(forType: ResultTableView.clipboardType))
+        #expect(try JSONDecoder().decode(ResultClipboardPayload.self, from: copied).nativeValues == [[matrix[3][0]]])
+        guard case .values(let visible) = coordinator.captureProfileSelection(visibleColumn: 0) else { Issue.record("Missing native visible column"); return }
+        #expect(visible.payload.sourceRows == [1, 3])
+        #expect(try GridDataProfiler.profile(visible).columns[0].sum == "9007199254740996")
+        coordinator.editableColumns = [0]
+        coordinator.uneditableRows = [3]
+        #expect(coordinator.canEditCell(.init(row: 0, column: 0)))
+        #expect(!coordinator.canEditCell(.init(row: 1, column: 0)))
+        var changed = matrix
+        changed[1][1] = .init(kind: "text", value: "hidden")
+        coordinator.nativeValues = changed
+        coordinator.update(columns: columns, rows: Array(repeating: ["wrong", "wrong"], count: 4), in: scroll)
+        guard case .values(let retained) = coordinator.captureProfileSelection() else { Issue.record("Native update lost selection"); return }
+        #expect(retained.payload.sourceRows == [3])
+        #expect(coordinator.numberOfRows(in: try #require(scroll.documentView as? ResultGridTableView)) == 1)
+    }
 }
 
 @MainActor
 struct NativeConsumerServerProfileTests {
-
+    @Test func serverSampleUsesNativeValuesAndRejectsAFormatChange() async throws {
+        let column = ResultColumn(index: 0, name: "n", typeOid: 1700, nativeType: "numeric")
+        var pages = 0
+        var disconnected = 0
+        let model = GridProfileServerModel(table: .init(schema: "public", name: "sample", kind: "table"), column: column, engine: .postgresql,
+            connect: { "owned" }, send: { command in
+                if command.type == "disconnect" { disconnected += 1; return .init(type: "disconnect.result", requestId: command.requestId) }
+                pages += 1
+                var response = BackendMessage(type: "query.result", requestId: command.requestId, sessionId: command.sessionId,
+                    queryId: command.queryId, transactionStatus: .idle, columns: [column], rows: [["formatted"]])
+                if pages == 1 { response.nativeValues = [[.init(kind: "integer", value: "9007199254740993")]]; response.nextCursor = "next" }
+                return response
+            }, isCurrent: { true })
+        await model.capture()
+        let report = try #require(model.report)
+        #expect(report.rowCount == 1 && report.columns[0].sum == "9007199254740993")
+        #expect(report.scope.partial && report.scope.notice.contains("native-value format"))
+        #expect(pages == 2 && disconnected == 1)
+        await model.close()
+    }
 }

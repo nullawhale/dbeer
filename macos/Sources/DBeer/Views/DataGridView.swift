@@ -179,6 +179,10 @@ struct DataGridView: View {
             }
         }
         view.documentID = document.id
+        view.profileContext = "Loaded values · " + document.title
+        view.profileSelectionAllowed = grid.pendingCount == 0 && !grid.hasInlineDraft && !grid.outcomeUnknown &&
+            !grid.resultIsStale && !document.hasPendingBrowseChanges
+        view.profileSelectionNotice = "Apply or discard pending edits and reload stale or uncertain results before profiling their captured values."
         view.copySettings = workspace.copySettings
         view.copyAllowed = !document.isRunning && !document.isNavigatingTable && !workspace.isClosing && !grid.isApplying && !grid.isReloading && !grid.isClosing
         view.onCopyError = { workspace.reportCopyError($0) }
@@ -188,7 +192,11 @@ struct DataGridView: View {
         view.commandHandler = { workspace.commands.handleKeyEvent($0, documentID: document.id) }
         return InspectedResultTableView(table: view, rowDetails: showingRowDetails.wrappedValue
             ? GridRowDetailsView(grid: grid, canEdit: canEdit, edit: openEditor,
-                close: { showingRowDetails.wrappedValue = false }) : nil)
+                close: { showingRowDetails.wrappedValue = false }) : nil,
+            serverProfile: document.table == nil ? nil : { column in
+                try workspace.makeGridProfileServer(document: document, grid: grid, column: column)
+            }, investigations: workspace.investigations,
+            mayAttach: { workspace.canManageWorkspace && !workspace.isClosing })
     }
 
     private var sourceToolbar: some View {

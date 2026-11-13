@@ -229,7 +229,8 @@ struct ResultSnapshotDocumentView: View {
                             workspace.commandDocument(for: document.id) === document
                     },
                     commandHandler: { workspace.commands.handleKeyEvent($0, documentID: document.id) },
-                    documentID: document.id))
+                    documentID: document.id), profileTitle: "Snapshot loaded page · " + document.title, investigations: workspace.investigations,
+                    mayAttach: { workspace.canManageWorkspace && !workspace.isClosing })
                 Divider()
                 HStack(spacing: 8) {
                     Text("\((result.rows ?? []).isEmpty ? 0 : model.pageOffset + 1)–\(model.pageOffset + (result.rows?.count ?? 0)) of \(model.manifest?.rowCount ?? 0) saved rows")
