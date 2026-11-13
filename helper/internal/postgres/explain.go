@@ -17,6 +17,7 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	lower := strings.ToLower(s.explainIdentity)
 	if !strings.HasPrefix(s.explainIdentity, "PostgreSQL ") || strings.Contains(lower, "yugabyte") || strings.Contains(lower, "cockroach") || strings.Contains(lower, "aurora") || strings.Contains(lower, "redshift") || strings.Contains(lower, "greenplum") {
 		support.Modes = []string{}
+		support.PlanKinds = nil
 		support.UnavailableReason = "Visual Explain requires a recognized PostgreSQL server; this server vendor could not be verified."
 	}
 	return support
@@ -37,7 +38,19 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		return r
 	}
 	capture := &adapter.ExplainCapture{}
-	response := executeParamsSink(ctx, s.conn, c, p.Preview.SQL, nil, capture)
+	var values [][]byte
+	var oids []uint32
+	if p.Request.PlanKind != "generic" {
+		for _, parameter := range p.Bound.Parameters {
+			var value []byte
+			if parameter.Value != nil {
+				value = []byte(*parameter.Value)
+			}
+			values = append(values, value)
+			oids = append(oids, map[string]uint32{"text": 25, "integer": 20, "decimal": 1700, "boolean": 16, "date": 1082, "timestamp": 1114}[parameter.Type])
+		}
+	}
+	response := executeParamsSinkWithStorageOIDs(ctx, s.conn, c, p.Preview.SQL, values, capture, false, oids)
 	return adapter.FinishExplain(ctx, c, response, p, capture, parseExplainJSON)
 }
 func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {

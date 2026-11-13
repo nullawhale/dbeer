@@ -70,6 +70,9 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var selection = NSRange(location: 0, length: 0)
     @Published var executions: [SQLExecution] = []
     @Published var explainPlan: ExplainPlanModel?
+    @Published var explainExecutions: [ExplainBatchExecution] = []
+    @Published var selectedExplainExecution = 0
+    var explainTargetDocumentID: UUID?
     @Published var showsExecutionPlan = false
     @Published var selectedExecution = 0
     private(set) var queryResultSelection: SQLResultSelection?
@@ -512,6 +515,8 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
     @Published var insertCopySelection: InsertCopySelection?
+    @Published var explainSelection: ExplainBatchDraft?
+    private var pendingExplainSelection: (draft: ExplainBatchDraft, selected: Set<Int>, targetID: String, planKind: ExplainPlanKind?)?
     @Published private(set) var queryParameterPrompt: QueryParameterPrompt?
     private var pendingQueryParameterPrompt: QueryParameterPrompt?
     @Published private(set) var isImportingProfiles = false
@@ -2043,93 +2048,300 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
+    func beginExplainSelection(_ document: SQLDocument, mode: ExplainMode, selections: [NSRange],
+                               profileBinding: ExplainProfileBinding? = nil) {
+        guard canStartOperation(document), !document.isRunning, document.isSQLDocument,
+              !document.queryResultSelectionLocked, let profileID = document.profileID,
+              let profile = library.savedConnections.first(where: { $0.id == profileID }),
+              let binding = profileBinding ?? ExplainProfileBinding(profile), binding.matches(profile) else { return }
+        do {
+            let statements = try ExplainBatchStatement.candidates(text: document.text, selections: selections, engine: profile.engine)
+            let targets = allOwnedSQLDocuments.compactMap { target -> ExplainBatchTarget? in
+                guard target.isSQLDocument, !target.isRunning, !target.queryResultSelectionLocked,
+                      let targetProfile = library.savedConnections.first(where: { $0.id == target.profileID }),
+                      [.postgresql, .mysql, .sqlite].contains(targetProfile.engine),
+                      let targetBinding = ExplainProfileBinding(targetProfile) else { return nil }
+                let state = target.runtime?.connectionState == .connected ? "connected session" : "disconnected; connect explicitly"
+                return ExplainBatchTarget(id: target.id.uuidString, documentID: target.id, profile: targetProfile,
+                    binding: targetBinding, sessionID: target.runtime?.sessionId,
+                    transactionStatus: target.runtime?.transactionStatus,
+                    title: "\(targetProfile.name) · \(target.title) · \(state)")
+            } + library.savedConnections.compactMap { profile -> ExplainBatchTarget? in
+                guard [.postgresql, .mysql, .sqlite].contains(profile.engine), let binding = ExplainProfileBinding(profile) else { return nil }
+                return ExplainBatchTarget(id: "new:" + profile.id.uuidString, documentID: nil, profile: profile,
+                    binding: binding, sessionID: nil, transactionStatus: nil,
+                    title: "\(profile.name) · new SQL tab and session")
+            }
+            explainSelection = ExplainBatchDraft(sourceDocumentID: document.id, sourceText: document.text,
+                sourceProfileID: profileID, sourceProfileBinding: binding,
+                definitions: sqlLibraryExecutionBinding(document)?.parameters ?? [], mode: mode,
+                statements: statements, targets: targets, defaultTargetID: document.id.uuidString)
+        } catch { document.localError = error.localizedDescription }
+    }
+
+    func submitExplainSelection(_ draft: ExplainBatchDraft, selected: Set<Int>, targetID: String, planKind: ExplainPlanKind?) {
+        guard explainSelection?.id == draft.id else { return }
+        pendingExplainSelection = (draft, selected, targetID, planKind)
+        explainSelection = nil
+    }
+
+    func explainSelectionDismissed() {
+        guard let selection = pendingExplainSelection else { return }
+        pendingExplainSelection = nil
+        Task { await runExplainSelection(selection.draft, selected: selection.selected,
+            targetID: selection.targetID, planKind: selection.planKind) }
+    }
+
+    func runExplainSelection(_ draft: ExplainBatchDraft, selected: Set<Int>, targetID: String, planKind: ExplainPlanKind?) async {
+        guard let source = allOwnedSQLDocuments.first(where: { $0.id == draft.sourceDocumentID }),
+              let target = draft.targets.first(where: { $0.id == targetID }) else { return }
+        do {
+            let statements = try draft.selected(selected)
+            try await executeExplainBatch(source, draft: draft, statements: statements, target: target, planKind: planKind)
+        } catch { source.localError = error.localizedDescription }
+    }
+
+    // Existing callers keep the single-statement entry point; menu commands use
+    // the explicit chooser so changing the target is always a visible choice.
     func explainResolved(_ document: SQLDocument, fragment: SQLExecutionFragment, mode: ExplainMode,
                          profileBinding capturedProfileBinding: ExplainProfileBinding? = nil) async {
         guard canStartOperation(document), document.isSQLDocument, !document.isRunning,
               !document.isSnapshot, !document.isInvestigation, !document.queryResultSelectionLocked,
-              !editorState.hasMultipleSelections(for: document.id),
               let profileID = document.profileID,
               let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
-        guard [.postgresql, .mysql, .sqlite].contains(profile.engine) else {
-            document.localError = "Visual Explain supports PostgreSQL, Oracle MySQL and SQLite SQL tabs."; return
-        }
-        let request: ExplainRequest
-        do { request = try ExplainPlanModel.request(fragment: fragment, mode: mode, engine: profile.engine) }
-        catch { document.localError = error.localizedDescription; return }
-        if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
-        guard let profileBinding = capturedProfileBinding ?? ExplainProfileBinding(profile), profileBinding.matches(profile) else {
-            document.localError = "The exact connection context could not be captured. SQL was not executed."; return
-        }
-        let text = document.text
-        let binding = sqlLibraryExecutionBinding(document)
-        func contextValid() -> Bool {
-            canStartOperation(document) && !document.stopRequested && document.profileID == profileID &&
-            SQLFileDocument.sameBytes(document.text, text) && hasSQLLibraryExecutionBinding(document, binding) &&
-            profileBinding.matches(library.savedConnections.first(where: { $0.id == profileID })) && !document.queryResultSelectionLocked &&
-            (document.runtime?.connectionState != .connected || document.runtime.map { profileBinding.matchesRuntime($0) } == true)
-        }
-        document.isRunning = true
-        document.stopRequested = false
-        document.localError = nil
-        document.errorPosition = nil
-        document.showsExecutionPlan = true
-        document.explainPlan = ExplainPlanModel(request: request, sourceText: text,
-            sourceRange: fragment.statements[0].range, profileID: profileID, profile: profile, profileBinding: profileBinding)
-        defer { document.isRunning = false }
         do {
+            _ = try ExplainPlanModel.request(fragment: fragment, mode: mode, engine: profile.engine)
+            guard let binding = capturedProfileBinding ?? ExplainProfileBinding(profile), binding.matches(profile) else {
+                throw ExecutionPolicyError(message: "The exact connection context could not be captured. SQL was not executed.")
+            }
+            let statement = fragment.statements[0]
+            let item = ExplainBatchStatement(sql: statement.sql, range: statement.range, action: .plan,
+                line: fragment.firstLine, selectedByDefault: true)
+            let target = ExplainBatchTarget(id: document.id.uuidString, documentID: document.id, profile: profile,
+                binding: binding, sessionID: document.runtime?.sessionId, transactionStatus: document.runtime?.transactionStatus,
+                title: profile.name + " · " + document.title)
+            let draft = ExplainBatchDraft(sourceDocumentID: document.id, sourceText: document.text,
+                sourceProfileID: profileID, sourceProfileBinding: binding,
+                definitions: sqlLibraryExecutionBinding(document)?.parameters ?? [], mode: mode,
+                statements: [item], targets: [target], defaultTargetID: target.id)
+            try await executeExplainBatch(document, draft: draft, statements: [item], target: target, planKind: nil)
+        } catch { document.localError = error.localizedDescription }
+    }
+
+    private func executeExplainBatch(_ source: SQLDocument, draft: ExplainBatchDraft, statements: [ExplainBatchStatement],
+                                     target choice: ExplainBatchTarget, planKind: ExplainPlanKind?) async throws {
+        guard canStartOperation(source), !source.isRunning, !source.queryResultSelectionLocked,
+              [.postgresql, .mysql, .sqlite].contains(choice.profile.engine),
+              pendingQueryParameterPrompt == nil else { return }
+        let sourceBinding = sqlLibraryExecutionBinding(source)
+        func sourceValid() -> Bool {
+            canStartOperation(source) && !source.stopRequested && source.profileID == draft.sourceProfileID &&
+                SQLFileDocument.sameBytes(source.text, draft.sourceText) &&
+                draft.sourceProfileBinding.matches(library.savedConnections.first { $0.id == source.profileID }) &&
+                hasSQLLibraryExecutionBinding(source, sourceBinding) && (sourceBinding?.parameters ?? []) == draft.definitions &&
+                !source.queryResultSelectionLocked && choice.binding.matches(library.savedConnections.first { $0.id == choice.profile.id })
+        }
+        source.stopRequested = false
+        guard sourceValid(), statements.allSatisfy({ $0.matches(draft.sourceText) }) else {
+            throw ExecutionPolicyError(message: "The SQL, connection or parameters changed. Review the selection again.")
+        }
+        let target: SQLDocument
+        if let id = choice.documentID {
+            guard let existing = allOwnedSQLDocuments.first(where: { $0.id == id }), !existing.isRunning,
+                  canStartOperation(existing), existing.profileID == choice.profile.id,
+                  existing.runtime?.sessionId == choice.sessionID,
+                  existing.runtime?.transactionStatus == choice.transactionStatus,
+                  !existing.queryResultSelectionLocked else {
+                throw ExecutionPolicyError(message: "The chosen SQL tab or its session changed. Choose the target again.")
+            }
+            target = existing
+        } else {
+            target = newDocument(profileID: choice.profile.id, text: "")
+        }
+        var expectedRuntime = target.runtime
+        var expectedSessionID = target.runtime?.sessionId
+        var expectedTransaction = target.runtime?.transactionStatus
+        source.isRunning = true
+        target.isRunning = true
+        target.stopRequested = false
+        source.explainTargetDocumentID = target.id
+        source.localError = nil
+        source.errorPosition = nil
+        source.showsExecutionPlan = true
+        source.explainExecutions = statements.map { ExplainBatchExecution(statement: $0) }
+        source.selectedExplainExecution = 0
+        defer {
+            source.isRunning = false
+            target.isRunning = false
+            source.explainTargetDocumentID = nil
+            for index in source.explainExecutions.indices where source.explainExecutions[index].status == "Pending" {
+                source.explainExecutions[index].status = "Not executed"
+            }
+        }
+        func targetValid() -> Bool {
+            sourceValid() && canStartOperation(target) && !target.stopRequested && target.profileID == choice.profile.id &&
+                target.runtime === expectedRuntime && target.runtime?.sessionId == expectedSessionID &&
+                target.runtime?.transactionStatus == expectedTransaction && !target.queryResultSelectionLocked && (target.runtime?.connectionState != .connected ||
+                    target.runtime.map { choice.binding.matchesRuntime($0) } == true)
+        }
+        do {
+            let parameters: [QueryParameterBinding]?
+            if !draft.definitions.isEmpty {
+                guard let values = await requestQueryParameters(draft.definitions, document: source, profile: choice.profile) else { return }
+                try QueryParameterBinding.validate(values)
+                guard values.map({ SQLParameterDefinition(name: $0.name, type: $0.type) }) == draft.definitions else {
+                    throw ExecutionPolicyError(message: "The query parameter definitions changed. Review them and run again.")
+                }
+                parameters = values
+            } else { parameters = nil }
+            guard targetValid() else { throw CancellationError() }
             let client = try await ensureHelper()
-            guard contextValid() else { throw CancellationError() }
-            if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
-            guard contextValid(), services[profileID]?.connectionState == .connected else { throw CancellationError() }
-            if document.runtime?.connectionState != .connected {
+            guard targetValid() else { throw CancellationError() }
+            if services[choice.profile.id]?.connectionState != .connected { await connectProfile(choice.profile.id) }
+            guard targetValid(), services[choice.profile.id]?.connectionState == .connected else { throw CancellationError() }
+            if target.runtime?.connectionState != .connected {
                 let runtime = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
-                document.attach(runtime)
+                expectedRuntime = runtime
+                expectedSessionID = nil
+                expectedTransaction = nil
+                target.attach(runtime)
                 await runtime.start(sharedHelper: client)
-                guard contextValid() else { throw CancellationError() }
-                await runtime.connectSavedConnection(profileID, sshSnapshot: services[profileID]?.ssh)
+                guard targetValid() else { throw CancellationError() }
+                await runtime.connectSavedConnection(choice.profile.id, sshSnapshot: services[choice.profile.id]?.ssh)
+                expectedSessionID = runtime.sessionId
+                expectedTransaction = runtime.transactionStatus
             }
-            guard contextValid(), let runtime = document.runtime, runtime.connectionState == .connected,
-                  runtime.activeConnectionId == profileID, profileBinding.matchesRuntime(runtime) else {
-                throw ExecutionPolicyError(message: "The SQL or connection context changed. Review it and reconnect before Explain.")
+            guard targetValid(), let runtime = target.runtime, runtime.connectionState == .connected,
+                  runtime.activeConnectionId == choice.profile.id, choice.binding.matchesRuntime(runtime),
+                  let sessionID = runtime.sessionId else { throw CancellationError() }
+            let helperSupportsExplainParameters = await client.supportsExplainParameters()
+            let extended = runtime.capabilities.contains("explainParametersV1") && helperSupportsExplainParameters
+            guard parameters == nil && planKind == nil || extended else {
+                throw ExecutionPolicyError(message: "This helper does not support parameterized Explain. Update the app and helper together.")
             }
-            guard runtime.permitsOperation("explain." + mode.rawValue, legacyAllowed: runtime.capabilities.contains("visualExplainV1")),
-                  let support = runtime.explainSupport, support.modes.contains(mode) else {
-                throw ExecutionPolicyError(message: runtime.operationSupport?.availability("explain." + mode.rawValue)?.reason ?? runtime.explainSupport?.unavailableReason ?? "This helper does not support Visual Explain. Update the app and helper together.")
+            guard !extended || runtime.transactionStatus.map({ [.idle, .transaction, .failedTransaction].contains($0) }) == true else {
+                throw ExecutionPolicyError(message: "The exact session transaction context is unavailable. SQL was not executed.")
             }
-            guard let sessionID = runtime.sessionId else { throw CancellationError() }
-            document.explainPlan?.sessionID = sessionID
-            let operation = OperationRequest(type: "explain.run", explain: request)
-            guard let authorization = try await authorizeOperations([operation], sessionID: sessionID,
-                profile: profile, client: client, sourceSQL: request.sql) else {
-                document.explainPlan?.status = "Not executed — review cancelled"; return
+            let helperSupportsParameters = await client.supportsQueryParameters()
+            if parameters != nil && statements.contains(where: { $0.action == .execute }) &&
+               (!runtime.capabilities.contains("queryParametersV1") || !helperSupportsParameters) {
+                throw BackendRequestError.unsupportedQueryParameters
             }
-            guard contextValid(), document.runtime === runtime, runtime.sessionId == sessionID,
-                  runtime.policy == profile.policy else {
-                _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
-                throw CancellationError()
+            if statements.contains(where: { $0.action == .plan }) {
+                guard runtime.permitsOperation("explain." + draft.mode.rawValue, legacyAllowed: runtime.capabilities.contains("visualExplainV1")),
+                      let support = runtime.explainSupport, support.modes.contains(draft.mode) else {
+                    throw ExecutionPolicyError(message: runtime.explainSupport?.unavailableReason ?? "This server does not support the chosen Explain mode.")
+                }
+                if let planKind, !(support.planKinds ?? []).contains(planKind) {
+                    throw ExecutionPolicyError(message: "The chosen plan kind is unavailable on this server. Generic plans require PostgreSQL 16 or later.")
+                }
+                guard planKind != .generic || draft.mode == .plan else {
+                    throw ExecutionPolicyError(message: "A generic plan cannot use Explain Analyze.")
+                }
             }
-            document.explainPlan?.status = "Running"
-            let started = ContinuousClock.now
-            let completion = await runtime.run(authorization: authorization, explain: request)
-            let elapsed = started.duration(to: .now).components
-            guard ownedSQLContext(for: document) != nil else { return }
-            document.explainPlan?.result = completion?.reply?.explain
-            document.explainPlan?.clientDurationMs = max(0, Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
-            document.explainPlan?.failure = completion?.failure ?? runtime.queryFailure
-            if let failure = document.explainPlan?.failure {
-                document.explainPlan?.status = failure.outcomeUnknown ? "Unknown SQL outcome — not repeated" : failure.title
-            } else { document.explainPlan?.status = completion?.reply?.explain == nil ? "Not executed" : "Completed" }
-            if SQLFileDocument.sameBytes(document.text, text), document.profileID == profileID,
-               let position = runtime.queryErrorPosition {
-                let scalars = request.sql.unicodeScalars
-                let end = scalars.index(scalars.startIndex, offsetBy: max(0, position - 1), limitedBy: scalars.endIndex) ?? scalars.endIndex
-                document.errorPosition = fragment.statements[0].range.location + String(scalars[..<end]).utf16.count
+            for (index, statement) in statements.enumerated() {
+                source.selectedExplainExecution = index
+                guard targetValid(), target.runtime === runtime, runtime.sessionId == sessionID,
+                      runtime.transactionStatus == expectedTransaction else { throw CancellationError() }
+                source.explainExecutions[index].status = "Reviewing"
+                let transaction = runtime.transactionStatus
+                source.explainExecutions[index].targetProfile = choice.profile
+                if let transaction {
+                    source.explainExecutions[index].context = ExplainContext(documentId: source.id.uuidString,
+                        targetDocumentId: target.id.uuidString, rangeLocation: statement.range.location,
+                        rangeLength: statement.range.length, profileId: choice.profile.id.uuidString,
+                        sessionId: sessionID, transactionStatus: transaction.rawValue)
+                }
+                var request = ExplainRequest(sql: statement.sql, mode: draft.mode, parameters: parameters, planKind: planKind)
+                if statement.action == .plan {
+                    if extended { request.context = source.explainExecutions[index].context }
+                    guard request.valid else { throw ExecutionPolicyError(message: "The captured Explain request is invalid.") }
+                    var plan = ExplainPlanModel(request: request, sourceText: draft.sourceText, sourceRange: statement.range,
+                        profileID: choice.profile.id, profile: choice.profile, profileBinding: choice.binding, sessionID: sessionID)
+                    plan.sourceDocumentID = source.id
+                    plan.targetDocumentID = target.id
+                    plan.sourceProfileID = draft.sourceProfileID
+                    plan.sourceProfileBinding = draft.sourceProfileBinding
+                    plan.transactionStatus = transaction
+                    plan.sourceEvidence = ExplainSourceEvidence(rangeLocation: statement.range.location,
+                        rangeLength: statement.range.length, transactionStatus: transaction?.rawValue)
+                    source.explainPlan = plan
+                    source.explainExecutions[index].plan = plan
+                }
+                let operation = statement.action == .plan ? OperationRequest(type: "explain.run", explain: request) :
+                    OperationRequest(type: "execute", sql: statement.sql, parameters: parameters)
+                guard let authorization = try await authorizeOperations([operation], sessionID: sessionID,
+                    profile: choice.profile, client: client, sourceSQL: statement.sql) else {
+                    source.explainExecutions[index].status = "Not executed — review cancelled"
+                    if statement.action == .plan {
+                        source.explainPlan?.status = "Not executed — review cancelled"
+                        source.explainExecutions[index].plan = source.explainPlan
+                    }
+                    return
+                }
+                guard targetValid(), target.runtime === runtime, runtime.sessionId == sessionID,
+                      runtime.transactionStatus == transaction, runtime.policy == choice.profile.policy else {
+                    _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
+                    throw CancellationError()
+                }
+                source.explainExecutions[index].status = "Running"
+                if statement.action == .plan {
+                    source.explainPlan?.status = "Running"
+                    source.explainExecutions[index].plan = source.explainPlan
+                }
+                let started = ContinuousClock.now
+                let completion = statement.action == .plan ? await runtime.run(authorization: authorization, explain: request) :
+                    await runtime.run(sql: statement.sql, authorization: authorization, parameters: parameters)
+                let elapsed = started.duration(to: .now).components
+                guard ownedSQLContext(for: source) != nil else { return }
+                let failure = completion?.failure ?? runtime.queryFailure
+                let status = failure.map { $0.outcomeUnknown ? "Unknown SQL outcome — not repeated" : $0.title } ??
+                    (completion == nil ? "Not executed" : "Completed")
+                source.explainExecutions[index].status = status
+                source.explainExecutions[index].failure = failure
+                source.explainExecutions[index].clientDurationMs = max(0, Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
+                if statement.action == .execute { source.explainExecutions[index].result = completion?.reply }
+                if SQLFileDocument.sameBytes(source.text, draft.sourceText), source.profileID == draft.sourceProfileID,
+                   let position = runtime.queryErrorPosition {
+                    let scalars = statement.sql.unicodeScalars
+                    let end = scalars.index(scalars.startIndex, offsetBy: max(0, position - 1), limitedBy: scalars.endIndex) ?? scalars.endIndex
+                    source.errorPosition = statement.range.location + String(scalars[..<end]).utf16.count
+                }
+                if statement.action == .plan {
+                    source.explainPlan?.result = completion?.reply?.explain
+                    source.explainPlan?.failure = failure
+                    source.explainPlan?.status = status
+                    source.explainPlan?.clientDurationMs = max(0, Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
+                    source.explainExecutions[index].plan = source.explainPlan
+                }
+                // Continue only after a definite acknowledgement. A stopped or
+                // uncertain setup operation never starts the next statement.
+                guard let reply = completion?.reply, failure == nil, reply.outcomeUnknown != true,
+                      reply.type == (statement.action == .plan ? "explain.result" : "query.result"),
+                      !source.stopRequested, !target.stopRequested else { return }
+                expectedTransaction = runtime.transactionStatus
             }
         } catch is CancellationError {
-            document.explainPlan?.status = "Not executed — context changed or stopped"
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution) {
+                source.explainExecutions[source.selectedExplainExecution].status = "Not executed — context changed or stopped"
+            }
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution),
+               var plan = source.explainExecutions[source.selectedExplainExecution].plan {
+                plan.status = "Not executed — context changed or stopped"
+                source.explainExecutions[source.selectedExplainExecution].plan = plan
+                source.explainPlan = plan
+            }
         } catch {
-            document.localError = error.localizedDescription
-            document.explainPlan?.status = "Not executed"
+            source.localError = error.localizedDescription
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution) {
+                source.explainExecutions[source.selectedExplainExecution].status = "Not executed"
+            }
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution),
+               var plan = source.explainExecutions[source.selectedExplainExecution].plan {
+                plan.status = "Not executed"
+                source.explainExecutions[source.selectedExplainExecution].plan = plan
+                source.explainPlan = plan
+            }
         }
     }
 
@@ -2145,7 +2357,12 @@ final class ApplicationWorkspace: ObservableObject {
            let client = try? await ensureHelper() {
             _ = try? await client.request(.cancel(sessionId: sessionID, queryId: queryID))
         }
-        await document.runtime?.stop()
+        if let targetID = document.explainTargetDocumentID, targetID != document.id,
+           let target = allOwnedSQLDocuments.first(where: { $0.id == targetID }) {
+            target.stopRequested = true
+            if target.runtime?.isConnecting == true { target.runtime?.cancelConnection() }
+            await target.runtime?.stop()
+        } else { await document.runtime?.stop() }
     }
 
     func flushDocuments() async {

@@ -52,6 +52,12 @@ func assessOperation(engine string, operation protocol.OperationRequest) protoco
 	}
 	if operation.Type == "explain.run" && operation.Explain != nil {
 		sql = operation.Explain.SQL
+		bound, err := queryparams.Bind(engine, sql, operation.Explain.Parameters)
+		if err != nil {
+			result.Kind = "unknown"
+			return result
+		}
+		sql = bound.AssessmentSQL
 	}
 	statements := safety.Classify(engine, sql)
 	if len(statements) == 0 {
@@ -132,6 +138,9 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 			if !ok {
 				return protocol.ErrorResponse(command, "capability", "Visual Explain is unavailable.")
 			}
+			if binding := operation.Explain.Context; binding != nil && (binding.SessionID != owner.id || binding.TransactionStatus != sessions[0].TransactionStatus()) {
+				return protocol.ErrorResponse(command, "conflict", "The Explain session context changed. Review it again.")
+			}
 			prepared, err := explain.PrepareExplain(*operation.Explain)
 			if err != nil {
 				return protocol.ErrorResponse(command, "validation", err.Error())
@@ -183,6 +192,13 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 	if owner.importOnly && command.Type != "import.apply" || !owner.importOnly && command.Type == "import.apply" {
 		owner.invalidateGrant()
 		return false
+	}
+	if command.Type == "explain.run" && command.Explain != nil && command.Explain.Context != nil {
+		binding := command.Explain.Context
+		if len(sessions) == 0 || binding.SessionID != owner.id || binding.TransactionStatus != sessions[0].TransactionStatus() {
+			owner.invalidateGrant()
+			return false
+		}
 	}
 	operation := protocol.OperationRequest{NativeCommand: command.NativeCommand, TableImport: command.TableImport, Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
 	if command.Type == "command.execute" {

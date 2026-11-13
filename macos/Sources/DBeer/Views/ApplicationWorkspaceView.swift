@@ -148,6 +148,11 @@ struct ApplicationWorkspaceView: View {
             InsertCopyView(workspace: workspace, selection: selection)
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: $workspace.explainSelection, onDismiss: { workspace.explainSelectionDismissed() }) { draft in
+            ExplainSelectionView(draft: draft) { selected, targetID, planKind in
+                workspace.submitExplainSelection(draft, selected: selected, targetID: targetID, planKind: planKind)
+            }.applicationTheme(appearance: appearance)
+        }
         .sheet(item: Binding(get: { workspace.queryParameterPrompt }, set: { value in
             if value == nil, let prompt = workspace.queryParameterPrompt {
                 workspace.submitQueryParameters(id: prompt.id, values: nil)
@@ -684,14 +689,16 @@ struct SQLDocumentPane: View {
                         .frame(minHeight: 160, idealHeight: 240)
                     VStack(spacing: 0) {
                         executionBar
-                        if document.explainPlan != nil {
+                        if document.explainPlan != nil || !document.explainExecutions.isEmpty {
                             Picker("Result presentation", selection: $document.showsExecutionPlan) {
                                 Text("Query Results").tag(false)
                                 Text("Execution Plan").tag(true)
                             }.pickerStyle(.segmented).padding(6)
                         }
-                        if document.showsExecutionPlan, let plan = document.explainPlan {
-                            ExplainPlanView(plan: plan, stale: plan.isStale(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID }),
+                        if document.showsExecutionPlan, !document.explainExecutions.isEmpty {
+                            ExplainBatchResultsView(document: document, workspace: workspace)
+                        } else if document.showsExecutionPlan, let plan = document.explainPlan {
+                            ExplainPlanView(plan: plan, stale: plan.isStaleSource(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID }),
                                 planLibrary: workspace.planArtifacts, saveTitle: document.title,
                                 canSave: { workspace.canManageWorkspace }, openLibrary: { workspace.isPlansPresented = true }).id(plan.id)
                         } else { result }

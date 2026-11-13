@@ -18,6 +18,10 @@ final class SQLEditorState {
         editors[documentID]?.selectedRange() ?? fallback
     }
 
+    func selections(for documentID: UUID, fallback: NSRange) -> [NSRange] {
+        editors[documentID]?.editorSelections ?? [fallback]
+    }
+
     func hasMultipleSelections(for documentID: UUID) -> Bool {
         editors[documentID]?.hasMultipleEditorSelections == true
     }

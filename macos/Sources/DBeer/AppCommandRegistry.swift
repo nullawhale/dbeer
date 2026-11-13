@@ -222,7 +222,7 @@ struct AppCommandInvocation {
             }
             return gridHandlers[command] != nil
         }
-        if [.runCurrent, .runToJSON, .runToCSV, .explain, .explainAnalyze].contains(command),
+        if [.runCurrent, .runToJSON, .runToCSV].contains(command),
            workspace.editorState.hasMultipleSelections(for: document.id) { return false }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true || document.erDiagramModel?.isLoading == true }
         guard !context.isComposingText else { return false }
@@ -330,6 +330,7 @@ struct AppCommandInvocation {
             profile: capturedProfile, explainProfileBinding: capturedExplainBinding,
             fragment: document.table == nil && command != .stop ? workspace.executionFragment(document, script: command == .runScript) : nil,
             parentDocumentID: tab.id, investigationID: owner.investigationID, blockID: owner.blockID, paneID: pane)
+        let capturedExplainSelections = workspace.editorState.selections(for: document.id, fallback: document.selection)
         let handler = gridHandlers[command]
         return Task { [workspace, invocationHandler] in
             if [.explain, .explainAnalyze].contains(command),
@@ -349,9 +350,9 @@ struct AppCommandInvocation {
                     await workspace.run(document)
                 }
                 else if let fragment = invocation.fragment { await workspace.runResolved(document, fragment: fragment) }
-            } else if [.explain, .explainAnalyze].contains(command), let fragment = invocation.fragment {
-                await workspace.explainResolved(document, fragment: fragment, mode: command == .explainAnalyze ? .analyze : .plan,
-                    profileBinding: invocation.explainProfileBinding)
+            } else if [.explain, .explainAnalyze].contains(command) {
+                workspace.beginExplainSelection(document, mode: command == .explainAnalyze ? .analyze : .plan,
+                    selections: capturedExplainSelections, profileBinding: invocation.explainProfileBinding)
             } else if command == .runScript, let fragment = invocation.fragment {
                 await workspace.runResolved(document, fragment: fragment, script: true)
             } else if command == .runToJSON || command == .runToCSV {

@@ -23,6 +23,16 @@ type Bound struct {
 }
 
 func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, error) {
+	return bind(engine, sql, parameters, false)
+}
+
+// BindGeneric supplies fixed built-in type casts without sending values to the
+// PostgreSQL GENERIC_PLAN statement. Values never become SQL text.
+func BindGeneric(sql string, parameters []protocol.QueryParameter) (Bound, error) {
+	return bind("postgresql", sql, parameters, true)
+}
+
+func bind(engine, sql string, parameters []protocol.QueryParameter, generic bool) (Bound, error) {
 	if !protocol.QueryParametersValid(parameters) {
 		return Bound{}, ErrInvalid
 	}
@@ -50,7 +60,7 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 			}
 		}
 	}
-	bound, err := scan(engine, sql, parameters, false)
+	bound, err := scan(engine, sql, parameters, false, generic)
 	if err != nil {
 		return Bound{}, err
 	}
@@ -58,7 +68,7 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 	// interpretations locate identical placeholders; explicit PG E strings
 	// always retain their defined escape rules.
 	if engine != "sqlite" && len(parameters) > 0 && strings.Contains(sql, "\\") {
-		alternate, err := scan(engine, sql, parameters, true)
+		alternate, err := scan(engine, sql, parameters, true, generic)
 		if err != nil || alternate.SQL != bound.SQL {
 			return Bound{}, ErrInvalid
 		}
@@ -66,7 +76,7 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 	return bound, nil
 }
 
-func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool) (Bound, error) {
+func scan(engine, sql string, parameters []protocol.QueryParameter, escapes, generic bool) (Bound, error) {
 	definitions := map[string]protocol.QueryParameter{}
 	for _, p := range parameters {
 		definitions[p.Name] = p
@@ -199,8 +209,14 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 						index = len(bound.Parameters)
 						used[name] = index
 					}
+					if generic {
+						output.WriteByte('(')
+					}
 					output.WriteByte('$')
 					output.WriteString(strconv.Itoa(index))
+					if generic {
+						output.WriteString("::pg_catalog." + map[string]string{"text": "text", "integer": "int8", "decimal": "numeric", "boolean": "bool", "date": "date", "timestamp": "timestamp"}[p.Type] + ")")
+					}
 				} else {
 					bound.Parameters = append(bound.Parameters, p)
 					if p.Value != nil {

@@ -8,6 +8,7 @@ import (
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	"dbeer/helper/internal/safety"
 )
 
@@ -21,10 +22,12 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 }
 func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExplain, error) {
 	p := adapter.PreparedExplain{Request: r, Prefix: "EXPLAIN QUERY PLAN\n"}
-	if r.Mode != "plan" || !r.Valid() || !safety.VisualExplainTarget("sqlite", r.SQL) {
+	bound, err := queryparams.Bind("sqlite", r.SQL, r.Parameters)
+	if r.Mode != "plan" || r.PlanKind != "" || !r.Valid() || err != nil || !safety.VisualExplainTarget("sqlite", bound.AssessmentSQL) {
 		return p, errors.New("SQLite Explain requires one SELECT or read CTE; Analyze is unavailable.")
 	}
-	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + r.SQL, Mode: r.Mode, Support: s.ExplainSupport()}
+	p.Bound = bound
+	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s.ExplainSupport()}
 	return p, nil
 }
 func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protocol.Response {
@@ -38,7 +41,21 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 	if p.Preview.SQL != c.PreparedExplainSQL {
 		return s.fail(c, ctx, errors.New("Explain requires the exact prepared SQL."))
 	}
-	rows, _, err := s.query(ctx, p.Preview.SQL)
+	args := make([]any, len(p.Bound.Parameters))
+	for i, parameter := range p.Bound.Parameters {
+		if parameter.Value == nil {
+			continue
+		}
+		switch parameter.Type {
+		case "integer":
+			args[i], _ = strconv.ParseInt(*parameter.Value, 10, 64)
+		case "boolean":
+			args[i] = *parameter.Value == "true"
+		default:
+			args[i] = *parameter.Value
+		}
+	}
+	rows, _, err := s.query(ctx, p.Preview.SQL, args...)
 	if err != nil {
 		return s.fail(c, ctx, err)
 	}

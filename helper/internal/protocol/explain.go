@@ -4,32 +4,77 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+	"unicode/utf16"
 	"unicode/utf8"
 )
 
 const VisualExplainCapability = "visualExplainV1"
+const ExplainParametersCapability = "explainParametersV1"
 const MaxExplainRawBytes = 4 * 1024 * 1024
 const MaxExplainNodes = 10000
 const MaxExplainDepth = 128
 const MaxExplainResponseBytes = 8 * 1024 * 1024
 
+// Context is transient execution ownership. Portable artifacts retain the source
+// range separately and must never retain session handles or authorization.
+type ExplainContext struct {
+	DocumentID        string `json:"documentId"`
+	TargetDocumentID  string `json:"targetDocumentId"`
+	RangeLocation     int    `json:"rangeLocation"`
+	RangeLength       int    `json:"rangeLength"`
+	ProfileID         string `json:"profileId"`
+	SessionID         string `json:"sessionId"`
+	TransactionStatus string `json:"transactionStatus"`
+}
+
+func (c ExplainContext) Valid() bool {
+	return ValidID(c.DocumentID) && ValidID(c.TargetDocumentID) && ValidID(c.ProfileID) && ValidID(c.SessionID) &&
+		c.RangeLocation >= 0 && c.RangeLocation <= 16*1024*1024 && c.RangeLength > 0 && c.RangeLength <= 1024*1024 &&
+		(c.TransactionStatus == "idle" || c.TransactionStatus == "transaction" || c.TransactionStatus == "failedTransaction")
+}
+
 type ExplainRequest struct {
-	SQL  string `json:"sql"`
-	Mode string `json:"mode"`
+	SQL        string           `json:"sql"`
+	Mode       string           `json:"mode"`
+	Parameters []QueryParameter `json:"parameters,omitempty"`
+	PlanKind   string           `json:"planKind,omitempty"`
+	Context    *ExplainContext  `json:"context,omitempty"`
 }
 
 func (r ExplainRequest) Valid() bool {
-	return (r.Mode == "plan" || r.Mode == "analyze") && len(r.SQL) > 0 && len(r.SQL) <= 1024*1024 && utf8.ValidString(r.SQL) && !strings.ContainsRune(r.SQL, 0)
+	return (r.Mode == "plan" || r.Mode == "analyze") && len(r.SQL) > 0 && len(r.SQL) <= 1024*1024 && utf8.ValidString(r.SQL) && !strings.ContainsRune(r.SQL, 0) &&
+		QueryParametersValid(r.Parameters) && (r.PlanKind == "" || r.PlanKind == "custom" || r.PlanKind == "generic" && r.Mode == "plan") &&
+		(r.Context == nil || r.Context.Valid() && r.Context.RangeLength == len(utf16.Encode([]rune(r.SQL))))
 }
 func parseExplain(raw json.RawMessage) (*ExplainRequest, bool) {
-	if _, ok := changesObject(raw, "sql|mode", "sql", "mode"); !ok {
+	fields, ok := changesObject(raw, "sql|mode|parameters|planKind|context", "sql", "mode")
+	if !ok {
 		return nil, false
 	}
 	var r ExplainRequest
-	if json.Unmarshal(raw, &r) != nil || !r.Valid() {
+	if !stringField(fields, "sql", &r.SQL) || !stringField(fields, "mode", &r.Mode) {
 		return nil, false
 	}
-	return &r, true
+	if v, exists := fields["parameters"]; exists {
+		r.Parameters, ok = parseQueryParameters(v)
+		if !ok {
+			return nil, false
+		}
+	}
+	if _, exists := fields["planKind"]; exists && !stringField(fields, "planKind", &r.PlanKind) {
+		return nil, false
+	}
+	if v, exists := fields["context"]; exists {
+		if _, ok := changesObject(v, "documentId|targetDocumentId|rangeLocation|rangeLength|profileId|sessionId|transactionStatus", "documentId", "targetDocumentId", "rangeLocation", "rangeLength", "profileId", "sessionId", "transactionStatus"); !ok {
+			return nil, false
+		}
+		var c ExplainContext
+		if json.Unmarshal(v, &c) != nil || !c.Valid() {
+			return nil, false
+		}
+		r.Context = &c
+	}
+	return &r, r.Valid()
 }
 
 type ExplainSupport struct {
@@ -37,6 +82,7 @@ type ExplainSupport struct {
 	ServerVersion     string   `json:"serverVersion"`
 	Format            string   `json:"format"`
 	Modes             []string `json:"modes"`
+	PlanKinds         []string `json:"planKinds,omitempty"`
 	UnavailableReason string   `json:"unavailableReason,omitempty"`
 }
 type ExplainPreview struct {
@@ -95,6 +141,16 @@ func (s ExplainSupport) Valid() bool {
 	}
 	if s.Engine == "sqlite" && (s.Format != "queryPlan" || len(s.Modes) != 1 || s.Modes[0] != "plan") || s.Engine == "postgresql" && s.Format != "json" || s.Engine == "mysql" && s.Format != "tree" {
 		return false
+	}
+	if len(s.PlanKinds) > 2 || s.Engine != "postgresql" && len(s.PlanKinds) != 0 {
+		return false
+	}
+	kinds := map[string]bool{}
+	for _, k := range s.PlanKinds {
+		if (k != "custom" && k != "generic") || kinds[k] {
+			return false
+		}
+		kinds[k] = true
 	}
 	seen := map[string]bool{}
 	for _, m := range s.Modes {

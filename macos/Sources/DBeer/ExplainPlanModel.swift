@@ -45,6 +45,12 @@ struct ExplainPlanModel {
     var profile: SavedConnection?
     var profileBinding: ExplainProfileBinding?
     var sessionID: String?
+    var sourceDocumentID: UUID?
+    var targetDocumentID: UUID?
+    var sourceProfileID: UUID?
+    var sourceProfileBinding: ExplainProfileBinding?
+    var transactionStatus: TransactionStatus?
+    var sourceEvidence: ExplainSourceEvidence?
     var result: ExplainResult?
     var status = "Starting"
     var clientDurationMs: Double?
@@ -57,6 +63,14 @@ struct ExplainPlanModel {
         else { changedProfile = false }
         return !sourceText.utf8.elementsEqual(text.utf8) || self.profileID != profileID || changedProfile
     }
+    func isStaleSource(text: String, profileID: UUID?, profile: SavedConnection?) -> Bool {
+        if let sourceProfileID {
+            return !sourceText.utf8.elementsEqual(text.utf8) || sourceProfileID != profileID ||
+                sourceProfileBinding?.matches(profile) == false
+        }
+        return isStale(text: text, profileID: profileID, profile: profile)
+    }
+
     static func request(fragment: SQLExecutionFragment, mode: ExplainMode, engine: DatabaseEngine = .postgresql) throws -> ExplainRequest {
         if let diagnostic = fragment.diagnostic { throw ExecutionPolicyError(message: diagnostic.message) }
         guard fragment.kind != .script, fragment.statements.count == 1 else {

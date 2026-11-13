@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Explain typed named parameters and explicitly chosen script fragments or
+  multiple editor selections in their original document order. Choose the source
+  SQL tab, an existing SQL tab or a new session for another saved connection;
+  review each statement separately and run setup commands only when selected.
+  Offer PostgreSQL custom plans and value-independent generic plans on supported
+  servers. Keep per-statement results and captured ranges, stop after uncertain
+  outcomes, and save parameter values only in explicitly saved plan evidence.
+  Read existing plan artifacts and exclude runtime ownership from portable files.
+
 - Preserve captured native values separately from display text across results,
   inspection, JSON copying/export, snapshots, comparisons, profiling and Agent/MCP
   replies. Retain exact numeric strings, binary bytes, IEEE widths/bits and

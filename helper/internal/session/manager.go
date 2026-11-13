@@ -610,7 +610,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					if explain, ok := physical.(adapter.ExplainSession); ok {
 						support := explain.ExplainSupport()
 						response.ExplainSupport = &support
-						response.Capabilities = append(response.Capabilities, protocol.VisualExplainCapability)
+						response.Capabilities = append(response.Capabilities, protocol.VisualExplainCapability, protocol.ExplainParametersCapability)
 					}
 					if current, ok := physical.(interface{ CurrentKeyspace() string }); ok {
 						keyspace := current.CurrentKeyspace()

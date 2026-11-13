@@ -84,7 +84,16 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 		failure.Connected, failure.TransactionStatus = !conn.IsClosed(), transactionStatus(conn)
 		return failure
 	}
-	statement, columns, sourceFields, prepareErr := prepareQueryTypes(ctx, conn, sql, oids)
+	// GENERIC_PLAN must reach PostgreSQL without externally bound values. Use
+	// the same collector/owner, with one simple-query message and no pre-Parse.
+	genericExplain := command.Type == "explain.run" && command.Explain != nil && command.Explain.PlanKind == "generic"
+	var statement string
+	var columns []protocol.Column
+	var sourceFields []pgconn.FieldDescription
+	var prepareErr error
+	if !genericExplain {
+		statement, columns, sourceFields, prepareErr = prepareQueryTypes(ctx, conn, sql, oids)
+	}
 	if prepareErr != nil {
 		failure := queryError(command, ctx, conn, prepareErr)
 		// Parse/coercion and catalog deparsing can call user type routines.
@@ -113,7 +122,21 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 			}
 		}
 	}
-	reader := conn.PgConn().ExecPrepared(ctx, statement, values, nil, resultFormats)
+	var reader *pgconn.ResultReader
+	var simple *pgconn.MultiResultReader
+	if genericExplain {
+		simple = conn.PgConn().Exec(ctx, sql)
+		if !simple.NextResult() {
+			err := simple.Close()
+			if err == nil {
+				err = errors.New("The Explain statement returned no result.")
+			}
+			return queryError(command, ctx, conn, err)
+		}
+		reader = simple.ResultReader()
+	} else {
+		reader = conn.PgConn().ExecPrepared(ctx, statement, values, nil, resultFormats)
+	}
 	collector := newResultCollector(command, reader.FieldDescriptions(), MaxResultBytes)
 	// Explain has its own bounded capture; never retain a duplicate grid result.
 	if command.Type == "explain.run" {
@@ -212,6 +235,11 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 		}
 	}
 	tag, err := reader.Close()
+	if simple != nil {
+		if drainErr := simple.Close(); err == nil {
+			err = drainErr
+		}
+	}
 	if err != nil {
 		return queryError(command, ctx, conn, err)
 	}

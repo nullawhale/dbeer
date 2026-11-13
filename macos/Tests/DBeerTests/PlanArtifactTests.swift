@@ -39,7 +39,7 @@ struct PlanArtifactTests {
         var artifact = try PlanArtifact.capture(planTestModel(), title: "Valid")
         let text = try artifact.encoded()
         #expect(throws: (any Error).self) {
-            _ = try PlanArtifact.decode(text.replacingOccurrences(of: "\"version\" : 1", with: "\"version\" : 99"))
+            _ = try PlanArtifact.decode(text.replacingOccurrences(of: "\"version\" : 2", with: "\"version\" : 99"))
         }
         artifact.result.nodes[0].children = [artifact.result.nodes[0].id]
         #expect(!artifact.valid)

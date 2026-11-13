@@ -94,6 +94,7 @@ actor BackendClient {
     private var schemaBundleSourceSupported = false
     private var dataComparisonSupported = false
     private var synchronizationPlanSupported = false
+    private var explainParametersSupported = false
     private var queryParametersSupported = false
     private var tableImportSupported = false
     private var sessionMonitorSupported = false
@@ -213,6 +214,7 @@ actor BackendClient {
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
+    func supportsExplainParameters() -> Bool { explainParametersSupported }
     func supportsQueryParameters() -> Bool { queryParametersSupported }
     func supportsTableImport() -> Bool { tableImportSupported }
     func supportsSessionMonitor() -> Bool { sessionMonitorSupported }
@@ -342,6 +344,14 @@ actor BackendClient {
                 }
                 do { try QueryParameterBinding.validate(parameters) }
                 catch { throw BackendRequestError.invalidCommand }
+            }
+        }
+        let explainRequests = [command.explain].compactMap { $0 } + (command.operations ?? []).compactMap(\.explain)
+        for explain in explainRequests where explain.parameters != nil || explain.planKind != nil || explain.context != nil {
+            guard explainParametersSupported, let session = command.sessionId,
+                  sessionCapabilities[session]?.contains("explainParametersV1") == true,
+                  explain.valid, explain.context.map({ $0.sessionId == session }) ?? true else {
+                throw BackendRequestError.invalidCommand
             }
         }
         if command.type == "explain.run" {
@@ -567,6 +577,7 @@ actor BackendClient {
             schemaBundleSourceSupported = reply.capabilities?.contains("schemaBundleSourceV1") == true
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
+            explainParametersSupported = reply.capabilities?.contains("explainParametersV1") == true
             queryParametersSupported = reply.capabilities?.contains("queryParametersV1") == true
             tableImportSupported = reply.capabilities?.contains("tableImportV1") == true
             sessionMonitorSupported = reply.capabilities?.contains("sessionMonitorV1") == true

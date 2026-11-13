@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	"dbeer/helper/internal/safety"
 )
 
@@ -17,6 +18,7 @@ type PreparedExplain struct {
 	Request protocol.ExplainRequest
 	Preview protocol.ExplainPreview
 	Prefix  string
+	Bound   queryparams.Bound
 }
 type ExplainSession interface {
 	ExplainSupport() protocol.ExplainSupport
@@ -26,16 +28,35 @@ type ExplainSession interface {
 
 func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (PreparedExplain, error) {
 	p := PreparedExplain{Request: r}
-	if !r.Valid() || !safety.VisualExplainTarget(s.Engine, r.SQL) {
-		return p, errors.New("Visual Explain requires one unwrapped SELECT or read CTE, without parameters, locking, known side effects, or client commands.")
+	bound, err := queryparams.Bind(s.Engine, r.SQL, r.Parameters)
+	if r.PlanKind == "generic" {
+		bound, err = queryparams.BindGeneric(r.SQL, r.Parameters)
+	}
+	if !r.Valid() || err != nil || !safety.VisualExplainTarget(s.Engine, bound.AssessmentSQL) {
+		return p, errors.New("Visual Explain requires one unwrapped SELECT or read CTE, without locking, known side effects, or client commands.")
 	}
 	if !s.Valid() || len(s.Modes) == 0 {
 		return p, errors.New("Visual Explain is unavailable for this server version or engine fork.")
 	}
+	if r.PlanKind != "" {
+		allowed := false
+		for _, kind := range s.PlanKinds {
+			if r.PlanKind == kind {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return p, errors.New("The selected PostgreSQL plan kind is unavailable. Generic plans require PostgreSQL 16+; Analyze requires a custom plan.")
+		}
+	}
+	p.Bound = bound
 	if s.Engine == "postgresql" {
 		p.Prefix = "EXPLAIN (ANALYZE FALSE, COSTS TRUE, FORMAT JSON)\n"
 		if r.Mode == "analyze" {
 			p.Prefix = "EXPLAIN (ANALYZE TRUE, COSTS TRUE, TIMING TRUE, SUMMARY TRUE, BUFFERS TRUE, FORMAT JSON)\n"
+		}
+		if r.PlanKind == "generic" {
+			p.Prefix = "EXPLAIN (ANALYZE FALSE, GENERIC_PLAN TRUE, COSTS TRUE, FORMAT JSON)\n"
 		}
 	} else {
 		p.Prefix = "EXPLAIN FORMAT=TREE\n"
@@ -43,7 +64,7 @@ func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (Prepa
 			p.Prefix = "EXPLAIN ANALYZE FORMAT=TREE\n"
 		}
 	}
-	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + r.SQL, Mode: r.Mode, Support: s}
+	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s}
 	return p, nil
 }
 
@@ -74,6 +95,12 @@ func ExplainSupport(engine, version string) protocol.ExplainSupport {
 	}
 	if valid {
 		s.Modes = []string{"plan", "analyze"}
+		if engine == "postgresql" {
+			s.PlanKinds = []string{"custom"}
+			if major >= 16 {
+				s.PlanKinds = append(s.PlanKinds, "generic")
+			}
+		}
 	} else {
 		s.UnavailableReason = "Visual Explain requires PostgreSQL 14+ or Oracle MySQL 8.0.21+ with the supported plan format."
 	}
@@ -125,6 +152,9 @@ func (c *ExplainCapture) Row(_ int, values []*string) error {
 func (c *ExplainCapture) End(_ int, _ protocol.ResultSet) error { return nil }
 func FinishExplain(ctx context.Context, command protocol.Command, response protocol.Response, p PreparedExplain, c *ExplainCapture, parse func(context.Context, string, string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error)) protocol.Response {
 	if response.Type == "error" {
+		if len(p.Request.Parameters) > 0 {
+			response.ErrorPosition = 0
+		}
 		if response.ErrorPosition > 0 {
 			prefix := utf8.RuneCountInString(p.Prefix)
 			if response.ErrorPosition > prefix && response.ErrorPosition-prefix <= utf8.RuneCountInString(p.Request.SQL)+1 {

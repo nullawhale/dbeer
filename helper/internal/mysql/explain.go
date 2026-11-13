@@ -38,6 +38,11 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 	}
 	capture := &adapter.ExplainCapture{}
 	response := s.executeWith(ctx, c, func(collector *collector, result *wire.Result) error {
+		if len(p.Bound.Parameters) > 0 {
+			bound := p.Bound
+			bound.SQL = p.Preview.SQL
+			return s.executeBoundResults(bound, collector, result)
+		}
 		return s.executeResults(p.Preview.SQL, collector, result)
 	}, capture)
 	// MySQL does not report source positions for TREE execution errors.

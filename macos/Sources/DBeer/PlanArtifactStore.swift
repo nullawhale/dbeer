@@ -4,7 +4,7 @@ import Foundation
 /// Explicit user artifacts retain only the SQL and evidence from the original
 /// Explain operation. Runtime ownership and connection settings are excluded.
 struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
-    static let currentVersion = 1
+    static let currentVersion = 2
     static let maximumBytes = 16 * 1_024 * 1_024
     var version = Self.currentVersion
     var id: UUID
@@ -16,9 +16,12 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
     var request: ExplainRequest
     var result: ExplainResult
     var baselineName: String?
+    var source: ExplainSourceEvidence? = nil
 
     var valid: Bool {
-        version == Self.currentVersion && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        (version == 1 || version == Self.currentVersion) && request.context == nil &&
+        (version != 1 || source == nil && request.parameters == nil && request.planKind == nil) &&
+        (source.map { $0.valid && $0.rangeLength == request.sql.utf16.count } ?? true) && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         title.utf8.count <= 16_384 && !title.contains("\0") && capturedAt.timeIntervalSince1970.isFinite &&
         (profileName?.utf8.count ?? 0) <= 16_384 && profileName?.contains("\0") != true && (baselineName?.utf8.count ?? 0) <= 16_384 &&
         baselineName?.contains("\0") != true && request.valid && result.valid && exactTopology && request.mode == result.mode
@@ -42,8 +45,8 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
         let capturedAt = Date(timeIntervalSince1970: (plan.capturedAt.timeIntervalSince1970 * 1_000).rounded() / 1_000)
         let artifact = Self(id: UUID(), title: title, capturedAt: capturedAt,
             profileName: plan.profile?.name, environment: plan.profile?.policy.environment,
-            sourceWasStale: sourceWasStale, request: plan.request, result: result,
-            baselineName: baselineName.flatMap { $0.isEmpty ? nil : $0 })
+            sourceWasStale: sourceWasStale, request: plan.request.portable, result: result,
+            baselineName: baselineName.flatMap { $0.isEmpty ? nil : $0 }, source: plan.sourceEvidence)
         guard artifact.valid else { throw PlanArtifactError.invalid }
         return artifact
     }
@@ -51,6 +54,7 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
     var displayPlan: ExplainPlanModel {
         var plan = ExplainPlanModel(request: request, sourceText: request.sql,
             sourceRange: NSRange(location: 0, length: (request.sql as NSString).length), profileID: UUID())
+        plan.sourceEvidence = source
         plan.result = result
         plan.status = "Saved \(capturedAt.formatted(date: .abbreviated, time: .shortened))" + (sourceWasStale == true ? " · earlier query or connection at save" : "")
         return plan
@@ -69,10 +73,22 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
     }
 
     static func decode(_ text: String) throws -> Self {
-        guard text.utf8.count <= maximumBytes else { throw PlanArtifactError.invalid }
+        let data = Data(text.utf8)
+        try ExactJSONKeys.validate(data, maximumBytes: maximumBytes)
+        guard let fields = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = fields["version"] as? Int, [1, currentVersion].contains(version),
+              Set(fields.keys).isSubset(of: ["version", "id", "title", "capturedAt", "profileName", "environment", "sourceWasStale", "request", "result", "baselineName", "source"]),
+              let request = fields["request"] as? [String: Any],
+              Set(request.keys).isSubset(of: version == 1 ? ["sql", "mode"] : ["sql", "mode", "parameters", "planKind"]),
+              version != 1 || fields["source"] == nil else { throw PlanArtifactError.invalid }
+        if let source = fields["source"] {
+            guard let source = source as? [String: Any],
+                  Set(source.keys).isSubset(of: ["rangeLocation", "rangeLength", "transactionStatus"]),
+                  !source.values.contains(where: { $0 is NSNull }) else { throw PlanArtifactError.invalid }
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .millisecondsSince1970
-        let artifact = try decoder.decode(Self.self, from: Data(text.utf8))
+        let artifact = try decoder.decode(Self.self, from: data)
         guard artifact.valid else { throw PlanArtifactError.invalid }
         return artifact
     }

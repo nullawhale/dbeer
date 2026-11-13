@@ -3,10 +3,78 @@ import Foundation
 enum ExplainMode: String, Codable, Sendable { case plan, analyze
     var title: String { self == .analyze ? "Explain Analyze" : "Explain" }
 }
+enum ExplainPlanKind: String, Codable, CaseIterable, Sendable { case custom, generic
+    var title: String { self == .generic ? "Generic (PostgreSQL 16+, estimated only)" : "Custom (bound values)" }
+}
+
+/// Process-local ownership copied into the single-use execution grant.
+struct ExplainContext: Codable, Sendable, Equatable {
+    var documentId: String
+    var targetDocumentId: String
+    var rangeLocation: Int
+    var rangeLength: Int
+    var profileId: String
+    var sessionId: String
+    var transactionStatus: String
+    private enum CodingKeys: String, CodingKey { case documentId, targetDocumentId, rangeLocation, rangeLength, profileId, sessionId, transactionStatus }
+    var valid: Bool {
+        [documentId, targetDocumentId, profileId, sessionId].allSatisfy(BackendMessage.validID) &&
+        (0...16_777_216).contains(rangeLocation) && (1...1_048_576).contains(rangeLength) &&
+        ["idle", "transaction", "failedTransaction"].contains(transactionStatus)
+    }
+}
 struct ExplainRequest: Codable, Sendable, Equatable {
     var sql: String
     var mode: ExplainMode
-    var valid: Bool { !sql.isEmpty && sql.utf8.count <= 1_048_576 && !sql.contains("\0") }
+    var parameters: [QueryParameterBinding]? = nil
+    var planKind: ExplainPlanKind? = nil
+    var context: ExplainContext? = nil
+    private enum CodingKeys: String, CodingKey { case sql, mode, parameters, planKind, context }
+    var valid: Bool {
+        !sql.isEmpty && sql.utf8.count <= 1_048_576 && !sql.contains("\0") &&
+        (parameters.map { (try? QueryParameterBinding.validate($0)) != nil } ?? true) &&
+        (planKind != .generic || mode == .plan) && (context.map { $0.valid && $0.rangeLength == sql.utf16.count } ?? true)
+    }
+    var portable: Self { var copy = self; copy.context = nil; return copy }
+}
+extension ExplainContext {
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["documentId", "targetDocumentId", "rangeLocation", "rangeLength", "profileId", "sessionId", "transactionStatus"])
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        documentId = try values.decode(String.self, forKey: .documentId)
+        targetDocumentId = try values.decode(String.self, forKey: .targetDocumentId)
+        rangeLocation = try values.decode(Int.self, forKey: .rangeLocation)
+        rangeLength = try values.decode(Int.self, forKey: .rangeLength)
+        profileId = try values.decode(String.self, forKey: .profileId)
+        sessionId = try values.decode(String.self, forKey: .sessionId)
+        transactionStatus = try values.decode(String.self, forKey: .transactionStatus)
+        guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid Explain ownership context.")) }
+    }
+}
+extension ExplainRequest {
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["sql", "mode"], optional: ["parameters", "planKind", "context"])
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        sql = try values.decode(String.self, forKey: .sql)
+        mode = try values.decode(ExplainMode.self, forKey: .mode)
+        parameters = values.contains(.parameters) ? try values.decode([QueryParameterBinding].self, forKey: .parameters) : nil
+        planKind = values.contains(.planKind) ? try values.decode(ExplainPlanKind.self, forKey: .planKind) : nil
+        context = values.contains(.context) ? try values.decode(ExplainContext.self, forKey: .context) : nil
+        guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid Explain request.")) }
+    }
+}
+private struct ExplainCodingKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+}
+private func requireExplainKeys(_ decoder: Decoder, required: Set<String>, optional: Set<String> = []) throws {
+    let values = try decoder.container(keyedBy: ExplainCodingKey.self)
+    let keys = Set(values.allKeys.map(\.stringValue))
+    guard required.isSubset(of: keys), keys.isSubset(of: required.union(optional)) else {
+        throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid Explain fields."))
+    }
 }
 struct ExplainSupport: Codable, Sendable, Equatable {
     var engine: DatabaseEngine
@@ -14,10 +82,12 @@ struct ExplainSupport: Codable, Sendable, Equatable {
     var format: String
     var modes: [ExplainMode]
     var unavailableReason: String?
+    var planKinds: [ExplainPlanKind]? = nil
     var valid: Bool {
         [.postgresql, .mysql, .sqlite].contains(engine) && serverVersion.utf8.count <= 256 &&
         format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : "tree") && modes.count <= 2 &&
         Set(modes.map(\.rawValue)).count == modes.count &&
+        (planKinds == nil || engine == .postgresql && planKinds!.count <= 2 && Set(planKinds!.map(\.rawValue)).count == planKinds!.count) &&
         (modes.isEmpty ? unavailableReason?.isEmpty == false : unavailableReason == nil)
     }
 }

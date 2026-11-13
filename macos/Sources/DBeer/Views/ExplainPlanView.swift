@@ -37,7 +37,23 @@ struct ExplainPlanView: View {
                 Picker("Plan display", selection: raw.projectedValue) { Text("Tree").tag(false); Text("Raw Plan").tag(true) }
                     .pickerStyle(.segmented).frame(width: 180)
             }
-            if let profile = plan.profile { Text("Source: \(profile.name) · \(profile.endpointDescription)").font(.caption).foregroundStyle(.secondary) }
+            if let profile = plan.sourceProfileBinding?.profile {
+                Text("Source: \(profile.name) · \(profile.endpointDescription)").font(.caption).foregroundStyle(.secondary)
+            }
+            if let profile = plan.profile { Text("Target: \(profile.name) · \(profile.endpointDescription)").font(.caption).foregroundStyle(.secondary) }
+            if let evidence = plan.sourceEvidence {
+                Text("Original UTF-16 range: \(evidence.rangeLocation)…\(evidence.rangeLocation + evidence.rangeLength) · Captured transaction: \(evidence.transactionStatus ?? "unavailable")")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let kind = plan.request.planKind { Text(kind.title).font(.caption).foregroundStyle(.secondary) }
+            if let parameters = plan.request.parameters {
+                DisclosureGroup("Captured Parameters · included when you save or export this plan") {
+                    ForEach(parameters, id: \.name) { parameter in
+                        Text(":" + parameter.name + " · " + parameter.type.label + " · " + (parameter.value.map { $0.isEmpty ? "Empty string" : $0 } ?? "SQL NULL"))
+                            .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    }
+                }
+            }
             DisclosureGroup("Captured SQL") {
                 ScrollView { Text(plan.request.sql).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 100)
             }

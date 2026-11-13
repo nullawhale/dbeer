@@ -82,7 +82,7 @@ struct PlanComparison {
         let sameEngine = before.result.support.engine == after.result.support.engine
         comparableEngine = sameEngine
         metricsComparable = sameEngine && Self.sameBytes(before.result.support.serverVersion, after.result.support.serverVersion) &&
-            Self.sameBytes(before.result.support.format, after.result.support.format) && before.request.mode == after.request.mode
+            Self.sameBytes(before.result.support.format, after.result.support.format) && before.request.mode == after.request.mode && before.request.planKind == after.request.planKind
         incomplete = !before.result.complete || !after.result.complete || before.result.status != "tree" || after.result.status != "tree"
         shapeAvailable = sameEngine && before.result.status == "tree" && after.result.status == "tree"
         func signature(_ node: ExplainNode) -> Data {

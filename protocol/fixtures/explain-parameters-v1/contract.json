@@ -1,0 +1,548 @@
+{
+  "version": 1,
+  "capability": "explainParametersV1",
+  "commands": [
+    {
+      "type": "explain.run",
+      "requestId": "r",
+      "sessionId": "session-b",
+      "queryId": "q",
+      "authorization": "grant",
+      "explain": {
+        "sql": "SELECT :n, :text, :empty, :null",
+        "mode": "plan",
+        "parameters": [
+          {
+            "name": "n",
+            "type": "decimal",
+            "value": "9007199254740993.125"
+          },
+          {
+            "name": "text",
+            "type": "text",
+            "value": "NULL ' ; DELETE FROM evidence; --"
+          },
+          {
+            "name": "empty",
+            "type": "text",
+            "value": ""
+          },
+          {
+            "name": "null",
+            "type": "text",
+            "value": null
+          }
+        ],
+        "planKind": "custom",
+        "context": {
+          "documentId": "document-a",
+          "rangeLocation": 17,
+          "rangeLength": 31,
+          "profileId": "profile-b",
+          "sessionId": "session-b",
+          "transactionStatus": "transaction",
+          "targetDocumentId": "document-b"
+        }
+      }
+    },
+    {
+      "type": "operation.assess",
+      "requestId": "r2",
+      "sessionId": "session-b",
+      "queryId": "q2",
+      "operations": [
+        {
+          "type": "explain.run",
+          "explain": {
+            "sql": "SELECT :n, :text, :empty, :null",
+            "mode": "plan",
+            "parameters": [
+              {
+                "name": "n",
+                "type": "decimal",
+                "value": "9007199254740993.125"
+              },
+              {
+                "name": "text",
+                "type": "text",
+                "value": "NULL ' ; DELETE FROM evidence; --"
+              },
+              {
+                "name": "empty",
+                "type": "text",
+                "value": ""
+              },
+              {
+                "name": "null",
+                "type": "text",
+                "value": null
+              }
+            ],
+            "planKind": "custom",
+            "context": {
+              "documentId": "document-a",
+              "rangeLocation": 17,
+              "rangeLength": 31,
+              "profileId": "profile-b",
+              "sessionId": "session-b",
+              "transactionStatus": "transaction",
+              "targetDocumentId": "document-b"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "explain.run",
+      "requestId": "r",
+      "sessionId": "session-b",
+      "queryId": "q",
+      "authorization": "grant",
+      "explain": {
+        "sql": "SELECT :n, :text, :empty, :null",
+        "mode": "plan",
+        "parameters": [
+          {
+            "name": "n",
+            "type": "decimal",
+            "value": "9007199254740993.125"
+          },
+          {
+            "name": "text",
+            "type": "text",
+            "value": "NULL ' ; DELETE FROM evidence; --"
+          },
+          {
+            "name": "empty",
+            "type": "text",
+            "value": ""
+          },
+          {
+            "name": "null",
+            "type": "text",
+            "value": null
+          }
+        ],
+        "planKind": "generic",
+        "context": {
+          "documentId": "document-a",
+          "rangeLocation": 17,
+          "rangeLength": 31,
+          "profileId": "profile-b",
+          "sessionId": "session-b",
+          "transactionStatus": "transaction",
+          "targetDocumentId": "document-b"
+        }
+      }
+    }
+  ],
+  "invalidCommands": [
+    {
+      "id": "top-level-parameters",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "custom",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": 17,
+            "rangeLength": 31,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "targetDocumentId": "document-b"
+          }
+        },
+        "parameters": [
+          {
+            "name": "n",
+            "type": "decimal",
+            "value": "9007199254740993.125"
+          },
+          {
+            "name": "text",
+            "type": "text",
+            "value": "NULL ' ; DELETE FROM evidence; --"
+          },
+          {
+            "name": "empty",
+            "type": "text",
+            "value": ""
+          },
+          {
+            "name": "null",
+            "type": "text",
+            "value": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "generic-analyze",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "analyze",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "generic",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": 17,
+            "rangeLength": 31,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "targetDocumentId": "document-b"
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-plan-kind",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "auto-retry",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": 17,
+            "rangeLength": 31,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "targetDocumentId": "document-b"
+          }
+        }
+      }
+    },
+    {
+      "id": "null-bindings",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": null,
+          "planKind": "custom",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": 17,
+            "rangeLength": 31,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "targetDocumentId": "document-b"
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-value",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "custom",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": 17,
+            "rangeLength": 31,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "targetDocumentId": "document-b"
+          }
+        }
+      }
+    },
+    {
+      "id": "bad-range",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "custom",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": -1,
+            "rangeLength": 31,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "targetDocumentId": "document-b"
+          }
+        }
+      }
+    },
+    {
+      "id": "wrong-range-length",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "custom",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": 17,
+            "rangeLength": 1,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "targetDocumentId": "document-b"
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-context-field",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "custom",
+          "context": {
+            "documentId": "document-a",
+            "rangeLocation": 17,
+            "rangeLength": 31,
+            "profileId": "profile-b",
+            "sessionId": "session-b",
+            "transactionStatus": "transaction",
+            "password": "forbidden",
+            "targetDocumentId": "document-b"
+          }
+        }
+      }
+    },
+    {
+      "id": "null-context",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "session-b",
+        "queryId": "q",
+        "authorization": "grant",
+        "explain": {
+          "sql": "SELECT :n, :text, :empty, :null",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "n",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            },
+            {
+              "name": "text",
+              "type": "text",
+              "value": "NULL ' ; DELETE FROM evidence; --"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            }
+          ],
+          "planKind": "custom",
+          "context": null
+        }
+      }
+    }
+  ]
+}
