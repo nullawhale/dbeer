@@ -37,6 +37,11 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     @Published private(set) var isApplying = false
     @Published private(set) var error: String?
     @Published private(set) var invalidated = false
+    @Published private(set) var draftFileURL: URL?
+    @Published private(set) var fileNotice: String?
+    private(set) var draftFileVersion: SQLFileVersion?
+    private var savedDraftDocument: StructureDraftDocument?
+    private var restoredDraftDocument: StructureDraftDocument?
     private var sessionID: String?
     private var queryID: String?
     private var cancelRequested = false
@@ -106,13 +111,24 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
             let requestedTarget = outcome != nil && originalCreate ? StructureTarget(schema: schema, table: table, create: true, reconcile: true) : target
             let reply = try await request("load", .init(target: requestedTarget))
             try requireBinding()
-            baseline = reply.baseline
-            if let baseline { create = baseline.target.create }
+            if restoredDraftDocument != nil {
+                guard reply.baseline?.target == requestedTarget, target == requestedTarget else {
+                    throw StructureDraftFileError.incompatibleTarget
+                }
+            }
+            guard let freshBaseline = reply.baseline,
+                  freshBaseline.engine == profile.engine.rawValue,
+                  StructureTarget.sameIdentifier(freshBaseline.target.schema, requestedTarget.schema),
+                  StructureTarget.sameIdentifier(freshBaseline.target.table, requestedTarget.table),
+                  requestedTarget.reconcile == true || freshBaseline.target.create == requestedTarget.create else { throw BackendTransportError(.invalidMessage) }
+            baseline = freshBaseline; create = freshBaseline.target.create
             if let outcome { history.append(outcome) }
             if let outcomeReview, !historyReviews.contains(where: { $0.id == outcomeReview.id }) { historyReviews.append(outcomeReview) }
             outcomeReview = nil
             outcome = nil
-            draft = .init(columns: create ? [Self.emptyColumn] : [])
+            draft = restoredDraftDocument?.draft ?? .init(columns: create ? [Self.emptyColumn] : [])
+            restoredDraftDocument = nil
+            fileNotice = nil
         } catch { self.error = error.localizedDescription }
     }
     func preparePreview() async {
@@ -167,8 +183,91 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
             }
         }
     }
+    var portableDraft: StructureDraftDocument {
+        if let review = outcomeReview {
+            return .init(engine: profile.engine, target: review.plan.target, draft: review.draft)
+        }
+        return .init(engine: profile.engine, target: target, draft: draft)
+    }
+    var canSaveDraft: Bool { !isBusy && !closing && portableDraft.valid }
+    var canOpenDraft: Bool { !isBusy && !closing && !invalidated && outcome == nil }
+    var draftFileLabel: String? {
+        guard let draftFileURL else { return nil }
+        return draftFileURL.lastPathComponent + (savedDraftDocument == portableDraft ? " · Saved" : " · Edited")
+    }
+    var exportablePlan: StructurePlan? { preview ?? outcomeReview?.plan }
+
+    func saveDraft(to url: URL, expectedDocument: StructureDraftDocument, expectedVersion: SQLFileVersion?) async {
+        guard canSaveDraft else { return }
+        guard portableDraft == expectedDocument else { error = StructureDraftFileError.changedDraft.localizedDescription; return }
+        isBusy = true
+        error = nil
+        defer { isBusy = false }
+        do {
+            let version = try await Task.detached {
+                try StructureDraftStore.write(expectedDocument, to: url, expectedVersion: expectedVersion)
+            }.value
+            draftFileURL = url
+            draftFileVersion = version
+            savedDraftDocument = expectedDocument
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func openDraft(from url: URL, expectedDocument: StructureDraftDocument, replaceReviewed: Bool) async {
+        guard canOpenDraft else { return }
+        guard portableDraft == expectedDocument, !hasDraft || replaceReviewed else {
+            error = StructureDraftFileError.changedDraft.localizedDescription
+            return
+        }
+        isBusy = true
+        error = nil
+        defer { isBusy = false }
+        do {
+            let loaded = try await Task.detached { try StructureDraftStore.read(url) }.value
+            let document = loaded.document
+            guard document.engine == profile.engine, StructureTarget.sameIdentifier(document.target.schema, schema),
+                  document.target.create == create,
+                  StructureTarget.sameIdentifier(document.target.table, table) || create && table.isEmpty else {
+                throw StructureDraftFileError.incompatibleTarget
+            }
+            guard portableDraft == expectedDocument, outcome == nil, validateBinding() else {
+                throw StructureDraftFileError.changedDraft
+            }
+            table = document.target.table
+            baseline = nil
+            preview = nil
+            operationSupport = nil
+            draft = document.draft
+            restoredDraftDocument = document
+            draftFileURL = url
+            draftFileVersion = loaded.version
+            savedDraftDocument = document
+            fileNotice = "Draft opened. Load current structure and prepare a fresh Preview SQL before Apply."
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func exportSQL(to url: URL, expectedPlan: StructurePlan, expectedVersion: SQLFileVersion?) async {
+        guard !isBusy, !closing, exportablePlan == expectedPlan else {
+            error = StructureDraftFileError.changedDraft.localizedDescription
+            return
+        }
+        isBusy = true
+        error = nil
+        defer { isBusy = false }
+        do {
+            let text = try StructureDraftStore.sql(expectedPlan)
+            _ = try await Task.detached {
+                try SQLFileBinding.write(text, to: url, expectedVersion: expectedVersion)
+            }.value
+            fileNotice = "Reviewed SQL saved. Review the current destination before executing the file."
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func setFileError(_ value: any Error) { error = value.localizedDescription }
+
     func discard(forClosing: Bool = false) {
         guard !isBusy, forClosing || !closing else { return }
+        restoredDraftDocument = nil
         draft = .init(columns: create ? [Self.emptyColumn] : []); preview = nil
     }
     func stop() async {

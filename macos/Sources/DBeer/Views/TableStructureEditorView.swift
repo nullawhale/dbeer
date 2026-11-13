@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct TableStructureEditorView: View {
     @ObservedObject var model: TableStructureEditorModel
@@ -6,6 +8,9 @@ struct TableStructureEditorView: View {
     var saveEvidence: (() -> Void)? = nil
     var evidenceModel: SavedEvidenceModel? = nil
     private var confirmClose = SwiftUI.State(initialValue: false)
+    private var confirmReplace = SwiftUI.State(initialValue: false)
+    var makeSavePanel: @MainActor () -> NSSavePanel = { NSSavePanel() }
+    var makeOpenPanel: @MainActor () -> NSOpenPanel = { NSOpenPanel() }
     private var canEdit: Bool { !model.isBusy && !model.closing && !model.invalidated && model.baseline != nil && model.outcome == nil }
     private var canEditTarget: Bool { model.create && !model.isBusy && !model.closing && !model.invalidated && model.baseline == nil && model.outcome == nil }
     private var canLoad: Bool {
@@ -28,6 +33,22 @@ struct TableStructureEditorView: View {
                     guard canLoad else { return }; Task { await model.load() }
                 }.controlHover().disabled(!canLoad)
                     .help("Read the current structure. Discard unapplied edits before reloading; reconciliation never retries DDL.")
+            }
+            HStack {
+                Menu("Draft") {
+                    Button("Open Draft…") {
+                        if model.hasDraft { confirmReplace.wrappedValue = true }
+                        else { chooseDraft(replaceReviewed: false) }
+                    }.disabled(!model.canOpenDraft)
+                    Button("Save Draft") { saveDraft(saveAs: false) }.disabled(!model.canSaveDraft)
+                    Button("Save Draft As…") { saveDraft(saveAs: true) }.disabled(!model.canSaveDraft)
+                    Divider()
+                    Button("Export Reviewed SQL…", action: exportSQL).disabled(model.isBusy || model.closing || model.exportablePlan == nil)
+                }.fixedSize().controlHover().accessibilityIdentifier("structureDraftFiles")
+                if let label = model.draftFileLabel {
+                    Text(label).font(.caption).appSecondaryText().textSelection(.enabled).lineLimit(1)
+                }
+                Spacer()
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -66,6 +87,7 @@ struct TableStructureEditorView: View {
                         legacyOutcome(outcome)
                     }
                     history
+                    if let notice = model.fileNotice { Text(notice).font(.caption).appSecondaryText().textSelection(.enabled) }
                     if let error = model.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.frame(minHeight: 220, idealHeight: 420, maxHeight: 580)
@@ -75,6 +97,56 @@ struct TableStructureEditorView: View {
         .confirmationDialog("Close this structure draft? Unapplied edits will be discarded. Applied changes remain in the database; an unknown outcome requires reconciliation. Reviewed SQL, intended changes and execution evidence remain available when you reopen this table during this workspace session.", isPresented: confirmClose.projectedValue) {
             Button("Discard Draft and Close", role: .destructive) { if !model.isBusy && !model.closing { close() } }
             Button("Keep Editing", role: .cancel) {}
+        }
+        .confirmationDialog("Replace this local structure draft? Save Draft keeps a file you can open later.", isPresented: confirmReplace.projectedValue) {
+            Button("Choose Replacement Draft…", role: .destructive) { chooseDraft(replaceReviewed: true) }
+            Button("Keep Editing", role: .cancel) {}
+        }
+    }
+
+    private func chooseDraft(replaceReviewed: Bool) {
+        guard model.canOpenDraft else { return }
+        let expected = model.portableDraft
+        let panel = makeOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "dbeerstructure", conformingTo: .json) ?? .json, .json]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { await model.openDraft(from: url, expectedDocument: expected, replaceReviewed: replaceReviewed) }
+        }
+    }
+
+    private func saveDraft(saveAs: Bool) {
+        guard model.canSaveDraft else { return }
+        let expected = model.portableDraft
+        if !saveAs, let url = model.draftFileURL, let version = model.draftFileVersion {
+            Task { await model.saveDraft(to: url, expectedDocument: expected, expectedVersion: version) }
+            return
+        }
+        let panel = makeSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "dbeerstructure", conformingTo: .json) ?? .json]
+        panel.nameFieldStringValue = model.draftFileURL?.lastPathComponent ?? "structure-draft.dbeerstructure"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let version = try StructureDraftStore.destinationVersion(url)
+                Task { await model.saveDraft(to: url, expectedDocument: expected, expectedVersion: version) }
+            } catch { model.setFileError(error) }
+        }
+    }
+
+    private func exportSQL() {
+        guard !model.isBusy, !model.closing, let expected = model.exportablePlan else { return }
+        let panel = makeSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "sql") ?? .plainText]
+        panel.nameFieldStringValue = "structure-plan.sql"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let version = try StructureDraftStore.destinationVersion(url)
+                Task { await model.exportSQL(to: url, expectedPlan: expected, expectedVersion: version) }
+            } catch { model.setFileError(error) }
         }
     }
 
@@ -104,12 +176,7 @@ struct TableStructureEditorView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(model.historyReviews) { review in
                             DisclosureGroup(review.outcome.state + " · " + review.plan.target.schema + " · " + review.plan.target.table) {
-                                if let saveEvidence {
-                            Button("Save Outcome Evidence", action: saveEvidence).controlHover().disabled(model.closing || evidenceModel?.isBusy == true)
-                                .help("Save the retained reviewed SQL, intended changes and step outcome as immutable local evidence.")
-                        }
-                        if let evidenceModel { SavedEvidenceStatusView(model: evidenceModel) }
-                        TableStructureExecutionReportView(review: review)
+                                TableStructureExecutionReportView(review: review)
                             }
                         }
                         ForEach(Array(model.history.filter { outcome in !model.historyReviews.contains { $0.id == outcome.executionId } }.enumerated()), id: \.offset) { _, report in

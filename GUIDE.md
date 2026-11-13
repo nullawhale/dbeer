@@ -598,22 +598,21 @@ explicitly **Apply** the reviewed plan. Preview reads metadata and never runs DD
 Readonly profiles can inspect and preview; the helper rejects Apply. Production
 writes and explicit key/index removals or replacements require confirmation.
 
-Supported operations include ordinary permanent table creation, one nullable
-appended column per existing-table plan, scalar literal defaults, nullability,
-integer-to-bigint widening and increased varchar length. Ordinary ordered BTREE
-indexes and supported primary/unique/foreign keys can be added, explicitly
-removed or replaced. Foreign keys preserve composite order, require a supported
-referenced primary/unique key and matching types/collations, and include any
-required MySQL supporting index in the SQL preview. Advanced index options,
-identity/generated columns, arbitrary expressions, renames, column/table deletion
-and lossy conversions remain outside the editor.
+The editor's **Draft** menu saves local typed changes in a versioned
+`.dbeerstructure` file through **Save Draft** or **Save Draft As…**. Incomplete fields can be saved for later editing. Files contain engine, exact target names and typed intent with a
+1 MiB limit. The current writer uses version 1. Save
+checks the previous file version and preserves concurrent external changes.
 
-Editing requires PostgreSQL 14+ or Oracle MySQL 8.0.30+. Unsupported table
-properties or incomplete dependency visibility block the affected operation.
-MySQL type widening and referenced-key removal require direct global SELECT
-metadata visibility without active roles or partial revokes; narrower accounts
-retain eligible additive and narrow column operations. Catalogs cannot prove the
-absence of dynamic SQL dependencies.
+Use **Open Draft…** in **Create Table…** for a matching schema or in
+**Edit Structure…** for the exact existing table and engine. Replacing current
+edits requires confirmation. Opening a file is local; explicitly choose
+**Load Structure**, review the restored changes, then prepare a fresh
+**Preview SQL** before Apply. Destructive choices require fresh selection.
+Execution evidence is kept separately for the workspace session.
+
+**Export Reviewed SQL…** saves the current preview or retained execution plan
+with ordered steps and warnings. The file represents the captured plan; review
+the current destination before executing it through the SQL editor.
 
 Apply uses a dedicated session and bounded lock waits. Every displayed statement
 is an independent execution unit: the entire plan is not atomic, and MySQL DDL

@@ -97,6 +97,11 @@
   storage values without converting them to display text. Retain source row
   mapping while loaded-result search is active.
 
+- Save and reopen typed table-structure drafts as versioned `.dbeerstructure`
+  files, with guarded Save/Save As, exact target checks and fresh structure
+  loading and SQL preview before Apply. Export reviewed SQL steps with warnings
+  and keep execution evidence separate from portable draft intent.
+
 - Add bounded PostgreSQL/MySQL/SQLite metadata paging and selected-object batches
   beyond the ordinary result display limit. Retain immutable observations and
   complete composite foreign keys, surface access gaps, source changes and MySQL
