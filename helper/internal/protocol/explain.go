@@ -10,6 +10,7 @@ import (
 
 const VisualExplainCapability = "visualExplainV1"
 const ExplainParametersCapability = "explainParametersV1"
+const ExplainOptionsCapability = "explainOptionsV1"
 const MaxExplainRawBytes = 4 * 1024 * 1024
 const MaxExplainNodes = 10000
 const MaxExplainDepth = 128
@@ -39,15 +40,16 @@ type ExplainRequest struct {
 	Parameters []QueryParameter `json:"parameters,omitempty"`
 	PlanKind   string           `json:"planKind,omitempty"`
 	Context    *ExplainContext  `json:"context,omitempty"`
+	Options    *ExplainOptions  `json:"options,omitempty"`
 }
 
 func (r ExplainRequest) Valid() bool {
 	return (r.Mode == "plan" || r.Mode == "analyze") && len(r.SQL) > 0 && len(r.SQL) <= 1024*1024 && utf8.ValidString(r.SQL) && !strings.ContainsRune(r.SQL, 0) &&
-		QueryParametersValid(r.Parameters) && (r.PlanKind == "" || r.PlanKind == "custom" || r.PlanKind == "generic" && r.Mode == "plan") &&
+		(r.Options == nil || r.Options.Valid()) && QueryParametersValid(r.Parameters) && (r.PlanKind == "" || r.PlanKind == "custom" || r.PlanKind == "generic" && r.Mode == "plan") &&
 		(r.Context == nil || r.Context.Valid() && r.Context.RangeLength == len(utf16.Encode([]rune(r.SQL))))
 }
 func parseExplain(raw json.RawMessage) (*ExplainRequest, bool) {
-	fields, ok := changesObject(raw, "sql|mode|parameters|planKind|context", "sql", "mode")
+	fields, ok := changesObject(raw, "sql|mode|parameters|planKind|context|options", "sql", "mode")
 	if !ok {
 		return nil, false
 	}
@@ -74,22 +76,33 @@ func parseExplain(raw json.RawMessage) (*ExplainRequest, bool) {
 		}
 		r.Context = &c
 	}
+	if raw, exists := fields["options"]; exists {
+		r.Options, ok = parseExplainOptions(raw)
+		if !ok {
+			return nil, false
+		}
+	}
 	return &r, r.Valid()
 }
 
 type ExplainSupport struct {
-	DiagnosticModel   string   `json:"diagnosticModel,omitempty"`
-	Engine            string   `json:"engine"`
-	ServerVersion     string   `json:"serverVersion"`
-	Format            string   `json:"format"`
-	Modes             []string `json:"modes"`
-	PlanKinds         []string `json:"planKinds,omitempty"`
-	UnavailableReason string   `json:"unavailableReason,omitempty"`
+	Notices                  []string              `json:"notices,omitempty"`
+	Options                  *ExplainOptionSupport `json:"options,omitempty"`
+	AnalyzeUnavailableReason string                `json:"analyzeUnavailableReason,omitempty"`
+	DiagnosticModel          string                `json:"diagnosticModel,omitempty"`
+	Engine                   string                `json:"engine"`
+	ServerVersion            string                `json:"serverVersion"`
+	Format                   string                `json:"format"`
+	Modes                    []string              `json:"modes"`
+	PlanKinds                []string              `json:"planKinds,omitempty"`
+	UnavailableReason        string                `json:"unavailableReason,omitempty"`
 }
 type ExplainPreview struct {
-	SQL     string         `json:"sql"`
-	Mode    string         `json:"mode"`
-	Support ExplainSupport `json:"support"`
+	Options *ExplainOptions `json:"options,omitempty"`
+	Format  string          `json:"format,omitempty"`
+	SQL     string          `json:"sql"`
+	Mode    string          `json:"mode"`
+	Support ExplainSupport  `json:"support"`
 }
 type ExplainMetric struct {
 	Value             *string `json:"value,omitempty"`
@@ -106,6 +119,8 @@ type ExplainNode struct {
 	Metrics   map[string]ExplainMetric `json:"metrics"`
 }
 type ExplainResult struct {
+	Options          *ExplainOptions          `json:"options,omitempty"`
+	Format           string                   `json:"format,omitempty"`
 	EngineDiagnostic *EngineDiagnostic        `json:"engineDiagnostic,omitempty"`
 	Support          ExplainSupport           `json:"support"`
 	Mode             string                   `json:"mode"`
@@ -132,7 +147,7 @@ func (m ExplainMetric) Valid() bool {
 		return m.UnavailableReason == "" && ValidExplainDecimal(*m.Value)
 	}
 	switch m.UnavailableReason {
-	case "notCollected", "notReported", "unsupported", "notExecuted":
+	case "notCollected", "notReported", "unsupported", "notExecuted", "disabled":
 		return true
 	}
 	return false
@@ -141,7 +156,7 @@ func (s ExplainSupport) Valid() bool {
 	if s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "sqlite" && s.Engine != "mongodb" && s.Engine != "cassandra" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
 		return false
 	}
-	if s.Engine == "sqlite" && (s.Format != "queryPlan" || len(s.Modes) != 1 || s.Modes[0] != "plan") || s.Engine == "postgresql" && s.Format != "json" || s.Engine == "mysql" && s.Format != "tree" {
+	if s.Engine == "sqlite" && (s.Format != "queryPlan" || len(s.Modes) != 1 || s.Modes[0] != "plan") || s.Engine == "postgresql" && s.Format != "json" || s.Engine == "mysql" && s.Format != "tree" && s.Format != "json" {
 		return false
 	}
 	if s.Engine == "mongodb" {
@@ -153,6 +168,17 @@ func (s ExplainSupport) Valid() bool {
 			return false
 		}
 	} else if s.DiagnosticModel != "" {
+		return false
+	}
+	if len(s.Notices) > 8 || len(s.Notices) != 0 && s.Engine != "postgresql" && s.Engine != "mysql" {
+		return false
+	}
+	for _, notice := range s.Notices {
+		if notice == "" || len(notice) > 4096 {
+			return false
+		}
+	}
+	if s.Options != nil && !s.Options.Valid(s.Engine) || len(s.AnalyzeUnavailableReason) > 4096 || s.AnalyzeUnavailableReason != "" && (s.Engine != "mysql" || containsExplainString(s.Modes, "analyze")) {
 		return false
 	}
 	if len(s.PlanKinds) > 2 || s.Engine != "postgresql" && len(s.PlanKinds) != 0 {
@@ -180,6 +206,9 @@ func (r ExplainResult) Valid() bool {
 		if mode == r.Mode {
 			supported = true
 		}
+	}
+	if !validExplainSelection(r.Support, r.Options, r.Mode, r.Format, r.Status) {
+		return false
 	}
 	if !supported || !r.Support.Valid() || (r.Mode != "plan" && r.Mode != "analyze") || len(r.Raw) > MaxExplainRawBytes || !utf8.ValidString(r.Raw) || len(r.Nodes) > MaxExplainNodes || len(r.Metrics) > 16 || len(r.Diagnostic) > 4096 {
 		return false
@@ -217,7 +246,7 @@ func (r ExplainResult) Valid() bool {
 		if !ValidID(n.ID) || n.Operation == "" || len(n.Operation) > 65536 || len(n.Details) > 128 || len(n.Metrics) > 32 || len(n.Children) > MaxExplainNodes || nodes[n.ID].ID != "" {
 			return false
 		}
-		if n.Execution != "estimated" && n.Execution != "executed" && n.Execution != "notExecuted" {
+		if n.Execution != "estimated" && n.Execution != "executed" && n.Execution != "notExecuted" && n.Execution != "unknown" {
 			return false
 		}
 		for k, v := range n.Details {

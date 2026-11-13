@@ -132,7 +132,7 @@ struct ExplainEngineDiagnosticTests {
         #expect(!admits(relational, ["engineDiagnosticsV1"], true, .unsupported))
     }
 
-    @Test func portableVersionThreeKeepsDiagnosticsAndStripsExecutionOwnership() throws {
+    @Test func portableCurrentVersionKeepsDiagnosticsAndStripsExecutionOwnership() throws {
         for fixture in try EngineDiagnosticFixture.load().fixtures {
             var request = fixture.request
             request.context = .init(documentId: "private-source", targetDocumentId: "private-target", rangeLocation: 0,
@@ -143,10 +143,10 @@ struct ExplainEngineDiagnosticTests {
             let saved = try PlanArtifact.capture(plan, title: fixture.name)
             let encoded = try saved.encoded()
             let restored = try PlanArtifact.decode(encoded)
-            #expect(restored.version == 3 && restored.result == fixture.result && restored.request.context == nil)
+            #expect(restored.version == PlanArtifact.currentVersion && restored.result == fixture.result && restored.request.context == nil)
             #expect(!encoded.contains("private-") && !encoded.contains("unrelated live editor") && !encoded.contains("authorization"))
             var object = try #require(JSONSerialization.jsonObject(with: Data(encoded.utf8)) as? [String: Any])
-            for version in [1, 2, 4] {
+            for version in [1, 2, PlanArtifact.currentVersion + 1] {
                 object["version"] = version
                 let text = String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
                 #expect(throws: (any Error).self) { try PlanArtifact.decode(text) }

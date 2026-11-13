@@ -96,7 +96,8 @@ struct PlanComparison {
         diagnosticMessage = nil
         comparableEngine = sameEngine
         metricsComparable = sameEngine && Self.sameBytes(before.result.support.serverVersion, after.result.support.serverVersion) &&
-            Self.sameBytes(before.result.support.format, after.result.support.format) && before.request.mode == after.request.mode && before.request.planKind == after.request.planKind
+            Self.sameBytes(before.result.support.format, after.result.support.format) && before.request.mode == after.request.mode && before.request.planKind == after.request.planKind &&
+            before.request.options == after.request.options && before.result.format == after.result.format
         incomplete = !before.result.complete || !after.result.complete || before.result.status != "tree" || after.result.status != "tree"
         shapeAvailable = sameEngine && before.result.status == "tree" && after.result.status == "tree"
         func signature(_ node: ExplainNode) -> Data {

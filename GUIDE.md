@@ -584,7 +584,8 @@ selection or current statement. **Explain Analyze…** is a separate action that
 executes the query after reviewing the exact helper-generated SQL and target.
 It can consume resources and have side effects; no automatic transaction or
 rollback is added. Supported servers are PostgreSQL 14+ and recognized Oracle
-MySQL 8.0.21+; unknown vendors and unsupported versions show a reason.
+MySQL 5.7+ for estimated plans and 8.0.18+ for Analyze; unknown vendors and
+unsupported versions show a reason.
 
 **Execution Plan** keeps an expandable tree, selected-operation details, up to
 three expensive operations and selectable/copyable **Raw Plan** output alongside
@@ -594,13 +595,53 @@ overlap; work estimates are not wall time. Missing metrics and never-executed
 operations remain explicit. A source or profile change marks the retained plan
 as belonging to an earlier query. Viewing a plan never runs SQL.
 
-The commands accept one unwrapped SELECT or read CTE. Multiple statements,
-parameters, known writes/side effects and locking queries are rejected; unknown
-functions still follow readonly/confirmation policy. Resolve pending grid edits
+Each request accepts one unwrapped SELECT or read CTE with explicit typed
+parameters. Select multiple fragments through the existing batch chooser; each
+statement and setup command retains its separate review. Known writes/side
+effects and locking queries are rejected; unknown functions still follow
+readonly/confirmation policy. Resolve pending grid edits
 before Explain. The tab retains its physical session, temporary tables and
 transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
 confirmed SQL completion, and a lost completion is never retried. The current
 plan is held by its SQL tab. **Save Plan…** explicitly creates a local artifact.
+
+### Explain collection options
+
+After choosing the target SQL tab, review collection options supported by that
+physical server. PostgreSQL 14+ offers BUFFERS and SETTINGS for estimated and
+actual plans, plus WAL and TIMING for Analyze. PostgreSQL 17+ adds planning
+MEMORY and Analyze SERIALIZE (none, text or binary). TIMING off still collects
+actual rows/loops and whole-statement execution time; disabled node timing,
+reported zero and an unreported measurement remain distinct. Options are bound
+to the same single-use review as SQL, parameters, plan kind and target context.
+See the [PostgreSQL 14](https://www.postgresql.org/docs/14/sql-explain.html) and
+[PostgreSQL 17](https://www.postgresql.org/docs/17/sql-explain.html) references.
+
+MySQL offers Automatic, TREE and JSON formats when the selected mode supports
+them. Automatic chooses JSON on 5.7 and older 8.0, and TREE from 8.0.16. Analyze
+starts at 8.0.18 and uses implicit TREE syntax through 8.0.20; explicit TREE
+syntax starts at 8.0.21. JSON v1 preserves logical query blocks and table access
+information; it is not an iterator tree, and join-prefix costs/counts are kept
+as native evidence rather than invented per-iterator metrics. JSON v2 preserves
+iterator structure and per-loop actual metrics. Unknown counts stay unavailable.
+MySQL 8.0.18 does not evaluate SELECT-list expressions during Analyze (fixed
+in 8.0.19), so its measurements exclude that work. MySQL 8.0.18–19 cannot stop
+Analyze with KILL QUERY; cancellation may retire the connection after recovery
+and keep an unacknowledged outcome unknown. These server limitations appear with
+the options and remain in saved evidence. See the
+[MySQL 8.0 reference](https://dev.mysql.com/doc/refman/8.0/en/explain.html) and
+[Oracle bug 97296](https://bugs.mysql.com/bug.php?id=97296).
+
+JSON Analyze requires MySQL 8.3+ and the existing target session's
+`explain_json_format_version` to be 2. A cancellable read-only preflight checks
+that setting before the analyzed SQL is sent. DBeer does not change it; choose
+TREE or configure the session explicitly when JSON v1 is selected. The
+[Oracle optimizer format description](https://dev.mysql.com/blog-archive/new-json-format-for-explain/)
+and [8.3 implementation](https://github.com/mysql/mysql-server/blob/mysql-8.3.0/sql/opt_explain.cc)
+document the JSON v2 Analyze path. Format is selected before execution. The
+captured response is decoded in place; an unfamiliar or oversized response keeps
+Raw Plan and the known completion state without another Analyze execution.
+Saved plans preserve requested options and the observed format for offline use.
 
 ### Engine diagnostics
 

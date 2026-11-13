@@ -52,6 +52,9 @@ func SessionOperationSupport(engine string, physical Session, policy protocol.Ex
 				state, reason = "available", ""
 			} else if reason == "" {
 				reason = "This server does not support the selected Explain mode."
+				if mode == "analyze" && availability.AnalyzeUnavailableReason != "" {
+					reason = availability.AnalyzeUnavailableReason
+				}
 				if engine == "cassandra" && mode == "plan" {
 					reason = "Cassandra exposes request tracing only; estimated relational plans are unavailable."
 				}

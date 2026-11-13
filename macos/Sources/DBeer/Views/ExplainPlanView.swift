@@ -48,6 +48,7 @@ struct ExplainPlanView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             if let kind = plan.request.planKind { Text(kind.title).font(.caption).foregroundStyle(.secondary) }
+            if let options = plan.request.options { Text(options.summary).font(.caption).foregroundStyle(.secondary) }
             if let parameters = plan.request.parameters {
                 DisclosureGroup("Captured Parameters · included when you save or export this plan") {
                     ForEach(parameters, id: \.name) { parameter in
@@ -62,8 +63,11 @@ struct ExplainPlanView: View {
             if stale { Label("Earlier query or connection — collect again to refresh", systemImage: "clock.arrow.circlepath").foregroundStyle(.orange) }
             if let failure = plan.failure { Text(failure.message).foregroundStyle(.red).textSelection(.enabled) }
             if let result = plan.result {
-                Text("\(result.support.engine.displayName) \(result.support.serverVersion) · \(result.support.format.uppercased()) · Command completed")
+                Text("\(result.support.engine.displayName) \(result.support.serverVersion) · \((result.format ?? result.support.format).uppercased()) · Command completed")
                     .font(.caption).foregroundStyle(.secondary)
+                ForEach(Array((result.support.notices ?? []).enumerated()), id: \.offset) { _, notice in
+                    Text(notice).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
+                }
                 if let diagnostic = result.diagnostic { Text(diagnostic).foregroundStyle(.orange).textSelection(.enabled) }
                 if let diagnostic = result.engineDiagnostic, !raw.wrappedValue {
                     EngineDiagnosticView(diagnostic: diagnostic)

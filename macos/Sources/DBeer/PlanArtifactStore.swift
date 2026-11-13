@@ -4,7 +4,7 @@ import Foundation
 /// Explicit user artifacts retain only the SQL and evidence from the original
 /// Explain operation. Runtime ownership and connection settings are excluded.
 struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
-    static let currentVersion = 3
+    static let currentVersion = 4
     static let maximumBytes = 16 * 1_024 * 1_024
     var version = Self.currentVersion
     var id: UUID
@@ -19,14 +19,18 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
     var source: ExplainSourceEvidence? = nil
 
     var valid: Bool {
-        [1, 2, Self.currentVersion].contains(version) && request.context == nil &&
+        (1...Self.currentVersion).contains(version) && request.context == nil &&
+        (version >= 4 || request.options == nil && result.options == nil && result.format == nil && result.support.options == nil && result.support.analyzeUnavailableReason == nil && result.support.notices == nil &&
+            !(result.support.engine == .mysql && result.support.format == "json") &&
+            !result.metrics.values.contains(where: { $0.unavailableReason == "disabled" }) &&
+            !result.nodes.contains(where: { $0.execution == "unknown" || $0.metrics.values.contains(where: { $0.unavailableReason == "disabled" }) })) &&
         (version >= 3 || !result.support.engine.hasEngineDiagnostics && result.support.diagnosticModel == nil && result.engineDiagnostic == nil) &&
         (!result.support.engine.hasEngineDiagnostics || request.parameters == nil && request.planKind == nil) &&
         (version != 1 || source == nil && request.parameters == nil && request.planKind == nil) &&
         (source.map { $0.valid && $0.rangeLength == request.sql.utf16.count } ?? true) && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         title.utf8.count <= 16_384 && !title.contains("\0") && capturedAt.timeIntervalSince1970.isFinite &&
         (profileName?.utf8.count ?? 0) <= 16_384 && profileName?.contains("\0") != true && (baselineName?.utf8.count ?? 0) <= 16_384 &&
-        baselineName?.contains("\0") != true && request.valid && result.valid && exactTopology && request.mode == result.mode
+        baselineName?.contains("\0") != true && request.valid && result.valid && exactTopology && request.mode == result.mode && request.options == result.options
     }
 
     private var exactTopology: Bool {
@@ -78,14 +82,16 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
         let data = Data(text.utf8)
         try ExactJSONKeys.validate(data, maximumBytes: maximumBytes)
         guard let fields = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let version = fields["version"] as? Int, [1, 2, currentVersion].contains(version),
+              let version = fields["version"] as? Int, (1...currentVersion).contains(version),
               Set(fields.keys).isSubset(of: ["version", "id", "title", "capturedAt", "profileName", "environment", "sourceWasStale", "request", "result", "baselineName", "source"]),
               let request = fields["request"] as? [String: Any],
-              Set(request.keys).isSubset(of: version == 1 ? ["sql", "mode"] : ["sql", "mode", "parameters", "planKind"]),
+              Set(request.keys).isSubset(of: version == 1 ? ["sql", "mode"] : version < 4 ? ["sql", "mode", "parameters", "planKind"] : ["sql", "mode", "parameters", "planKind", "options"]),
               version != 1 || fields["source"] == nil else { throw PlanArtifactError.invalid }
         guard let result = fields["result"] as? [String: Any],
               let support = result["support"] as? [String: Any],
               version >= 3 || result["engineDiagnostic"] == nil && support["diagnosticModel"] == nil else { throw PlanArtifactError.invalid }
+        guard version >= 4 || request["options"] == nil && result["options"] == nil && result["format"] == nil &&
+              support["options"] == nil && support["analyzeUnavailableReason"] == nil && support["notices"] == nil else { throw PlanArtifactError.invalid }
         if let source = fields["source"] {
             guard let source = source as? [String: Any],
                   Set(source.keys).isSubset(of: ["rangeLocation", "rangeLength", "transactionStatus"]),

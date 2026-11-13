@@ -25,7 +25,7 @@ func TestExplainParametersMySQLLive(t *testing.T) {
 		}
 		return s.ExecuteExplain(ctx, protocol.Command{Type: "explain.run", RequestID: "r", SessionID: "s", QueryID: "q", Explain: &r, PreparedExplainSQL: p.Preview.SQL})
 	}
-	for _, mode := range []string{"plan", "analyze"} {
+	for _, mode := range s.ExplainSupport().Modes {
 		request.Mode = mode
 		result := explain(request, ctx)
 		if result.Type != "explain.result" || !result.Explain.Valid() || !result.SQLCompleted || result.TransactionStatus != "transaction" {
@@ -43,6 +43,9 @@ func TestExplainParametersMySQLLive(t *testing.T) {
 	retained = run(t, s, "SELECT count(*) FROM explain_evidence")
 	if *retained.Rows[0][0] != "0" {
 		t.Fatal("Explain committed caller transaction")
+	}
+	if len(s.ExplainSupport().Modes) == 1 {
+		return
 	}
 	delay := "5.0"
 	sleep := protocol.ExplainRequest{SQL: "SELECT SLEEP(:delay)", Mode: "analyze", Parameters: []protocol.QueryParameter{{Name: "delay", Type: "decimal", Value: &delay}}}

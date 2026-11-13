@@ -49,22 +49,87 @@ func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (Prepa
 			return p, errors.New("The selected PostgreSQL plan kind is unavailable. Generic plans require PostgreSQL 16+; Analyze requires a custom plan.")
 		}
 	}
+	if !explainContains(s.Modes, r.Mode) {
+		reason := s.AnalyzeUnavailableReason
+		if reason == "" {
+			reason = "The selected Explain mode is unavailable on this server."
+		}
+		return p, errors.New(reason)
+	}
+	if r.Options != nil && (!r.Options.ForEngine(s.Engine) || s.Options == nil) {
+		return p, errors.New("The selected engine does not support these Explain options.")
+	}
 	p.Bound = bound
+	format := s.Format
 	if s.Engine == "postgresql" {
-		p.Prefix = "EXPLAIN (ANALYZE FALSE, COSTS TRUE, FORMAT JSON)\n"
+		options := []string{"ANALYZE FALSE", "COSTS TRUE"}
 		if r.Mode == "analyze" {
-			p.Prefix = "EXPLAIN (ANALYZE TRUE, COSTS TRUE, TIMING TRUE, SUMMARY TRUE, BUFFERS TRUE, FORMAT JSON)\n"
+			options = []string{"ANALYZE TRUE", "COSTS TRUE", "TIMING TRUE", "SUMMARY TRUE", "BUFFERS TRUE"}
 		}
 		if r.PlanKind == "generic" {
-			p.Prefix = "EXPLAIN (ANALYZE FALSE, GENERIC_PLAN TRUE, COSTS TRUE, FORMAT JSON)\n"
+			options = []string{"ANALYZE FALSE", "GENERIC_PLAN TRUE", "COSTS TRUE"}
+		}
+		if r.Options != nil {
+			pg := r.Options.PostgreSQL
+			allowed := s.Options.PostgreSQL.Plan
+			if r.Mode == "analyze" {
+				allowed = s.Options.PostgreSQL.Analyze
+			}
+			for _, pair := range []struct {
+				key   string
+				value *bool
+			}{{"buffers", pg.Buffers}, {"wal", pg.WAL}, {"settings", pg.Settings}, {"memory", pg.Memory}, {"timing", pg.Timing}} {
+				if pair.value == nil {
+					continue
+				}
+				if !explainContains(allowed, pair.key) {
+					return p, errors.New("The selected PostgreSQL Explain option is unavailable for this server version or mode: " + pair.key + ".")
+				}
+				native := strings.ToUpper(pair.key)
+				filtered := options[:0]
+				for _, option := range options {
+					if !strings.HasPrefix(option, native+" ") {
+						filtered = append(filtered, option)
+					}
+				}
+				options = append(filtered, native+" "+strings.ToUpper(strconv.FormatBool(*pair.value)))
+			}
+			if pg.Serialize != "" {
+				if !explainContains(allowed, "serialize") {
+					return p, errors.New("SERIALIZE requires PostgreSQL 17+ and Explain Analyze.")
+				}
+				options = append(options, "SERIALIZE "+strings.ToUpper(pg.Serialize))
+			}
+		}
+		p.Prefix = "EXPLAIN (" + strings.Join(append(options, "FORMAT JSON"), ", ") + ")\n"
+	} else if s.Engine == "mysql" {
+		if r.Options != nil {
+			format = r.Options.MySQL.Format
+			if format == "auto" {
+				format = s.Format
+			}
+			allowed := s.Options.MySQL.Plan
+			if r.Mode == "analyze" {
+				allowed = s.Options.MySQL.Analyze
+			}
+			if !explainContains(allowed, format) {
+				return p, errors.New("The selected MySQL Explain format is unavailable for this server version or mode.")
+			}
+		}
+		if r.Mode == "analyze" {
+			// 8.0.18–20 supports Analyze only with its implicit TREE syntax.
+			if mysqlVersionAtLeast(s.ServerVersion, 8, 0, 21) {
+				p.Prefix = "EXPLAIN ANALYZE FORMAT=" + strings.ToUpper(format) + "\n"
+			} else {
+				p.Prefix = "EXPLAIN ANALYZE\n"
+			}
+		} else {
+			p.Prefix = "EXPLAIN FORMAT=" + strings.ToUpper(format) + "\n"
 		}
 	} else {
-		p.Prefix = "EXPLAIN FORMAT=TREE\n"
-		if r.Mode == "analyze" {
-			p.Prefix = "EXPLAIN ANALYZE FORMAT=TREE\n"
-		}
+		return p, errors.New("Unsupported relational Explain engine.")
 	}
-	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s}
+	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s, Options: r.Options, Format: format}
 	return p, nil
 }
 
@@ -74,35 +139,74 @@ var explainVersion = regexp.MustCompile(`^([0-9]+)\.([0-9]+)(?:\.([0-9]+))?`)
 // distribution/fork suffixes do not inherit compatibility from their prefix.
 var oracleExplainVersion = regexp.MustCompile(`^[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:standard|commercial)(?:-debug)?|-debug)?$`)
 
+func explainContains(values []string, value string) bool {
+	for _, v := range values {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}
+func mysqlVersionAtLeast(version string, major, minor, patch int) bool {
+	m := explainVersion.FindStringSubmatch(version)
+	if len(m) != 4 {
+		return false
+	}
+	a, _ := strconv.Atoi(m[1])
+	b, _ := strconv.Atoi(m[2])
+	c, _ := strconv.Atoi(m[3])
+	return a > major || a == major && (b > minor || b == minor && c >= patch)
+}
 func ExplainSupport(engine, version string) protocol.ExplainSupport {
 	s := protocol.ExplainSupport{Engine: engine, ServerVersion: version, Format: "tree", Modes: []string{}}
+	m := explainVersion.FindStringSubmatch(version)
+	major := 0
+	if len(m) == 4 {
+		major, _ = strconv.Atoi(m[1])
+	}
 	if engine == "postgresql" {
 		s.Format = "json"
-	}
-	m := explainVersion.FindStringSubmatch(version)
-	valid := len(m) == 4
-	major, minor, patch := 0, 0, 0
-	if valid {
-		major, _ = strconv.Atoi(m[1])
-		minor, _ = strconv.Atoi(m[2])
-		patch, _ = strconv.Atoi(m[3])
-	}
-	lower := strings.ToLower(version)
-	if engine == "postgresql" {
-		valid = valid && major >= 14
-	} else {
-		valid = valid && oracleExplainVersion.MatchString(version) && (major > 8 || major == 8 && (minor > 0 || patch >= 21)) && !strings.Contains(lower, "mariadb") && !strings.Contains(lower, "percona") && !strings.Contains(lower, "tidb") && !strings.Contains(lower, "aurora")
-	}
-	if valid {
-		s.Modes = []string{"plan", "analyze"}
-		if engine == "postgresql" {
+		if major >= 14 {
+			s.Modes = []string{"plan", "analyze"}
 			s.PlanKinds = []string{"custom"}
 			if major >= 16 {
 				s.PlanKinds = append(s.PlanKinds, "generic")
 			}
+			pg := &protocol.PostgresExplainOptionSupport{Plan: []string{"buffers", "settings"}, Analyze: []string{"buffers", "wal", "settings", "timing"}}
+			if major >= 17 {
+				pg.Plan = append(pg.Plan, "memory")
+				pg.Analyze = append(pg.Analyze, "memory", "serialize")
+			}
+			s.Options = &protocol.ExplainOptionSupport{PostgreSQL: pg}
 		}
-	} else {
-		s.UnavailableReason = "Visual Explain requires PostgreSQL 14+ or Oracle MySQL 8.0.21+ with the supported plan format."
+	} else if engine == "mysql" && oracleExplainVersion.MatchString(version) && (strings.HasPrefix(version, "5.7.") || mysqlVersionAtLeast(version, 8, 0, 0)) {
+		s.Format = "json"
+		my := &protocol.MySQLExplainOptionSupport{Plan: []string{"json"}, Analyze: []string{}}
+		s.Modes = []string{"plan"}
+		s.AnalyzeUnavailableReason = "Explain Analyze requires Oracle MySQL 8.0.18+; this server supports estimated JSON plans only."
+		if mysqlVersionAtLeast(version, 8, 0, 16) {
+			my.Plan = append(my.Plan, "tree")
+			s.Format = "tree"
+		}
+		if mysqlVersionAtLeast(version, 8, 0, 18) {
+			s.Modes = append(s.Modes, "analyze")
+			my.Analyze = append(my.Analyze, "tree")
+			s.AnalyzeUnavailableReason = ""
+		}
+		if mysqlVersionAtLeast(version, 8, 0, 18) && !mysqlVersionAtLeast(version, 8, 0, 19) {
+			s.Notices = append(s.Notices, "MySQL 8.0.18 Analyze does not evaluate SELECT-list expressions; its measurements exclude that work.")
+		}
+		if mysqlVersionAtLeast(version, 8, 0, 18) && !mysqlVersionAtLeast(version, 8, 0, 20) {
+			s.Notices = append(s.Notices, "This MySQL version cannot stop Analyze with KILL QUERY. Stop may close the session after the recovery deadline; an unacknowledged execution remains unknown and is never retried.")
+		}
+		if mysqlVersionAtLeast(version, 8, 3, 0) {
+			my.Analyze = append(my.Analyze, "json")
+			my.JSONAnalyzeRequiresVersion2 = true
+		}
+		s.Options = &protocol.ExplainOptionSupport{MySQL: my}
+	}
+	if len(s.Modes) == 0 {
+		s.UnavailableReason = "Visual Explain requires PostgreSQL 14+ or recognized Oracle MySQL 5.7+; MySQL Analyze requires 8.0.18+."
 	}
 	return s
 }
@@ -170,7 +274,7 @@ func FinishExplain(ctx context.Context, command protocol.Command, response proto
 		response.StorageTokens = nil
 		return response
 	}
-	result := &protocol.ExplainResult{Support: p.Preview.Support, Mode: p.Request.Mode, Raw: c.Raw, Status: "rawOnly", Complete: !c.Limited, Roots: []string{}, Nodes: []protocol.ExplainNode{}, Metrics: map[string]protocol.ExplainMetric{}, Diagnostic: "The SQL completed, but its plan could not be visualized. Inspect Raw Plan."}
+	result := &protocol.ExplainResult{Support: p.Preview.Support, Mode: p.Request.Mode, Options: p.Request.Options, Format: p.Preview.Format, Raw: c.Raw, Status: "rawOnly", Complete: !c.Limited, Roots: []string{}, Nodes: []protocol.ExplainNode{}, Metrics: map[string]protocol.ExplainMetric{}, Diagnostic: "The SQL completed, but its plan could not be visualized. Inspect Raw Plan."}
 	if c.Limited {
 		result.Status = "limited"
 		result.Diagnostic = "The SQL completed. Plan capture exceeded 4 MiB; Raw Plan is an incomplete prefix."
@@ -187,6 +291,13 @@ func FinishExplain(ctx context.Context, command protocol.Command, response proto
 				result.Status = "rawOnly"
 				result.Diagnostic = "The SQL completed, but plan structure exceeded visualization limits. Inspect Raw Plan."
 			}
+		}
+	}
+	if result.Status != "tree" && p.Preview.Support.Engine == "mysql" {
+		// An undecodable response proves completion, not a recognized JSON version.
+		result.Format = p.Preview.Support.Format
+		if p.Request.Options != nil && p.Request.Options.MySQL != nil && p.Request.Options.MySQL.Format != "auto" {
+			result.Format = p.Request.Options.MySQL.Format
 		}
 	}
 	response = protocol.Response{Type: "explain.result", RequestID: command.RequestID, SessionID: command.SessionID, QueryID: command.QueryID, DurationMS: response.DurationMS, TransactionStatus: response.TransactionStatus, Connected: response.Connected, SQLCompleted: true, Explain: result}

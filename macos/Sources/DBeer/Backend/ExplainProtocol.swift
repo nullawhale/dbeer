@@ -29,10 +29,11 @@ struct ExplainRequest: Codable, Sendable, Equatable {
     var parameters: [QueryParameterBinding]? = nil
     var planKind: ExplainPlanKind? = nil
     var context: ExplainContext? = nil
-    private enum CodingKeys: String, CodingKey { case sql, mode, parameters, planKind, context }
+    var options: ExplainOptions? = nil
+    private enum CodingKeys: String, CodingKey { case sql, mode, parameters, planKind, context, options }
     var valid: Bool {
         !sql.isEmpty && sql.utf8.count <= 1_048_576 && !sql.contains("\0") &&
-        (parameters.map { (try? QueryParameterBinding.validate($0)) != nil } ?? true) &&
+        (options?.valid ?? true) && (parameters.map { (try? QueryParameterBinding.validate($0)) != nil } ?? true) &&
         (planKind != .generic || mode == .plan) && (context.map { $0.valid && $0.rangeLength == sql.utf16.count } ?? true)
     }
     var portable: Self { var copy = self; copy.context = nil; return copy }
@@ -53,13 +54,14 @@ extension ExplainContext {
 }
 extension ExplainRequest {
     init(from decoder: Decoder) throws {
-        try requireExplainKeys(decoder, required: ["sql", "mode"], optional: ["parameters", "planKind", "context"])
+        try requireExplainKeys(decoder, required: ["sql", "mode"], optional: ["parameters", "planKind", "context", "options"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         sql = try values.decode(String.self, forKey: .sql)
         mode = try values.decode(ExplainMode.self, forKey: .mode)
         parameters = values.contains(.parameters) ? try values.decode([QueryParameterBinding].self, forKey: .parameters) : nil
         planKind = values.contains(.planKind) ? try values.decode(ExplainPlanKind.self, forKey: .planKind) : nil
         context = values.contains(.context) ? try values.decode(ExplainContext.self, forKey: .context) : nil
+        options = values.contains(.options) ? try values.decode(ExplainOptions.self, forKey: .options) : nil
         guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid Explain request.")) }
     }
 }
@@ -84,11 +86,17 @@ struct ExplainSupport: Codable, Sendable, Equatable {
     var unavailableReason: String?
     var planKinds: [ExplainPlanKind]? = nil
     var diagnosticModel: String? = nil
+    var options: ExplainOptionSupport? = nil
+    var analyzeUnavailableReason: String? = nil
+    var notices: [String]? = nil
     var valid: Bool {
         [.postgresql, .mysql, .sqlite, .mongodb, .cassandra].contains(engine) && serverVersion.utf8.count <= 256 &&
-        format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : engine == .mysql ? "tree" : engine == .mongodb ? "mongodbExplain" : "cassandraTrace") &&
+        (engine == .mysql ? ["tree", "json"].contains(format) : format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : engine == .mysql ? "tree" : engine == .mongodb ? "mongodbExplain" : "cassandraTrace")) &&
         (engine == .mongodb ? diagnosticModel == "mongodbExplain" : engine == .cassandra ? diagnosticModel == "cassandraTrace" && modes == [.analyze] : diagnosticModel == nil) && modes.count <= 2 &&
         Set(modes.map(\.rawValue)).count == modes.count &&
+        (notices == nil || [.postgresql, .mysql].contains(engine) && notices!.count <= 8 && notices!.allSatisfy { !$0.isEmpty && $0.utf8.count <= 4096 }) &&
+        (options?.valid(engine: engine) ?? true) &&
+        (analyzeUnavailableReason == nil || engine == .mysql && !modes.contains(.analyze) && analyzeUnavailableReason!.utf8.count <= 4096 && !analyzeUnavailableReason!.isEmpty) &&
         (planKinds == nil || engine == .postgresql && planKinds!.count <= 2 && Set(planKinds!.map(\.rawValue)).count == planKinds!.count) &&
         (modes.isEmpty ? unavailableReason?.isEmpty == false : unavailableReason == nil)
     }
@@ -97,7 +105,9 @@ struct ExplainPreview: Codable, Sendable, Equatable {
     var sql: String
     var mode: ExplainMode
     var support: ExplainSupport
-    var valid: Bool { support.valid && support.modes.contains(mode) && !sql.isEmpty && sql.utf8.count <= 1_049_600 && !sql.contains("\0") }
+    var options: ExplainOptions? = nil
+    var format: String? = nil
+    var valid: Bool { support.valid && validExplainSelection(support: support, options: options, mode: mode, format: format) && support.modes.contains(mode) && !sql.isEmpty && sql.utf8.count <= 1_049_600 && !sql.contains("\0") }
 }
 struct ExplainMetric: Codable, Sendable, Equatable {
     var value: String?
@@ -111,11 +121,12 @@ struct ExplainMetric: Codable, Sendable, Equatable {
         ["cost", "rows", "ms", "count"].contains(unit) &&
         ["inclusive", "perInvocation", "total"].contains(basis) &&
         (value.map { Self.validDecimal($0) && unavailableReason == nil } ??
-            ["notCollected", "notReported", "unsupported", "notExecuted"].contains(unavailableReason))
+            ["notCollected", "notReported", "unsupported", "notExecuted", "disabled"].contains(unavailableReason))
     }
     var unavailableLabel: String {
         switch unavailableReason {
         case "notCollected": "Unavailable — run Explain Analyze to collect this metric"
+        case "disabled": "Unavailable — timing was disabled for this collection"
         case "notExecuted": "Unavailable — not executed"
         case "unsupported": "Unavailable — unsupported by this format"
         default: "Unavailable — server did not report this metric"
@@ -150,8 +161,11 @@ struct ExplainResult: Codable, Sendable, Equatable {
     var nodes: [ExplainNode]
     var metrics: [String: ExplainMetric]
     var engineDiagnostic: EngineDiagnostic? = nil
+    var options: ExplainOptions? = nil
+    var format: String? = nil
     var valid: Bool {
-        guard support.valid, support.modes.contains(mode), raw.utf8.count <= Self.maximumRawBytes,
+        guard support.valid, support.modes.contains(mode),
+              validExplainSelection(support: support, options: options, mode: mode, format: format, status: status), raw.utf8.count <= Self.maximumRawBytes,
               nodes.count <= 10_000, metrics.count <= 16, metrics.values.allSatisfy(\.valid),
               (diagnostic?.utf8.count ?? 0) <= 4_096 else { return false }
         if support.engine == .cassandra && complete { return false }
@@ -172,7 +186,7 @@ struct ExplainResult: Codable, Sendable, Equatable {
                   node.operation.utf8.count <= 65_536, node.details.count <= 128,
                   node.details.allSatisfy({ $0.key.utf8.count <= 1_024 && $0.value.utf8.count <= 65_536 }),
                   node.children.count <= 10_000, node.metrics.count <= 32, node.metrics.values.allSatisfy(\.valid),
-                  ["estimated", "executed", "notExecuted"].contains(node.execution) else { return false }
+                  ["estimated", "executed", "notExecuted", "unknown"].contains(node.execution) else { return false }
             indexed[node.id] = node
         }
         var seen = Set<String>()

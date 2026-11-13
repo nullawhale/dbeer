@@ -615,6 +615,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 							response.Capabilities = append(response.Capabilities, protocol.EngineDiagnosticsCapability)
 						} else {
 							response.Capabilities = append(response.Capabilities, protocol.ExplainParametersCapability)
+							if support.Options != nil {
+								response.Capabilities = append(response.Capabilities, protocol.ExplainOptionsCapability)
+							}
 						}
 					}
 					if current, ok := physical.(interface{ CurrentKeyspace() string }); ok {

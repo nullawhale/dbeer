@@ -24,7 +24,7 @@ struct ApplicationWorkspaceView: View {
         self.appearance = workspace.appearance
     }
 
-    var body: some View {
+    private var workspaceContent: some View {
         HStack(spacing: 0) {
             WorkspaceSidebarRail(workspace: workspace)
             Divider()
@@ -151,6 +151,19 @@ struct ApplicationWorkspaceView: View {
         .sheet(item: $workspace.explainSelection, onDismiss: { workspace.explainSelectionDismissed() }) { draft in
             ExplainSelectionView(draft: draft) { selected, targetID, planKind in
                 workspace.submitExplainSelection(draft, selected: selected, targetID: targetID, planKind: planKind)
+            }.applicationTheme(appearance: appearance)
+        }
+    }
+
+    var body: some View {
+        workspaceContent
+        .sheet(item: Binding(get: { workspace.explainOptionsPrompt }, set: { value in
+            if value == nil, let prompt = workspace.explainOptionsPrompt {
+                workspace.submitExplainOptions(id: prompt.id, decision: nil)
+            }
+        }), onDismiss: { workspace.explainOptionsPromptDismissed() }) { prompt in
+            ExplainOptionsView(configuration: prompt.configuration) { decision in
+                workspace.submitExplainOptions(id: prompt.id, decision: decision)
             }.applicationTheme(appearance: appearance)
         }
         .sheet(item: Binding(get: { workspace.queryParameterPrompt }, set: { value in

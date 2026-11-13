@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Choose capability-checked PostgreSQL Explain collection options, including
+  PostgreSQL 17 MEMORY/SERIALIZE and explicit TIMING off, while retaining actual
+  counts and whole-query timing. Add Oracle MySQL 5.7 estimated JSON plans,
+  version-correct older 8.0 TREE/Analyze syntax and JSON v1/v2 normalization.
+  Select formats before execution; JSON Analyze requires an existing v2 session
+  setting, checked without changing it. Preserve options and observed format in
+  saved evidence, and never rerun Analyze to decode an unfamiliar response.
+
 - Open the shared structure editor from ER cards and links for table creation,
   structure edits and proposed same-profile foreign keys. Capture exact source
   ownership and ordered mappings, retain local declarations, and keep Load,

@@ -23,7 +23,7 @@ func (*Session) ExplainSupport() protocol.ExplainSupport {
 func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExplain, error) {
 	p := adapter.PreparedExplain{Request: r}
 	script, err := mongoscript.Parse(r.SQL)
-	if !r.Valid() || err != nil || script.Write || len(r.Parameters) != 0 || r.PlanKind != "" {
+	if r.Options != nil || !r.Valid() || err != nil || script.Write || len(r.Parameters) != 0 || r.PlanKind != "" {
 		return p, errors.New("MongoDB diagnostics require one read-only find or aggregate JSON request without parameters or output stages.")
 	}
 	if script.Database == "" {

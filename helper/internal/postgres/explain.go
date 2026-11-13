@@ -17,6 +17,8 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	lower := strings.ToLower(s.explainIdentity)
 	if !strings.HasPrefix(s.explainIdentity, "PostgreSQL ") || strings.Contains(lower, "yugabyte") || strings.Contains(lower, "cockroach") || strings.Contains(lower, "aurora") || strings.Contains(lower, "redshift") || strings.Contains(lower, "greenplum") {
 		support.Modes = []string{}
+		support.Options = nil
+		support.AnalyzeUnavailableReason = ""
 		support.PlanKinds = nil
 		support.UnavailableReason = "Visual Explain requires a recognized PostgreSQL server; this server vendor could not be verified."
 	}
@@ -51,9 +53,15 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		}
 	}
 	response := executeParamsSinkWithStorageOIDs(ctx, s.conn, c, p.Preview.SQL, values, capture, false, oids)
-	return adapter.FinishExplain(ctx, c, response, p, capture, parseExplainJSON)
+	return adapter.FinishExplain(ctx, c, response, p, capture, func(ctx context.Context, raw, mode string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
+		return parseExplainJSONWithOptions(ctx, raw, mode, p.Request.Options)
+	})
 }
 func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
+	return parseExplainJSONWithOptions(ctx, raw, mode, nil)
+}
+func parseExplainJSONWithOptions(ctx context.Context, raw, mode string, options *protocol.ExplainOptions) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
+	timingDisabled := options != nil && options.PostgreSQL != nil && options.PostgreSQL.Timing != nil && !*options.PostgreSQL.Timing
 	fail := func() ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
 		return nil, nil, nil, errors.New("unsupported plan")
 	}
@@ -114,6 +122,10 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 			if f.actual && (mode == "plan" || f.key != "loops" && node.Execution == "notExecuted") {
 				value = nil
 			}
+			if timingDisabled && (f.key == "startupTime" || f.key == "totalTime") && node.Execution != "notExecuted" {
+				value = nil
+				reason = "disabled"
+			}
 			m, err := metric(value, f.unit, f.basis, reason)
 			if err != nil {
 				return "", err
@@ -168,6 +180,14 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 	id, err := visit(plan, 1)
 	if err != nil {
 		return fail()
+	}
+	for _, key := range []string{"Settings", "Planning", "Planning Memory", "Serialization", "JIT", "Triggers"} {
+		if value, exists := roots[0][key]; exists {
+			data, err := json.Marshal(value)
+			if err == nil && len(data) <= 65536 {
+				nodes[0].Details[key] = string(data)
+			}
+		}
 	}
 	for _, pair := range []struct{ native, key string }{{"Planning Time", "planningTime"}, {"Execution Time", "executionTime"}} {
 		reason := "notReported"

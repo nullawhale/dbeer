@@ -100,17 +100,20 @@ struct ExplainBatchModelTests {
 @Suite(.serialized)
 @MainActor
 struct ExplainBatchExecutionTests {
-    private final class Counter { var helperStarts = 0; var reviews: [OperationConfirmation] = [] }
+    private final class Counter { var helperStarts = 0; var reviews: [OperationConfirmation] = []; var configurations: [ExplainOptionsConfiguration] = [] }
     private struct Fixture {
         let workspace: ApplicationWorkspace
         let client: BackendClient
         let profiles: [SavedConnection]
         let counter: Counter
         let root: URL
+        let defaultsName: String
     }
     private let values = [QueryParameterBinding(name: "p", type: .text, value: "e\u{0301}' ; DROP TABLE excluded; --")]
 
     private func fixture(capability: Bool = true, failure: String = "", diagnostic: DatabaseEngine? = nil, diagnosticReply: String = "",
+                         optionsNegotiation: String = "", optionsEngine: DatabaseEngine = .postgresql, optionsReply: String = "",
+                         options: (@MainActor (ExplainOptionsConfiguration) async -> ExplainOptionsDecision?)? = nil,
                          parameters: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)? = nil,
                          review: (@MainActor (OperationConfirmation) async -> Bool)? = nil) async throws -> Fixture {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
@@ -121,15 +124,25 @@ struct ExplainBatchExecutionTests {
         let client = BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
         import json,sys,os
         root,extended,failure,engine,contract,diagnostic_reply=sys.argv[1],sys.argv[2]=='true',sys.argv[3],sys.argv[4],sys.argv[5],sys.argv[6]
+        options_negotiation,options_reply=sys.argv[7],sys.argv[8]
         counts=dict(connects=0,assessments=0,executions=0,setups=0)
         sessions={};grants={}
         support=dict(engine='postgresql',serverVersion='17.6',format='json',modes=['plan','analyze'],planKinds=['custom','generic'])
         caps=['execute','cancel','transactions','visualExplainV1','queryParametersV1']+(['explainParametersV1'] if extended else [])
+        if options_negotiation:
+            if engine=='postgresql':support['options']=dict(postgresql=dict(plan=['buffers','settings','memory'],analyze=['buffers','wal','settings','memory','serialize','timing']))
+            else:support=dict(engine='mysql',serverVersion='8.4.0',format='tree',modes=['plan','analyze'],options=dict(mysql=dict(plan=['tree','json'],analyze=['tree','json'],jsonAnalyzeRequiresVersion2=True)))
+        if options_reply=='notices':
+            support['serverVersion']='8.0.18'
+            support['options']['mysql'].update(analyze=['tree'],jsonAnalyzeRequiresVersion2=False)
+            support['notices']=['MySQL 8.0.18 Analyze skips SELECT-list expressions; fixed in 8.0.19.','MySQL Analyze cancellation with KILL QUERY requires 8.0.20 or later.']
+        hello_caps=caps+(['explainOptionsV1'] if options_negotiation in ['paired','hello'] else [])
+        owner_caps=caps+(['explainOptionsV1'] if options_negotiation in ['paired','owner'] else [])
         diagnostic=engine in ['mongodb','cassandra']
         if diagnostic:
             with open(contract) as f:fixtures=json.load(f)['fixtures']
             evidence=next(v['result'] for v in fixtures if v['result']['support']['engine']==engine)
-            support=evidence['support'];caps=['execute','cancel','visualExplainV1']+(['engineDiagnosticsV1'] if extended else [])
+            support=evidence['support'];caps=['execute','cancel','visualExplainV1']+(['engineDiagnosticsV1'] if extended else []);hello_caps=caps;owner_caps=caps
         def send(v):print(json.dumps(v),flush=True)
         def started(c):send(dict(type='query.started',requestId=c['requestId'],sessionId=c['sessionId'],queryId=c['queryId']))
         def record():
@@ -138,10 +151,10 @@ struct ExplainBatchExecutionTests {
             c=json.loads(line);kind=c['type'];r=dict(requestId=c['requestId'],type='')
             if 'sessionId' in c:r['sessionId']=c['sessionId']
             if 'queryId' in c:r['queryId']=c['queryId']
-            if kind=='hello':r.update(type='hello.ack',protocolVersion=6,capabilities=caps)
+            if kind=='hello':r.update(type='hello.ack',protocolVersion=6,capabilities=hello_caps)
             elif kind=='connect':
                 counts['connects']+=1;sid='session-'+str(counts['connects']);sessions[sid]='unsupported' if diagnostic else 'idle'
-                r.update(type='connect.result',sessionId=sid,transactionStatus=sessions[sid],engine=engine,capabilities=caps,explainSupport=support)
+                r.update(type='connect.result',sessionId=sid,transactionStatus=sessions[sid],engine=engine,capabilities=owner_caps,explainSupport=support)
             elif kind=='catalog':
                 started(c);r.update(type='query.result',transactionStatus=sessions[c['sessionId']],durationMs=0,columns=[],rows=[],commandTag='SELECT 0',rowCount=0,displayedRowCount=0,truncated=False)
             elif kind=='operation.assess':
@@ -152,6 +165,11 @@ struct ExplainBatchExecutionTests {
                     if extended:assert ctx and ctx['sessionId']==c['sessionId'] and ctx['transactionStatus']==sessions[c['sessionId']]
                     if diagnostic:assert q.get('parameters') is None and q.get('planKind') is None
                     preview=dict(sql='EXPLAIN '+q['sql'],mode=q['mode'],support=support)
+                    if options_negotiation=='paired':
+                        if 'options' in q:preview['options']=q['options']
+                        preview['format']='json' if engine=='postgresql' else q.get('options',{}).get('mysql',{}).get('format','tree')
+                        if preview['format']=='auto':preview['format']=support['format']
+                        if options_reply=='previewMismatch':preview.pop('options',None)
                     assessed=dict(kind='read',statements=[],explain=preview)
                 else:assessed=dict(kind='unknown',statements=[dict(start=0,end=len(op['sql']),kind='unknown',reason='Explicit setup')])
                 r.update(type='operation.assessment',assessment=dict(decision='confirm',policy=dict(environment='unspecified',readOnly=False),operations=[assessed],authorization=token))
@@ -161,6 +179,13 @@ struct ExplainBatchExecutionTests {
                 if kind=='explain.run':
                     assert op['explain']==c['explain']
                     if not diagnostic:evidence=dict(support=support,mode=c['explain']['mode'],status='rawOnly',raw='fixture plan',complete=True,diagnostic='Fixture raw plan',roots=[],nodes=[],metrics={})
+                    if options_negotiation=='paired':
+                        q=c['explain']
+                        if 'options' in q:evidence['options']=q['options']
+                        selected='json' if engine=='postgresql' else q.get('options',{}).get('mysql',{}).get('format','tree')
+                        if selected=='auto':selected=support['format']
+                        evidence['format']='jsonV2' if engine=='mysql' and selected=='json' else selected
+                        if options_reply=='resultMismatch':evidence.pop('options',None)
                     if diagnostic_reply in ['relational','relationalIdle']:
                         wrong_engine='postgresql' if engine=='mongodb' else 'mysql'
                         wrong_support=dict(engine=wrong_engine,serverVersion='fixture',format='json' if wrong_engine=='postgresql' else 'tree',modes=['plan','analyze'])
@@ -180,24 +205,40 @@ struct ExplainBatchExecutionTests {
             elif kind=='shutdown':r.update(type='shutdown.ack');record();send(r);break
             else:sys.exit(31)
             record();send(r)
-        """, root.path, String(capability), failure, (diagnostic ?? .postgresql).rawValue, contract.path, diagnosticReply])
+        """, root.path, String(capability), failure, (diagnostic ?? optionsEngine).rawValue, contract.path, diagnosticReply, optionsNegotiation, optionsReply])
         let profiles = ["Source", "Other"].map { SavedConnection(name: $0,
-            settings: ConnectionSettings(host: "127.0.0.1", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable", engine: diagnostic ?? .postgresql)) }
+            settings: ConnectionSettings(host: "127.0.0.1", port: 5432, database: "fixture", user: "fixture", password: "", sslMode: "disable", engine: diagnostic ?? optionsEngine)) }
         let counter = Counter()
         let supplied = values
+        let defaultsName = "dbeer-explain-batch-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        let themes = EditorThemeStore(defaults: defaults, directory: root.appendingPathComponent("themes"))
+        let snapshots = ResultSnapshotStore(rootURL: root.appendingPathComponent("snapshots"))
         let workspace = ApplicationWorkspace(connectionStore: MemoryConnectionLibraryStore(library:
             SavedConnectionLibrary(connections: profiles, selectedConnectionId: profiles[0].id)),
             credentialStore: MemoryConnectionCredentialStore(), documentStore: MemorySQLDocumentStore(),
-            sqlFolders: SQLFolderLibrary(automaticallyRefresh: false), automaticallyWatchFiles: false,
+            commandShortcuts: AppShortcutStore(defaults: defaults), copySettings: ResultCopySettings(defaults: defaults),
+            editorThemes: themes, appearance: AppAppearance(defaults: defaults, editorThemes: themes),
+            sqlFolders: SQLFolderLibrary(automaticallyRefresh: false), sqlLibrary: SQLLibrary(),
+            tableBrowsePresets: TableBrowsePresetStore(fileURL: root.appendingPathComponent("presets.json")),
+            logicalRelationships: LogicalRelationshipStore(fileURL: root.appendingPathComponent("relationships.json")),
+            resultSnapshots: ResultSnapshotsModel(store: snapshots),
+            planArtifacts: PlanArtifactsModel(store: PlanArtifactStore(rootURL: root.appendingPathComponent("plans"))),
+            investigations: InvestigationLibraryModel(store: MemoryInvestigationStore(), snapshotStore: snapshots, autosaveDelay: nil),
+            automaticallyWatchFiles: false,
             closeDecision: { _ in .rollback }, executionDecision: {
                 counter.reviews.append($0)
                 return await review?($0) ?? true
             }, queryParameterDecision: { definitions, profile in
                 if let parameters { return await parameters(definitions, profile) }
                 return supplied
+            }, explainOptionsDecision: { configuration in
+                counter.configurations.append(configuration)
+                if let options { return await options(configuration) }
+                return .use(nil)
             }, helperFactory: { counter.helperStarts += 1; return client })
         await workspace.library.loadConnections()
-        return Fixture(workspace: workspace, client: client, profiles: profiles, counter: counter, root: root)
+        return Fixture(workspace: workspace, client: client, profiles: profiles, counter: counter, root: root, defaultsName: defaultsName)
     }
 
     private func makeDraft(_ fixture: Fixture, text: String, parameters: Bool = false) throws -> (SQLDocument, ExplainBatchDraft) {
@@ -219,6 +260,7 @@ struct ExplainBatchExecutionTests {
             let exit = await fixture.client.waitForExit()
             if cleanExit { #expect(exit.status == 0) }
         }
+        UserDefaults(suiteName: fixture.defaultsName)?.removePersistentDomain(forName: fixture.defaultsName)
         try? FileManager.default.removeItem(at: fixture.root)
     }
 
@@ -430,6 +472,160 @@ struct ExplainBatchExecutionTests {
         #expect(try counts(f)["connects"] == 2 && counts(f)["executions"] == 1)
         #expect(source.explainExecutions.first?.plan == nil && target.runtime?.sessionId == nil)
         await finish(f)
+    }
+
+    @Test func optionsAreChosenForEachPhysicalTargetBeforeItsExactGrant() async throws {
+        var choice = 0
+        let f = try await fixture(optionsNegotiation: "paired", options: { configuration in
+            #expect(configuration.support.serverVersion == "17.6" && configuration.transactionStatus == .idle)
+            choice += 1
+            return .use(.init(postgresql: .init(buffers: choice == 1, settings: false, memory: true)))
+        })
+        let (source, draft) = try makeDraft(f, text: "SELECT :p; SELECT :p", parameters: true)
+        let target = try #require(draft.targets.first { $0.documentID == nil && $0.profile.id == f.profiles[1].id })
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: target.id, planKind: .custom)
+        #expect(f.counter.configurations.count == 2 && f.counter.reviews.count == 2)
+        #expect(f.counter.configurations.allSatisfy { $0.profile.id == f.profiles[1].id && $0.sessionID == source.explainPlan?.sessionID })
+        #expect(source.runtime == nil && source.profileID == f.profiles[0].id)
+        let requests = source.explainExecutions.compactMap { $0.plan?.request }
+        #expect(requests.map { $0.options?.postgresql?.buffers } == [true, false])
+        #expect(requests.allSatisfy { $0.parameters == values && $0.planKind == .custom })
+        #expect(source.explainExecutions.allSatisfy { $0.status == "Completed" && $0.plan?.result?.options == $0.plan?.request.options })
+        #expect(try counts(f)["assessments"] == 2 && counts(f)["executions"] == 2 && counts(f)["setups"] == 0)
+        await finish(f)
+    }
+
+    @Test(arguments: ["hello", "owner", ""])
+    func optionsRequireBothHelperAndOwningSessionCapability(_ negotiation: String) async throws {
+        let f = try await fixture(optionsNegotiation: negotiation, options: { _ in
+            Issue.record("Options must not be offered without both capabilities")
+            return .use(.init(postgresql: .init(buffers: true)))
+        })
+        let (source, draft) = try makeDraft(f, text: "SELECT 1")
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(f.counter.configurations.isEmpty && source.explainPlan?.request.options == nil)
+        #expect(try source.explainExecutions.first?.status == "Completed" && counts(f)["executions"] == 1)
+        let session = try #require(source.runtime?.sessionId)
+        let request = ExplainRequest(sql: "SELECT 1", mode: .plan, options: .init(postgresql: .init(buffers: true)))
+        do {
+            _ = try await f.client.request(.assess(sessionId: session, operations: [.init(type: "explain.run", explain: request)]))
+            Issue.record("Unpaired options command was sent")
+        } catch { #expect(error as? BackendRequestError == .invalidCommand) }
+        #expect(try counts(f)["assessments"] == 1)
+        await finish(f)
+    }
+
+    @Test(arguments: ["cancel", "invalid", "source", "disconnect"])
+    func optionReviewCannotExecuteAfterCancellationOrContextMutation(_ mutation: String) async throws {
+        var source: SQLDocument?
+        let f = try await fixture(optionsNegotiation: "paired", options: { _ in
+            if mutation == "cancel" { return nil }
+            if mutation == "source" { source?.text += " " }
+            if mutation == "disconnect" { await source?.runtime?.disconnect() }
+            return .use(mutation == "invalid" ? .init(postgresql: .init(wal: true)) : .init(postgresql: .init(buffers: true)))
+        })
+        let pair = try makeDraft(f, text: "SELECT 1")
+        source = pair.0
+        await f.workspace.runExplainSelection(pair.1, selected: Set(pair.1.statements.map(\.id)), targetID: pair.1.defaultTargetID, planKind: nil)
+        #expect(f.counter.configurations.count == 1 && f.counter.reviews.isEmpty)
+        #expect(try counts(f)["assessments"] == 0 && counts(f)["executions"] == 0)
+        #expect(source?.explainPlan == nil)
+        await finish(f)
+    }
+
+    @Test(arguments: ["previewMismatch", "resultMismatch"])
+    func changedOptionEvidenceIsNeverAdmittedOrRepeated(_ mismatch: String) async throws {
+        let f = try await fixture(optionsNegotiation: "paired", optionsReply: mismatch, options: { _ in
+            .use(.init(postgresql: .init(buffers: true)))
+        })
+        let (source, draft) = try makeDraft(f, text: "SELECT 1")
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(source.explainPlan?.result == nil)
+        #expect(try counts(f)["assessments"] == 1 && counts(f)["executions"] == (mismatch == "previewMismatch" ? 0 : 1))
+        await finish(f, cleanExit: false)
+    }
+
+    @Test func mysqlJSONAnalyzeIsSelectedBeforeReviewAndExecutedOnlyOnce() async throws {
+        let f = try await fixture(optionsNegotiation: "paired", optionsEngine: .mysql, options: { configuration in
+            #expect(configuration.mode == .analyze && configuration.requiresJSONVersion2)
+            #expect(configuration.available == ["tree", "json"])
+            return .use(.init(mysql: .init(format: .json)))
+        })
+        let source = f.workspace.newDocument(profileID: f.profiles[0].id, text: "SELECT 1")
+        f.workspace.beginExplainSelection(source, mode: .analyze, selections: [NSRange(location: 0, length: 8)])
+        let draft = try #require(f.workspace.explainSelection)
+        f.workspace.explainSelection = nil
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(source.explainPlan?.request.options?.mysql?.format == .json && source.explainPlan?.result?.format == "jsonV2")
+        #expect(f.counter.reviews.count == 1 && f.counter.reviews.first?.assessment.operations.first?.explain?.format == "json")
+        #expect(try counts(f)["executions"] == 1 && counts(f)["setups"] == 0)
+        await finish(f)
+    }
+
+    @Test func acknowledgedPlanKeepsOptionsAfterPhysicalLossButCannotReuseAdmission() async throws {
+        let f = try await fixture(diagnosticReply: "disconnected", optionsNegotiation: "paired", options: { _ in
+            .use(.init(postgresql: .init(buffers: true)))
+        })
+        let (source, draft) = try makeDraft(f, text: "SELECT 1")
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        let plan = try #require(source.explainPlan)
+        #expect(plan.result?.options == plan.request.options && plan.result != nil && plan.failure == nil)
+        let session = try #require(plan.sessionID)
+        do {
+            _ = try await f.client.request(.assess(sessionId: session, operations: [.init(type: "explain.run", explain: plan.request)]))
+            Issue.record("Physical loss must revoke Explain options admission")
+        } catch { #expect(error as? BackendRequestError == .invalidCommand) }
+        #expect(try counts(f)["assessments"] == 1 && counts(f)["executions"] == 1)
+        await finish(f)
+    }
+
+    @Test func decliningAnalyzeAfterOptionsCannotRunOrFallBack() async throws {
+        let f = try await fixture(optionsNegotiation: "paired", options: { _ in
+            .use(.init(postgresql: .init(wal: true, serialize: .binary, timing: false)))
+        }, review: { confirmation in
+            #expect(confirmation.operations.first?.explain?.mode == .analyze)
+            #expect(confirmation.operations.first?.explain?.options?.postgresql?.timing == false)
+            return false
+        })
+        let source = f.workspace.newDocument(profileID: f.profiles[0].id, text: "SELECT 1")
+        f.workspace.beginExplainSelection(source, mode: .analyze, selections: [NSRange(location: 0, length: 8)])
+        let draft = try #require(f.workspace.explainSelection)
+        f.workspace.explainSelection = nil
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(f.counter.configurations.count == 1 && f.counter.reviews.count == 1)
+        #expect(try counts(f)["assessments"] == 1 && counts(f)["executions"] == 0 && counts(f)["setups"] == 0)
+        #expect(source.explainPlan?.status == "Not executed — review cancelled")
+        await finish(f)
+    }
+
+    @Test(arguments: ["paired", "hello", "owner"])
+    func defaultOptionNoticesNeedPairedOwnerAndRemainInSavedEvidence(_ negotiation: String) async throws {
+        let f = try await fixture(optionsNegotiation: negotiation, optionsEngine: .mysql, optionsReply: "notices", options: { configuration in
+            #expect(configuration.support.serverVersion == "8.0.18" && configuration.mode == .analyze)
+            #expect(configuration.support.notices?.count == 2 && configuration.support.notices?.first?.contains("SELECT-list") == true)
+            #expect(configuration.support.notices?.last?.contains("8.0.20") == true && !configuration.requiresJSONVersion2)
+            return .use(nil)
+        })
+        let source = f.workspace.newDocument(profileID: f.profiles[0].id, text: "SELECT 1")
+        f.workspace.beginExplainSelection(source, mode: .analyze, selections: [NSRange(location: 0, length: 8)])
+        let draft = try #require(f.workspace.explainSelection)
+        f.workspace.explainSelection = nil
+        await f.workspace.runExplainSelection(draft, selected: Set(draft.statements.map(\.id)), targetID: draft.defaultTargetID, planKind: nil)
+        #expect(try counts(f)["assessments"] == 1 && counts(f)["executions"] == (negotiation == "paired" ? 1 : 0))
+        if negotiation == "paired" {
+            let plan = try #require(source.explainPlan)
+            let notices = try #require(plan.result?.support.notices)
+            #expect(f.counter.configurations.count == 1 && f.counter.reviews.count == 1)
+            #expect(plan.request.options == nil && plan.result?.options == nil && plan.result?.format == "tree")
+            #expect(f.counter.reviews.first?.assessment.operations.first?.explain?.support.notices == notices)
+            let saved = try PlanArtifact.capture(plan, title: "Known older Analyze limitations")
+            let offline = try PlanArtifact.decode(saved.encoded())
+            #expect(offline.request.options == nil && offline.result.support.notices == notices)
+            #expect(offline.displayPlan.result?.support.notices == notices && offline.displayPlan.sessionID == nil)
+        } else {
+            #expect(f.counter.configurations.isEmpty && f.counter.reviews.isEmpty && source.explainPlan?.result == nil)
+        }
+        await finish(f, cleanExit: negotiation == "paired")
     }
 
 }

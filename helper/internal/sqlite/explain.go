@@ -24,7 +24,7 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExplain, error) {
 	p := adapter.PreparedExplain{Request: r, Prefix: "EXPLAIN QUERY PLAN\n"}
 	bound, err := queryparams.Bind("sqlite", r.SQL, r.Parameters)
-	if r.Mode != "plan" || r.PlanKind != "" || !r.Valid() || err != nil || !safety.VisualExplainTarget("sqlite", bound.AssessmentSQL) {
+	if r.Mode != "plan" || r.PlanKind != "" || r.Options != nil || !r.Valid() || err != nil || !safety.VisualExplainTarget("sqlite", bound.AssessmentSQL) {
 		return p, errors.New("SQLite Explain requires one SELECT or read CTE; Analyze is unavailable.")
 	}
 	p.Bound = bound

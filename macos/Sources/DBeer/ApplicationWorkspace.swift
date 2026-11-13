@@ -517,6 +517,8 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var insertCopySelection: InsertCopySelection?
     @Published var explainSelection: ExplainBatchDraft?
     private var pendingExplainSelection: (draft: ExplainBatchDraft, selected: Set<Int>, targetID: String, planKind: ExplainPlanKind?)?
+    @Published private(set) var explainOptionsPrompt: ExplainOptionsPrompt?
+    private var pendingExplainOptionsPrompt: ExplainOptionsPrompt?
     @Published private(set) var queryParameterPrompt: QueryParameterPrompt?
     private var pendingQueryParameterPrompt: QueryParameterPrompt?
     @Published private(set) var isImportingProfiles = false
@@ -541,6 +543,7 @@ final class ApplicationWorkspace: ObservableObject {
     private let documentStore: any SQLDocumentStore
     private let closeDecision: @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision
     let executionDecision: @MainActor (OperationConfirmation) async -> Bool
+    private let explainOptionsDecision: (@MainActor (ExplainOptionsConfiguration) async -> ExplainOptionsDecision?)?
     private let queryParameterDecision: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)?
     private var autosave: Task<Void, Never>?
     private var documentSaveTask: Task<Bool, Never>?
@@ -608,6 +611,7 @@ final class ApplicationWorkspace: ObservableObject {
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
          queryParameterDecision: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)? = nil,
+         explainOptionsDecision: (@MainActor (ExplainOptionsConfiguration) async -> ExplainOptionsDecision?)? = nil,
          helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
         self.connectionStore = connectionStore
         self.credentialStore = credentialStore
@@ -631,6 +635,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.closeDecision = closeDecision
         self.executionDecision = executionDecision
         self.queryParameterDecision = queryParameterDecision
+        self.explainOptionsDecision = explainOptionsDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         typeProfilesObservation = library.$savedConnections.sink { [weak self] profiles in
@@ -1773,7 +1778,34 @@ final class ApplicationWorkspace: ObservableObject {
         prompt.continuation.resume(returning: prompt.result)
     }
 
+    private func requestExplainOptions(_ configuration: ExplainOptionsConfiguration, documentID: UUID) async -> ExplainOptionsDecision? {
+        if let explainOptionsDecision { return await explainOptionsDecision(configuration) }
+        guard pendingExplainOptionsPrompt == nil, pendingQueryParameterPrompt == nil, presentationWindow != nil else { return nil }
+        return await withCheckedContinuation { continuation in
+            let prompt = ExplainOptionsPrompt(documentID: documentID, configuration: configuration, continuation: continuation)
+            pendingExplainOptionsPrompt = prompt
+            explainOptionsPrompt = prompt
+        }
+    }
+
+    func submitExplainOptions(id: UUID, decision: ExplainOptionsDecision?) {
+        guard let prompt = explainOptionsPrompt, prompt.id == id else { return }
+        prompt.result = decision
+        explainOptionsPrompt = nil
+    }
+
+    func explainOptionsPromptDismissed() {
+        guard explainOptionsPrompt == nil, let prompt = pendingExplainOptionsPrompt else { return }
+        pendingExplainOptionsPrompt = nil
+        prompt.continuation.resume(returning: prompt.result)
+    }
+
     private func cancelQueryParameterPrompt(documentID: UUID? = nil) {
+        if let prompt = pendingExplainOptionsPrompt, documentID == nil || documentID == prompt.documentID || documentID == prompt.configuration.targetDocumentID {
+            pendingExplainOptionsPrompt = nil
+            explainOptionsPrompt = nil
+            prompt.continuation.resume(returning: nil)
+        }
         guard let prompt = pendingQueryParameterPrompt,
               documentID == nil || documentID == prompt.documentID else { return }
         pendingQueryParameterPrompt = nil
@@ -1784,7 +1816,7 @@ final class ApplicationWorkspace: ObservableObject {
     private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
                          isScript: Bool = false, sourceSQL: String? = nil, forNavigating: Bool = false) async {
         guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning else { return }
-        guard pendingQueryParameterPrompt == nil else {
+        guard pendingQueryParameterPrompt == nil, pendingExplainOptionsPrompt == nil else {
             document.localError = "Finish or cancel the current parameter entry before running another query."
             return
         }
@@ -2132,7 +2164,7 @@ final class ApplicationWorkspace: ObservableObject {
                                      target choice: ExplainBatchTarget, planKind: ExplainPlanKind?) async throws {
         guard canStartOperation(source), !source.isRunning, !source.queryResultSelectionLocked,
               choice.profile.engine.supportsExplain(draft.mode),
-              pendingQueryParameterPrompt == nil else { return }
+              pendingQueryParameterPrompt == nil, pendingExplainOptionsPrompt == nil else { return }
         if choice.profile.engine.hasEngineDiagnostics {
             guard draft.definitions.isEmpty, planKind == nil, statements.allSatisfy({ $0.action == .plan }) else {
                 throw ExecutionPolicyError(message: "Engine diagnostics accept the original read query without parameters or setup commands.")
@@ -2250,7 +2282,7 @@ final class ApplicationWorkspace: ObservableObject {
             if statements.contains(where: { $0.action == .plan }) {
                 guard runtime.permitsOperation("explain." + draft.mode.rawValue, legacyAllowed: runtime.capabilities.contains("visualExplainV1")),
                       let support = runtime.explainSupport, support.modes.contains(draft.mode) else {
-                    throw ExecutionPolicyError(message: runtime.explainSupport?.unavailableReason ?? "This server does not support the chosen Explain mode.")
+                    throw ExecutionPolicyError(message: (draft.mode == .analyze ? runtime.explainSupport?.analyzeUnavailableReason : nil) ?? runtime.explainSupport?.unavailableReason ?? "This server does not support the chosen Explain mode.")
                 }
                 if let planKind, !(support.planKinds ?? []).contains(planKind) {
                     throw ExecutionPolicyError(message: "The chosen plan kind is unavailable on this server. Generic plans require PostgreSQL 16 or later.")
@@ -2274,6 +2306,22 @@ final class ApplicationWorkspace: ObservableObject {
                 }
                 var request = ExplainRequest(sql: statement.sql, mode: draft.mode, parameters: parameters, planKind: planKind)
                 if statement.action == .plan {
+                    let helperSupportsOptions = await client.supportsExplainOptions()
+                    guard targetValid() else { throw CancellationError() }
+                    if ExplainOptionsAdmission.validOwner(support: runtime.explainSupport, engine: choice.profile.engine,
+                        capabilities: Set(runtime.capabilities), helperSupports: helperSupportsOptions), let support = runtime.explainSupport {
+                        let configuration = ExplainOptionsConfiguration(support: support, mode: draft.mode,
+                            profile: choice.profile, sessionID: sessionID, targetDocumentID: target.id, transactionStatus: runtime.transactionStatus,
+                            sql: statement.sql, range: statement.range)
+                        guard let decision = await requestExplainOptions(configuration, documentID: source.id) else { throw CancellationError() }
+                        guard targetValid(), runtime.explainSupport == support,
+                              ExplainOptionsAdmission.validOwner(support: runtime.explainSupport, engine: choice.profile.engine,
+                                capabilities: Set(runtime.capabilities), helperSupports: await client.supportsExplainOptions()),
+                              configuration.accepts(decision.options) else {
+                            throw ExecutionPolicyError(message: "The selected Explain options or connected session changed. Review the statement again.")
+                        }
+                        request.options = decision.options
+                    }
                     if extended { request.context = source.explainExecutions[index].context }
                     guard request.valid else { throw ExecutionPolicyError(message: "The captured Explain request is invalid.") }
                     var plan = ExplainPlanModel(request: request, sourceText: draft.sourceText, sourceRange: statement.range,

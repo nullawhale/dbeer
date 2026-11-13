@@ -16,7 +16,7 @@ func TestExplainVersionBoundariesAndExactWrapper(t *testing.T) {
 	for _, item := range []struct {
 		engine, version string
 		available       bool
-	}{{"postgresql", "13.9", false}, {"postgresql", "14.0", true}, {"postgresql", "18.1 (fixture)", true}, {"mysql", "8.0.20", false}, {"mysql", "8.0.21", true}, {"mysql", "8.4.6", true}, {"mysql", "8.0.30-unknownVendor", false}, {"mysql", "8.0.40-31", false}, {"mysql", "8.4", false}, {"mysql", "8.4.6-commercial", true}, {"mysql", "8.4.13-standard", true}, {"mysql", "26.10.0-unknown", false}, {"mysql", "9.7.0", true}, {"mysql", "26.10.0", true}, {"mysql", "10.11.1-MariaDB", false}, {"mysql", "8.0.30-Percona", false}, {"mysql", "8.0.30-TiDB", false}, {"mysql", "8.0.30-aurora", false}, {"mysql", "unknown", false}} {
+	}{{"postgresql", "13.9", false}, {"postgresql", "14.0", true}, {"postgresql", "18.1 (fixture)", true}, {"mysql", "8.0.20", true}, {"mysql", "8.0.21", true}, {"mysql", "8.4.6", true}, {"mysql", "8.0.30-unknownVendor", false}, {"mysql", "8.0.40-31", false}, {"mysql", "8.4", false}, {"mysql", "8.4.6-commercial", true}, {"mysql", "8.4.13-standard", true}, {"mysql", "26.10.0-unknown", false}, {"mysql", "9.7.0", true}, {"mysql", "26.10.0", true}, {"mysql", "10.11.1-MariaDB", false}, {"mysql", "8.0.30-Percona", false}, {"mysql", "8.0.30-TiDB", false}, {"mysql", "8.0.30-aurora", false}, {"mysql", "unknown", false}} {
 		s := ExplainSupport(item.engine, item.version)
 		if (len(s.Modes) > 0) != item.available || !s.Valid() {
 			t.Errorf("version boundary %s %s", item.engine, item.version)

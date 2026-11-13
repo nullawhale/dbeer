@@ -60,7 +60,7 @@ func (*Session) ExplainSupport() protocol.ExplainSupport {
 }
 func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExplain, error) {
 	p := adapter.PreparedExplain{Request: r}
-	if !r.Valid() || r.Mode != "analyze" || len(r.Parameters) != 0 || r.PlanKind != "" || !safety.CQLTraceTarget(r.SQL) {
+	if r.Options != nil || !r.Valid() || r.Mode != "analyze" || len(r.Parameters) != 0 || r.PlanKind != "" || !safety.CQLTraceTarget(r.SQL) {
 		return p, errors.New("Cassandra provides tracing, not an estimated relational plan. Trace requires one known read-only SELECT without bound parameters; writes, batches, setup and unknown functions are unsupported.")
 	}
 	if r.Context != nil && r.Context.TransactionStatus != "unsupported" {
