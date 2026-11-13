@@ -8,7 +8,13 @@ type ForeignKeyColumn struct {
 	Target string `json:"target"`
 }
 
+type ColumnTypeEntry struct {
+	Name       string `json:"name"`
+	NativeType string `json:"nativeType"`
+}
+
 type ForeignKey struct {
+	Origin       string             `json:"origin,omitempty"`
 	Name         string             `json:"name"`
 	TargetSchema string             `json:"targetSchema"`
 	TargetTable  string             `json:"targetTable"`
@@ -24,6 +30,7 @@ type Relation struct {
 	Kind              string              `json:"kind"`
 	Columns           []string            `json:"columns"`
 	ColumnTypes       map[string]string   `json:"columnTypes,omitempty"`
+	ColumnTypeEntries []ColumnTypeEntry   `json:"columnTypeEntries,omitempty"`
 	ForeignKeys       []ForeignKey        `json:"foreignKeys,omitempty"`
 	Signatures        []FunctionSignature `json:"signatures,omitempty"`
 }
@@ -77,4 +84,22 @@ type MatchSpan struct{ Start, End int }
 type Diagnostic struct {
 	Start, End int
 	Message    string
+}
+
+// Native entries keep exact identifier bytes end to end. An entry list, even
+// when incomplete, never falls back to the legacy map for a missing name.
+func (r Relation) nativeType(name string) string {
+	if r.ColumnTypeEntries != nil {
+		value := ""
+		for _, entry := range r.ColumnTypeEntries {
+			if entry.Name == name {
+				if value != "" {
+					return ""
+				}
+				value = entry.NativeType
+			}
+		}
+		return value
+	}
+	return r.ColumnTypes[name]
 }

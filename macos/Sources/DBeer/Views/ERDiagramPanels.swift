@@ -283,8 +283,8 @@ struct ERDiagramInspector: View {
                 Spacer()
                 Text("\(relationships.count)").font(.caption).monospacedDigit().appSecondaryText()
             }
-            Text("Foreign key → referenced table")
-                .font(.caption).appSecondaryText().help("Only declared foreign keys are shown. No cardinality is inferred.")
+            Text("Solid: declared foreign key · Dashed: local confirmed mapping")
+                .font(.caption).appSecondaryText().help("Local mappings do not enforce database constraints. No cardinality is inferred.")
             if relationships.isEmpty {
                 Text("No loaded relationships in this selection.")
                     .font(.caption).appSecondaryText()
@@ -304,15 +304,28 @@ struct ERDiagramInspector: View {
                 model.stored.collapsed.removeAll { $0 == edge.source || $0 == edge.target }; model.changed?()
             } label: {
                 HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "arrow.triangle.branch").foregroundStyle(selected ? AppPalette.accent : AppPalette.secondaryText)
+                    Image(systemName: edge.kind == .logical ? "link" : "arrow.triangle.branch").foregroundStyle(selected ? AppPalette.accent : AppPalette.secondaryText)
                     Text(edge.key.name).font(.caption).fontWeight(.semibold).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain).controlHover().help(edge.key.name).accessibilityLabel("Highlight foreign key \(edge.key.name)")
+            }.buttonStyle(.plain).controlHover().help(edge.key.name).accessibilityLabel("Highlight \(edge.kind == .logical ? "local relationship" : "foreign key") \(edge.key.name)")
             VStack(alignment: .leading, spacing: 4) {
-                Text(edge.source.label).font(.caption).textSelection(.enabled)
-                Label(edge.target.label, systemImage: "arrow.turn.down.right").font(.caption).textSelection(.enabled)
+                Text((edge.sourceProfileName ?? edge.source.profileID.uuidString) + " · " + edge.source.label).font(.caption).textSelection(.enabled)
+                Label((edge.targetProfileName ?? edge.target.profileID.uuidString) + " · " + edge.target.label, systemImage: "arrow.turn.down.right").font(.caption).textSelection(.enabled)
             }.foregroundStyle(AppPalette.secondaryText)
+            if edge.kind == .logical {
+                Text("Local · User-confirmed · No database constraint").font(.caption2).appSecondaryText()
+                if let notice = edge.validationNotice { Text(notice).font(.caption2).foregroundStyle(.orange).textSelection(.enabled) }
+                HStack {
+                    Button("Open Source") { Task { await workspace.openLogicalRelationshipEndpoint(edge, target: false, from: document) } }
+                    Button("Open Target") { Task { await workspace.openLogicalRelationshipEndpoint(edge, target: true, from: document) } }
+                }.controlHover().controlSize(.small)
+                    .disabled(!workspace.canStartOperation(document))
+                Button("Edit Local Mapping…") {
+                    guard let id = edge.logicalID, let relationship = workspace.logicalRelationships.relationship(id: id) else { return }
+                    workspace.editLogicalRelationship(relationship)
+                }.controlHover().controlSize(.small)
+            }
             Divider()
             ForEach(Array(edge.key.columns.enumerated()), id: \.offset) { _, pair in
                 HStack(alignment: .firstTextBaseline, spacing: 4) {

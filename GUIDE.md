@@ -367,6 +367,46 @@ including subnormal and infinite values; unpreservable payloads are rejected.
 **Explain** shows EXPLAIN QUERY PLAN without fabricated costs or timing;
 **Explain Analyze** is unavailable for SQLite.
 
+## Local relationships
+
+Open **Local Relationships…** from the catalog or a table's relationship actions.
+Choose saved PostgreSQL, MySQL or SQLite profiles and exact table/view names,
+then **Load Columns**. Add ordered column pairs for a composite mapping. **Suggest
+by Name/Type** only creates an unconfirmed draft; inspect every pair, choose
+**Validate Mapping**, then **Confirm and Save**. This reads the selected profiles'
+current column metadata explicitly. It never creates a database constraint.
+
+Confirmed mappings live in a private local library, separately from declared
+foreign keys. Profile bindings exclude credentials and private keys. Opening or
+restoring the library never connects. Changed or missing profiles, columns and
+incomplete metadata require fresh validation; a profile name change alone does
+not rebind a mapping. Delete removes only the local mapping.
+
+From a stored row, choose a confirmed relationship to navigate exact captured
+key values into an independent target tab. Every composite component retains its
+native representation; NULL/DEFAULT keys and values with unavailable lossless
+representations do not start a target read. The target database supplies equality,
+affinity and collation. Cross-engine mappings involving SQLite require an explicit
+bound storage choice. **Stop** cancels the owned read while retaining the source
+and its draft. Unrelated navigation and cancelled close decisions preserve it.
+
+ER diagrams show these mappings as distinct local links, with profile-qualified
+external endpoints and visible stale/unverified notices. An external endpoint
+does not claim its metadata was loaded. ER exports retain the local relationship
+kind, original names and validation notice.
+
+Same-profile SQL JOIN completion uses only confirmed mappings whose exact current
+column declarations and comparison metadata match. Local suggestions are labelled
+**Local confirmed relationship**, separately from server foreign keys. Common
+PostgreSQL/MySQL text joins require compatible built-in types and the same verified
+character set and collation. Custom/unproven comparisons keep a visible unavailable
+reason in the library; navigation and ER remain available. SQLite local JOINs use
+`target.column = +source.column`, retaining the target's actual affinity and
+collation while removing source affinity, like a captured bound operand. Ordered
+metadata preserves distinct NFC/NFD identifiers. Cross-profile mappings never
+generate cross-server JOIN SQL. PostgreSQL/MySQL logical JOINs require schema-qualified source tables because the offline completion service cannot prove the current search path or default database; MySQL names must match exact case. Refresh the connected catalog explicitly to
+refresh suggestions; completion itself cannot connect or read row values.
+
 ## ER diagrams
 
 Choose **Open ER Diagram…** on a PostgreSQL or MySQL table or schema in the

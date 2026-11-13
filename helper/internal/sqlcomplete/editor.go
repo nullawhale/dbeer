@@ -404,7 +404,7 @@ func AnalyzeEditor(text string, offset int, context Context) EditorAnalysis {
 				}
 				for _, entry := range src.entries {
 					detail := "Type unavailable in loaded metadata"
-					if value := entry.ColumnTypes[columnName]; value != "" {
+					if value := entry.nativeType(columnName); value != "" {
 						detail = value
 					}
 					result.Definitions = append(result.Definitions, EditorDefinition{Schema: entry.Schema, Name: entry.Name, Kind: entry.Kind, Detail: "Column " + columnName + " · " + detail})

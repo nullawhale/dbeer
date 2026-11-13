@@ -206,6 +206,7 @@ actor SQLLSPTransport {
                     }
                     if count == 0 { break }
                     for frame in try framer.append(Data(bytes.prefix(count))) {
+                        try ExactJSONKeys.validate(frame, maximumBytes: SQLLSPFramer.maxFrameBytes)
                         let message = try JSONDecoder().decode(SQLLSPJSON.self, from: frame)
                         // One delivery at a time bounds both actor mailbox and
                         // notification work even when the child floods stdout.

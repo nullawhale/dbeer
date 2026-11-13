@@ -125,6 +125,10 @@ struct ApplicationWorkspaceView: View {
         .sheet(isPresented: $workspace.isSavedEvidencePresented) {
             SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence).applicationTheme(appearance: appearance)
         }
+        .sheet(isPresented: $workspace.isLogicalRelationshipsPresented) {
+            LogicalRelationshipsView(workspace: workspace)
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(isPresented: $workspace.isSnapshotsPresented) {
             ResultSnapshotsView(model: workspace.resultSnapshots) { snapshot in
                 if workspace.openResultSnapshot(id: snapshot.id, title: snapshot.title) != nil {

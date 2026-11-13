@@ -21,6 +21,15 @@
   The five existing engines explicitly reject native commands; a Redis engine
   and its command implementation remain future work.
 
+- Add a private confirmed local-relationship library with composite/table/view
+  and cross-profile mappings, explicit name/type suggestions and fresh metadata
+  validation. Navigate captured native values into independent tabs with owned
+  cancellation and disconnected restoration. Show distinct local/external ER
+  links and export notices. Add confirmed same-profile JOIN completion using
+  exact ordered type metadata and verified comparison semantics, including
+  character sets/collations and SQLite target-affinity equality; keep unproven
+  comparisons and cross-profile JOIN restrictions visible.
+
 - Discover declared incoming PostgreSQL/MySQL/SQLite foreign keys and open child
   rows from a stored parent row in the current view or an independent tab.
   Preserve complete composite mappings, canonical target identity and exact key

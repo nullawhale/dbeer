@@ -70,6 +70,9 @@ struct DataGridView: View {
                 }.font(.caption).padding(8)
                     .help("Only child rows related to the selected parent key are shown. Remove this restriction and Apply View to update the rows.")
             }
+            if let read = document.logicalRelationshipRead {
+                LogicalRelationshipReadStatus(read: read)
+            }
             if let reason = grid.readOnlyReason {
                 Text("Read only: \(reason)").font(.caption).appSecondaryText().padding(8)
             } else if let notice = grid.editingNotice {
@@ -209,6 +212,7 @@ struct DataGridView: View {
                     grid.isApplying || grid.outcomeUnknown || grid.resultIsStale || workspace.isClosing)
                 .help("Open the selected row in a new table tab using its original primary key")
                 .accessibilityIdentifier("openSQLSourceRow")
+            localRelationshipsMenu
             Spacer()
             Text("Source: \(grid.reference.schema).\(grid.reference.name)").font(.caption).appSecondaryText()
         }.controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)
@@ -225,7 +229,7 @@ struct DataGridView: View {
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
                 .popover(isPresented: showingColumns.projectedValue) { columnDetails }
-            if supportsForeignKeys { relatedRowsMenu }
+            if supportsForeignKeys { relatedRowsMenu; localRelationshipsMenu }
             Spacer(minLength: 4)
             if !usesCursors {
                 ControlIconButton(systemName: "chevron.left") {
@@ -285,6 +289,25 @@ struct DataGridView: View {
         .disabled(!canFollowRelationship)
         .help("Follow a selected row's foreign key in this view or an independent tab")
         .accessibilityIdentifier("gridRelatedRows")
+    }
+
+    private var localRelationshipsMenu: some View {
+        Menu("Local Links") {
+            let directions = workspace.logicalRelationshipDirections(document, grid: grid)
+            if directions.isEmpty { Text("No confirmed local mappings for this object") }
+            ForEach(directions) { direction in
+                Button(workspace.logicalRelationshipTargetLabel(direction)) {
+                    guard let rowID = selectedRelationshipRowID else { return }
+                    Task { await workspace.followLogicalRelationship(direction, rowID: rowID, in: document) }
+                }.disabled(selectedRelationshipRowID == nil || !workspace.logicalRelationshipProfilesMatch(direction.relationship))
+            }
+            Divider()
+            Button("Manage Local Relationships…") { workspace.presentLogicalRelationships() }
+        }.fixedSize().controlHover()
+            .disabled(!workspace.canStartOperation(document) || document.isRunning || document.isNavigatingTable ||
+                grid.isApplying || grid.isPreviewing || grid.isReloading || grid.isClosing || grid.resultIsStale || grid.outcomeUnknown || document.hasPendingBrowseChanges)
+            .help("User-confirmed local mappings open related rows in an independent tab after current metadata validation")
+            .accessibilityIdentifier("gridLocalRelationships")
     }
 
     private var changesToolbar: some View {
@@ -628,5 +651,17 @@ private struct GridSQLPreviewView: View {
             }
         }.padding(20).frame(width: 820, height: 560)
             .tint(AppPalette.accent).focusEffectDisabled()
+    }
+}
+
+private struct LogicalRelationshipReadStatus: View {
+    @ObservedObject var read: LogicalRelationshipRead
+    var body: some View {
+        HStack {
+            ProgressView().controlSize(.small)
+            Text(read.phase).font(.caption).textSelection(.enabled)
+            Spacer()
+            Button("Stop") { Task { await read.stop() } }.controlHover().disabled(read.cancelled)
+        }.padding(8).accessibilityIdentifier("logicalRelationshipRead")
     }
 }

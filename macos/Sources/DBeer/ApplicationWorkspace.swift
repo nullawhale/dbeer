@@ -178,6 +178,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var tableNavigationError: String?
     @Published var isLoadingForeignKeys = false
     @Published var isNavigatingTable = false
+    @Published var logicalRelationshipRead: LogicalRelationshipRead?
     @Published var tableBackHistory: [TableViewLocation] = []
     @Published var tableForwardHistory: [TableViewLocation] = []
     var foreignKeysRequestID = UUID()
@@ -485,6 +486,10 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
     @Published var schemaComparison: SchemaComparisonModel?
+    @Published var isLogicalRelationshipsPresented = false
+    @Published var logicalRelationshipEditor: LogicalRelationshipEditorModel? {
+        didSet { if oldValue?.id != logicalRelationshipEditor?.id { oldValue?.close() } }
+    }
     @Published var dataComparison: DataComparisonModel?
     @Published var dataTransfer: DataTransferModel?
     @Published var databaseTools: DatabaseToolsModel?
@@ -514,6 +519,7 @@ final class ApplicationWorkspace: ObservableObject {
     let sqlFolders: SQLFolderLibrary
     let sqlLibrary: SQLLibrary
     let tableBrowsePresets: TableBrowsePresetStore
+    let logicalRelationships: LogicalRelationshipStore
     let resultSnapshots: ResultSnapshotsModel
     let savedEvidence: SavedEvidenceModel
     let investigations: InvestigationLibraryModel
@@ -565,6 +571,8 @@ final class ApplicationWorkspace: ObservableObject {
     private var savedEvidenceObservation: AnyCancellable?
     private var resultSnapshotsObservation: AnyCancellable?
     private var investigationsObservation: AnyCancellable?
+    private var logicalRelationshipsObservation: AnyCancellable?
+    var logicalProfileRevision: UInt64 = 0
     private var investigationSnapshotDocuments: [UUID: [UUID: SQLDocument]] = [:]
     private var fileDocuments: [UUID: SQLFileDocument] = [:]
     private let automaticallyWatchFiles: Bool
@@ -581,6 +589,7 @@ final class ApplicationWorkspace: ObservableObject {
          sqlFolders: SQLFolderLibrary? = nil,
          sqlLibrary: SQLLibrary? = nil,
          tableBrowsePresets: TableBrowsePresetStore? = nil,
+         logicalRelationships: LogicalRelationshipStore? = nil,
          resultSnapshots: ResultSnapshotsModel? = nil,
          investigations: InvestigationLibraryModel? = nil,
          automaticallyWatchFiles: Bool = true,
@@ -597,6 +606,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
         self.sqlLibrary = sqlLibrary ?? SQLLibrary()
         self.tableBrowsePresets = tableBrowsePresets ?? TableBrowsePresetStore()
+        self.logicalRelationships = logicalRelationships ?? LogicalRelationshipStore()
         let snapshots = resultSnapshots ?? ResultSnapshotsModel()
         self.resultSnapshots = snapshots
         savedEvidence = SavedEvidenceModel(store: PlanArtifactStore())
@@ -611,6 +621,7 @@ final class ApplicationWorkspace: ObservableObject {
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         typeProfilesObservation = library.$savedConnections.sink { [weak self] profiles in
+            self?.logicalProfileRevision &+= 1
             self?.updatePostgresTypeProfileRevisions(profiles)
         }
         libraryErrorObservation = library.$connectionsError.sink { [weak self] error in
@@ -624,6 +635,7 @@ final class ApplicationWorkspace: ObservableObject {
         savedEvidenceObservation = savedEvidence.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         resultSnapshotsObservation = self.resultSnapshots.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         investigationsObservation = self.investigations.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        logicalRelationshipsObservation = self.logicalRelationships.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         self.resultSnapshots.investigationReferences = { [weak self] id in
             guard let self else { throw InvestigationReferenceError() }
             return try self.investigations.referencingInvestigations(snapshotID: id)
@@ -1192,6 +1204,7 @@ final class ApplicationWorkspace: ObservableObject {
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil) async {
         guard !started else { return }
         started = true
+        await logicalRelationships.load()
         await restoreSavedWorkspace()
         isStarting = true
         defer { isStarting = false }
@@ -2085,6 +2098,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func stop(_ document: SQLDocument) async {
         guard ownedSQLContext(for: document) != nil else { return }
+        if let read = document.logicalRelationshipRead { await read.stop(); return }
         if let model = document.erDiagramModel { stopERDiagram(model); return }
         if document.grid?.isApplying == true { await stopGridApply(document); return }
         document.stopRequested = true
@@ -2498,6 +2512,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     private func observeDocument(_ document: SQLDocument) {
         document.erDiagramModel?.changed = { [weak self] in self?.scheduleSave() }
+        if let model = document.erDiagramModel { bindLogicalRelationships(to: model) }
         document.fileDidMove = { [weak self, weak document] oldURL, newURL in
             guard let self, let document, self.documents.contains(where: { $0 === document }),
                   let id = document.sqlLibraryEntryID, let entry = self.sqlLibrary.entry(id: id),
@@ -3074,7 +3089,8 @@ final class ApplicationWorkspace: ObservableObject {
         var context = completionCatalog.context(profileID: profileID)
         let profile = library.savedConnections.first { $0.id == profileID }
         context.keyspace = keyspace ?? (profile?.engine == .cassandra ? profile?.database : nil)
-        return context
+        let service = profileID.flatMap { services[$0] }
+        return logicalCompletionContext(context, profile: profile, capabilities: service?.capabilities ?? [], connected: service?.connectionState == .connected)
     }
 
     func completionContext(document: SQLDocument) -> SQLCompletionContext {
@@ -3086,7 +3102,7 @@ final class ApplicationWorkspace: ObservableObject {
         if let snapshot = document.sqliteCompletion,
            document.runtime?.connectionState == .connected,
            snapshot.matches(profile: profile, sessionID: document.runtime?.sessionId) {
-            return snapshot.context
+            return logicalCompletionContext(snapshot.context, profile: profile, capabilities: document.runtime?.capabilities ?? [], connected: snapshot.notice == nil)
         }
         // A connected tab can have uncommitted DDL or TEMP objects that differ
         // from the profile service; never substitute its potentially stale names.
@@ -3732,8 +3748,9 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument,
-                                  context: PaneSelectionContext) async {
-        guard canStartOperation(source, forNavigating: true) else { return }
+                                  context: PaneSelectionContext, isCurrent: (@MainActor () -> Bool)? = nil,
+                                  onCreated: (@MainActor (SQLDocument) -> Void)? = nil) async {
+        guard canStartOperation(source, forNavigating: true), isCurrent?() ?? true else { return }
         let document = SQLDocument(title: "SQL \(documents.count + 1)", text: "Table data", profileID: location.profileID)
         document.isProvisionalTableView = true
         document.provisionalPreviousSelection = context.selectedDocumentID ?? source.id
@@ -3746,9 +3763,17 @@ final class ApplicationWorkspace: ObservableObject {
         installTableLocation(location, in: document)
         document.tableColumns = columns
         document.tableNeedsExplicitLoad = true
+        onCreated?(document)
         await run(document)
         guard documents.contains(where: { $0 === document }) else { return }
-        if document.grid == nil || document.localError != nil || document.runtime?.queryFailure != nil {
+        let contextChanged = !(isCurrent?() ?? true)
+        if contextChanged || document.grid == nil || document.localError != nil || document.runtime?.queryFailure != nil {
+            // A provisional owned read normally has no edits. Preserve any
+            // unexpected local draft rather than closing it without a decision.
+            if document.grid?.pendingCount ?? 0 > 0 || document.grid?.hasInlineDraft == true {
+                document.tableNavigationError = "The source relationship changed or stopped. This independent tab and its local draft were kept."
+                return
+            }
             let message = document.localError ?? document.runtime?.queryFailure?.message ?? document.runtime?.errorMessage ?? "The related rows could not be loaded."
             guard closingDocuments.insert(document.id).inserted else { return }
             defer { closingDocuments.remove(document.id) }
@@ -3906,6 +3931,7 @@ final class ApplicationWorkspace: ObservableObject {
         await closeSessionMonitor()
         await closeDatabaseValueSearch()
         await closeGridProfileServers()
+        await stopLogicalRelationshipNavigations()
         await dataTransfer?.close(); dataTransfer = nil
         await databaseTools?.close(); databaseTools = nil
         commands.shutdown()

@@ -63,7 +63,21 @@ enum ERDiagramRouting {
             }
         }
         var result: [ERDiagramRoute] = []
+        let extent = rectangles.reduce(CGRect.null) { $0.union($1) }
         for (index, edge) in relationships.sorted(by: { $0.id < $1.id }).enumerated() {
+            var cards = cards
+            // Confirmed external links remain explicit stubs. They never
+            // pretend that metadata for another profile was loaded here.
+            if edge.kind == .logical, !extent.isNull {
+                if cards[edge.source] == nil, let target = cards[edge.target] {
+                    let y = anchorY(edge.target, column: edge.key.columns.first?.target, rect: target, geometry: geometry)
+                    cards[edge.source] = CGRect(x: extent.minX - 160, y: y - 24 + Double(index % 5) * 14, width: 0, height: 0)
+                }
+                if cards[edge.target] == nil, let source = cards[edge.source] {
+                    let y = anchorY(edge.source, column: edge.key.columns.first?.source, rect: source, geometry: geometry)
+                    cards[edge.target] = CGRect(x: extent.maxX + 160, y: y - 24 + Double(index % 5) * 14, width: 0, height: 0)
+                }
+            }
             guard let source = cards[edge.source], let target = cards[edge.target] else { continue }
             let sourceY = anchorY(edge.source, column: edge.key.columns.first?.source, rect: source, geometry: geometry)
             var targetY = anchorY(edge.target, column: edge.key.columns.first?.target, rect: target, geometry: geometry)

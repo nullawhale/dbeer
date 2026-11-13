@@ -320,11 +320,22 @@ func boundedConfiguration(c configuration) bool {
 			}
 		}
 
+		if len(entry.ColumnTypeEntries) > len(entry.Columns) {
+			return false
+		}
+		entryNames := map[string]bool{}
+		for _, value := range entry.ColumnTypeEntries {
+			if !columnNames[value.Name] || entryNames[value.Name] || len(value.Name) > 1024 || value.NativeType == "" || len(value.NativeType) > 4096 {
+				return false
+			}
+			entryNames[value.Name] = true
+		}
+
 		if len(entry.ForeignKeys) > 64 {
 			return false
 		}
 		for _, key := range entry.ForeignKeys {
-			if len(key.Name) > 1024 || key.TargetTable == "" || len(key.TargetTable) > 1024 || len(key.TargetSchema) > 1024 || len(key.Columns) == 0 || len(key.Columns) > 32 {
+			if (key.Origin != "" && key.Origin != "declared" && key.Origin != "logical") || len(key.Name) > 1024 || key.TargetTable == "" || len(key.TargetTable) > 1024 || len(key.TargetSchema) > 1024 || len(key.Columns) == 0 || len(key.Columns) > 32 {
 				return false
 			}
 			keyColumns += len(key.Columns)

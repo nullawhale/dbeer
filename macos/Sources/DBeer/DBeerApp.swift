@@ -126,6 +126,8 @@ private struct WorkspaceCommands: Commands {
                 .disabled(!workspace.canManageWorkspace)
             Button("Saved Operation Evidence…") { workspace.isSavedEvidencePresented = true }
                 .disabled(!workspace.canManageWorkspace)
+            Button("Local Relationships…") { workspace.presentLogicalRelationships() }
+                .disabled(!workspace.canManageWorkspace)
                 .disabled(!workspace.canManageWorkspace)
         }
         CommandMenu("Connections") {

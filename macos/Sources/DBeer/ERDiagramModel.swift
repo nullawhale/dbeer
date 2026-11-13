@@ -97,11 +97,38 @@ struct ERTableMetadata: Equatable, Sendable {
             $1.columns.reduce(0) { $0 + $1.source.utf8.count + $1.target.utf8.count + 16 } }
     }
 }
+enum ERRelationshipKind: String, Sendable { case declared, logical }
+
 struct ERRelationship: Identifiable, Sendable {
     let source: ERTableID
     let key: TableForeignKey
-    var target: ERTableID { .init(profileID: source.profileID, schema: key.target.schema, name: key.target.name) }
-    var id: String { source.id + ":" + Data(key.name.utf8).base64EncodedString() + ":" + target.id }
+    let logicalID: UUID?
+    let targetProfileID: UUID?
+    let targetProfileName: String?
+    let sourceProfileName: String?
+    let validationNotice: String?
+    init(source: ERTableID, key: TableForeignKey, logicalID: UUID? = nil, targetProfileID: UUID? = nil, targetProfileName: String? = nil,
+         sourceProfileName: String? = nil, validationNotice: String? = nil) {
+        self.source = source; self.key = key; self.logicalID = logicalID
+        self.targetProfileID = targetProfileID; self.targetProfileName = targetProfileName
+        self.sourceProfileName = sourceProfileName; self.validationNotice = validationNotice
+    }
+    var kind: ERRelationshipKind { logicalID == nil ? .declared : .logical }
+    var target: ERTableID { .init(profileID: targetProfileID ?? source.profileID, schema: key.target.schema, name: key.target.name) }
+    var isValid: Bool {
+        guard source.isValid, target.isValid else { return false }
+        if kind == .declared { return key.isValid }
+        guard ["table", "view"].contains(key.target.kind) else { return false }
+        // The shared key representation checks ordered, unique identifier
+        // pairs. A local mapping can reference a view without asserting that
+        // the server allows a declared foreign key to that view.
+        return TableForeignKey(name: key.name,
+            target: .init(schema: key.target.schema, name: key.target.name, kind: "table"), columns: key.columns).isValid
+    }
+    var id: String {
+        if let logicalID { return "logical:" + logicalID.uuidString }
+        return source.id + ":" + Data(key.name.utf8).base64EncodedString() + ":" + target.id
+    }
 }
 struct ERDiagramFailure: LocalizedError {
     let message: String
@@ -168,6 +195,9 @@ final class ERDiagramModel: ObservableObject {
     var searchContext: ERDiagramLoadContext?
     var searchRequest: CatalogMetadataRequest?
     var context: ERDiagramLoadContext?
+    private(set) var logicalMetadataRevision: UInt64 = 0
+    var localRelationships: (() -> [ERRelationship])?
+    private var routedRelationshipSignature: [[Data]] = []
     var changed: (() -> Void)?
     private var routedGeometry: ERDiagramRouting.Geometry?
     private var cachedRoutes: [ERDiagramRoute] = []
@@ -176,18 +206,30 @@ final class ERDiagramModel: ObservableObject {
     var relationshipRoutes: [ERDiagramRoute] {
         let geometry = ERDiagramRouting.Geometry(tables: stored.tables, placements: stored.placements,
             metadata: metadata, collapsed: Set(stored.collapsed))
-        if geometry != routedGeometry {
-            cachedRoutes = ERDiagramRouting.routes(geometry, relationships: relationships)
+        let edges = relationships
+        let signature = edges.map { edge in
+            [edge.id, edge.source.id, edge.target.id] + edge.key.columns.flatMap { [$0.source, $0.target, String($0.position)] }
+        }.map { $0.map { Data($0.utf8) } }
+        if geometry != routedGeometry || signature != routedRelationshipSignature {
+            cachedRoutes = ERDiagramRouting.routes(geometry, relationships: edges)
+            routedRelationshipSignature = signature
             routedGeometry = geometry
         }
         return cachedRoutes
     }
-    var relationships: [ERRelationship] {
-        stored.tables.flatMap { source in
+    private var allRelationships: [ERRelationship] {
+        let declared = stored.tables.flatMap { source in
             guard let facts = metadata[source], facts.relationshipState.isAvailable else { return [ERRelationship]() }
             return facts.foreignKeys.map { ERRelationship(source: source, key: $0) }
         }
+        return declared + (localRelationships?() ?? [])
     }
+    var relationships: [ERRelationship] { Array(allRelationships.prefix(ERDiagramLimits.relationships)) }
+    var relationshipLimitNotice: String? {
+        let omitted = allRelationships.count - ERDiagramLimits.relationships
+        return omitted > 0 ? "\(omitted) additional declared or local relationships exceed the diagram limit. Narrow the selected area to include them." : nil
+    }
+    var displayNotice: String? { [notice, relationshipLimitNotice].compactMap { $0 }.joined(separator: " ") }
     var selectedRelationship: ERRelationship? { relationships.first { $0.id == selectedRelationshipID } }
     var draftDiffersFromGraph: Bool { Set(stored.tables) != Set(metadata.keys) }
     func add(_ table: ERTableID) {
@@ -218,6 +260,7 @@ final class ERDiagramModel: ObservableObject {
         changed?()
     }
     func setMetadata(_ facts: ERTableMetadata) {
+        logicalMetadataRevision &+= 1
         metadata[facts.table] = facts
         // Identifier matching uses exact UTF-8, while synthesized metadata
         // equality treats canonically equivalent Swift strings as equal.
@@ -234,6 +277,7 @@ final class ERDiagramModel: ObservableObject {
 
     func invalidate(_ reason: String) {
         visibleTableDiscovery?.stop(); neighbourDiscovery?.stop()
+        logicalMetadataRevision &+= 1
         generation &+= 1; isLoading = false; context = nil; notice = reason
         for table in metadata.keys {
             metadata[table]?.columnState = .stale(reason); metadata[table]?.relationshipState = .stale(reason)

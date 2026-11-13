@@ -49,10 +49,10 @@ struct ERDiagramView: View {
             }
             Divider()
             HStack(spacing: 12) {
-                Text(model.notice ?? "Metadata is not loaded.")
-                    .lineLimit(2).textSelection(.enabled).help(model.notice ?? "Metadata is not loaded.")
+                Text(model.displayNotice ?? "Metadata is not loaded.")
+                    .lineLimit(2).textSelection(.enabled).help(model.displayNotice ?? "Metadata is not loaded.")
                 Spacer(minLength: 8)
-                Label("FK → referenced key", systemImage: "arrow.right").fixedSize()
+                Label("FK → key · dashed: local mapping", systemImage: "arrow.right").fixedSize()
             }.font(.caption).appSecondaryText().padding(.horizontal, 12).padding(.vertical, 8)
         }
         .background(AppPalette.panel).foregroundStyle(AppPalette.text).tint(AppPalette.accent)
@@ -65,7 +65,7 @@ struct ERDiagramView: View {
                     .font(.headline).lineLimit(1)
                 Text("\(model.stored.tables.count) tables · \(model.relationships.count) relationships")
                     .font(.caption).appSecondaryText().lineLimit(1)
-                    .help("Diagrams support up to 100 tables. Only loaded, declared relationships are shown.")
+                    .help("Diagrams support up to 100 tables. Declared foreign keys and confirmed local mappings are shown separately.")
             }
             Divider().frame(height: 24)
             if model.isLoading {
@@ -174,7 +174,19 @@ private final class ERCanvasView: NSView {
             guard path.bounds.insetBy(dx: -20, dy: -20).intersects(visible) else { continue }
             let style = connectionStyle(edge, selectedRelationshipID: selectedRelationship?.id, selectedTable: model.stored.selected)
             style.color.setStroke()
-            path.lineWidth = style.width / viewport.zoom; path.lineJoinStyle = .round; path.stroke()
+            path.lineWidth = style.width / viewport.zoom; path.lineJoinStyle = .round
+            if edge.kind == .logical { path.setLineDash([6 / viewport.zoom, 4 / viewport.zoom], count: 2, phase: 0) }
+            path.stroke()
+            if edge.kind == .logical {
+                if !model.stored.tables.contains(edge.source), let endpoint = route.points.first {
+                    text((edge.sourceProfileName ?? edge.source.profileID.uuidString) + " · " + edge.source.label,
+                         at: .init(x: endpoint.x - 20, y: endpoint.y - 22), width: 260, size: 11, color: style.color)
+                }
+                if !model.stored.tables.contains(edge.target), let endpoint = route.points.last {
+                    text((edge.targetProfileName ?? edge.target.profileID.uuidString) + " · " + edge.target.label,
+                         at: .init(x: endpoint.x - 80, y: endpoint.y + 8), width: 260, size: 11, color: style.color)
+                }
+            }
         }
         for table in model.stored.tables {
             guard let point = positions[table] else { continue }

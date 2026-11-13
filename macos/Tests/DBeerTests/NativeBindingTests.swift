@@ -52,7 +52,35 @@ struct NativeBindingTests {
             commandTag: "SELECT", rowCount: 1, displayedRowCount: 1, truncated: false)
         #expect(throws: BackendTransportError.self) { try reply.validate() }
     }
-
+    @Test func nativeArrayAndDomainNavigationRetainsCapturedOIDGuards() throws {
+        let profile = SavedConnection(name: "Fixture", settings: .init(host: "fixture.invalid", port: 5432,
+            database: "fixture", user: "fixture", password: "", sslMode: "disable"))
+        let endpoint = LogicalRelationshipEndpoint(profile: profile, reference: .init(schema: "public", name: "source", kind: "table"))
+        let identity = "pgtype-v1:" + String(repeating: "a", count: 64)
+        for (declaration, wireName, wireOID, declaredOID, baseOID, native, encoding) in [
+            ("integer[]", "_int4", UInt32(1007), UInt32(1007), UInt32(1007),
+                NativeValue(kind: "native", value: "[0:1]={1,2}", engine: "postgresql", nativeType: "_int4", typeIdentity: identity), Optional<String>.none),
+            ("fixture.binary_key", "bytea", UInt32(17), UInt32(20_001), UInt32(17),
+                NativeValue(kind: "binary", value: "AP8=", engine: "postgresql", nativeType: "bytea", typeIdentity: identity), Optional("base64"))
+        ] {
+            let column = ResultColumn(index: 0, name: "value", typeOid: wireOID, nativeType: wireName, encoding: encoding, typeIdentity: identity)
+            let grid = GridDraft(reference: endpoint.reference,
+                result: .init(type: "query.result", requestId: "r", columns: [column], rows: [["formatted"]], nativeValues: [[native]]),
+                metadata: [["name":"value", "nativeType": declaration, "typeOid":String(declaredOID), "baseTypeOid":String(baseOID), "primaryKey":"1", "editable":"true"]])
+            let relationship = LogicalRelationship(name: "Exact navigation", source: endpoint, target: endpoint,
+                columns: [.init(source: "value", target: "value", sourceType: declaration, targetType: declaration)])
+            #expect(grid.canEdit)
+            let values = try #require(grid.rows[0].original)
+            let filters = try LogicalRelationshipNavigation.filters(relationship, sourceColumns: [column], sourceDeclarations: [declaration],
+                sourceTypeOIDs: [declaredOID], sourceBaseTypeOIDs: [baseOID], values: values)
+            #expect(filters.first?.nativeValue?.cell.value == native.value)
+            #expect(filters.first?.nativeValue?.cell.kind == (encoding == nil ? "text" : "binary"))
+            #expect(throws: LogicalRelationshipError.self) {
+                try LogicalRelationshipNavigation.filters(relationship, sourceColumns: [column], sourceDeclarations: [declaration],
+                    sourceTypeOIDs: [20_002], sourceBaseTypeOIDs: [25], values: values)
+            }
+        }
+    }
 
     @Test func referencedKeyChoiceUsesNativeEvidenceInsteadOfFormattedRows() async throws {
         let key = TableForeignKey(name: "key", target: .init(schema: "public", name: "parent", kind: "table"),
