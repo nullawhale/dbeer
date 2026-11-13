@@ -27,7 +27,9 @@ struct ERDiagramView: View {
                         .frame(minWidth: 210, idealWidth: 230, maxWidth: 290)
                 }
                 GeometryReader { proxy in
-                    ERDiagramCanvas(model: model)
+                    ERDiagramCanvas(model: model, structureReason: { workspace.erStructureUnavailableReason(document, action: $0) }, openStructure: { action in
+                        Task { await workspace.openERStructure(document, action: action) }
+                    })
                         .onAppear { canvasSize = proxy.size }
                         .onChange(of: proxy.size) { _, size in canvasSize = size }
                         .overlay {
@@ -143,12 +145,18 @@ struct ERDiagramView: View {
 
 private struct ERDiagramCanvas: NSViewRepresentable {
     @ObservedObject var model: ERDiagramModel
+    let structureReason: (ERStructureAction) -> String?
+    let openStructure: (ERStructureAction) -> Void
     func makeNSView(context: Context) -> ERCanvasView { ERCanvasView() }
-    func updateNSView(_ view: ERCanvasView, context: Context) { view.model = model; view.needsDisplay = true }
+    func updateNSView(_ view: ERCanvasView, context: Context) {
+        view.model = model; view.structureReason = structureReason; view.openStructure = openStructure; view.needsDisplay = true
+    }
 }
 
 private final class ERCanvasView: NSView {
     weak var model: ERDiagramModel?
+    var structureReason: ((ERStructureAction) -> String?)?
+    var openStructure: ((ERStructureAction) -> Void)?
     private var dragged: ERTableID?
     private var previous = NSPoint.zero
     override var isFlipped: Bool { true }
@@ -339,6 +347,29 @@ private final class ERCanvasView: NSView {
         (string as NSString).draw(in: NSRect(x: point.x, y: point.y, width: width, height: size + 6), withAttributes: [
             .font: monospaced ? NSFont.monospacedSystemFont(ofSize: size, weight: weight) : NSFont.systemFont(ofSize: size, weight: weight),
             .foregroundColor: color, .paragraphStyle: paragraph])
+    }
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let model else { return nil }
+        let point = world(event)
+        guard let table = model.stored.placements.reversed().first(where: { placement in
+            NSRect(x: placement.point.x, y: placement.point.y, width: ERDiagramLayout.width,
+                height: ERDiagramLayout.height(model.metadata[placement.table], collapsed: model.stored.collapsed.contains(placement.table)))
+                .contains(NSPoint(x: point.x, y: point.y))
+        })?.table else { return nil }
+        model.select(table)
+        let menu = NSMenu(); menu.autoenablesItems = false
+        for (title, action) in [("Edit Structure…", ERStructureAction.edit(table)), ("Add Foreign Key…", .addForeignKey(table))] {
+            let item = NSMenuItem(title: title, action: #selector(openStructureAction(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = action
+            let reason = structureReason?(action)
+            item.isEnabled = openStructure != nil && reason == nil; item.toolTip = reason
+            menu.addItem(item)
+        }
+        return menu
+    }
+    @objc private func openStructureAction(_ item: NSMenuItem) {
+        guard let action = item.representedObject as? ERStructureAction else { return }
+        openStructure?(action)
     }
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self); previous = convert(event.locationInWindow, from: nil)

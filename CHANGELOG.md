@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Open the shared structure editor from ER cards and links for table creation,
+  structure edits and proposed same-profile foreign keys. Capture exact source
+  ownership and ordered mappings, retain local declarations, and keep Load,
+  Preview, data validation and confirmed Apply explicit. Refresh matching connected
+  source facts after known acknowledgements while preserving manual/collapsed
+  layout; unknown outcomes remain stale for explicit reconciliation.
+
 - Review explicit table/column deletion and lossy built-in conversions with named
   dependencies, data-loss consequences and confirmation of the exact plan. Add
   PostgreSQL USING/collation and MySQL signedness/charset/collation authoring,

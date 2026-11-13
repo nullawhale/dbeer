@@ -444,6 +444,39 @@ for the selected source; cardinality and PK membership are not inferred. Declare
 FKs stay within their actual profile. Cross-profile confirmed mappings keep their
 distinct local-link style and do not generate cross-server SQL.
 
+For an explicitly connected source, use a card's **Edit Structure…** or **Add
+Foreign Key…** action, or **Create Table…** in Add Tables, to open the shared
+structure editor. The exact profile, database context and table identifiers are
+captured before opening; changing the diagram selection cannot redirect the
+draft. Removing or rebinding a source or endpoint retires its structure draft,
+even if you add the same identifiers again while confirmation is pending.
+Metadata refresh and cosmetic profile-label changes retain the binding.
+Loading a structure draft, **Preview**, data validation where available,
+and **Apply** remain separate explicit steps. Preview and Apply use the same
+fresh baseline, dependency checks, execution policy and SQL review as
+catalog-initiated drafts. Apply requests any additional confirmation required by
+that policy. Opening or restoring a diagram never connects for these actions.
+
+A current confirmed local link between two tables on the same saved profile
+offers **Create Foreign Key…**. It copies the ordered exact column mapping into
+a new foreign-key intent; choose a new constraint name and review Preview.
+The local mapping is retained. Same-profile cross-schema references remain
+subject to the shared adapter's key, type, visibility and privilege checks.
+Cross-profile links, views and stale or unverified endpoints display the reason
+they cannot propose a database constraint. SQLite admits bounded reconstruction
+for simple tables; retained CHECK constraints and other definitions requiring manual reconstruction are refused by
+the shared editor's Preview.
+
+After a known terminal structure acknowledgement, matching already-connected
+diagram sources refresh their facts while retaining manual positions, collapsed
+cards and other profiles' metadata. A completed table creation adds its card to
+the originating diagram; a fully acknowledged rename retains the original
+card's presentation under its exact new name. Partial results keep their
+execution report and require explicit review of remaining changes. Unknown or
+in-progress outcomes leave facts stale for explicit inspection and reconciliation;
+DBeer never repeats a DDL step automatically. An acknowledged table removal keeps
+its local card with unavailable metadata until you remove it from the diagram.
+
 For a connected profile, **Find Neighbours** explicitly discovers a selected
 table's declared incoming and outgoing relationships. Sources with the same
 constraint name remain separate, including self-references and cross-schema

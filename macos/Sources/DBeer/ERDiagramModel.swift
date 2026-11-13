@@ -228,9 +228,14 @@ final class ERDiagramModel: ObservableObject {
     private var layoutRevision: UInt64 = 0
     private var routedGeometry: ERDiagramRouting.Geometry?
     private var cachedRoutes: [ERDiagramRoute] = []
+    // Metadata refresh preserves ownership; removing and recreating a binding cannot revive it.
+    private var sourceBindingLifetimes: [UUID: UUID] = [:]
+    private var tableBindingLifetimes: [ERTableID: UUID] = [:]
 
     init(stored: StoredERDiagram) {
         self.stored = stored
+        sourceBindingLifetimes = Dictionary(stored.sources.map { ($0.profileID, UUID()) }, uniquingKeysWith: { first, _ in first })
+        tableBindingLifetimes = Dictionary(stored.tables.map { ($0, UUID()) }, uniquingKeysWith: { first, _ in first })
         let ids = Set(stored.sources.map(\.profileID) + stored.tables.map(\.profileID))
         activeSourceID = ids.contains(stored.profileID) || ids.isEmpty ? stored.profileID : (stored.sources.first?.profileID ?? stored.tables.first!.profileID)
     }
@@ -272,15 +277,18 @@ final class ERDiagramModel: ObservableObject {
     func add(_ table: ERTableID) {
         guard ownsSource(table.profileID), table.isValid, !stored.tables.contains(table) else { return }
         guard stored.tables.count < ERDiagramLimits.tables else { notice = "Select at most 100 tables."; return }
-        cancelLayout(); stored.tables.append(table); changed?()
+        cancelLayout(); tableBindingLifetimes[table] = UUID(); stored.tables.append(table); changed?()
     }
     /// Explicit discovery may resolve an alias using the connected server's
     /// own identifier rules. Only draft identity/presentation changes here.
-    func adoptCanonicalIdentity(_ original: ERTableID, resolved: ERTableID) {
+    func adoptCanonicalIdentity(_ original: ERTableID, resolved: ERTableID, preservingStructureBinding: Bool = false) {
         guard original != resolved, original.profileID == resolved.profileID, ownsSource(resolved.profileID),
               resolved.isValid, stored.tables.contains(original) else { return }
         cancelLayout()
         let alreadyPresent = stored.tables.contains(resolved)
+        let lifetime = preservingStructureBinding ? tableBindingLifetimes[original] : nil
+        tableBindingLifetimes[original] = nil
+        if !alreadyPresent { tableBindingLifetimes[resolved] = lifetime ?? UUID() }
         stored.tables = stored.tables.compactMap { $0 == original ? (alreadyPresent ? nil : resolved) : $0 }
         if alreadyPresent { stored.placements.removeAll { $0.table == original } }
         else { stored.placements = stored.placements.map { $0.table == original ? .init(table: resolved, point: $0.point, manual: $0.manual) : $0 } }
@@ -293,7 +301,7 @@ final class ERDiagramModel: ObservableObject {
     }
 
     func remove(_ table: ERTableID) {
-        cancelLayout()
+        cancelLayout(); tableBindingLifetimes[table] = nil
         stored.tables.removeAll { $0 == table }; stored.placements.removeAll { $0.table == table }
         stored.collapsed.removeAll { $0 == table }
         if stored.selected == table { neighbourDiscovery?.stop(); neighbourDiscovery = nil; stored.selected = nil }
@@ -309,6 +317,8 @@ final class ERDiagramModel: ObservableObject {
         routedGeometry = nil
     }
     func sourceState(_ profileID: UUID) -> ERDiagramSourceState { sourceStates[profileID] ?? .init() }
+    func sourceBindingLifetime(_ profileID: UUID) -> UUID? { sourceBindingLifetimes[profileID] }
+    func tableBindingLifetime(_ table: ERTableID) -> UUID? { tableBindingLifetimes[table] }
     var sourceProfileIDs: Set<UUID> {
         let ids = stored.sourceProfileIDs
         return ids.isEmpty ? [stored.profileID] : ids
@@ -344,12 +354,15 @@ final class ERDiagramModel: ObservableObject {
                 guard profile.engine == stored.engine && Data(profile.database.utf8) == Data(stored.database.utf8) else { return false }
             } else { stored.engine = profile.engine; stored.database = profile.database }
         }
+        sourceBindingLifetimes[profile.id] = UUID()
         stored.sources.append(binding); changed?(); return true
     }
     func removeSource(_ profileID: UUID) {
         guard ownsSource(profileID) else { return }
         cancelLayout()
         let removed = Set(stored.tables.filter { $0.profileID == profileID })
+        sourceBindingLifetimes[profileID] = nil
+        for table in removed { tableBindingLifetimes[table] = nil }
         stored.tables.removeAll { removed.contains($0) }; stored.placements.removeAll { removed.contains($0.table) }
         stored.collapsed.removeAll { removed.contains($0) }
         if let selected = stored.selected, removed.contains(selected) { stored.selected = nil }
@@ -375,6 +388,8 @@ final class ERDiagramModel: ObservableObject {
         let reboundTables = stored.tables.map { $0 == original ? replacement : $0 }
         let reboundProfiles = Set(stored.sources.map(\.profileID) + [profile.id] + reboundTables.map(\.profileID))
         guard reboundProfiles.count <= ERDiagramLimits.sources else { throw ERDiagramFailure("Select at most 16 source profiles.") }
+        tableBindingLifetimes[original] = nil; tableBindingLifetimes[replacement] = UUID()
+        if source(profile.id)?.matches(profile) != true { sourceBindingLifetimes[profile.id] = UUID() }
         invalidateSource(original.profileID, reason: "An object was rebound. Build this source explicitly.")
         if profile.id != original.profileID { invalidateSource(profile.id, reason: "An object was rebound. Build this source explicitly.") }
         stored.sources.removeAll { $0.profileID == profile.id }; stored.sources.append(.init(profile))

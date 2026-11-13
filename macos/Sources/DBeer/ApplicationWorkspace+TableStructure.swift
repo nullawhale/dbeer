@@ -12,26 +12,29 @@ extension ApplicationWorkspace {
               service.permitsOperation("structure.preview", legacyAllowed: service.capabilities.contains("tableStructureEditorV1")) else { return false }
         return node.kind == .schema || node.kind == .group && node.objectKind == "table" || node.kind == .object && node.objectKind == "table"
     }
-    func openTableStructure(_ node: CatalogNode, create: Bool) async {
+    func openTableStructure(_ node: CatalogNode, create: Bool, bindingIsCurrent: @escaping () -> Bool = { true },
+                            initialDraft: StructureDraft? = nil, changed: @escaping (TableStructureExecutionReview) -> Void = { _ in }) async {
         guard structureEditor == nil, canEditTableStructure(node),
               let profile = library.savedConnections.first(where: { $0.id == node.profileID }),
               let service = services[profile.id], let originSession = service.sessionId else { return }
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
-        let profileBytes = try? encoder.encode(profile)
+        var profileIdentity = profile; profileIdentity.name = ""
+        let profileBytes = try? encoder.encode(profileIdentity)
         let sshSnapshot = service.ssh
         let current: @MainActor () -> Bool = { [weak self, weak service] in
-            guard let self, let service, self.services[profile.id] === service, service.connectionState == .connected,
+            guard bindingIsCurrent(), let self, let service, self.services[profile.id] === service, service.connectionState == .connected,
                   service.sessionId == originSession,
-                  let saved = self.library.savedConnections.first(where: { $0.id == profile.id }),
-                  (try? encoder.encode(saved)) == profileBytes else { return false }
+                  let saved = self.library.savedConnections.first(where: { $0.id == profile.id }) else { return false }
+            var savedIdentity = saved; savedIdentity.name = ""
+            guard (try? encoder.encode(savedIdentity)) == profileBytes else { return false }
             let live = ConnectionSettings(host: service.host, port: Int(service.port) ?? -1,
                 database: service.database, user: service.user, password: "", sslMode: service.sslMode,
                 sslRootCert: service.sslRootCert.isEmpty ? nil : service.sslRootCert,
                 engine: service.engine, policy: service.policy, contactPoints: service.contactPoints,
                 localDatacenter: service.localDatacenter, consistency: service.consistency,
                 ssh: service.ssh, passwordCommand: service.passwordCommand, mongodb: service.mongodb, sqlite: service.sqlite)
-            return (try? encoder.encode(SavedConnection(id: profile.id, name: profile.name, settings: live))) == profileBytes
+            return (try? encoder.encode(SavedConnection(id: profile.id, name: "", settings: live))) == profileBytes
         }
         guard current() else { return }
         let lease = TableStructureSessionLease()
@@ -93,9 +96,15 @@ extension ApplicationWorkspace {
                 // Retain staged data changes; require an explicit reload before further edits.
                 for document in self.documents where document.profileID == profile.id { document.markQueryResultStale() }
                 self.recordStructureOutcome(profile.id, schema: review.plan.target.schema, table: review.plan.target.table, review: review)
+                changed(review)
             })
         structureEditor = model
-        if !create { await model.load() }
+        if !create {
+            await model.load()
+            if current(), structureEditor === model, model.baseline != nil, !model.invalidated, let initialDraft {
+                model.draft = initialDraft
+            }
+        }
     }
     func closeTableStructure() async {
         guard let model = structureEditor, !model.isBusy, model.beginClosing() else { return }

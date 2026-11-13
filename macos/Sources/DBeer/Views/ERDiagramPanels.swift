@@ -169,6 +169,13 @@ struct ERDiagramAreaPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             TextField("Schema / database", text: schemaState.projectedValue)
                 .textFieldStyle(.roundedBorder).accessibilityLabel("Exact schema or database")
+            let createAction = ERStructureAction.create(profileID: model.activeSourceID, schema: schemaState.wrappedValue)
+            let createReason = workspace.erStructureUnavailableReason(document, action: createAction)
+            Button("Create Table…") {
+                let action = createAction
+                Task { await workspace.openERStructure(document, action: action) }
+            }.controlHover().disabled(createReason != nil)
+                .help(createReason ?? "Open a new table draft in the shared structure editor. Preview and Apply remain explicit.")
             HStack(spacing: 6) {
                 TextField("Search tables", text: searchState.projectedValue)
                     .textFieldStyle(.roundedBorder).accessibilityLabel("Search tables in schema")
@@ -304,6 +311,10 @@ struct ERDiagramInspector: View {
                 Menu {
                     Button("Open Data in New Tab") { Task { await workspace.openERTable(document, table: table, newTab: true) } }
                     Button("Show Structure") { Task { await workspace.openERTable(document, table: table, structure: true) } }
+                    Button("Edit Structure…") { Task { await workspace.openERStructure(document, action: .edit(table)) } }
+                        .disabled(workspace.erStructureUnavailableReason(document, action: .edit(table)) != nil)
+                    Button("Add Foreign Key…") { Task { await workspace.openERStructure(document, action: .addForeignKey(table)) } }
+                        .disabled(workspace.erStructureUnavailableReason(document, action: .addForeignKey(table)) != nil)
                     Divider()
                     Button(model.stored.collapsed.contains(table) ? "Show All Columns" : "Collapse Non-key Columns") { model.toggleCollapse(table) }
                 } label: { Image(systemName: "ellipsis") }
@@ -422,10 +433,23 @@ struct ERDiagramInspector: View {
                     Button("Open Target") { Task { await workspace.openLogicalRelationshipEndpoint(edge, target: true, from: document) } }
                 }.controlHover().controlSize(.small)
                     .disabled(!workspace.canStartOperation(document))
+                let foreignKeyAction = ERStructureAction.createForeignKey(edge)
+                let foreignKeyReason = workspace.erStructureUnavailableReason(document, action: foreignKeyAction)
+                Button("Create Foreign Key…") {
+                    let action = foreignKeyAction
+                    Task { await workspace.openERStructure(document, action: action) }
+                }.controlHover().controlSize(.small).disabled(foreignKeyReason != nil)
+                    .help(foreignKeyReason ?? "Propose this ordered mapping in the shared structure editor. The local mapping is retained.")
+                if let foreignKeyReason { Text(foreignKeyReason).font(.caption2).appSecondaryText().textSelection(.enabled) }
                 Button("Edit Local Mapping…") {
                     guard let id = edge.logicalID, let relationship = workspace.logicalRelationships.relationship(id: id) else { return }
                     workspace.editLogicalRelationship(relationship)
                 }.controlHover().controlSize(.small)
+            }
+            if edge.kind == .declared {
+                Button("Edit Structure…") { Task { await workspace.openERStructure(document, action: .edit(edge.source)) } }
+                    .controlHover().controlSize(.small)
+                    .disabled(workspace.erStructureUnavailableReason(document, action: .edit(edge.source)) != nil)
             }
             Divider()
             ForEach(Array(edge.key.columns.enumerated()), id: \.offset) { _, pair in
