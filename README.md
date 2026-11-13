@@ -135,6 +135,7 @@ for read-only policies, production confirmations and their limits.
 | Explore the app | [Using the application](GUIDE.md#using-the-application) |
 | Tune my queries | [Editor tools](GUIDE.md#editor-tools) · [Completion](GUIDE.md#sql-editor-and-completion) |
 | Browse and edit data | [Saved table views](GUIDE.md#table-filters-sorting-and-saved-views) · [Result editing](GUIDE.md#sql-result-source-rows-and-editing) |
+| Compare live and saved schemas | [Schema bundles](GUIDE.md#schema-bundles-for-git) · [Schema comparison](GUIDE.md#schema-comparison) |
 | Keep research together | [Investigations](GUIDE.md#investigation-documents) · [Snapshots](GUIDE.md#result-snapshot-storage) |
 | Connect securely | [SSH tunnels](GUIDE.md#ssh-tunnels) · [Dynamic passwords](GUIDE.md#dynamic-database-passwords) |
 | See what's new | [Changelog](CHANGELOG.md) · [Releases](https://github.com/nullawhale/dbeer/releases) |

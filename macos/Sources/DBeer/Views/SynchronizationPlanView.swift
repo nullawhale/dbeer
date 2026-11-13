@@ -13,7 +13,7 @@ struct SynchronizationPlanView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Synchronization SQL Plan").font(.title2.weight(.semibold)).accessibilityIdentifier("syncPlanTitle")
                     Text("\(draft.source.name) → \(draft.target.name)").font(.callout).textSelection(.enabled).lineLimit(2).accessibilityIdentifier("syncPlanDirection")
-                    Text("Target: \(draft.target.engine.displayName) · \(draft.target.host):\(String(draft.target.port)) · \(draft.target.database)")
+                    Text("Target: \(draft.target.engine.displayName) · \(draft.target.description)")
                         .font(.caption).appSecondaryText().textSelection(.enabled).lineLimit(2).accessibilityIdentifier("syncPlanTarget")
                 }
                 Spacer()
@@ -64,13 +64,17 @@ struct SynchronizationPlanView: View {
             if let error = draft.error ?? draft.selectionError {
                 Label(error, systemImage: "exclamationmark.triangle").font(.callout).foregroundStyle(.orange).textSelection(.enabled).lineLimit(3).accessibilityIdentifier("syncPlanSelectionError")
             }
+            if draft.target.profile == nil {
+                Text("This plan targets a historical bundle. Save its SQL for review. To use a live target, select its connection and create a fresh comparison first.")
+                    .font(.caption).appSecondaryText()
+            }
             Divider()
             HStack {
                 Text("Planning does not change either server. Execute reviewed SQL through the target editor.").font(.caption).appSecondaryText()
                 Spacer()
                 if draft.saved { Label("Saved", systemImage: "checkmark").font(.caption).appSecondaryText().accessibilityIdentifier("syncPlanSaved") }
                 Button("Save .sql…", action: save).keyboardShortcut("s", modifiers: .command).disabled(draft.sql == nil).controlHover().accessibilityIdentifier("syncPlanSave")
-                Button("Open in Target Editor") { _ = draft.openInEditor() }.keyboardShortcut(.defaultAction).disabled(draft.sql == nil).controlHover().accessibilityIdentifier("syncPlanOpen")
+                Button("Open in Target Editor") { _ = draft.openInEditor() }.keyboardShortcut(.defaultAction).disabled(!draft.canOpenInEditor).controlHover().accessibilityIdentifier("syncPlanOpen")
             }
         }.padding(20)
             .frame(minWidth: 900, idealWidth: 1120, minHeight: 660, idealHeight: 780)

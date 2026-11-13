@@ -8,6 +8,7 @@ import (
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/schemabundle"
 	"dbeer/helper/internal/schemacompare"
+	"dbeer/helper/internal/schemaimport"
 	"dbeer/helper/internal/syncplan"
 	"encoding/hex"
 	"errors"
@@ -19,7 +20,10 @@ import (
 	"time"
 )
 
+type SourceReader func(context.Context, schemabundle.Source, string, schemacompare.DefinitionRenderer) (schemaimport.Imported, error)
+
 type Options struct {
+	ReadSource       SourceReader
 	Root             string
 	Deadline         time.Duration
 	RenderDefinition schemacompare.DefinitionRenderer
@@ -29,6 +33,7 @@ type status struct {
 	state, code, message string
 	summary              *schemacompare.Summary
 	bundleSummary        *schemabundle.Summary
+	importSummary        *schemabundle.ImportedSource
 }
 type job struct {
 	id, dir   string
@@ -40,6 +45,7 @@ type job struct {
 	result    *schemacompare.Result
 	bundle    *schemabundle.Result
 	bundleJob bool
+	importJob bool
 }
 type Manager struct {
 	mu      sync.Mutex
@@ -84,7 +90,7 @@ func (m *Manager) Close() {
 }
 func response(c protocol.Command, j *job) protocol.Response {
 	s := j.status.Load()
-	return protocol.Response{Type: c.Type + ".result", RequestID: c.RequestID, SchemaComparison: &protocol.SchemaComparisonResponse{JobID: j.id, State: s.state, Code: s.code, Message: s.message, Summary: s.summary, BundleSummary: s.bundleSummary}}
+	return protocol.Response{Type: c.Type + ".result", RequestID: c.RequestID, SchemaComparison: &protocol.SchemaComparisonResponse{JobID: j.id, State: s.state, Code: s.code, Message: s.message, Summary: s.summary, BundleSummary: s.bundleSummary, ImportSummary: s.importSummary}}
 }
 func fail(c protocol.Command) protocol.Response {
 	return protocol.ErrorResponse(c, "schemaComparison", "Schema comparison data is unavailable or the request is invalid.")
@@ -99,13 +105,16 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		m.mu.Unlock()
 		return fail(c)
 	}
-	if c.Type == "schema.start" || c.Type == "schema.bundle.start" {
+	if c.Type == "schema.start" || c.Type == "schema.bundle.start" || c.Type == "schema.import.start" {
 		bundleJob := c.Type == "schema.bundle.start"
+		importJob := c.Type == "schema.import.start"
 		valid := r.Source != nil
-		if bundleJob {
-			valid = valid && schemabundle.SchemasValid(r.Source.Connection.DatabaseEngine(), r.Schemas)
+		if importJob {
+			valid = r.Bundle != nil && r.Bundle.Valid(true)
+		} else if bundleJob {
+			valid = valid && r.Source.Bundle == nil && schemabundle.SchemasValid(r.Source.Connection.DatabaseEngine(), r.Schemas)
 		} else {
-			valid = valid && r.Target != nil && r.Mappings != nil && r.Mappings.Valid() && r.Source.Connection.DatabaseEngine() == r.Target.Connection.DatabaseEngine()
+			valid = valid && r.Target != nil && r.Mappings != nil && r.Mappings.Valid() && r.Source.Valid() && r.Target.Valid() && r.Source.Engine() == r.Target.Engine()
 		}
 		if len(m.jobs) >= 2 || !valid {
 			m.mu.Unlock()
@@ -118,7 +127,7 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		}
 		id := hex.EncodeToString(token[:])
 		ctx, cancel := context.WithCancel(context.Background())
-		j := &job{id: id, dir: filepath.Join(m.root, id), ctx: ctx, cancel: cancel, done: make(chan struct{}), bundleJob: bundleJob}
+		j := &job{id: id, dir: filepath.Join(m.root, id), ctx: ctx, cancel: cancel, done: make(chan struct{}), bundleJob: bundleJob, importJob: importJob}
 		if e := os.Mkdir(j.dir, 0700); e != nil {
 			cancel()
 			m.mu.Unlock()
@@ -128,7 +137,9 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		m.jobs[id] = j
 		m.workers.Add(1)
 		out := response(c, j)
-		if bundleJob {
+		if importJob {
+			go m.runImport(j, *r)
+		} else if bundleJob {
 			go m.runBundle(j, *r)
 		} else {
 			go m.run(j, *r)
@@ -137,14 +148,14 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		return out
 	}
 	j := m.jobs[r.JobID]
-	if j == nil || j.bundleJob != strings.HasPrefix(c.Type, "schema.bundle.") {
+	if j == nil || j.bundleJob != strings.HasPrefix(c.Type, "schema.bundle.") || j.importJob != strings.HasPrefix(c.Type, "schema.import.") {
 		m.mu.Unlock()
 		return fail(c)
 	}
-	if c.Type == "schema.cancel" || c.Type == "schema.close" || c.Type == "schema.bundle.cancel" || c.Type == "schema.bundle.close" {
+	if c.Type == "schema.cancel" || c.Type == "schema.close" || c.Type == "schema.bundle.cancel" || c.Type == "schema.bundle.close" || c.Type == "schema.import.cancel" || c.Type == "schema.import.close" {
 		j.cancel()
 		state := "cancelled"
-		if c.Type == "schema.close" || c.Type == "schema.bundle.close" {
+		if c.Type == "schema.close" || c.Type == "schema.bundle.close" || c.Type == "schema.import.close" {
 			state = "closed"
 		}
 		j.status.Store(&status{state: state})
@@ -166,11 +177,14 @@ func (m *Manager) Handle(c protocol.Command) protocol.Response {
 		return out
 	}
 	m.mu.Unlock()
-	if c.Type == "schema.status" || c.Type == "schema.bundle.status" {
+	if c.Type == "schema.status" || c.Type == "schema.bundle.status" || c.Type == "schema.import.status" {
 		return response(c, j)
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if j.importJob {
+		return fail(c)
+	}
 	if j.bundleJob {
 		if c.Type != "schema.bundle.export" || j.status.Load().state != "completed" || j.bundle == nil {
 			return fail(c)
@@ -291,7 +305,7 @@ func (m *Manager) run(j *job, r protocol.SchemaComparisonRequest) {
 			spec.Schemas = append(spec.Schemas, schema)
 		}
 		go func(side *protocol.SchemaSide, name string, spec schemacompare.CaptureSpec) {
-			capture, err := m.capture(ctx, *side, spec)
+			capture, err := m.captureSide(ctx, *side, spec, j.dir)
 			out <- outcome{capture, name, err}
 		}(side, name, spec)
 	}
@@ -302,7 +316,13 @@ func (m *Manager) run(j *job, r protocol.SchemaComparisonRequest) {
 		if o.err != nil && failure == nil {
 			code := "metadataUnavailable"
 			message := "Schema metadata could not be captured."
-			if errors.Is(o.err, schemacompare.ErrLimit) {
+			if errors.Is(o.err, schemaimport.ErrChanged) {
+				code = "sourceChanged"
+				message = "A historical schema source changed. Inspect the selected folder again."
+			} else if errors.Is(o.err, schemaimport.ErrUnsupported) {
+				code = "ddlUnsupported"
+				message = "A changed historical definition uses unsupported SQL grammar."
+			} else if errors.Is(o.err, schemacompare.ErrLimit) {
 				code = "limit"
 				message = "Schema metadata exceeded the comparison limits."
 			}
@@ -433,4 +453,72 @@ func (m *Manager) runBundle(j *job, r protocol.SchemaComparisonRequest) {
 		return
 	}
 	j.bundle = result
+}
+
+func (m *Manager) captureSide(ctx context.Context, side protocol.SchemaSide, spec schemacompare.CaptureSpec, workdir string) (schemacompare.Capture, error) {
+	if side.Bundle == nil {
+		return m.capture(ctx, side, spec)
+	}
+	imported, err := m.readSource(ctx, *side.Bundle, workdir)
+	if err != nil {
+		return schemacompare.Capture{}, err
+	}
+	capture, err := schemaimport.Select(ctx, imported.Capture, spec.Schemas)
+	if err != nil {
+		return schemacompare.Capture{}, err
+	}
+	summary := imported.Summary
+	kind := "bundle"
+	if summary.ModifiedSQL > 0 {
+		kind = "editedBundle"
+	}
+	origin := schemacompare.HistoricalOrigin{Kind: kind, Label: summary.Label, ManifestSHA256: summary.Source.ManifestSHA256, ContentSHA256: summary.Source.ContentSHA256, ModifiedSQL: summary.ModifiedSQL, ManualObjects: summary.ManualObjects}
+	if !origin.Valid() {
+		return schemacompare.Capture{}, schemacompare.ErrInvalid
+	}
+	capture.Context.Origin = &origin
+	return capture, nil
+}
+func (m *Manager) runImport(j *job, r protocol.SchemaComparisonRequest) {
+	defer m.workers.Done()
+	defer close(j.done)
+	ctx, cancel := context.WithTimeout(j.ctx, m.options.Deadline)
+	defer cancel()
+	previous := j.status.Load()
+	running := &status{state: "running"}
+	if previous.state != "pending" || !j.status.CompareAndSwap(previous, running) {
+		j.cleanup()
+		return
+	}
+	imported, err := m.readSource(ctx, *r.Bundle, j.dir)
+	if err == nil {
+		err = ctx.Err()
+	}
+	if j.ctx.Err() != nil || j.status.Load().state == "cancelled" || j.status.Load().state == "closed" {
+		j.cleanup()
+		return
+	}
+	if err != nil {
+		code, message := "sourceInvalid", "The schema bundle could not be validated. Check its manifest, SQL files and supported definitions."
+		if errors.Is(err, schemaimport.ErrChanged) {
+			code, message = "sourceChanged", "The schema bundle changed. Inspect the selected folder again."
+		} else if errors.Is(err, schemaimport.ErrUnsupported) {
+			code, message = "ddlUnsupported", "A changed SQL definition uses unsupported grammar. Keep the original file or use supported table, column and key definitions."
+		} else if errors.Is(err, schemaimport.ErrLimit) || errors.Is(err, schemacompare.ErrLimit) {
+			code, message = "limit", "The schema bundle exceeds the import limits."
+		} else if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			code, message = "deadline", "The schema bundle inspection stopped or exceeded its deadline."
+		}
+		j.status.CompareAndSwap(running, &status{state: "failed", code: code, message: message})
+		return
+	}
+	summary := imported.Summary
+	j.status.CompareAndSwap(running, &status{state: "completed", importSummary: &summary})
+}
+
+func (m *Manager) readSource(ctx context.Context, source schemabundle.Source, dir string) (schemaimport.Imported, error) {
+	if m.options.ReadSource != nil {
+		return m.options.ReadSource(ctx, source, dir, m.options.RenderDefinition)
+	}
+	return schemaimport.Read(ctx, source, dir, m.options.RenderDefinition)
 }

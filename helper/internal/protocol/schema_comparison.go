@@ -7,16 +7,43 @@ import (
 	"dbeer/helper/internal/syncplan"
 	"dbeer/helper/internal/textdiff"
 	"encoding/json"
+	"reflect"
 )
 
 const SchemaComparisonCapability = "schemaComparisonV1"
 const SchemaBundleCapability = "schemaBundleV1"
+const SchemaBundleSourceCapability = "schemaBundleSourceV1"
 
 type SchemaSide struct {
-	Connection Connection `json:"connection"`
+	Connection Connection           `json:"connection,omitempty"`
+	Bundle     *schemabundle.Source `json:"bundle,omitempty"`
+}
+
+func (s SchemaSide) Engine() string {
+	if s.Bundle != nil {
+		return s.Bundle.Engine
+	}
+	return s.Connection.DatabaseEngine()
+}
+func (s SchemaSide) Valid() bool {
+	return s.Bundle == nil || reflect.DeepEqual(s.Connection, Connection{}) && s.Bundle.Valid(false)
+}
+func (s SchemaSide) MarshalJSON() ([]byte, error) {
+	if !s.Valid() {
+		return nil, schemabundle.ErrInvalid
+	}
+	if s.Bundle != nil {
+		return json.Marshal(struct {
+			Bundle *schemabundle.Source `json:"bundle"`
+		}{s.Bundle})
+	}
+	return json.Marshal(struct {
+		Connection Connection `json:"connection"`
+	}{s.Connection})
 }
 
 type SchemaComparisonRequest struct {
+	Bundle      *schemabundle.Source    `json:"bundle,omitempty"`
 	Schemas     []string                `json:"schemas,omitempty"`
 	Source      *SchemaSide             `json:"source,omitempty"`
 	Target      *SchemaSide             `json:"target,omitempty"`
@@ -30,18 +57,19 @@ type SchemaComparisonRequest struct {
 	ModelDigest string                  `json:"modelDigest,omitempty"`
 }
 type SchemaComparisonResponse struct {
-	Offset        *int64                 `json:"offset,omitempty"`
-	Diff          *textdiff.Diff         `json:"diff,omitempty"`
-	JobID         string                 `json:"jobId"`
-	State         string                 `json:"state"`
-	Code          string                 `json:"code,omitempty"`
-	Message       string                 `json:"message,omitempty"`
-	BundleSummary *schemabundle.Summary  `json:"bundleSummary,omitempty"`
-	Summary       *schemacompare.Summary `json:"summary,omitempty"`
-	Page          *schemacompare.Page    `json:"page,omitempty"`
-	Value         *schemacompare.Chunk   `json:"value,omitempty"`
-	Export        *schemacompare.Chunk   `json:"export,omitempty"`
-	Plan          *syncplan.Plan         `json:"plan,omitempty"`
+	ImportSummary *schemabundle.ImportedSource `json:"importSummary,omitempty"`
+	Offset        *int64                       `json:"offset,omitempty"`
+	Diff          *textdiff.Diff               `json:"diff,omitempty"`
+	JobID         string                       `json:"jobId"`
+	State         string                       `json:"state"`
+	Code          string                       `json:"code,omitempty"`
+	Message       string                       `json:"message,omitempty"`
+	BundleSummary *schemabundle.Summary        `json:"bundleSummary,omitempty"`
+	Summary       *schemacompare.Summary       `json:"summary,omitempty"`
+	Page          *schemacompare.Page          `json:"page,omitempty"`
+	Value         *schemacompare.Chunk         `json:"value,omitempty"`
+	Export        *schemacompare.Chunk         `json:"export,omitempty"`
+	Plan          *syncplan.Plan               `json:"plan,omitempty"`
 }
 
 func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRequest, bool) {
@@ -53,11 +81,13 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 	allowed := map[string]bool{}
 	needed := []string{"jobId"}
 	switch kind {
+	case "schema.import.start":
+		needed = []string{"bundle"}
 	case "schema.bundle.start":
 		needed = []string{"source", "schemas"}
 	case "schema.start":
 		needed = []string{"source", "target", "mappings"}
-	case "schema.status", "schema.cancel", "schema.close", "schema.bundle.status", "schema.bundle.cancel", "schema.bundle.close":
+	case "schema.status", "schema.cancel", "schema.close", "schema.bundle.status", "schema.bundle.cancel", "schema.bundle.close", "schema.import.status", "schema.import.cancel", "schema.import.close":
 	case "schema.plan":
 		needed = append(needed, "modelDigest")
 	case "schema.diff":
@@ -95,6 +125,9 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 	if d.Decode(&r) != nil {
 		return r, false
 	}
+	if kind == "schema.import.start" {
+		return r, r.Bundle != nil && r.Bundle.Valid(true)
+	}
 	if kind == "schema.start" || kind == "schema.bundle.start" {
 		names := []string{"source", "target"}
 		if kind == "schema.bundle.start" {
@@ -112,6 +145,12 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 					return r, false
 				}
 				side.Connection = c
+			} else if value, ok := nested["bundle"]; ok && kind == "schema.start" {
+				var bundle schemabundle.Source
+				if json.Unmarshal(value, &bundle) != nil || !bundle.Valid(false) {
+					return r, false
+				}
+				side.Bundle = &bundle
 			} else {
 				return r, false
 			}
@@ -124,7 +163,7 @@ func parseSchemaComparison(raw json.RawMessage, kind string) (SchemaComparisonRe
 		if kind == "schema.bundle.start" {
 			return r, r.Source != nil && schemabundle.SchemasValid(r.Source.Connection.DatabaseEngine(), r.Schemas)
 		}
-		return r, r.Mappings != nil && r.Mappings.Valid() && r.Source.Connection.DatabaseEngine() == r.Target.Connection.DatabaseEngine()
+		return r, r.Mappings != nil && r.Mappings.Valid() && r.Source.Valid() && r.Target.Valid() && r.Source.Engine() == r.Target.Engine()
 	}
 	if !ValidID(r.JobID) || r.Offset < 0 {
 		return r, false

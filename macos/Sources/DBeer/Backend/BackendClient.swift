@@ -379,6 +379,9 @@ actor BackendClient {
                   command.protocolVersion == nil, command.stream == nil, command.export == nil, command.changes == nil,
                   command.operations == nil, command.authorization == nil, command.sequence == nil, command.sshTrust == nil,
                   command.insert == nil, command.comparison == nil else { throw BackendRequestError.invalidCommand }
+            if command.schemaComparison?.source?.bundle != nil || command.schemaComparison?.target?.bundle != nil {
+                guard schemaBundleSourceSupported else { throw BackendRequestError.invalidCommand }
+            }
             for settings in [command.schemaComparison?.source?.connection, command.schemaComparison?.target?.connection].compactMap({ $0 }) {
                 if settings.passwordCommand != nil, !passwordCommandSupported { throw BackendRequestError.unsupportedPasswordCommand }
                 if settings.ssh?.authMethod == .openSSH, !sshConfigurationSupported { throw BackendRequestError.unsupportedSSHConfiguration }

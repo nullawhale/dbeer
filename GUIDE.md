@@ -1168,11 +1168,41 @@ See [the v1 format](protocol/fixtures/schema-bundle-v1.md) for limits and covera
 
 ## Schema comparison
 
-Use **Connections → Compare Schema Structure…**, choose explicit source and
-target profiles with the same engine, and map their schema names. Opening or
-configuring the comparison never connects. **Compare** creates two independent
-read-only sessions, including when the same profile is selected twice; SQL tabs
-and their transactions remain independent. **Stop** cancels both captures.
+Use **Connections → Compare Schema Structure…**, choose each side as a
+**Connection** or **Schema Bundle**, and map schema names within the same engine.
+Opening or configuring the comparison never connects. **Compare** opens one
+independent read-only session for each selected live side, including when the
+same profile is selected twice. SQL tabs and their transactions remain independent.
+**Stop** cancels the captures. Two bundle sides require no database connection or
+credentials.
+
+For a PostgreSQL/MySQL/SQLite bundle folder, **Inspect Bundle…** validates the
+manifest, checksums, file membership and SQL against the typed capture. Inspection
+is an explicit files-only operation with Stop. Every comparison rechecks the exact
+inspected manifest and current-content identities; editing or replacing files
+requires another inspection. Hashes identify bytes and do not certify a trusted
+producer. Symlinks, unexpected files, malformed JSON/Unicode and unsupported SQL
+are rejected; Git metadata and README files may accompany a bundle.
+
+Choose **Import Modified SQL… → Choose Bundle with Supported SQL Edits…** to
+admit supported changes to object SQL files, including added or removed files.
+Keep the original manifest and capture unchanged. PostgreSQL/MySQL support a
+bounded DDL subset: ordinary tables, supported explicit column types and scalar
+NULL/string/exact-number defaults, simple keys/indexes and PostgreSQL enum,
+sequence and column-comment definitions. Unsupported edited expressions or table
+options reject the import. Unchanged definitions that cannot be independently
+proved remain visible for manual review; unknown facts never establish equality.
+SQLite reconstructs admitted table/index/trigger definitions in a restricted,
+empty in-memory database, with no attachments, extension loading or data import.
+Imported SQL is never executed on a live database.
+
+Historical sources show their original manifest and current-content digests,
+edited-file count and manual-review coverage. Portable bundles have no captured
+server version, database identity or capture clock; reports retain that absence
+instead of presenting them as current server observations. A SQL plan can be
+reviewed and saved for an offline target, but opening it in a live SQL editor
+requires a fresh comparison against the explicit live target. Generating or
+saving a plan never applies its SQL.
 
 Table, column, constraint, index and type name overrides declare correspondence.
 Explicit pairs consume their endpoints before remaining exact-name matching;

@@ -944,6 +944,11 @@ final class ApplicationWorkspace: ObservableObject {
         !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
     }
 
+    func schemaComparisonBindingsAreCurrent(_ profiles: [SavedConnection]) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && profiles.allSatisfy {
+            SessionMonitorProfileBinding($0)?.matches(in: library.savedConnections) == true
+        }
+    }
 
     @discardableResult
     func reopenClosedTab() -> SQLDocument? {
@@ -1177,14 +1182,18 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func showSchemaComparison() {
-        guard schemaComparison == nil else { return }
-        let store = credentialStore
-        schemaComparison = SchemaComparisonModel(profiles: library.savedConnections, resolve: { profile in
-            try await SchemaComparisonCredentials.settings(profile, store: store)
+        guard canManageWorkspace, schemaComparison == nil else { return }
+        schemaComparison = SchemaComparisonModel(profiles: library.savedConnections, resolve: { _ in
+            throw CancellationError()
         }, openPlan: { [weak self] sql, target in
             guard let self, self.openSynchronizationPlan(sql, target: target) else { return false }
             self.dismissSchemaComparison(); return true
-        }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true })
+        }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true },
+        resolveOwned: { [weak self] profile, attempt in
+            guard let self, self.schemaComparisonBindingsAreCurrent([profile]) else { throw CancellationError() }
+            return try await self.readonlyOperationSettings(profile, attempt: attempt)
+        }, current: { [weak self] profiles in self?.schemaComparisonBindingsAreCurrent(profiles) == true },
+        startAllowed: { [weak self] in self?.canManageWorkspace == true })
     }
 
     func dismissSchemaComparison() {
@@ -1480,6 +1489,9 @@ final class ApplicationWorkspace: ObservableObject {
         invalidateERDiagrams(profileID: id, includePreparing: true, reason: "The profile is disconnecting. Connect and Build explicitly to reload metadata.")
         invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
         if schemaBundle?.profile.id == id { let model = schemaBundle; schemaBundle = nil; await model?.close() }
+        if schemaComparison?.boundProfileIDs.contains(id) == true {
+            let model = schemaComparison; schemaComparison = nil; await model?.close()
+        }
         await closeDatabaseValueSearch(profileID: id)
         await closeGridProfileServers(profileID: id)
         await closeERDiagramExports(profileID: id)

@@ -21,6 +21,14 @@
   The five existing engines explicitly reject native commands; a Redis engine
   and its command implementation remain future work.
 
+- Compare PostgreSQL/MySQL/SQLite schema bundles with live databases or other
+  bundles. Add explicit cancellable files-only inspection, exact source identities
+  and opt-in supported SQL edits with added/removed object files. Validate SQL
+  independently from manifest checksums, preserve historical and manual coverage,
+  and generate reviewed SQL plans without executing imported SQL on live servers.
+  Offline targets can export a plan and require a fresh live-target comparison
+  before opening it in a SQL editor.
+
 - Add a private confirmed local-relationship library with composite/table/view
   and cross-profile mappings, explicit name/type suggestions and fresh metadata
   validation. Navigate captured native values into independent tabs with owned
