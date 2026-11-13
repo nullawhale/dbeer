@@ -18,7 +18,7 @@ enum StructureDraftFileError: LocalizedError {
 /// Portable intent deliberately excludes server baselines, execution plans and grants.
 struct StructureDraftDocument: Codable, Equatable, Sendable {
     static let maximumBytes = 1_048_576
-    static let currentFormatVersion = 3
+    static let currentFormatVersion = 4
     let formatVersion: Int
     let engine: DatabaseEngine
     let target: StructureTarget
@@ -43,15 +43,29 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .formatVersion)
-        guard [1, 2, Self.currentFormatVersion].contains(version) else {
+        guard [1, 2, 3, Self.currentFormatVersion].contains(version) else {
             throw StructureDraftFileError.invalidDocument
         }
         let target = try values.decode(StructureTarget.self, forKey: .target)
         guard target.reconcile == nil else { throw StructureDraftFileError.invalidDocument }
         let draft = try values.decode(StructureDraft.self, forKey: .draft)
-        guard draft.authoringVersion == nil || draft.authoringVersion == 2 || draft.authoringVersion == 3,
-              !draft.requiresIndexAuthoring || draft.authoringVersion == 3 else { throw StructureDraftFileError.invalidDocument }
-        guard (version != 1 || !draft.requiresAuthoringV2 && !draft.requiresIndexAuthoring && draft.authoringVersion == nil), (version == 3 || !draft.requiresIndexAuthoring && draft.authoringVersion != 3) else { throw StructureDraftFileError.invalidDocument }
+        if version < 4 {
+            let intent = try values.nestedContainer(keyedBy: DraftFileCodingKey.self, forKey: .draft)
+            guard !intent.allKeys.contains(where: { $0.stringValue == "dropTable" }) else { throw StructureDraftFileError.invalidDocument }
+            if let key = DraftFileCodingKey(stringValue: "changes"), intent.contains(key) {
+                var changes = try intent.nestedUnkeyedContainer(forKey: key)
+                while !changes.isAtEnd {
+                    let change = try changes.nestedContainer(keyedBy: DraftFileCodingKey.self)
+                    guard !change.allKeys.contains(where: { ["drop", "usingExpression", "unsigned", "charset", "collation"].contains($0.stringValue) }) else { throw StructureDraftFileError.invalidDocument }
+                }
+            }
+        }
+        guard [nil, 2, 3, 4].contains(draft.authoringVersion),
+              !draft.requiresDestructiveAuthoring || draft.authoringVersion == 4,
+              !draft.requiresIndexAuthoring || [3, 4].contains(draft.authoringVersion) else { throw StructureDraftFileError.invalidDocument }
+        guard (version != 1 || !draft.requiresAuthoringV2 && !draft.requiresIndexAuthoring && !draft.requiresDestructiveAuthoring && draft.authoringVersion == nil),
+              (version >= 3 || !draft.requiresIndexAuthoring && draft.authoringVersion != 3),
+              (version >= 4 || !draft.requiresDestructiveAuthoring && draft.authoringVersion != 4) else { throw StructureDraftFileError.invalidDocument }
         self.init(engine: try values.decode(DatabaseEngine.self, forKey: .engine), target: target, draft: draft)
         guard valid else { throw StructureDraftFileError.invalidDocument }
     }
@@ -61,7 +75,7 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
               StructureTarget.identifier(target.schema),
               StructureTarget.identifier(target.table) || target.create && target.table.isEmpty,
               draft.columns.count <= 128,
-              draft.authoringVersion == nil || draft.authoringVersion == 2 || draft.authoringVersion == 3,
+              [nil, 2, 3, 4].contains(draft.authoringVersion),
               draft.renameTable.map(Self.name) ?? true,
               (draft.changes?.count ?? 0) + (draft.indexes?.count ?? 0) + (draft.keys?.count ?? 0) <= 64 else { return false }
         // Incomplete editor fields remain saveable, while imported collections and text stay bounded.
@@ -69,7 +83,9 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
             Self.name(column.name) && Self.type(column.type) && Self.defaultValue(column.default) && Self.generation(column.generated) && Self.identity(column.identity)
         } && (draft.changes ?? []).allSatisfy { change in
             Self.name(change.name) && (change.type.map(Self.type) ?? true) &&
-                (change.default.map(Self.defaultValue) ?? true) && (change.renameTo.map(Self.name) ?? true) && Self.generation(change.generated) && Self.identity(change.identity)
+                (change.default.map(Self.defaultValue) ?? true) && (change.renameTo.map(Self.name) ?? true) && Self.generation(change.generated) && Self.identity(change.identity) &&
+                Self.text(change.usingExpression, maximum: 4096) && (change.charset.map(Self.name) ?? true) &&
+                (change.collation.map { Self.name($0.schema) && Self.name($0.name) } ?? true)
         } && (draft.indexes ?? []).allSatisfy { index in
             ["add", "drop", "replace"].contains(index.action) && Self.name(index.name) &&
                 Self.names(index.columns ?? []) && (index.definition.map { index.columns == nil && Self.indexDefinition($0) } ?? true)
@@ -162,7 +178,7 @@ enum StructureDraftStore {
     static func sql(_ plan: StructurePlan) throws -> String {
         guard plan.valid else { throw StructureDraftFileError.invalidDocument }
         let target = (plan.target.schema + "." + plan.target.table).components(separatedBy: .newlines).map { "-- " + $0 }
-        let warnings = plan.risks.flatMap { $0.components(separatedBy: .newlines) }.map { "-- Warning: " + $0 }
+        let warnings = (plan.risks + plan.consequences.map { $0.object + ": " + $0.message }).flatMap { $0.components(separatedBy: .newlines) }.map { "-- Warning: " + $0 }
         let header = ["-- DBeer reviewed structure SQL"] + target + [
                       "-- Captured plan. Review the current target before executing.",
                       "-- Steps can commit independently on engines with implicit DDL commits."] + warnings

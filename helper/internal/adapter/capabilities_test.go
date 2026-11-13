@@ -40,6 +40,9 @@ func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 		if slices.Contains(Capabilities(engine), protocol.StructureAuthoringCapability) != authoring {
 			t.Fatalf("%s has an invalid structure authoring capability", engine)
 		}
+		if slices.Contains(Capabilities(engine), protocol.StructureDestructiveCapability) != authoring {
+			t.Fatalf("%s has an invalid destructive structure capability", engine)
+		}
 		if slices.Contains(Capabilities(engine), protocol.StructureIndexAuthoringCapability) != (engine == "postgresql" || engine == "mysql") {
 			t.Fatal("advanced index capability escaped its completed adapters")
 		}

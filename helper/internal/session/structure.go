@@ -42,6 +42,8 @@ func (owner *owner) runStructure(ctx context.Context, physical adapter.Session, 
 	case "structure.preview":
 		owner.invalidateGrant()
 		result, err = owner.structure.PreviewContext(ctx, a, c.Structure.BaselineID, *c.Structure.Draft)
+	case "structure.validate":
+		result, err = owner.structure.Validate(ctx, a, *c.Structure.Validation)
 	case "structure.apply":
 		result, err = owner.structure.Apply(ctx, a, *c.Structure.Apply)
 	case "structure.status":

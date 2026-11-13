@@ -1,0 +1,294 @@
+{
+  "valid": [
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 4,
+          "columns": [],
+          "allowDestructive": true,
+          "dropTable": true
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 4,
+          "columns": [],
+          "allowDestructive": true,
+          "changes": [
+            {
+              "name": "Exact é",
+              "drop": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 4,
+          "columns": [],
+          "allowDestructive": true,
+          "changes": [
+            {
+              "name": "value",
+              "type": {
+                "kind": "integer"
+              },
+              "usingExpression": "value::pg_catalog.int4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 4,
+          "columns": [],
+          "allowDestructive": true,
+          "changes": [
+            {
+              "name": "value",
+              "unsigned": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 4,
+          "columns": [],
+          "allowDestructive": true,
+          "changes": [
+            {
+              "name": "value",
+              "charset": "utf8mb4",
+              "collation": {
+                "schema": "",
+                "name": "utf8mb4_bin"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.preview",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "baselineId": "baseline",
+        "draft": {
+          "authoringVersion": 4,
+          "columns": [],
+          "allowDestructive": true,
+          "changes": [
+            {
+              "name": "value",
+              "collation": {
+                "schema": "pg_catalog",
+                "name": "C"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.validate",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "structure": {
+        "validation": {
+          "planId": "plan",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "executionId": "execution"
+        }
+      }
+    },
+    {
+      "type": "operation.assess",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "operations": [
+        {
+          "type": "structure.validate",
+          "structure": {
+            "planId": "plan",
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "executionId": "execution"
+          }
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":true,\"dropTable\":true,\"renameTable\":\"other\"}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":true,\"dropTable\":true,\"changes\":[{\"name\":\"value\",\"drop\":true}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":true,\"changes\":[{\"name\":\"value\",\"drop\":true,\"type\":{\"kind\":\"integer\"}}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":true,\"changes\":[{\"name\":\"value\",\"usingExpression\":\"value\"}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":true,\"changes\":[{\"name\":\"value\",\"drop\":null}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":3,\"columns\":[],\"allowDestructive\":true,\"changes\":[{\"name\":\"value\",\"unsigned\":false}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":true,\"changes\":[{\"name\":\"value\",\"collation\":{\"schema\":\"\",\"name\":\"C\",\"future\":true}}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":false,\"changes\":[{\"name\":\"value\",\"drop\":true}]}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":3,\"columns\":[],\"allowDestructive\":true,\"dropTable\":false,\"renameTable\":\"other\"}}}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":5,\"columns\":[],\"allowDestructive\":true,\"dropTable\":true}}}",
+    "{\"type\":\"structure.validate\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"validation\":{\"planId\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"executionId\":\"execution\"},\"apply\":{\"planId\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"executionId\":\"execution\"}}}",
+    "{\"type\":\"operation.assess\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"operations\":[{\"type\":\"structure.validate\",\"structure\":{\"planId\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"executionId\":\"execution\"},\"sql\":\"SELECT 1\"}]}",
+    "{\"type\":\"structure.preview\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"structure\":{\"baselineId\":\"baseline\",\"draft\":{\"authoringVersion\":4,\"columns\":[],\"allowDestructive\":true,\"changes\":[{\"name\":\"Exact é\",\"drop\":true,\"drop\":false}]}}}"
+  ],
+  "responses": [
+    {
+      "type": "structure.preview.result",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "connected": true,
+      "transactionStatus": "idle",
+      "structure": {
+        "plan": {
+          "id": "plan",
+          "baselineId": "baseline",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "target": {
+            "schema": "public",
+            "table": "records",
+            "create": false
+          },
+          "sql": [
+            "DROP TABLE \"public\".\"records\" RESTRICT;"
+          ],
+          "risks": [
+            "All rows are permanently removed after commit."
+          ],
+          "destructive": true,
+          "droppedTarget": true,
+          "consequences": [
+            {
+              "kind": "dataLoss",
+              "object": "records",
+              "message": "All stored rows and table-owned objects are removed."
+            }
+          ],
+          "validationChecks": [
+            {
+              "id": "range",
+              "summary": "Count values outside the selected range",
+              "sql": "SELECT count(*) FROM \"public\".\"records\" WHERE \"value\" < 0;",
+              "risks": [
+                "Reads stored values only after separate authorization; the count is historical."
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.validate.result",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "connected": true,
+      "transactionStatus": "idle",
+      "structure": {
+        "validation": {
+          "executionId": "validation",
+          "planId": "plan",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "completed",
+          "checks": [
+            {
+              "id": "range",
+              "state": "failed",
+              "invalidRows": "9007199254740993"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "structure.apply.result",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "connected": true,
+      "transactionStatus": "idle",
+      "structure": {
+        "outcome": {
+          "executionId": "execution",
+          "planId": "plan",
+          "state": "applied",
+          "steps": [
+            {
+              "state": "applied"
+            }
+          ],
+          "droppedTarget": true
+        }
+      }
+    },
+    {
+      "type": "structure.validate.result",
+      "requestId": "request",
+      "sessionId": "session",
+      "queryId": "query",
+      "connected": true,
+      "transactionStatus": "idle",
+      "structure": {
+        "validation": {
+          "executionId": "validation",
+          "planId": "plan",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "failed",
+          "checks": [
+            {
+              "id": "range",
+              "state": "failed",
+              "message": "The read-only validation query failed. No Apply was authorized."
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "invalidResponses": [
+    "{\"type\":\"structure.validate.result\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"connected\":true,\"transactionStatus\":\"idle\",\"structure\":{\"validation\":{\"executionId\":\"validation\",\"planId\":\"plan\",\"digest\":\"bad\",\"state\":\"completed\",\"checks\":[{\"id\":\"range\",\"state\":\"failed\",\"invalidRows\":\"9007199254740993\"}]}}}",
+    "{\"type\":\"structure.validate.result\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"connected\":true,\"transactionStatus\":\"idle\",\"structure\":{\"validation\":{\"executionId\":\"validation\",\"planId\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"state\":\"completed\",\"checks\":[{\"id\":\"range\",\"state\":\"failed\",\"invalidRows\":\"01\"}]}}}",
+    "{\"type\":\"structure.validate.result\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"connected\":true,\"transactionStatus\":\"idle\",\"structure\":{\"validation\":{\"executionId\":\"validation\",\"planId\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"state\":\"completed\",\"checks\":[{\"id\":\"range\",\"state\":\"passed\",\"invalidRows\":\"9007199254740993\"}]}}}",
+    "{\"type\":\"structure.validate.result\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"connected\":true,\"transactionStatus\":\"idle\",\"structure\":{\"validation\":{\"executionId\":\"validation\",\"planId\":\"plan\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"state\":\"completed\",\"checks\":[{\"id\":\"range\",\"state\":\"failed\",\"invalidRows\":\"9007199254740993\"}],\"future\":true}}}",
+    "{\"type\":\"structure.apply.result\",\"requestId\":\"request\",\"sessionId\":\"session\",\"queryId\":\"query\",\"connected\":true,\"transactionStatus\":\"idle\",\"structure\":{\"outcome\":{\"executionId\":\"execution\",\"planId\":\"plan\",\"state\":\"outcomeUnknown\",\"steps\":[{\"state\":\"unknown\"}],\"droppedTarget\":true}}}"
+  ]
+}

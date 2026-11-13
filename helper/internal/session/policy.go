@@ -28,6 +28,9 @@ func (owner *owner) invalidateGrant() {
 
 func assessOperation(engine string, operation protocol.OperationRequest) protocol.AssessedOperation {
 	result := protocol.AssessedOperation{Kind: "read", Statements: []protocol.StatementAssessment{}}
+	if operation.Type == "structure.validate" {
+		return result
+	}
 	if operation.Type == "structure.apply" || operation.Type == "import.apply" {
 		result.Kind = "write"
 		return result
@@ -118,10 +121,10 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 		if owner.importOnly && operation.Type != "import.apply" || !owner.importOnly && operation.Type == "import.apply" {
 			return protocol.ErrorResponse(command, "policy", "Open a dedicated import session to review table imports.")
 		}
-		if owner.structureOnly && operation.Type != "structure.apply" {
+		if owner.structureOnly && operation.Type != "structure.apply" && operation.Type != "structure.validate" {
 			return protocol.ErrorResponse(command, "policy", "This session is reserved for the table structure editor.")
 		}
-		if operation.Type == "structure.apply" {
+		if operation.Type == "structure.apply" || operation.Type == "structure.validate" {
 			if !owner.structureOnly {
 				return protocol.ErrorResponse(command, "policy", "Open a dedicated structure session before reviewing DDL.")
 			}
@@ -154,7 +157,7 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 		preparedSQL = append(preparedSQL, sql)
 		assessment.Operations = append(assessment.Operations, item)
 		decision := policyDecision(policy, item)
-		if operation.Type == "explain.run" && operation.Explain.Mode == "analyze" && decision == "allow" {
+		if (operation.Type == "explain.run" && operation.Explain.Mode == "analyze" || operation.Type == "structure.validate") && decision == "allow" {
 			decision = "confirm"
 		}
 		if decision == "deny" || decision == "confirm" && assessment.Decision == "allow" {
@@ -182,10 +185,10 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 	if owner.monitorOnly {
 		return command.Type == "monitor.snapshot" || command.Type == "monitor.schema"
 	}
-	if command.Type != "execute" && command.Type != "command.execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "import.apply" {
+	if command.Type != "execute" && command.Type != "command.execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "structure.validate" && command.Type != "import.apply" {
 		return true
 	}
-	if owner.structureOnly && command.Type != "structure.apply" || command.Type != "structure.apply" && command.Structure != nil {
+	if owner.structureOnly && command.Type != "structure.apply" && command.Type != "structure.validate" || command.Type != "structure.apply" && command.Type != "structure.validate" && command.Structure != nil {
 		owner.invalidateGrant()
 		return false
 	}
@@ -208,12 +211,15 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		}
 		operation.QueryID = command.QueryID
 	}
-	if command.Type == "structure.apply" {
-		if !owner.structureOnly || command.Structure == nil || !command.Structure.Valid(command.Type) || command.Structure.Apply == nil {
+	if command.Type == "structure.apply" || command.Type == "structure.validate" {
+		if !owner.structureOnly || command.Structure == nil || !command.Structure.Valid(command.Type) {
 			owner.invalidateGrant()
 			return false
 		}
 		operation.Structure = command.Structure.Apply
+		if command.Type == "structure.validate" {
+			operation.Structure = command.Structure.Validation
+		}
 		if _, err := owner.structure.Resolve(*operation.Structure); err != nil {
 			owner.invalidateGrant()
 			return false
@@ -236,7 +242,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		return false
 	}
 	if command.Authorization == "" {
-		if command.Type == "structure.apply" {
+		if command.Type == "structure.apply" || command.Type == "structure.validate" {
 			owner.grant = nil
 			return false
 		}

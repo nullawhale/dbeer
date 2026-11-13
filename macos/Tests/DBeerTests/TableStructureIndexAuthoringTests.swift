@@ -49,13 +49,13 @@ struct TableStructureIndexAuthoringContractTests {
             #expect(document.valid && !document.draft.valid && document.draft.authoringVersion == 3)
             let text = try StructureDraftStore.text(document)
             let decoded = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.utf8))
-            #expect(decoded == document && decoded.formatVersion == 3 && decoded.draft.indexes?.first?.definition == definition)
+            #expect(decoded == document && decoded.formatVersion == StructureDraftDocument.currentFormatVersion && decoded.draft.indexes?.first?.definition == definition)
             #expect(throws: (any Error).self) {
-                _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"authoringVersion\" : 3", with: "\"authoringVersion\" : 4").utf8))
+                _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"authoringVersion\" : 3", with: "\"authoringVersion\" : 99").utf8))
             }
             for oldVersion in [1, 2] {
                 #expect(throws: (any Error).self) {
-                    _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 3", with: "\"formatVersion\" : \(oldVersion)").utf8))
+                    _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 4", with: "\"formatVersion\" : \(oldVersion)").utf8))
                 }
             }
         }
@@ -63,7 +63,7 @@ struct TableStructureIndexAuthoringContractTests {
 
     @Test func versionsAndBoundsCannotBypassAdvancedAdmission() throws {
         let rich = StructureIndexEdit(action: "add", name: "rich", definition: .init(method: "btree", terms: [.init(column: "value")]))
-        for version in [nil, 0, 2, 4] as [Int?] { #expect(!StructureDraft(columns: [], indexes: [rich], authoringVersion: version).valid) }
+        for version in [nil, 0, 2, 99] as [Int?] { #expect(!StructureDraft(columns: [], indexes: [rich], authoringVersion: version).valid) }
         #expect(StructureDraft(columns: [], indexes: [rich], authoringVersion: 3).valid)
         var mixed = rich; mixed.columns = []
         #expect(!mixed.valid)
@@ -168,27 +168,28 @@ struct TableStructureIndexEvidenceVersionTests {
         #expect(value["version"] as? Int == 1)
         return try SavedEvidenceArtifact.decode(String(decoding: JSONSerialization.data(withJSONObject: value), as: UTF8.self))
     }
-    @Test func legacyEvidenceReadsAndWriterUsesTwoWithoutChangingHistory() throws {
+    @Test func legacyEvidenceReadsAndWriterUsesThreeWithoutChangingHistory() throws {
         let value = try legacy()
-        #expect(value.version == 2 && value.valid)
+        #expect(value.version == SavedEvidenceArtifact.currentVersion && value.valid)
         let text = try value.encoded()
         let fields = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
-        #expect(fields["version"] as? Int == 2)
+        #expect(fields["version"] as? Int == SavedEvidenceArtifact.currentVersion)
         let decoded = try SavedEvidenceArtifact.decode(text)
         #expect(decoded == value && decoded.structure?.historicalExecutionID == value.structure?.historicalExecutionID)
         #expect(decoded.structure?.steps == value.structure?.steps && decoded.structure?.state == value.structure?.state)
-        for version in [0, 3] {
-            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 2", with: "\"version\" : \(version)")) }
+        for version in [0, 99] {
+            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : \(version)")) }
         }
     }
-    @Test func richIntentAndObservationRequireVersionTwoAndRemainOffline() throws {
+    @Test func richIntentAndObservationKeepVersionTwoBoundaryAndRemainOffline() throws {
         let definition = StructureIndexDefinition(method: "btree", terms: [.init(expression: "lower('é')")], includes: ["payload"], predicate: "payload IS NOT NULL")
         var value = try legacy()
         value.structure?.draft = .init(columns: [], indexes: [.init(action: "add", name: "é", definition: definition)], authoringVersion: 3)
         #expect(value.valid)
         var text = try value.encoded()
         #expect(try SavedEvidenceArtifact.decode(text).structure?.draft == value.structure?.draft)
-        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 2", with: "\"version\" : 1")) }
+        #expect(try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 2")).structure?.draft == value.structure?.draft)
+        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 1")) }
         value = try legacy()
         let target = try #require(value.structure?.target)
         value.structure?.observed = SavedStructureObservation(.init(id: "must-not-survive", target: target, engine: "postgresql", fingerprint: String(repeating: "a", count: 64), columns: [], limitations: [], indexes: [.init(name: "é", columns: [], unique: false, supported: true, definition: definition)]))
@@ -196,7 +197,7 @@ struct TableStructureIndexEvidenceVersionTests {
         text = try value.encoded()
         let decoded = try SavedEvidenceArtifact.decode(text)
         #expect(decoded.structure?.observed?.indexes?.first?.definition == definition && !text.contains("must-not-survive"))
-        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 2", with: "\"version\" : 1")) }
+        #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 1")) }
         #expect(decoded.structure?.displayReview.plan.baselineId == "offline-evidence")
     }
 }

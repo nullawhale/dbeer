@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Review explicit table/column deletion and lossy built-in conversions with named
+  dependencies, data-loss consequences and confirmation of the exact plan. Add
+  PostgreSQL USING/collation and MySQL signedness/charset/collation authoring,
+  plus native SQLite DROP. Keep Preview metadata-only; authorize cancellable
+  read-only data validation separately and retain exact counts, per-step
+  acknowledgements and unknown outcomes without automatic replay.
+
 - Add MongoDB query-planner/execution-statistics diagnostics and separately
   confirmed Cassandra read tracing through the existing session owner. Preserve
   BSON evidence, source-node elapsed time, bounded first-page/eventual trace

@@ -5,6 +5,7 @@ struct TableStructureExecutionReview: Identifiable, Sendable {
     var outcome: StructureOutcome
     let plan: StructurePlan
     let draft: StructureDraft
+    var validation: StructureValidationOutcome? = nil
     var id: String { outcome.executionId }
 }
 
@@ -29,7 +30,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     private let originalCreate: Bool
     @Published private(set) var closing = false
     @Published private(set) var create: Bool
-    @Published var table: String { didSet { if !StructureTarget.sameIdentifier(table, oldValue) { baseline = nil; preview = nil } } }
+    @Published var table: String { didSet { if !StructureTarget.sameIdentifier(table, oldValue) { baseline = nil; preview = nil; validation = nil } } }
     @Published var draft = StructureDraft(columns: [TableStructureEditorModel.emptyColumn]) {
         didSet {
             let required = draft.minimumAuthoringVersion
@@ -37,9 +38,11 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
                 var normalized = draft; normalized.authoringVersion = required; draft = normalized
             }
             preview = nil
+            validation = nil
         }
     }
     @Published private(set) var baseline: StructureBaseline?
+    @Published private(set) var validation: StructureValidationOutcome?
     @Published private(set) var preview: StructurePlan?
     @Published private(set) var operationSupport: OperationSupport?
     @Published private(set) var outcome: StructureOutcome?
@@ -61,6 +64,9 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     private var sessionNeedsReplacement = false
     private var queryID: String?
     private var cancelRequested = false
+    private let destructiveSupported: () -> Bool
+    private let confirmPlan: (StructurePlan, StructureDraft) async -> Bool
+    private let authorizeValidation: (StructureApply, StructurePlan, String) async throws -> String?
     private let indexAuthoringSupported: () -> Bool
     private let authoringSupported: () -> Bool
     private let connect: () async throws -> String
@@ -75,9 +81,10 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
          connect: @escaping () async throws -> String,
          send: @escaping (BackendCommand) async throws -> BackendMessage,
          authorize: @escaping (StructureApply, StructurePlan, String) async throws -> String?,
-         bindingIsCurrent: @escaping () -> Bool, authoringSupported: @escaping () -> Bool = { false }, indexAuthoringSupported: @escaping () -> Bool = { false }, operationsAllowed: @escaping () -> Bool = { true }, sessionIsKnownClosed: @escaping () async -> Bool = { false }, changed: @escaping (TableStructureExecutionReview) -> Void) {
+         bindingIsCurrent: @escaping () -> Bool, authoringSupported: @escaping () -> Bool = { false }, indexAuthoringSupported: @escaping () -> Bool = { false }, destructiveSupported: @escaping () -> Bool = { false }, confirmPlan: @escaping (StructurePlan, StructureDraft) async -> Bool = { _, _ in false }, authorizeValidation: @escaping (StructureApply, StructurePlan, String) async throws -> String? = { _, _, _ in nil }, operationsAllowed: @escaping () -> Bool = { true }, sessionIsKnownClosed: @escaping () async -> Bool = { false }, changed: @escaping (TableStructureExecutionReview) -> Void) {
         self.profile = profile; self.schema = schema; self.table = table; self.create = create; self.originalCreate = create; self.history = history + historyReviews.map(\.outcome); self.historyReviews = historyReviews
         self.connect = connect; self.send = send; self.authorize = authorize; self.authoringSupported = authoringSupported; self.indexAuthoringSupported = indexAuthoringSupported
+        self.destructiveSupported = destructiveSupported; self.confirmPlan = confirmPlan; self.authorizeValidation = authorizeValidation
         self.bindingIsCurrent = bindingIsCurrent; self.operationsAllowed = operationsAllowed; self.sessionIsKnownClosed = sessionIsKnownClosed; self.changed = changed
     }
     static var emptyColumn: StructureColumn {
@@ -89,13 +96,21 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
         return preview != nil || draft != initial
     }
 
+    var destructiveAvailable: Bool { [.postgresql, .mysql, .sqlite].contains(profile.engine) && destructiveSupported() }
+    var conversionAvailable: Bool { [.postgresql, .mysql].contains(profile.engine) && destructiveAvailable }
+    var targetWasDropped: Bool { outcomeReview?.plan.droppedTarget == true && outcome?.state == "applied" }
     var indexAuthoringAvailable: Bool { profile.engine != .sqlite && indexAuthoringSupported() }
-    private var authoringPermitted: Bool { (!needsAuthoring || authoringAvailable) && (!draft.requiresIndexAuthoring || indexAuthoringAvailable) }
+    private var authoringPermitted: Bool { (!needsAuthoring || authoringAvailable) && (!draft.requiresIndexAuthoring || indexAuthoringAvailable) && (!draft.requiresDestructiveAuthoring || destructiveAvailable) }
     var authoringAvailable: Bool { authoringSupported() }
     private var needsAuthoring: Bool { draft.requiresAuthoringV2 || !create && draft.columns.count > 1 }
     var canReconcileRenamedTarget: Bool { outcomeReview?.plan.resultTarget != nil && outcome?.state == "outcomeUnknown" }
     var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && authoringPermitted && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
     var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && authoringPermitted && outcome == nil && !profile.policy.readOnly && (operationSupport?.availability("structure.apply").map { $0.state == .available } ?? true) }
+    var canValidateData: Bool {
+        !isBusy && !closing && operationsAllowed() && !invalidated && destructiveAvailable &&
+            preview?.validationChecks.isEmpty == false && authoringPermitted && outcome == nil &&
+            (operationSupport?.permits("structure.validate", legacyAllowed: true) ?? true)
+    }
     var target: StructureTarget { .init(schema: schema, table: table, create: create) }
     var canCheckExecutionStatus: Bool {
         guard !isBusy, !closing, !invalidated, operationsAllowed(),
@@ -106,13 +121,13 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
 
     @discardableResult func validateBinding() -> Bool {
         guard bindingIsCurrent() else {
-            invalidated = true; preview = nil; baseline = nil
+            invalidated = true; preview = nil; baseline = nil; validation = nil
             error = "The connection or catalog changed. Close this draft and reopen it with the current connection."
             return false
         }
         return !invalidated
     }
-    func invalidate() { invalidated = true; preview = nil; baseline = nil; error = "The catalog changed. Close and reopen this draft before applying any changes." }
+    func invalidate() { invalidated = true; preview = nil; baseline = nil; validation = nil; error = "The catalog changed. Close and reopen this draft before applying any changes." }
     private func requireBinding() throws {
         guard validateBinding(), !cancelRequested, !closing, operationsAllowed() else { throw ExecutionPolicyError(message: "The structure operation was cancelled or its connection changed.") }
     }
@@ -141,8 +156,8 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
         return reply
     }
     func load(useResultTarget: Bool = false) async {
-        guard !isBusy, !closing, operationsAllowed(), target.valid, validateBinding() else { return }
-        isBusy = true; cancelRequested = false; error = nil; preview = nil; statusNotice = nil
+        guard !isBusy, !closing, !targetWasDropped, operationsAllowed(), target.valid, validateBinding() else { return }
+        isBusy = true; cancelRequested = false; error = nil; preview = nil; validation = nil; statusNotice = nil
         let reconcilingExecution = outcomeReview != nil
         defer { isBusy = false }
         do {
@@ -160,7 +175,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
             try requireBinding()
             let acknowledgedRename = outcome?.state == "applied"
             let renamedTarget = (useResultTarget || acknowledgedRename) ? outcomeReview?.plan.resultTarget : nil
-            let requestedTarget = renamedTarget ?? (outcome != nil && originalCreate ? StructureTarget(schema: schema, table: table, create: true, reconcile: true) : target)
+            let requestedTarget = renamedTarget ?? (outcome != nil && (originalCreate || outcomeReview?.plan.droppedTarget == true) ? StructureTarget(schema: schema, table: table, create: true, reconcile: true) : target)
             let reply = try await request("load", .init(target: requestedTarget))
             try requireBinding()
             if restoredDraftDocument != nil {
@@ -215,27 +230,57 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
 
     func preparePreview() async {
         guard canPreview, let baseline else { return }
-        isBusy = true; cancelRequested = false; error = nil; preview = nil
+        isBusy = true; cancelRequested = false; error = nil; preview = nil; validation = nil
         let frozen = draft
         defer { isBusy = false }
         do {
             let reply = try await request("preview", .init(baselineId: baseline.id, draft: frozen))
             try requireBinding()
             let expectedResult = frozen.renameTable.map { StructureTarget(schema: schema, table: $0, create: false) }
-            guard draft == frozen, reply.plan?.target == target, reply.plan?.resultTarget == expectedResult else { throw BackendTransportError(.invalidMessage) }
+            guard draft == frozen, reply.plan?.valid == true, reply.plan?.baselineId.utf8.elementsEqual(baseline.id.utf8) == true, reply.plan?.target == target, reply.plan?.resultTarget == expectedResult, reply.plan?.droppedTarget == frozen.dropTable else { throw BackendTransportError(.invalidMessage) }
             preview = reply.plan
+        } catch { self.error = error.localizedDescription }
+    }
+    /// Validation is an explicit authorized read of the reviewed checks. Preview never calls it.
+    func validateData() async {
+        guard canValidateData, let plan = preview, let sessionID, validateBinding() else { return }
+        let frozen = draft
+        let invocation = StructureApply(planId: plan.id, digest: plan.digest, executionId: UUID().uuidString)
+        isBusy = true; cancelRequested = false; error = nil; validation = nil
+        defer { isBusy = false }
+        do {
+            guard let authorization = try await authorizeValidation(invocation, plan, sessionID) else { return }
+            try requireBinding()
+            guard preview == plan, draft == frozen, destructiveAvailable else {
+                throw ExecutionPolicyError(message: "The draft changed. Prepare a fresh preview before validation.")
+            }
+            let reply = try await request("validate", .init(validation: invocation), authorization: authorization)
+            guard validateBinding(), !closing, operationsAllowed() else { return }
+            guard preview == plan, draft == frozen, reply.valid(for: "structure.validate.result"),
+                  let report = reply.validation, report.executionId.utf8.elementsEqual(invocation.executionId.utf8),
+                  report.planId.utf8.elementsEqual(plan.id.utf8), report.digest == plan.digest,
+                  report.checks.map({ Data($0.id.utf8) }) == plan.validationChecks.map({ Data($0.id.utf8) }) else { throw BackendTransportError(.invalidMessage) }
+            validation = report
         } catch { self.error = error.localizedDescription }
     }
     func apply() async {
         guard canApply, let plan = preview, let sessionID, validateBinding() else { return }
         isBusy = true; cancelRequested = false; error = nil
         let reviewedDraft = draft
+        let reviewedValidation = validation
         let apply = StructureApply(planId: plan.id, digest: plan.digest, executionId: UUID().uuidString)
         defer { isBusy = false; isApplying = false }
         do {
+            if plan.requiresDestructiveAuthoring || reviewedDraft.requiresDestructiveAuthoring {
+                guard await confirmPlan(plan, reviewedDraft) else { return }
+                try requireBinding()
+                guard preview == plan, draft == reviewedDraft, authoringPermitted else {
+                    throw ExecutionPolicyError(message: "The draft changed. Prepare a fresh preview.")
+                }
+            }
             guard let authorization = try await authorize(apply, plan, sessionID) else { return }
             try requireBinding()
-            guard preview == plan, draft == reviewedDraft else { throw ExecutionPolicyError(message: "The draft changed. Prepare a fresh preview.") }
+            guard preview == plan, draft == reviewedDraft, authoringPermitted else { throw ExecutionPolicyError(message: "The draft changed. Prepare a fresh preview.") }
             isApplying = true
             executionSessionID = sessionID
             let reply = try await request("apply", .init(apply: apply), authorization: authorization)
@@ -247,7 +292,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
             outcome = reply.outcome; preview = nil; baseline = nil
             if let observed = outcome?.observed { create = observed.target.create }
             else if outcome?.state == "applied" { create = false }
-            if let outcome { let review = TableStructureExecutionReview(outcome: outcome, plan: plan, draft: reviewedDraft); outcomeReview = review; changed(review) }
+            if let outcome { let review = TableStructureExecutionReview(outcome: outcome, plan: plan, draft: reviewedDraft, validation: reviewedValidation); outcomeReview = review; changed(review) }
             _ = validateBinding()
         } catch {
             self.error = error.localizedDescription
@@ -266,7 +311,7 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
                     state: unknown ? "outcomeUnknown" : (cancelled ? "cancelled" : "failed"),
                     steps: evidence,
                     refreshError: "Reconcile explicitly to load the current structure.")
-                preview = nil; baseline = nil; if let outcome { let review = TableStructureExecutionReview(outcome: outcome, plan: plan, draft: reviewedDraft); outcomeReview = review; changed(review) }
+                preview = nil; baseline = nil; if let outcome { let review = TableStructureExecutionReview(outcome: outcome, plan: plan, draft: reviewedDraft, validation: reviewedValidation); outcomeReview = review; changed(review) }
             }
         }
     }
@@ -304,15 +349,24 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
                   preservesAcknowledgements(retained, from: review.outcome, plan: review.plan) else {
                 throw BackendTransportError(.invalidMessage)
             }
+            if let report = reply.validation {
+                guard report.valid, report.planId.utf8.elementsEqual(review.plan.id.utf8), report.digest == review.plan.digest,
+                      report.checks.map({ Data($0.id.utf8) }) == review.plan.validationChecks.map({ Data($0.id.utf8) }) else {
+                    throw BackendTransportError(.invalidMessage)
+                }
+            }
             var updated = review
             updated.outcome = retained
+            if let report = reply.validation { updated.validation = report }
             outcomeReview = updated
             outcome = retained
             baseline = nil
             preview = nil
+            validation = nil
             if let observed = retained.observed { create = observed.target.create }
             else if retained.state == "applied" { create = false }
-            if StructureTarget.intentBytes(retained) != StructureTarget.intentBytes(review.outcome) {
+            if StructureTarget.intentBytes(retained) != StructureTarget.intentBytes(review.outcome) ||
+                StructureTarget.intentBytes(updated.validation) != StructureTarget.intentBytes(review.validation) {
                 changed(updated)
             }
             switch retained.state {
@@ -330,10 +384,11 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
 
     private func matchesExecution(_ value: StructureOutcome, plan: StructurePlan, executionID: String) -> Bool {
         guard value.valid, value.executionId.utf8.elementsEqual(executionID.utf8),
-              value.planId.utf8.elementsEqual(plan.id.utf8), value.steps.count == plan.sql.count else { return false }
+              value.planId.utf8.elementsEqual(plan.id.utf8), value.steps.count == plan.sql.count,
+              value.droppedTarget == (plan.droppedTarget && value.state == "applied") else { return false }
         guard let observed = value.observed else { return true }
         let expected = value.state == "applied" ? plan.resultTarget ?? plan.target : plan.target
-        return observed.engine == profile.engine.rawValue && !observed.target.create &&
+        return observed.engine == profile.engine.rawValue && (observed.target.create == (plan.droppedTarget && value.state == "applied")) &&
             StructureTarget.sameIdentifier(observed.target.schema, expected.schema) &&
             StructureTarget.sameIdentifier(observed.target.table, expected.table)
     }

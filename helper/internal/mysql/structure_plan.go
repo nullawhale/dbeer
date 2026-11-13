@@ -30,6 +30,9 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		}
 	}
 	out := tableedit.Prepared{ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"MySQL DDL implicitly commits. Each displayed statement is an independent step on a dedicated session with lock_wait_timeout=5. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, rebuild or scan tables. Metadata rechecks are best effort and cannot close concurrent DDL races or prove drop/recreate identity. Catalogs cannot prove absence of dynamic SQL dependencies. No backfill, disabled checks, CASCADE removal or automatic replay is generated.", "Foreign keys are generated only against a supported primary/unique key; any required supporting index is an explicit reviewed step. MySQL may normalize nullable defaults and key-owned backing structures."}}
+	if e = s.mysqlDestructiveReview(ctx, b, d, &out); e != nil {
+		return out, e
+	}
 	if d.HasAuthoredExpressions() || len(enable) > 0 || d.NeedsAuthoringV3() {
 		out.Risks = append(out.Risks, "Expressions and value generation run only during Apply or later writes. Preview reads metadata and validates boundaries; it does not evaluate expressions. AUTO_INCREMENT uses only an explicitly selected leading key and does not guarantee gap-free values.")
 	}
@@ -51,6 +54,10 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	for _, op := range ops {
 		stepStart := len(out.SQL)
 		switch op.Kind {
+		case "dropTable":
+			out.SQL = append(out.SQL, "DROP TABLE "+target+";")
+		case "dropColumn":
+			out.SQL = append(out.SQL, "ALTER TABLE "+target+" DROP COLUMN "+QuoteIdentifier(op.Change.Name)+";")
 		case "create":
 			sql, _, e := s.StructureRender(b, tableedit.Draft{AuthoringVersion: d.AuthoringVersion, Columns: d.Columns})
 			if e != nil {
@@ -128,6 +135,9 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	return out, nil
 }
 func mysqlPlannedChange(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, change tableedit.ColumnChange, target string) ([]string, error) {
+	if d.NeedsAuthoringV4() && change.Conversion() {
+		return mysqlConversionChange(ctx, b, change, target)
+	}
 	if change.Identity != nil {
 		for _, c := range d.Columns {
 			if c.Name == change.Name {
@@ -241,6 +251,15 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		x := s.applyStructureStep(ctx, current, []string{step}, refs)
 		out = append(out, x)
 		if x.State != "applied" {
+			break
+		}
+		if plan.Conditions[i].Operation.Kind == "dropTable" {
+			absent := current.Target
+			absent.Create = true
+			fresh, err := s.StructureLoad(ctx, absent)
+			if err != nil || !tableedit.ValidBaseline(fresh) || !fresh.Target.Create {
+				out[len(out)-1].Message = "DROP TABLE was acknowledged, but absence could not be verified. Reconcile before another edit."
+			}
 			break
 		}
 		target := tableedit.StepTarget(current.Target, plan.Conditions[i])

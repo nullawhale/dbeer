@@ -8,13 +8,14 @@ import (
 
 const StructureAuthoringCapability = tableedit.AuthoringCapability
 const StructureIndexAuthoringCapability = tableedit.IndexAuthoringCapability
+const StructureDestructiveCapability = tableedit.DestructiveCapability
 
 func parseStructure(raw json.RawMessage, command string) (tableedit.Request, bool) {
 	var r tableedit.Request
 	if !JSONUnicodeValid(raw) || !structureNoNull(raw) {
 		return r, false
 	}
-	fields, ok := changesObject(raw, "target|baselineId|draft|apply")
+	fields, ok := changesObject(raw, "target|baselineId|draft|apply|validation")
 	if !ok {
 		return r, false
 	}
@@ -27,8 +28,12 @@ func parseStructure(raw json.RawMessage, command string) (tableedit.Request, boo
 		if len(fields) != 2 || !structureDraftShape(fields["draft"]) {
 			return r, false
 		}
-	case "structure.apply":
-		if _, ok := changesObject(fields["apply"], "planId|digest|executionId", "planId", "digest", "executionId"); !ok || len(fields) != 1 {
+	case "structure.apply", "structure.validate":
+		field := "apply"
+		if command == "structure.validate" {
+			field = "validation"
+		}
+		if _, ok := changesObject(fields[field], "planId|digest|executionId", "planId", "digest", "executionId"); !ok || len(fields) != 1 {
 			return r, false
 		}
 	case "structure.status", "structure.close":
@@ -82,15 +87,18 @@ func structureAuthoredShape(fields map[string]json.RawMessage) bool {
 	return true
 }
 func structureDraftShape(raw json.RawMessage) bool {
-	f, ok := changesObject(raw, "columns|changes|indexes|keys|allowDestructive|renameTable|authoringVersion", "columns")
+	f, ok := changesObject(raw, "columns|changes|indexes|keys|allowDestructive|renameTable|authoringVersion|dropTable", "columns")
 	if !ok {
 		return false
 	}
+	value := 0
 	if version, present := f["authoringVersion"]; present {
-		var value int
-		if json.Unmarshal(version, &value) != nil || value != 2 && value != 3 {
+		if json.Unmarshal(version, &value) != nil || value != 2 && value != 3 && value != 4 {
 			return false
 		}
+	}
+	if _, present := f["dropTable"]; present && value != 4 {
+		return false
 	}
 	for _, key := range []string{"columns", "changes", "indexes", "keys"} {
 		raw, present := f[key]
@@ -106,7 +114,7 @@ func structureDraftShape(raw json.RawMessage) bool {
 			required := []string{"name", "type", "nullable", "default"}
 			switch key {
 			case "changes":
-				allowed = "name|renameTo|nullable|default|type|generated|identity"
+				allowed = "name|renameTo|nullable|default|type|generated|identity|drop|usingExpression|unsigned|charset|collation"
 				required = []string{"name"}
 			case "indexes":
 				allowed = "action|name|columns|unique|definition"
@@ -119,7 +127,19 @@ func structureDraftShape(raw json.RawMessage) bool {
 			if !ok {
 				return false
 			}
+			if key == "changes" && value != 4 {
+				for _, field := range []string{"drop", "usingExpression", "unsigned", "charset", "collation"} {
+					if _, present := fields[field]; present {
+						return false
+					}
+				}
+			}
 			if key == "columns" || key == "changes" {
+				if v, present := fields["collation"]; present {
+					if _, ok := changesObject(v, "schema|name", "schema", "name"); !ok {
+						return false
+					}
+				}
 				if !structureAuthoredShape(fields) {
 					return false
 				}

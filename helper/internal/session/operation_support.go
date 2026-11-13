@@ -13,11 +13,22 @@ func attachOperationSupport(response *protocol.Response, engine string, policy p
 		return
 	}
 	preview := protocol.OperationAvailability{Operation: "structure.preview", State: "requiresMetadata", Reason: "Load the target structure before preparing a preview."}
+	validate := protocol.OperationAvailability{Operation: "structure.validate", State: "requiresMetadata", Reason: "Prepare a current preview with validation checks before reading stored data."}
 	apply := protocol.OperationAvailability{Operation: "structure.apply", State: "requiresMetadata", Reason: "Prepare a current preview before applying changes."}
 	if response.Structure.Baseline != nil || response.Structure.Plan != nil {
 		preview.State, preview.Reason = "available", ""
 	}
 	if response.Structure.Plan != nil {
+		apply.State, apply.Reason = "available", ""
+		if len(response.Structure.Plan.ValidationChecks) > 0 {
+			validate.State, validate.Reason = "available", ""
+		}
+	}
+	// A direct validation reply retains the exact resolved plan; it is an
+	// observation, not consumption of that plan or authorization to execute it.
+	if response.Type == "structure.validate.result" && response.Structure.Validation != nil && response.Structure.Outcome == nil && response.Connected && response.TransactionStatus == "idle" {
+		preview.State, preview.Reason = "available", ""
+		validate.State, validate.Reason = "available", ""
 		apply.State, apply.Reason = "available", ""
 	}
 	if response.Structure.Outcome != nil {
@@ -27,7 +38,7 @@ func attachOperationSupport(response *protocol.Response, engine string, policy p
 	if policy.ReadOnly {
 		apply.State, apply.Reason = "unavailable", "This connection is readonly."
 	}
-	response.OperationSupport = &protocol.OperationSupport{Version: 1, Engine: engine, Scope: "structure", Operations: []protocol.OperationAvailability{preview, apply}}
+	response.OperationSupport = &protocol.OperationSupport{Version: 1, Engine: engine, Scope: "structure", Operations: []protocol.OperationAvailability{preview, apply, validate}}
 }
 
 func attachResultOperationSupport(source *protocol.ResultSource, engine string, policy protocol.ExecutionPolicy) {

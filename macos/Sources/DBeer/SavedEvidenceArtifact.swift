@@ -43,6 +43,10 @@ struct SavedStructureEvidence: Codable, Equatable, Sendable {
     var sql: [String]
     var risks: [String]
     var destructive: Bool?
+    var droppedTarget: Bool? = nil
+    var consequences: [StructureConsequence]? = nil
+    var validationChecks: [StructureValidationCheck]? = nil
+    var validation: StructureValidationOutcome? = nil
     var draft: StructureDraft
     var state: String
     var steps: [StructureStepOutcome]
@@ -51,22 +55,25 @@ struct SavedStructureEvidence: Codable, Equatable, Sendable {
 
     init(_ review: TableStructureExecutionReview) throws {
         guard review.plan.valid, review.draft.valid, review.outcome.valid,
-              review.outcome.planId == review.plan.id,
+              review.outcome.planId.utf8.elementsEqual(review.plan.id.utf8),
+              review.outcome.droppedTarget == (review.plan.droppedTarget && review.outcome.state == "applied"),
               Self.validStepCount(state: review.outcome.state, steps: review.outcome.steps, sqlCount: review.plan.sql.count) else {
             throw PlanArtifactError.invalid
         }
         historicalPlanID = review.plan.id; historicalExecutionID = review.outcome.executionId
         digest = review.plan.digest; target = review.plan.target; resultTarget = review.plan.resultTarget
         sql = review.plan.sql; risks = review.plan.risks; destructive = review.plan.destructive
+        droppedTarget = review.plan.droppedTarget ? true : nil; consequences = review.plan.consequences.isEmpty ? nil : review.plan.consequences
+        validationChecks = review.plan.validationChecks.isEmpty ? nil : review.plan.validationChecks; validation = review.validation
         draft = review.draft; state = review.outcome.state; steps = review.outcome.steps
         refreshError = review.outcome.refreshError; observed = review.outcome.observed.map(SavedStructureObservation.init)
     }
     /// Historical labels are displayed, never submitted. No apply/preview owner is retained.
     var displayReview: TableStructureExecutionReview {
         .init(outcome: .init(executionId: historicalExecutionID, planId: historicalPlanID, state: state,
-                steps: steps, observed: observed?.displayBaseline, refreshError: refreshError),
+                steps: steps, observed: observed?.displayBaseline, refreshError: refreshError, droppedTarget: droppedTarget == true && state == "applied"),
             plan: .init(id: historicalPlanID, baselineId: "offline-evidence", digest: digest,
-                target: target, sql: sql, risks: risks, destructive: destructive, resultTarget: resultTarget), draft: draft)
+                target: target, sql: sql, risks: risks, destructive: destructive, resultTarget: resultTarget, droppedTarget: droppedTarget ?? false, consequences: consequences ?? [], validationChecks: validationChecks ?? []), draft: draft, validation: validation)
     }
     private static func validStepCount(state: String, steps: [StructureStepOutcome], sqlCount: Int) -> Bool {
         // A lost aggregate completion is retained as recorded, without fabricated step acknowledgements.
@@ -74,15 +81,16 @@ struct SavedStructureEvidence: Codable, Equatable, Sendable {
     }
     var valid: Bool {
         guard displayReview.plan.valid, draft.valid, displayReview.outcome.valid,
-              Self.validStepCount(state: state, steps: steps, sqlCount: sql.count), observed?.valid ?? true else { return false }
+              Self.validStepCount(state: state, steps: steps, sqlCount: sql.count), observed?.valid ?? true,
+              validation.map { $0.valid && $0.planId.utf8.elementsEqual(historicalPlanID.utf8) && $0.digest == digest && $0.checks.map({ Data($0.id.utf8) }) == (validationChecks ?? []).map({ Data($0.id.utf8) }) } ?? true else { return false }
         guard let observed else { return true }
-        return !observed.target.create && StructureTarget.sameIdentifier(observed.target.schema, target.schema) &&
+        return (observed.target.create == (droppedTarget == true && state == "applied")) && StructureTarget.sameIdentifier(observed.target.schema, target.schema) &&
             (StructureTarget.sameIdentifier(observed.target.table, target.table) || resultTarget.map { StructureTarget.sameIdentifier(observed.target.table, $0.table) } == true)
     }
 }
 
 struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
-    static let currentVersion = 2
+    static let currentVersion = 3
     static let maximumBytes = 8 * 1_024 * 1_024
     var version = Self.currentVersion
     var id: UUID
@@ -151,7 +159,7 @@ struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
             return object
         }
         if let structure = fields["structure"] {
-            let record = try closed(structure, keys: ["historicalPlanID", "historicalExecutionID", "digest", "target", "resultTarget", "sql", "risks", "destructive", "draft", "state", "steps", "refreshError", "observed"])
+            let record = try closed(structure, keys: ["historicalPlanID", "historicalExecutionID", "digest", "target", "resultTarget", "sql", "risks", "destructive", "droppedTarget", "consequences", "validationChecks", "validation", "draft", "state", "steps", "refreshError", "observed"])
             if let observed = record["observed"] {
                 _ = try closed(observed, keys: ["target", "engine", "fingerprint", "columns", "limitations", "keys", "indexes", "dependencyProof"])
             }
@@ -166,8 +174,9 @@ struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
         }
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .millisecondsSince1970
         var value = try decoder.decode(Self.self, from: data)
-        guard [1, Self.currentVersion].contains(value.version),
-              value.version != 1 || (value.structure.map { !$0.draft.requiresIndexAuthoring && $0.draft.authoringVersion != 3 && !($0.observed?.indexes ?? []).contains { $0.definition != nil } } ?? true) else { throw PlanArtifactError.invalid }
+        guard [1, 2, Self.currentVersion].contains(value.version),
+              value.version != 1 || (value.structure.map { !$0.draft.requiresIndexAuthoring && $0.draft.authoringVersion != 3 && !($0.observed?.indexes ?? []).contains { $0.definition != nil } } ?? true),
+              value.version >= 3 || (value.structure.map { !$0.draft.requiresDestructiveAuthoring && $0.draft.authoringVersion != 4 && $0.droppedTarget == nil && $0.consequences == nil && $0.validationChecks == nil && $0.validation == nil && !($0.observed?.displayBaseline.requiresDestructiveAuthoring ?? false) } ?? true) else { throw PlanArtifactError.invalid }
         value.version = Self.currentVersion
         guard value.valid else { throw PlanArtifactError.invalid }
         return value

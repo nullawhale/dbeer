@@ -14,7 +14,7 @@ struct TableStructureEditorView: View {
     private var canEdit: Bool { !model.isBusy && !model.closing && !model.invalidated && model.baseline != nil && model.outcome == nil }
     private var canEditTarget: Bool { model.create && !model.isBusy && !model.closing && !model.invalidated && model.baseline == nil && model.outcome == nil }
     private var canLoad: Bool {
-        !model.isBusy && !model.closing && !model.invalidated && model.target.valid &&
+        !model.isBusy && !model.closing && !model.invalidated && !model.targetWasDropped && model.target.valid &&
             !(model.outcome == nil && model.baseline != nil && model.hasDraft)
     }
     var body: some View {
@@ -65,6 +65,7 @@ struct TableStructureEditorView: View {
                     if model.outcome == nil {
                         draftEditors
                     }
+                    if model.targetWasDropped { Text("The reviewed table deletion was acknowledged. Its SQL and per-step evidence are retained below.").font(.caption).foregroundStyle(.orange) }
                     if let preview = model.preview {
                         GroupBox("Reviewed SQL (\(preview.sql.count) steps)") {
                             VStack(alignment: .leading, spacing: 8) {
@@ -75,11 +76,15 @@ struct TableStructureEditorView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }.frame(minHeight: 35, maxHeight: 140)
                                 }
+                                TableStructureConsequencesView(plan: preview)
                                 ForEach(Array(preview.risks.enumerated()), id: \.offset) { _, risk in
                                     Text(risk).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
                                 }
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }
+                    }
+                    if let preview = model.preview, !preview.validationChecks.isEmpty {
+                        TableStructureValidationView(checks: preview.validationChecks, outcome: model.validation)
                     }
                     if let review = model.outcomeReview {
                         if let saveEvidence {
@@ -158,6 +163,15 @@ struct TableStructureEditorView: View {
 
     private var draftEditors: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !model.create && (model.destructiveAvailable || model.draft.dropTable) {
+                Toggle("Drop table and all its stored data", isOn: Binding(get: { model.draft.dropTable }, set: {
+                    model.draft.dropTable = $0; model.draft.allowDestructive = nil
+                })).controlHover().disabled(!model.destructiveAvailable)
+                if model.draft.dropTable {
+                    Text("Table deletion must be the only operation in this draft. Other authored edits are retained; remove them or turn off Drop table before Preview. Dependencies and data-loss consequences are reviewed before Apply.").font(.caption).foregroundStyle(.orange)
+                }
+            }
+            Group {
             if !model.create && model.authoringAvailable {
                 Toggle("Rename table", isOn: Binding(get: { model.draft.renameTable != nil }, set: { model.draft.renameTable = $0 ? "" : nil })).controlHover()
                 if model.draft.renameTable != nil {
@@ -180,6 +194,10 @@ struct TableStructureEditorView: View {
                 }.controlHover().disabled(!canEdit || model.draft.columns.count >= 128)
             }
             TableStructureIntentEditors(model: model)
+            }.disabled(model.draft.dropTable)
+            if model.draft.dropTable {
+                Toggle("Include table deletion in Preview", isOn: Binding(get: { model.draft.allowDestructive == true }, set: { model.draft.allowDestructive = $0 })).controlHover()
+            }
         }.disabled(!canEdit)
     }
     private var history: some View {
@@ -213,6 +231,10 @@ struct TableStructureEditorView: View {
                     .controlHover().disabled(!model.canCheckExecutionStatus)
                     .help("Read retained acknowledgement from the original helper session before loading current structure.")
                     .accessibilityIdentifier("structureCheckExecutionStatus")
+            }
+            if model.preview?.validationChecks.isEmpty == false {
+                Button("Validate Data…") { Task { await model.validateData() } }.controlHover().disabled(!model.canValidateData)
+                    .help("Separately authorize the disclosed reads. They may scan the table; Preview does not run them and validation does not authorize Apply.")
             }
             Button("Preview SQL") { Task { await model.preparePreview() } }.controlHover().disabled(!model.canPreview || model.closing)
             Button("Apply") { Task { await model.apply() } }.controlHover().disabled(!model.canApply || model.closing)

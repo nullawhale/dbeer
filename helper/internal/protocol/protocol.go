@@ -415,7 +415,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -464,7 +464,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.Changes = &request
 		}
-		if command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "import.apply" {
+		if command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "structure.validate" || command.Type == "import.apply" {
 			allowed["authorization"] = true
 			if _, exists := fields["authorization"]; exists && (!stringField(fields, "authorization", &command.Authorization) || !ValidID(command.Authorization)) {
 				return command, failure
@@ -985,7 +985,7 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["tableImport"] = response.TableImport
 		fields["connected"] = response.Connected
 		fields["transactionStatus"] = response.TransactionStatus
-	case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.status.result", "structure.close.result":
+	case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.validate.result", "structure.status.result", "structure.close.result":
 		fields["structure"] = response.Structure
 		fields["connected"] = response.Connected
 		if response.TransactionStatus != "" && response.TransactionStatus != "unknown" {

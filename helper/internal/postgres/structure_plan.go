@@ -30,6 +30,9 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		return tableedit.Prepared{}, e
 	}
 	out := tableedit.Prepared{Types: guards, IndexGuards: indexGuards, ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"Every displayed statement is an independent execution unit using a dedicated session: BEGIN, SET LOCAL lock_timeout='5s', ordered ACCESS EXCLUSIVE locks, metadata rechecks, the reviewed DDL and COMMIT. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, scan or rewrite tables. No backfill, CASCADE or automatic replay is generated. Catalogs cannot prove the absence of dynamic SQL dependencies."}}
+	if e = s.pgDestructiveReview(ctx, b, d, &out); e != nil {
+		return out, e
+	}
 	if d.HasAuthoredExpressions() || len(guards) > 0 || len(indexGuards) > 0 {
 		out.Risks = append(out.Risks, pgExpressionRisk())
 	}
@@ -45,6 +48,10 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	for _, op := range ops {
 		stepStart := len(out.SQL)
 		switch op.Kind {
+		case "dropTable":
+			out.SQL = append(out.SQL, "DROP TABLE "+target+" RESTRICT;")
+		case "dropColumn":
+			out.SQL = append(out.SQL, "ALTER TABLE "+target+" DROP COLUMN "+quote(op.Change.Name)+" RESTRICT;")
 		case "create":
 			sql, _, e := s.StructureRender(b, tableedit.Draft{AuthoringVersion: d.AuthoringVersion, Columns: d.Columns})
 			if e != nil {
@@ -84,13 +91,15 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 				return out, tableedit.ErrUnsupported
 			}
 			prefix := "ALTER TABLE " + target + " ALTER COLUMN " + quote(c.Name)
-			if c.Type != nil {
-				typ = *c.Type
-				definition, e := structureColumn(tableedit.Column{Name: c.Name, Type: typ, Nullable: true, Default: tableedit.Default{Kind: "none"}})
+			if c.Conversion() {
+				if c.Type != nil {
+					typ = *c.Type
+				}
+				definition, e := pgConversionChange(b, *c, target)
 				if e != nil {
 					return out, e
 				}
-				out.SQL = append(out.SQL, prefix+" TYPE "+strings.TrimPrefix(definition, quote(c.Name)+" ")+";")
+				out.SQL = append(out.SQL, definition)
 			}
 			if c.Nullable != nil {
 				action := " SET NOT NULL;"
@@ -166,8 +175,8 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			if op.Kind == "changeColumn" && op.Change.Generated == nil && op.Change.Identity == nil {
 				changes := []tableedit.ColumnChange{}
 				c := op.Change
-				if c.Type != nil {
-					changes = append(changes, tableedit.ColumnChange{Name: c.Name, Type: c.Type})
+				if c.Conversion() {
+					changes = append(changes, tableedit.ColumnChange{Name: c.Name, Type: c.Type, UsingExpression: c.UsingExpression, Unsigned: c.Unsigned, Charset: c.Charset, Collation: c.Collation})
 				}
 				if c.Nullable != nil {
 					changes = append(changes, tableedit.ColumnChange{Name: c.Name, Nullable: c.Nullable})
@@ -197,6 +206,15 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		x := s.applyStructureStep(ctx, current, []string{step}, refs, structureGuards{Types: plan.Types, Indexes: plan.IndexGuards})
 		out = append(out, x)
 		if x.State != "applied" {
+			break
+		}
+		if plan.Conditions[i].Operation.Kind == "dropTable" {
+			absent := current.Target
+			absent.Create = true
+			fresh, err := s.StructureLoad(ctx, absent)
+			if err != nil || !tableedit.ValidBaseline(fresh) || !fresh.Target.Create {
+				out[len(out)-1].Message = "DROP TABLE was acknowledged, but absence could not be verified. Reconcile before another edit."
+			}
 			break
 		}
 		target := tableedit.StepTarget(current.Target, plan.Conditions[i])

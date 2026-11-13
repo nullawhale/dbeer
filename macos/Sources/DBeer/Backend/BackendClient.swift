@@ -105,8 +105,11 @@ actor BackendClient {
     private var dataTransferSupported = false
     private var nativeCommandsSupported = false
     private var nativeResultValuesSupported = false
+    private var destructiveStructureSupported = false
     private var indexAuthoringSupported = false
     private var sessionCapabilities: [String: Set<String>] = [:]
+    // Physical loss retires active admission; retained status stays on its logical helper owner.
+    private var retainedStructureCapabilities: [String: Set<String>] = [:]
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -210,8 +213,11 @@ actor BackendClient {
             sessionCapabilities[sessionId]?.contains(NativeCommand.capability) == true &&
             sessionCapabilities[sessionId]?.contains(NativeValue.capability) == true
     }
-    private func supportsIndexAuthoring(sessionId: String?) -> Bool {
-        indexAuthoringSupported && sessionId.flatMap { sessionCapabilities[$0] }?.contains("tableStructureIndexAuthoringV1") == true
+    private func supportsIndexAuthoring(sessionId: String?, retainedStatus: Bool = false) -> Bool {
+        indexAuthoringSupported && sessionId.flatMap { retainedStatus ? retainedStructureCapabilities[$0] : sessionCapabilities[$0] }?.contains("tableStructureIndexAuthoringV1") == true
+    }
+    private func supportsDestructiveStructure(sessionId: String?, retainedStatus: Bool = false) -> Bool {
+        destructiveStructureSupported && sessionId.flatMap { retainedStatus ? retainedStructureCapabilities[$0] : sessionCapabilities[$0] }?.contains("tableStructureDestructiveV1") == true
     }
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
@@ -339,6 +345,12 @@ actor BackendClient {
             catch { throw BackendRequestError.invalidCommand }
         }
         for operation in command.operations ?? [] {
+            if operation.type == "structure.validate" {
+                guard command.type == "operation.assess", operation.structure?.valid == true,
+                      operation.sql == nil, operation.export == nil, operation.changes == nil, operation.explain == nil,
+                      operation.parameters == nil, operation.tableImport == nil, operation.nativeCommand == nil, operation.queryId == nil,
+                      supportsDestructiveStructure(sessionId: command.sessionId) else { throw BackendRequestError.invalidCommand }
+            }
             if let parameters = operation.parameters {
                 guard queryParametersSupported else { throw BackendRequestError.unsupportedQueryParameters }
                 guard command.type == "operation.assess", operation.type == "execute",
@@ -374,16 +386,19 @@ actor BackendClient {
                   command.insert == nil, command.sshTrust == nil else { throw BackendRequestError.invalidCommand }
         } else if command.explain != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("structure.") {
-            if command.structure?.draft?.authoringVersion == 3, !supportsIndexAuthoring(sessionId: command.sessionId) {
+            if command.structure?.draft?.requiresIndexAuthoring == true || command.structure?.draft?.authoringVersion == 3,
+               !supportsIndexAuthoring(sessionId: command.sessionId) {
                 throw BackendRequestError.invalidCommand
             }
+            if command.structure?.draft?.requiresDestructiveAuthoring == true || command.structure?.draft?.authoringVersion == 4 || command.type == "structure.validate",
+               !supportsDestructiveStructure(sessionId: command.sessionId) { throw BackendRequestError.invalidCommand }
             guard command.structure?.valid(for: command.type) == true,
                   command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
                   command.sql == nil, command.catalog == nil, command.connection == nil, command.stream == nil,
                   command.changes == nil, command.export == nil, command.operations == nil,
                   command.comparison == nil, command.schemaComparison == nil, command.dataComparison == nil,
                   command.protocolVersion == nil, command.sequence == nil, command.insert == nil, command.sshTrust == nil, command.explain == nil,
-                  command.type == "structure.apply" || command.authorization == nil else { throw BackendRequestError.invalidCommand }
+                  ["structure.apply", "structure.validate"].contains(command.type) || command.authorization == nil else { throw BackendRequestError.invalidCommand }
         } else if command.structure != nil { throw BackendRequestError.invalidCommand }
         if command.type == "data.plan" || command.type == "schema.plan" {
             guard synchronizationPlanSupported else { throw BackendRequestError.invalidCommand }
@@ -537,7 +552,8 @@ actor BackendClient {
             return
         }
         let command = request.command
-        let indexAuthoringAdmitted = supportsIndexAuthoring(sessionId: command.sessionId)
+        let destructiveStructureAdmitted = supportsDestructiveStructure(sessionId: command.sessionId, retainedStatus: command.type == "structure.status")
+        let indexAuthoringAdmitted = supportsIndexAuthoring(sessionId: command.sessionId, retainedStatus: command.type == "structure.status")
         guard (command.sessionId == nil || command.sessionId == reply.sessionId),
               (command.queryId == nil || command.queryId == reply.queryId) else {
             fail(BackendTransportError(.invalidMessage))
@@ -611,14 +627,19 @@ actor BackendClient {
             dataTransferSupported = reply.capabilities?.contains("dataTransferV1") == true
             nativeCommandsSupported = reply.capabilities?.contains(NativeCommand.capability) == true
             nativeResultValuesSupported = reply.capabilities?.contains(NativeValue.capability) == true
+            destructiveStructureSupported = reply.capabilities?.contains("tableStructureDestructiveV1") == true
             indexAuthoringSupported = reply.capabilities?.contains("tableStructureIndexAuthoringV1") == true
         }
         if reply.type == "connect.result", let session = reply.sessionId {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
+            let structureCapabilities = Set(reply.capabilities ?? []).intersection(["tableStructureIndexAuthoringV1", "tableStructureDestructiveV1"])
+            if !structureCapabilities.isEmpty { retainedStructureCapabilities[session] = structureCapabilities }
+            else { retainedStructureCapabilities.removeValue(forKey: session) }
             if reply.transactionStatus == .unsupported, let support = reply.explainSupport, support.engine.hasEngineDiagnostics {
                 sessionDiagnosticSupport[session] = support
             } else { sessionDiagnosticSupport.removeValue(forKey: session) }
         }
+        if reply.type == "disconnect.ack", let session = reply.sessionId { retainedStructureCapabilities.removeValue(forKey: session) }
         if reply.type == "disconnect.ack" || reply.connected == false, let session = reply.sessionId {
             sessionCapabilities.removeValue(forKey: session)
             sessionDiagnosticSupport.removeValue(forKey: session)
@@ -674,6 +695,12 @@ actor BackendClient {
                 guard request.started, reply.structure?.valid(for: reply.type) == true else { throw BackendTransportError(.invalidMessage) }
                 if reply.structure?.baseline?.requiresIndexAuthoring == true || reply.structure?.outcome?.observed?.requiresIndexAuthoring == true {
                     guard indexAuthoringAdmitted else { throw BackendTransportError(.invalidMessage) }
+                }
+                if reply.structure?.baseline?.requiresDestructiveAuthoring == true || reply.structure?.plan?.requiresDestructiveAuthoring == true || reply.structure?.outcome?.requiresDestructiveAuthoring == true || reply.structure?.validation != nil {
+                    guard destructiveStructureAdmitted else { throw BackendTransportError(.invalidMessage) }
+                }
+                if let validation = command.structure?.validation {
+                    guard let report = reply.structure?.validation, report.planId.utf8.elementsEqual(validation.planId.utf8), report.digest == validation.digest, report.executionId.utf8.elementsEqual(validation.executionId.utf8) else { throw BackendTransportError(.invalidMessage) }
                 }
                 if let target = command.structure?.target {
                     guard let observed = reply.structure?.baseline?.target else { throw BackendTransportError(.invalidMessage) }
@@ -883,6 +910,7 @@ actor BackendClient {
     }
 
     private func outputEnded() {
+        retainedStructureCapabilities.removeAll()
         if shuttingDown {
             failPending(BackendTransportError(.unexpectedEOF))
         } else if let process, !process.isRunning {
@@ -906,6 +934,7 @@ actor BackendClient {
         guard failure == nil else { return }
         failure = error
         ready = false
+        retainedStructureCapabilities.removeAll()
         failPending(error)
         for waiter in failureWaiters { waiter.resume(returning: error) }
         failureWaiters.removeAll()

@@ -90,3 +90,42 @@ func TestOperationSupportPreservesResultProvenanceReasons(t *testing.T) {
 		t.Fatal("readonly source allowed editing")
 	}
 }
+
+func TestOperationSupportValidationRetainsReviewedPlanWithoutExecutionAuthority(t *testing.T) {
+	for _, state := range []string{"completed", "cancelled", "failed"} {
+		t.Run(state, func(t *testing.T) {
+			response := protocol.Response{Type: "structure.validate.result", Connected: true, TransactionStatus: "idle", Structure: &tableedit.Reply{Validation: &tableedit.ValidationOutcome{State: state}}}
+			attachOperationSupport(&response, "postgresql", protocol.ExecutionPolicy{})
+			for _, operation := range []string{"structure.preview", "structure.validate", "structure.apply"} {
+				if availability(t, response.OperationSupport, operation).State != "available" {
+					t.Fatal("separate validation discarded the retained reviewed plan")
+				}
+			}
+			attachOperationSupport(&response, "postgresql", protocol.ExecutionPolicy{ReadOnly: true})
+			if availability(t, response.OperationSupport, "structure.apply").State != "unavailable" || availability(t, response.OperationSupport, "structure.validate").State != "available" {
+				t.Fatal("validation bypassed readonly execution policy")
+			}
+			response.Connected = false
+			attachOperationSupport(&response, "postgresql", protocol.ExecutionPolicy{})
+			if availability(t, response.OperationSupport, "structure.apply").State != "requiresMetadata" {
+				t.Fatal("physical loss revived an executable plan")
+			}
+			response.Connected, response.TransactionStatus = true, "unknown"
+			attachOperationSupport(&response, "postgresql", protocol.ExecutionPolicy{})
+			if availability(t, response.OperationSupport, "structure.apply").State != "requiresMetadata" {
+				t.Fatal("unknown physical state revived an executable plan")
+			}
+			response.TransactionStatus, response.Type = "idle", "structure.status.result"
+			attachOperationSupport(&response, "postgresql", protocol.ExecutionPolicy{})
+			if availability(t, response.OperationSupport, "structure.apply").State != "requiresMetadata" {
+				t.Fatal("historical validation alone revived an executable plan")
+			}
+			response.Type = "structure.validate.result"
+			response.Structure.Outcome = &tableedit.Outcome{State: "outcomeUnknown"}
+			attachOperationSupport(&response, "postgresql", protocol.ExecutionPolicy{})
+			if availability(t, response.OperationSupport, "structure.apply").State != "requiresMetadata" {
+				t.Fatal("unknown execution outcome allowed another apply")
+			}
+		})
+	}
+}

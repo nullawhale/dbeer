@@ -39,7 +39,11 @@ func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tablee
 	}
 	b.Target.Reconcile = false
 	b.Scope = tableedit.Fingerprint(s.path)
-	b.Fingerprint = tableedit.Fingerprint([]any{s.path, t.Table, rows})
+	tempSchema, tempErr := s.structureSchema(ctx, true)
+	if tempErr != nil {
+		return b, tempErr
+	}
+	b.Fingerprint = tableedit.Fingerprint([]any{s.path, t.Table, rows, tempSchema})
 	b.Identity = tableedit.Fingerprint([]any{s.path, raw})
 	b.Attributes["sqlite"] = map[string]any{"sql": raw}
 	if !found {
@@ -191,6 +195,9 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
 	if d.NeedsAuthoringV3() {
 		return tableedit.Prepared{}, errors.New("Advanced index definitions are currently available for PostgreSQL/MySQL only; SQLite index intent is never ignored. Use an explicit reviewed SQLite migration for expressions or partial indexes.")
+	}
+	if d.NeedsAuthoringV4() {
+		return s.prepareStructureDestructive(ctx, b, d)
 	}
 	p := tableedit.Prepared{Risks: []string{"Apply uses BEGIN IMMEDIATE and rechecks the captured schema. Table reconstruction copies all rows and validates foreign keys before COMMIT."}}
 	if !d.Valid() || b.Engine != "sqlite" || b.Target.Schema != "main" {
@@ -558,10 +565,13 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	if err := s.checkIdentity(); err != nil {
 		return fail("notStarted", "The database file changed.")
 	}
-	if err := s.exec(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
-		return fail("notStarted", "Cannot prepare foreign-key verification.")
+	nativeDrop := p.DroppedTarget || len(structureDroppedColumns(p)) > 0
+	if !nativeDrop {
+		if err := s.exec(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+			return fail("notStarted", "Cannot prepare foreign-key verification.")
+		}
+		defer func() { _ = s.exec(context.Background(), "PRAGMA foreign_keys=ON") }()
 	}
-	defer func() { _ = s.exec(context.Background(), "PRAGMA foreign_keys=ON") }()
 	if err := s.exec(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return fail("notStarted", "Cannot acquire the database write lock.")
 	}
@@ -573,8 +583,18 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	// Compare sorted typed row hashes without retaining the source rows in memory.
 	var original string
 	var originalCount int64
-	if !b.Target.Create {
-		original, originalCount, err = s.structureValueDigest(ctx, b.Target.Table, b.Columns)
+	retainedColumns := append([]tableedit.ObservedColumn(nil), b.Columns...)
+	if nativeDrop {
+		dropped := structureDroppedColumns(p)
+		retainedColumns = nil
+		for _, c := range b.Columns {
+			if !dropped[c.Name] {
+				retainedColumns = append(retainedColumns, c)
+			}
+		}
+	}
+	if !b.Target.Create && !p.DroppedTarget {
+		original, originalCount, err = s.structureValueDigest(ctx, b.Target.Table, retainedColumns)
 		if err != nil {
 			if errors.Is(err, ErrStructureDigestQuota) {
 				return fail("notStarted", "Exact-value verification exceeds the temporary storage limit; no changes were started.")
@@ -587,12 +607,12 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 			return fail("rolledBack", "The structure transaction failed and was rolled back.")
 		}
 	}
-	if !b.Target.Create {
+	if !b.Target.Create && !p.DroppedTarget {
 		observedTable := b.Target.Table
 		if p.ResultTarget != nil {
 			observedTable = p.ResultTarget.Table
 		}
-		copiedColumns := append([]tableedit.ObservedColumn(nil), b.Columns...)
+		copiedColumns := append([]tableedit.ObservedColumn(nil), retainedColumns...)
 		for i := range copiedColumns {
 			if name, ok := p.RenamedColumns[copiedColumns[i].Name]; ok {
 				copiedColumns[i].Name = name
@@ -603,7 +623,20 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 			return fail("rolledBack", "The change would alter stored values or storage classes; no changes were committed.")
 		}
 	}
-	violations, _, err := s.query(ctx, "PRAGMA main.foreign_key_check")
+	if p.DroppedTarget {
+		absent, e := s.StructureLoad(ctx, tableedit.Target{Schema: b.Target.Schema, Table: b.Target.Table, Create: true})
+		if e != nil || !absent.Target.Create {
+			return fail("rolledBack", "The table removal could not be verified; no changes were committed.")
+		}
+	}
+	foreignCheck := "PRAGMA main.foreign_key_check"
+	if nativeDrop {
+		foreignCheck = "PRAGMA main.foreign_key_check(" + quote(b.Target.Table) + ")"
+		if p.DroppedTarget {
+			foreignCheck = "SELECT 1 WHERE 0"
+		}
+	}
+	violations, _, err := s.query(ctx, foreignCheck)
 	if err != nil || len(violations) > 0 {
 		return fail("rolledBack", "Foreign-key validation failed; no changes were committed.")
 	}

@@ -12,6 +12,9 @@ struct TableStructureBaselineDetails: View {
                                 .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                             Text("Default: " + (column.defaultExpression ?? "not reported / no explicit default"))
                                 .font(.caption).textSelection(.enabled)
+                            if let unsigned = column.unsigned { Text(unsigned ? "Unsigned" : "Signed").font(.caption) }
+                            if let charset = column.charset { Text("Character set: " + charset).font(.caption).textSelection(.enabled) }
+                            if let collation = column.collation { Text("Collation: " + (collation.schema.isEmpty ? "" : collation.schema + ".") + collation.name).font(.caption).textSelection(.enabled) }
                             if column.canModify != true { Text("Read-only column attributes").font(.caption).appSecondaryText() }
                         }
                     }
@@ -61,6 +64,8 @@ struct TableStructureExecutionReportView: View {
             if let result = review.plan.resultTarget {
                 Text("Intended resulting target: " + result.schema + " · " + result.table).font(.caption).textSelection(.enabled)
             }
+            TableStructureConsequencesView(plan: review.plan)
+            if !review.plan.validationChecks.isEmpty { TableStructureValidationView(checks: review.plan.validationChecks, outcome: review.validation) }
             DisclosureGroup("Intended changes retained from this review") { TableStructureDraftSummary(draft: review.draft) }
             ForEach(review.plan.sql.indices, id: \.self) { i in
                 step(i)
@@ -71,6 +76,8 @@ struct TableStructureExecutionReportView: View {
             if let error = review.outcome.refreshError { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
             if let observed = review.outcome.observed {
                 DisclosureGroup("Observed structure after this execution") { TableStructureBaselineDetails(baseline: observed) }
+            } else if review.outcome.droppedTarget {
+                Text("Table deletion was acknowledged. Review the per-step evidence and any warnings; no resulting table structure was loaded.").font(.caption).appSecondaryText()
             } else {
                 Text("No observed structure is available for this execution. Reconcile explicitly before another edit.").font(.caption).appSecondaryText()
             }
@@ -98,6 +105,7 @@ struct TableStructureDraftSummary: View {
     let draft: StructureDraft
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if draft.dropTable { Text("Drop table and all stored data").foregroundStyle(.orange).textSelection(.enabled) }
             if let name = draft.renameTable { Text("Rename table to: " + name).textSelection(.enabled) }
             ForEach(Array(draft.columns.enumerated()), id: \.offset) { _, column in
                 VStack(alignment: .leading, spacing: 2) {
@@ -110,13 +118,19 @@ struct TableStructureDraftSummary: View {
             }
             ForEach(Array((draft.changes ?? []).enumerated()), id: \.offset) { _, change in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Change column: " + change.name).font(.subheadline)
+                    Text((change.drop ? "Drop column: " : "Change column: ") + change.name).font(.subheadline)
+                    if let expression = change.usingExpression { Text("USING: " + expression) }
+                    if let unsigned = change.unsigned { Text(unsigned ? "Convert to unsigned" : "Convert to signed") }
+                    if let charset = change.charset { Text("Character set: " + charset) }
+                    if let collation = change.collation { Text("Collation: " + (collation.schema.isEmpty ? "" : collation.schema + ".") + collation.name) }
+                    if !change.drop {
                     if let name = change.renameTo { Text("Rename to: " + name) }
                     if let generated = change.generated { Text(StructureReviewPresentation.generation(generated)) }
                     if let identity = change.identity { Text(StructureReviewPresentation.identity(identity)) }
                     Text(change.type.map(StructureReviewPresentation.type) ?? "Keep existing type")
                     Text(change.nullable.map { $0 ? "Allow NULL" : "Require NOT NULL" } ?? "Keep existing nullability")
                     Text(StructureReviewPresentation.defaultValue(change.default))
+                    }
                 }.textSelection(.enabled)
             }
             ForEach(Array((draft.indexes ?? []).enumerated()), id: \.offset) { _, index in
@@ -221,6 +235,58 @@ struct TableStructureIndexDefinitionSummary: View {
     private func optionSummary(_ values: [StructureIndexOption]?, title: String) -> some View {
         ForEach(Array((values ?? []).enumerated()), id: \.offset) { _, option in
             Text(title + ": " + option.name + " = " + option.value)
+        }
+    }
+}
+
+struct TableStructureConsequencesView: View {
+    let plan: StructurePlan
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if plan.droppedTarget {
+                Text("This plan permanently deletes the table and its stored data.").font(.headline).foregroundStyle(.orange)
+            }
+            if !plan.consequences.isEmpty {
+                Text("Affected objects and conversion consequences").font(.subheadline)
+                ForEach(Array(plan.consequences.enumerated()), id: \.offset) { _, consequence in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(consequence.object + " · " + consequence.kind).font(.caption).bold()
+                        Text(consequence.message).font(.caption)
+                    }.textSelection(.enabled)
+                }
+            }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct TableStructureValidationView: View {
+    let checks: [StructureValidationCheck]
+    let outcome: StructureValidationOutcome?
+    var body: some View {
+        GroupBox("Separate data validation") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(outcome.map { "Validation observation: " + $0.state } ?? "Not run. Preview reads structure metadata and does not run these data checks.")
+                    .font(.subheadline).textSelection(.enabled)
+                Text("These reads may scan all rows and evaluate the disclosed builtin expressions. Results describe the observed data; later writes and server behavior can change the result. Validation does not authorize or execute Apply.")
+                    .font(.caption).appSecondaryText()
+                ForEach(Array(checks.enumerated()), id: \.offset) { _, check in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(check.summary).font(.subheadline).textSelection(.enabled)
+                        if let sql = check.sql {
+                            DisclosureGroup("Validation SQL") {
+                                Text(sql).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                            }
+                        }
+                        if let reason = check.unavailableReason { Text("Unavailable: " + reason).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
+                        ForEach(Array(check.risks.enumerated()), id: \.offset) { _, risk in Text(risk).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
+                        if let result = outcome?.checks.first(where: { $0.id.utf8.elementsEqual(check.id.utf8) }) {
+                            Text("Result: " + result.state + (result.invalidRows.map { " · rows failing this check: " + $0 } ?? ""))
+                                .font(.caption).textSelection(.enabled)
+                            if let message = result.message { Text(message).font(.caption).textSelection(.enabled) }
+                        }
+                    }
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

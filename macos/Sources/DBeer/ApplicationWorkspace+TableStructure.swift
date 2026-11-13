@@ -68,7 +68,24 @@ extension ApplicationWorkspace {
                 return try await self.authorizeOperations([.init(type: "structure.apply", structure: apply)],
                     sessionID: session, profile: profile, client: client,
                     generatedPreview: plan.sql.joined(separator: "\n") + "\n\n" + plan.risks.joined(separator: "\n"))
-            }, bindingIsCurrent: current, authoringSupported: { [weak service] in service?.capabilities.contains("tableStructureAuthoringV2") == true }, indexAuthoringSupported: { [weak service] in service?.capabilities.contains("tableStructureIndexAuthoringV1") == true }, operationsAllowed: { [weak self] in self?.canStartTableStructure(profile.id) == true }, sessionIsKnownClosed: {
+            }, bindingIsCurrent: current, authoringSupported: { [weak service] in service?.capabilities.contains("tableStructureAuthoringV2") == true }, indexAuthoringSupported: { [weak service] in service?.capabilities.contains("tableStructureIndexAuthoringV1") == true }, destructiveSupported: { [weak service] in service?.capabilities.contains("tableStructureDestructiveV1") == true }, confirmPlan: { [weak self] plan, _ in
+                guard let self, current() else { return false }
+                let consequences = plan.consequences.map { $0.object + ": " + $0.message }
+                let review = ["Apply this exact reviewed structure plan?", "Plan: " + plan.id, "Digest: " + plan.digest,
+                    "Target: " + plan.target.schema + "." + plan.target.table,
+                    plan.sql.joined(separator: "\n\n"), (plan.risks + consequences).joined(separator: "\n"),
+                    "Data validation is a separate observation and cannot guarantee later writes or conversions will succeed."].joined(separator: "\n\n")
+                return await self.executionDecision(.standalone(profile: profile, preview: review))
+            }, authorizeValidation: { [weak self] validation, plan, session in
+                guard let self, current(), let client = lease.client else { throw ExecutionPolicyError(message: "The connection changed.") }
+                let checks = plan.validationChecks.map { check in
+                    check.summary + "\n" + (check.sql ?? check.unavailableReason ?? "No executable validation check") + "\n" + check.risks.joined(separator: "\n")
+                }.joined(separator: "\n\n")
+                return try await self.authorizeOperations([.init(type: "structure.validate", structure: validation)],
+                    sessionID: session, profile: profile, client: client,
+                    generatedPreview: "Validate data for plan " + plan.id + "\nDigest: " + plan.digest + "\n\n" + checks +
+                        "\n\nThese reads can scan the table and evaluate the disclosed builtin conversion expressions. They do not execute DDL or authorize Apply; unavailable checks are not evaluated.", forceConfirmation: true)
+            }, operationsAllowed: { [weak self] in self?.canStartTableStructure(profile.id) == true }, sessionIsKnownClosed: {
                 guard let client = lease.client else { return false }
                 return await client.hasExited()
             }, changed: { [weak self] review in

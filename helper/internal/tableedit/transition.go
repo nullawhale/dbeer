@@ -97,8 +97,15 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 					continue
 				}
 				if change != nil {
-					if change.Type != nil {
+					if change.Type != nil || change.Unsigned != nil {
 						col.Type = sc.Fact[sc.TypeUse]{}
+					}
+					if change.Charset != nil || change.Type != nil && before.Engine == "mysql" && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
+						col.Charset = sc.Fact[string]{}
+					}
+					if change.Collation != nil || change.Type != nil && (before.Engine == "postgresql" || before.Engine == "mysql" && change.Type.Kind != "text" && change.Type.Kind != "varchar") {
+						col.Collation = sc.Fact[sc.Ref]{}
+						col.CollationProperties = nil
 					}
 					if change.Nullable != nil {
 						col.Nullable = sc.Fact[bool]{}
@@ -129,9 +136,12 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		} else if change != nil {
 			for _, attrs := range []map[string]map[string]any{attrsA, attrsB} {
 				if change.Type != nil {
-					for _, k := range []string{"atttypid", "attlen", "atttypmod", "attbyval", "attalign"} {
+					for _, k := range []string{"atttypid", "attlen", "atttypmod", "attbyval", "attalign", "attstorage", "attcompression"} {
 						delete(attrs[name], k)
 					}
+				}
+				if change.Collation != nil || change.Type != nil {
+					delete(attrs[name], "attcollation")
 				}
 				if change.Nullable != nil {
 					delete(attrs[name], "attnotnull")
@@ -211,6 +221,33 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		}
 		stripOwnedSequences(a, b, sc.Ref{Kind: "column", Schema: after.Target.Schema, Table: after.Target.Table, Name: op.Column.Name})
 		stripColumn(op.Column.Name, true, nil)
+	case "dropColumn":
+		if op.Change == nil || !op.Change.Drop {
+			return false
+		}
+		name := op.Change.Name
+		if _, ok := FindColumn(after, name); ok || len(after.Columns) != len(before.Columns)-1 {
+			return false
+		}
+		old, ok := FindColumn(before, name)
+		if !ok {
+			return false
+		}
+		stripOwnedSequences(a, b, old.Ref)
+		if before.Engine == "postgresql" {
+			number := attrsA[name]["attnum"]
+			for key, attrs := range attrsB {
+				if attrs["attisdropped"] == true && attrs["attnum"] == number {
+					delete(attrsB, key)
+				}
+			}
+		}
+		stripColumn(name, true, nil)
+		for _, f := range []*Facts{a, b} {
+			for i := range f.Table.Columns.Items {
+				f.Table.Columns.Items[i].Ordinal = sc.Known(i)
+			}
+		}
 	case "changeColumn":
 		change := op.Change
 		actual, ok := FindColumn(after, change.Name)
@@ -227,13 +264,54 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 			}
 			stripOwnedSequences(a, b, owner)
 		}
-		if change.Type != nil {
-			typ, ok := ColumnType(actual)
+		if change.Type != nil || change.Unsigned != nil {
 			old, exists := FindColumn(before, change.Name)
-			if !ok || typ != *change.Type || !exists || old.Type.Value == nil || actual.Type.Value == nil || actual.Type.State != old.Type.State || !reflect.DeepEqual(*actual.Type.Value, ExpectedWidenType(before.Engine, *old.Type.Value, *change.Type)) {
+			if !exists || old.Type.Value == nil || actual.Type.Value == nil || actual.Type.State != old.Type.State || !reflect.DeepEqual(*actual.Type.Value, ExpectedChangedType(before.Engine, *old.Type.Value, *change)) {
+				return false
+			}
+			if (change.Type != nil || change.Collation != nil) && before.Engine == "postgresql" && len(after.Attributes[change.Name]) > 0 {
+				want, _ := ColumnType(actual)
+				if after.Attributes[change.Name]["attstorage"] != before.Facts.TypeStorage[want.Kind] || after.Attributes[change.Name]["attcompression"] != "" {
+					return false
+				}
+			}
+			if change.Type != nil {
+				typ, ok := ColumnType(actual)
+				if !ok || !SameDataType(typ, *change.Type) {
+					return false
+				}
+			}
+		}
+		if before.Engine == "mysql" && change.Type != nil && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
+			if actual.Charset.Value != nil || actual.Charset.State != "known" || actual.Collation.Value != nil || actual.Collation.State != "known" || actual.CollationProperties != nil {
 				return false
 			}
 		}
+		if change.Charset != nil && (actual.Charset.Value == nil || *actual.Charset.Value != *change.Charset) {
+			return false
+		}
+		if change.Collation != nil && (actual.Collation.Value == nil || actual.Collation.Value.Schema != change.Collation.Schema || actual.Collation.Value.Name != change.Collation.Name) {
+			return false
+		}
+		if change.Type != nil && before.Engine == "postgresql" && change.Collation == nil {
+			textual := change.Type.Kind == "varchar" || change.Type.Kind == "text"
+			old, _ := FindColumn(before, change.Name)
+			if textual {
+				expected := sc.Ref{Kind: "collation", Schema: "pg_catalog", Name: "default"}
+				if old.Collation.Value != nil {
+					expected = *old.Collation.Value
+				}
+				if actual.Collation.Value == nil || *actual.Collation.Value != expected {
+					return false
+				}
+				if old.Collation.Value != nil && !reflect.DeepEqual(old.CollationProperties, actual.CollationProperties) {
+					return false
+				}
+			} else if actual.Collation.Value != nil || actual.CollationProperties != nil {
+				return false
+			}
+		}
+
 		if change.Nullable != nil && (actual.Nullable.Value == nil || *actual.Nullable.Value != *change.Nullable) {
 			return false
 		}

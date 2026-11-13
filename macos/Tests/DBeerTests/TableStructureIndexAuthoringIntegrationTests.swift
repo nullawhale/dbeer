@@ -95,11 +95,11 @@ struct TableStructureIndexAuthoringIntegrationTests {
             let evidence = try SavedEvidenceArtifact.capture(model, title: "Advanced index outcome")
             let saved = try #require(await workspace.savedEvidence.save(evidence))
             let offline = try await plans.loadEvidence(saved.id)
-            #expect(helperStarts == startsBeforeEvidence && offline.version == 2 && offline.structure?.draft == addReview.draft)
+            #expect(helperStarts == startsBeforeEvidence && offline.version == SavedEvidenceArtifact.currentVersion && offline.structure?.draft == addReview.draft)
             #expect(offline.structure?.observed?.indexes?.first { StructureTarget.sameIdentifier($0.name, indexName) }?.definition == observed)
             #expect(offline.structure?.displayReview.plan.baselineId == "offline-evidence")
             let text = try offline.encoded()
-            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 2", with: "\"version\" : 1")) }
+            #expect(throws: (any Error).self) { try SavedEvidenceArtifact.decode(text.replacingOccurrences(of: "\"version\" : 3", with: "\"version\" : 1")) }
             await model.load()
             try #require(model.error == nil && model.historyReviews.last?.outcome.executionId == addReview.outcome.executionId)
             let current = try #require(model.baseline?.indexes?.first { StructureTarget.sameIdentifier($0.name, indexName) })

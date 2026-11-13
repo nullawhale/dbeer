@@ -674,7 +674,7 @@ The editor's **Draft** menu saves local typed changes in a versioned
 `.dbeerstructure` file through **Save Draft** or **Save Draft As…**. Incomplete
 fields, including expressions and qualified type references, can be saved for
 later editing. Files contain engine, exact target names and typed intent with a
-1 MiB limit. The current writer uses version 3 and still reads versions 1 and 2. Save
+1 MiB limit. The current writer uses version 4 and reads versions 1, 2 and 3. Save
 checks the previous file version and preserves concurrent external changes.
 
 Use **Open Draft…** in **Create Table…** for a matching schema or in
@@ -759,8 +759,56 @@ TRIGGER metadata visibility without active roles or partial revokes; narrower
 accounts retain eligible additive and narrow column operations. A proven
 unrelated direct column reference can permit a rename while an uncertain or
 dependent expression still requires an explicit reviewed migration. Catalogs
-cannot prove the absence of dynamic SQL dependencies. Lossy conversions, backfills, reordering and column/table deletion remain outside
-this authoring stage.
+cannot prove the absence of dynamic SQL dependencies. Backfills and physical
+reordering require a separate reviewed reconstruction plan.
+
+Destructive drafts can explicitly remove a table or column and convert ordinary
+built-in columns. Review each named dependency and data-loss consequence before
+confirming the exact current plan. Dependent keys and indexes must be removed
+explicitly; external foreign keys, views, triggers and unproven expression
+dependencies block affected operations. No CASCADE removal or disabled checks
+are generated. PostgreSQL supports narrowing, a separately authored USING
+expression and exact qualified collations. USING is not evaluated by Preview;
+it can run user code and change every value during Apply. Drop an existing
+DEFAULT in a separate plan before conversion. Custom storage/compression policy
+and custom-type conversions require an explicit reviewed migration. PostgreSQL
+database encoding cannot be changed with ALTER COLUMN.
+
+MySQL supports narrowing, signed/unsigned integer or decimal conversions and
+exact column character-set/collation changes. A charset change requires the
+matching target collation; DBeer does not choose an implicit default or change
+SQL mode. Review truncation, rounding, range, character replacement and changed
+comparison semantics. Strict mode can reject a conversion; permissive mode may
+coerce stored values. PostgreSQL USING is unavailable for MySQL.
+
+SQLite supports native DROP TABLE and DROP COLUMN on ordinary tables, with
+DROP COLUMN requiring SQLite 3.35+. Incoming foreign keys and retained schema
+references block deletion. Existing indexes must be explicitly removed before
+dropping their columns, and primary/unique/reference clauses require a separate
+reconstruction. The remaining exact native values are verified during Apply.
+Direct type, USING, signedness and per-column encoding conversions are not
+provided by SQLite ALTER TABLE and require a separate reconstruction plan.
+
+**Validate Data** is a separate, explicitly confirmed read operation against
+the exact preview ID and digest. Its displayed SQL, costs and limitations are
+reviewed before scanning stored values. Checks use a read-only snapshot, are
+cancellable and retain only exact counts, without row samples. Checks may read
+the whole table and incur server CPU, I/O or lock waits. Arbitrary USING, custom
+conversion routines and unsupported conversion semantics remain visibly
+unavailable; they are never evaluated to guess safety. A passing historical
+check does not prove future values, authorize Apply or guarantee DDL success.
+Changing the draft requires a new Preview and fresh validation evidence.
+Destructive authoring and validation require the helper capability advertised
+for that engine; an older helper does not receive a silently downgraded intent.
+The explicit Apply confirmation shows the plan ID, digest, SQL and consequences;
+cancelling it sends no DDL. Saved structure evidence uses writer version 3, reads
+versions 1 and 2, and retains historical consequences and validation reports
+offline without a runtime session or execution grant.
+
+An acknowledged DROP TABLE retains its review and execution history without
+trying to reload the removed table. An unknown acknowledgement remains unknown;
+explicit reconciliation can observe whether the original target is present or
+absent, but never promotes observation into proof of execution or replays DROP.
 
 Apply uses a dedicated session and bounded lock waits. PostgreSQL/MySQL statements
 are independent execution units, and MySQL DDL can implicitly commit. SQLite

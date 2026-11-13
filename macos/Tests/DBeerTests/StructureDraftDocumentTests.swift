@@ -27,9 +27,9 @@ struct StructureDraftDocumentTests {
         #expect(try JSONDecoder().decode(StructureDraftDocument.self, from: Data(StructureDraftStore.text(incomplete).utf8)) == incomplete)
         let text = try StructureDraftStore.text(document())
         #expect(throws: (any Error).self) {
-            _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 3", with: "\"formatVersion\" : 4").utf8))
+            _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(text.replacingOccurrences(of: "\"formatVersion\" : 4", with: "\"formatVersion\" : 99").utf8))
         }
-        let extra = text.replacingOccurrences(of: "\"formatVersion\" : 3", with: "\"credentials\" : \"forbidden\", \"formatVersion\" : 3")
+        let extra = text.replacingOccurrences(of: "\"formatVersion\" : 4", with: "\"credentials\" : \"forbidden\", \"formatVersion\" : 4")
         #expect(throws: (any Error).self) { _ = try JSONDecoder().decode(StructureDraftDocument.self, from: Data(extra.utf8)) }
     }
 

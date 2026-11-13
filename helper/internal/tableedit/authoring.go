@@ -133,7 +133,7 @@ func (d Draft) HasAuthoredExpressions() bool {
 		}
 	}
 	for _, c := range d.Changes {
-		if c.Default != nil && c.Default.Kind == "expression" || c.Generated != nil && c.Generated.Storage != "none" {
+		if c.UsingExpression != nil || c.Default != nil && c.Default.Kind == "expression" || c.Generated != nil && c.Generated.Storage != "none" {
 			return true
 		}
 	}

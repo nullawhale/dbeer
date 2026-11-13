@@ -19,6 +19,18 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 	if err := d.Validate(); err != nil {
 		return nil, nil, err
 	}
+	if d.NeedsAuthoringV4() && engine != "postgresql" && engine != "mysql" {
+		return nil, nil, errors.New("Destructive authoring is supported for PostgreSQL and MySQL ordinary tables; SQLite DROP and type/encoding conversion require the separately reviewed reconstruction workflow.")
+	}
+	if d.DropTable {
+		if b.Target.Create {
+			return nil, nil, ErrInvalid
+		}
+		if err := CheckDropTable(b); err != nil {
+			return nil, nil, err
+		}
+		return []Operation{{Kind: "dropTable"}}, nil, nil
+	}
 	if b.Target.Create && len(d.Columns) == 0 || b.Target.Create && len(d.Changes) > 0 || b.Target.Create && d.RenameTable != nil {
 		return nil, nil, ErrInvalid
 	}
@@ -47,9 +59,15 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 	for _, old := range b.Columns {
 		name := old.Name
 		for _, c := range d.Changes {
+			if c.Name == old.Name && c.Drop {
+				name = ""
+			}
 			if c.Name == old.Name && c.RenameTo != nil {
 				name = *c.RenameTo
 			}
+		}
+		if name == "" {
+			continue
 		}
 		key := name
 		if engine == "mysql" {
@@ -112,6 +130,12 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 
 	for i := range d.Changes {
 		c := &d.Changes[i]
+		if c.Drop {
+			if err := CheckDropColumn(b, d, c.Name); err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
 		if c.RenameTo != nil {
 			for _, old := range b.Columns {
 				if old.Name != c.Name && (old.Name == *c.RenameTo || engine == "mysql" && strings.EqualFold(old.Name, *c.RenameTo)) {
@@ -122,8 +146,16 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 				return nil, nil, err
 			}
 		}
-		if c.Nullable == nil && c.Default == nil && c.Type == nil && c.Generated == nil && c.Identity == nil {
+		if c.Nullable == nil && c.Default == nil && c.Type == nil && c.Generated == nil && c.Identity == nil && c.Unsigned == nil && c.Charset == nil && c.Collation == nil {
 			continue
+		}
+		if c.Type != nil && !CanWidenColumn(b, *c) && d.AuthoringVersion != 4 {
+			return nil, nil, errors.New("Narrowing or conversion requires destructive authoring version 4.")
+		}
+		if d.AuthoringVersion == 4 && c.Conversion() {
+			if err := CheckConversion(b, *c); err != nil {
+				return nil, nil, err
+			}
 		}
 		if err := CheckChange(b, *c); err != nil {
 			return nil, nil, err
@@ -195,8 +227,12 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 	}
 	for i := range d.Changes {
 		c := d.Changes[i]
+		if c.Drop {
+			ops = append(ops, Operation{Kind: "dropColumn", Change: &c})
+			continue
+		}
 		c.RenameTo = nil
-		if c.Nullable != nil || c.Default != nil || c.Type != nil || c.Generated != nil || c.Identity != nil {
+		if c.Nullable != nil || c.Default != nil || c.Type != nil || c.Generated != nil || c.Identity != nil || c.Unsigned != nil || c.Charset != nil || c.Collation != nil {
 			ops = append(ops, Operation{Kind: "changeColumn", Change: &c})
 		}
 	}
@@ -223,6 +259,11 @@ func PlanOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 
 	existsColumn := func(names []string) bool {
 		for _, name := range names {
+			for _, c := range d.Changes {
+				if c.Name == name && c.Drop {
+					return false
+				}
+			}
 			if _, ok := FindColumn(source, name); !ok {
 				return false
 			}

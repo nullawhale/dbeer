@@ -11,13 +11,18 @@ import (
 )
 
 type ColumnChange struct {
-	Name      string      `json:"name"`
-	RenameTo  *string     `json:"renameTo,omitempty"`
-	Generated *Generation `json:"generated,omitempty"`
-	Identity  *Identity   `json:"identity,omitempty"`
-	Nullable  *bool       `json:"nullable,omitempty"`
-	Default   *Default    `json:"default,omitempty"`
-	Type      *DataType   `json:"type,omitempty"`
+	Drop            bool           `json:"drop,omitempty"`
+	UsingExpression *string        `json:"usingExpression,omitempty"`
+	Unsigned        *bool          `json:"unsigned,omitempty"`
+	Charset         *string        `json:"charset,omitempty"`
+	Collation       *TypeReference `json:"collation,omitempty"`
+	Name            string         `json:"name"`
+	RenameTo        *string        `json:"renameTo,omitempty"`
+	Generated       *Generation    `json:"generated,omitempty"`
+	Identity        *Identity      `json:"identity,omitempty"`
+	Nullable        *bool          `json:"nullable,omitempty"`
+	Default         *Default       `json:"default,omitempty"`
+	Type            *DataType      `json:"type,omitempty"`
 }
 type Index struct {
 	Definition *IndexDefinition `json:"definition,omitempty"`
@@ -80,13 +85,16 @@ type Facts struct {
 	Proof                      bool
 }
 type Prepared struct {
-	IndexGuards  []IndexGuard
-	Conditions   []Condition
-	SQL          []string
-	Risks        []string
-	References   []Baseline
-	ResultTarget *Target
-	Types        []TypeGuard
+	DroppedTarget    bool
+	Consequences     []Consequence
+	ValidationChecks []ValidationCheck
+	IndexGuards      []IndexGuard
+	Conditions       []Condition
+	SQL              []string
+	Risks            []string
+	References       []Baseline
+	ResultTarget     *Target
+	Types            []TypeGuard
 }
 type AdvancedAdapter interface {
 	StructurePrepare(context.Context, Baseline, Draft) (Prepared, error)
@@ -108,6 +116,9 @@ func columnsValid(names []string) bool {
 }
 func Action(a string) bool { return a == "add" || a == "drop" || a == "replace" }
 func (d Draft) Destructive() bool {
+	if d.NeedsAuthoringV4() {
+		return true
+	}
 	for _, x := range d.Indexes {
 		if x.Action != "add" {
 			return true
@@ -121,10 +132,13 @@ func (d Draft) Destructive() bool {
 	return false
 }
 func (d Draft) Validate() error {
-	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 && d.AuthoringVersion != 3 || d.NeedsAuthoringV2() && d.AuthoringVersion < 2 || d.NeedsAuthoringV3() && d.AuthoringVersion != 3 {
+	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 && d.AuthoringVersion != 3 && d.AuthoringVersion != 4 || d.NeedsAuthoringV2() && d.AuthoringVersion < 2 || d.NeedsAuthoringV3() && d.AuthoringVersion < 3 || d.NeedsAuthoringV4() && d.AuthoringVersion != 4 {
 		return ErrInvalid
 	}
-	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 && d.RenameTable == nil || d.RenameTable != nil && !Identifier(*d.RenameTable) {
+	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 && d.RenameTable == nil && !d.DropTable || d.RenameTable != nil && !Identifier(*d.RenameTable) {
+		return ErrInvalid
+	}
+	if d.DropTable && (len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) != 0 || d.RenameTable != nil) {
 		return ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -135,7 +149,7 @@ func (d Draft) Validate() error {
 		seen[c.Name] = true
 	}
 	for _, c := range d.Changes {
-		if !Identifier(c.Name) || seen[c.Name] || c.Nullable == nil && c.Default == nil && c.Type == nil && c.RenameTo == nil && c.Generated == nil && c.Identity == nil || c.Default != nil && !c.Default.Valid() || c.Type != nil && !c.Type.Valid() || !changeAuthoredValid(c) {
+		if !Identifier(c.Name) || seen[c.Name] || c.Nullable == nil && c.Default == nil && c.Type == nil && c.RenameTo == nil && c.Generated == nil && c.Identity == nil && !c.Drop && c.Unsigned == nil && c.Charset == nil && c.Collation == nil || !changeDestructiveValid(c) || c.Default != nil && !c.Default.Valid() || c.Type != nil && !c.Type.Valid() || !changeAuthoredValid(c) {
 			return ErrInvalid
 		}
 		seen[c.Name] = true
@@ -171,7 +185,7 @@ func (d Draft) Validate() error {
 		}
 	}
 	if d.Destructive() && !d.AllowDestructive {
-		return errors.New("Select explicit removal permission before previewing index or key removal/replacement.")
+		return errors.New("Select explicit destructive permission before previewing removal or a value-changing conversion.")
 	}
 	return nil
 }
@@ -270,6 +284,17 @@ func Summarize(b *Baseline) {
 			if t, valid := ColumnType(c); valid {
 				b.Columns[i].EditableType = &t
 			}
+			if c.Type.Value != nil && c.Type.Value.Modifiers.Value != nil && b.Engine == "mysql" {
+				unsigned := c.Type.Value.Modifiers.Value.Unsigned
+				b.Columns[i].Unsigned = &unsigned
+			}
+			if c.Charset.Value != nil {
+				v := *c.Charset.Value
+				b.Columns[i].Charset = &v
+			}
+			if c.Collation.Value != nil {
+				b.Columns[i].Collation = &TypeReference{Schema: c.Collation.Value.Schema, Name: c.Collation.Value.Name}
+			}
 			b.Columns[i].CanModify = c.Generated.Value != nil && c.Generated.Value.Kind == "none" && c.Identity.Value != nil && c.Identity.Value.Kind == "none" && !unavailableColumnExpression(c)
 		}
 	}
@@ -349,6 +374,12 @@ func NormalizeAction(p *string) string {
 	}
 }
 func CheckChange(b Baseline, c ColumnChange) error {
+	if c.Drop {
+		return ErrInvalid
+	}
+	if c.UsingExpression != nil || c.Unsigned != nil || c.Charset != nil || c.Collation != nil || c.Type != nil && b.Engine != "sqlite" && !CanWidenColumn(b, c) {
+		return CheckConversion(b, c)
+	}
 	if c.Type != nil && c.Type.Reference != nil {
 		return ErrUnsupported
 	}
@@ -541,8 +572,14 @@ func PlanningSource(b Baseline, d Draft, engine string) Baseline {
 			if col.Ref.Name != change.Name {
 				continue
 			}
-			if change.Type != nil && col.Type.Value != nil {
-				col.Type = sc.Known(ExpectedWidenType(engine, *col.Type.Value, *change.Type))
+			if (change.Type != nil || change.Unsigned != nil) && col.Type.Value != nil {
+				col.Type = sc.Known(ExpectedChangedType(engine, *col.Type.Value, change))
+			}
+			if change.Charset != nil {
+				col.Charset = sc.Known(*change.Charset)
+			}
+			if change.Collation != nil {
+				col.Collation = sc.Known(sc.Ref{Kind: "collation", Schema: change.Collation.Schema, Name: change.Collation.Name})
 			}
 			if change.Nullable != nil {
 				col.Nullable = sc.Known(*change.Nullable)
