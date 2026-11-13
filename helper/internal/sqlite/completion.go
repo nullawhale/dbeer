@@ -63,18 +63,26 @@ func (s *Session) completion(ctx context.Context, c protocol.Command, sink adapt
 		}
 		names := []string{}
 		types := map[string]string{}
+		entries := []protocol.CatalogColumnTypeEntry{}
 		for _, column := range columns {
 			if column.Hidden == 1 {
 				continue
 			}
 			names = append(names, column.Name)
-			types[column.Name] = column.NativeType
+			native := column.NativeType
+			if native == "" {
+				native = "dynamic"
+			}
+			types[column.Name] = native
+			comparison := sqliteColumnComparison(column.NativeType)
+			entries = append(entries, protocol.CatalogColumnTypeEntry{Name: column.Name, NativeType: native, Comparison: &comparison})
 		}
 		namesJSON, _ := json.Marshal(names)
 		typesJSON, _ := json.Marshal(types)
-		rows[i] = []protocol.SQLiteValue{row[0], row[1], row[2], stringValue(string(namesJSON)), stringValue("[]"), stringValue("[]"), stringValue(string(typesJSON)), row[3]}
+		entriesJSON, _ := json.Marshal(entries)
+		rows[i] = []protocol.SQLiteValue{row[0], row[1], row[2], stringValue(string(namesJSON)), stringValue("[]"), stringValue("[]"), stringValue(string(typesJSON)), row[3], stringValue(string(entriesJSON))}
 	}
-	response := s.catalogRows(ctx, c, []string{"name", "kind", "schema", "columns", "foreignKeys", "signatures", "columnTypes", "schemaOrder"}, rows, sink)
+	response := s.catalogRows(ctx, c, []string{"name", "kind", "schema", "columns", "foreignKeys", "signatures", "columnTypes", "schemaOrder", "columnTypeEntries"}, rows, sink)
 	if response.Type == "query.result" && limited {
 		response.DisplayNotice = "SQLite completion metadata is limited to 10,000 objects."
 	}

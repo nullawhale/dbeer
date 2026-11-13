@@ -234,6 +234,13 @@ struct ResultSnapshotDocumentTests {
         var object = try workspaceObject(SQLWorkspaceSnapshot(documents: [sql, table], selectedDocumentID: table.id))
         object["version"] = 6
         object["paneLayout"] = nil
+        // Version 6 tables used a required flat filters array.
+        var documents = try #require(object["documents"] as? [[String: Any]])
+        var legacyTable = try #require(documents[1]["table"] as? [String: Any])
+        legacyTable["filterExpression"] = nil
+        legacyTable["filters"] = []
+        documents[1]["table"] = legacyTable
+        object["documents"] = documents
         let original = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         let url = directory.appendingPathComponent("workspace.json")
         try original.write(to: url)

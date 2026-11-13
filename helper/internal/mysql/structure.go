@@ -38,6 +38,9 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	if !t.Valid() || s.TransactionStatus() != "idle" {
 		return b, tableedit.ErrUnsupported
 	}
+	if err := s.requireNativeMetadataEncoding(); err != nil {
+		return b, err
+	}
 	meta, e := s.work.client.Execute(`SELECT VERSION(), @@version_comment, @@sql_mode, @@lower_case_table_names, @@character_set_connection, @@collation_connection, DATABASE(), CURRENT_USER(), @@server_uuid`)
 	if e != nil {
 		return b, e
@@ -68,7 +71,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	if context[4] != "utf8mb4" {
 		return b, tableedit.ErrUnsupported
 	}
-	schema, e := s.work.client.Execute(`SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=?`, t.Schema)
+	schema, e := s.work.client.Execute(`SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE BINARY SCHEMA_NAME=BINARY ?`, t.Schema)
 	if e != nil {
 		return b, e
 	}
@@ -80,8 +83,37 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 		v, _ := ownedStructureString(schema, 0, i)
 		context = append(context, v)
 	}
+	if context[9] != t.Schema {
+		return b, tableedit.ErrUnsupported
+	}
+	mode, err := strconv.ParseInt(context[3], 10, 64)
+	if err != nil {
+		return b, tableedit.ErrUnsupported
+	}
+	identitySQL, err := nativeBrowseTargetSQL(mode)
+	if err != nil {
+		return b, tableedit.ErrUnsupported
+	}
+	identities, err := s.work.client.Execute(identitySQL, t.Schema, t.Table)
+	if err != nil {
+		return b, err
+	}
+	count := identities.RowNumber()
+	if count > 1 {
+		identities.Close()
+		return b, tableedit.ErrUnsupported
+	}
+	if count == 1 {
+		schema, _ := ownedStructureString(identities, 0, 0)
+		table, _ := ownedStructureString(identities, 0, 1)
+		if schema != t.Schema || table != t.Table {
+			identities.Close()
+			return b, tableedit.ErrUnsupported
+		}
+	}
+	identities.Close()
 	b.Scope = tableedit.Fingerprint(context)
-	tables, e := s.work.client.Execute(`SELECT TABLE_TYPE, ENGINE, CREATE_OPTIONS, TABLE_COLLATION, TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=?`, t.Schema, t.Table)
+	tables, e := s.work.client.Execute(`SELECT TABLE_TYPE, ENGINE, CREATE_OPTIONS, TABLE_COLLATION, TABLE_COMMENT FROM information_schema.TABLES WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ?`, t.Schema, t.Table)
 	if e != nil {
 		return b, e
 	}
@@ -124,7 +156,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	if len(definition) > tableedit.MaxSQLBytes {
 		return b, tableedit.ErrUnsupported
 	}
-	cols, e := s.work.client.Execute(`SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION LIMIT 129`, t.Schema, t.Table)
+	cols, e := s.work.client.Execute(`SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ? ORDER BY ORDINAL_POSITION LIMIT 129`, t.Schema, t.Table)
 	if e != nil {
 		return b, e
 	}

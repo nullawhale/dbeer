@@ -41,6 +41,30 @@ struct GridDraftTests {
         #expect(grid.pendingCount == 0)
     }
 
+    @Test func canonicallyEquivalentTextEditsRemainByteDistinctAssignments() throws {
+        let grid = draft()
+        let nfc = "é", nfd = "e\u{301}"
+        grid.set(.init(kind: "text", value: nfc), row: 0, column: 1)
+        let edited = try #require(grid.rows.first?.values[1])
+        #expect(edited != ChangeValue(kind: "text", value: nfd))
+        grid.set(.init(kind: "text", value: nfd), row: 0, column: 1)
+        let value = try #require(grid.request().changes.first?.values?.first { $0.column == "value" }?.value.value)
+        #expect(Data(value.utf8) == Data(nfd.utf8) && grid.pendingCount == 1)
+        #expect(CatalogFilter(column: "value", operator: "eq", value: nfc) != CatalogFilter(column: "value", operator: "eq", value: nfd))
+    }
+
+    @Test func capturedColumnMetadataUsesExactBytesAndRejectsDuplicateNames() {
+        let names = ["é", "e\u{0301}"]
+        let columns = names.enumerated().map { ResultColumn(index: $0.offset, name: $0.element, typeOid: $0.offset == 0 ? 1700 : 700, nativeType: $0.offset == 0 ? "numeric" : "float4") }
+        let result = BackendMessage(type: "query.result", requestId: "fixture", columns: columns, rows: [["0.1", "0.1"]])
+        let metadata = [["name": names[0], "nativeType": "numeric", "editable": "true"], ["name": names[1], "nativeType": "real", "editable": "true"]]
+        let grid = GridDraft(reference: .init(schema: "public", name: "source", kind: "table"), result: result, metadata: metadata)
+        #expect(grid.metadata.map { $0["nativeType"] } == ["numeric", "real"])
+        let ambiguous = GridDraft(reference: grid.reference, result: result, metadata: metadata + [metadata[0]])
+        #expect(ambiguous.metadata[0].isEmpty && ambiguous.metadata[1]["nativeType"] == "real")
+        #expect(!ambiguous.editableColumns.contains(0))
+    }
+
     @Test func insertDefaultsNullEmptyAndGeneratedCellsStayDistinct() {
         let grid = draft()
         grid.insert()

@@ -59,14 +59,14 @@ struct TableBrowsePreset: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
-enum TableBrowsePresetFormat { static let currentVersion = 2 }
+enum TableBrowsePresetFormat { static let currentVersion = 3 }
 
 private struct StoredTableBrowsePresets: Codable, Sendable {
     var version = TableBrowsePresetFormat.currentVersion
     var presets: [TableBrowsePreset] = []
     var isValid: Bool {
-        (1...2).contains(version) && (version >= 2 || !presets.contains(where: { $0.configuration.relationshipScope != nil })) &&
-            presets.count <= 256 && Set(presets.map(\.id)).count == presets.count &&
+        (1...3).contains(version) && (version >= 2 || !presets.contains(where: { $0.configuration.relationshipScope != nil })) &&
+            (version >= 3 || !presets.contains(where: { $0.configuration.filterExpression?.hasNativeOperands == true })) && presets.count <= 256 && Set(presets.map(\.id)).count == presets.count &&
             presets.allSatisfy(\.isValid) && presets.enumerated().allSatisfy { index, preset in
                 !presets.prefix(index).contains { $0.profileID == preset.profileID && $0.table == preset.table && presetNameKey($0.name) == presetNameKey(preset.name) }
             }
@@ -172,7 +172,10 @@ private actor TableBrowsePresetFile {
     }
 
     private func decode(_ data: Data) throws -> StoredTableBrowsePresets {
-        do { return try JSONDecoder().decode(StoredTableBrowsePresets.self, from: data) }
+        do {
+            try ExactJSONKeys.validate(data, maximumBytes: Self.maximumBytes)
+            return try JSONDecoder().decode(StoredTableBrowsePresets.self, from: data)
+        }
         catch { throw TableBrowsePresetError.read }
     }
 }

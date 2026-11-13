@@ -3,6 +3,8 @@ import SwiftUI
 struct TableStructureEditorView: View {
     @ObservedObject var model: TableStructureEditorModel
     let close: () -> Void
+    var saveEvidence: (() -> Void)? = nil
+    var evidenceModel: SavedEvidenceModel? = nil
     private var confirmClose = SwiftUI.State(initialValue: false)
     private var canEdit: Bool { !model.isBusy && !model.closing && !model.invalidated && model.baseline != nil && model.outcome == nil }
     private var canEditTarget: Bool { model.create && !model.isBusy && !model.closing && !model.invalidated && model.baseline == nil && model.outcome == nil }
@@ -54,6 +56,11 @@ struct TableStructureEditorView: View {
                         }
                     }
                     if let review = model.outcomeReview {
+                        if let saveEvidence {
+                            Button("Save Outcome Evidence", action: saveEvidence).controlHover().disabled(model.closing || evidenceModel?.isBusy == true)
+                                .help("Save the retained reviewed SQL, intended changes and step outcome as immutable local evidence.")
+                        }
+                        if let evidenceModel { SavedEvidenceStatusView(model: evidenceModel) }
                         TableStructureExecutionReportView(review: review)
                     } else if let outcome = model.outcome {
                         legacyOutcome(outcome)
@@ -97,7 +104,12 @@ struct TableStructureEditorView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(model.historyReviews) { review in
                             DisclosureGroup(review.outcome.state + " · " + review.plan.target.schema + " · " + review.plan.target.table) {
-                                TableStructureExecutionReportView(review: review)
+                                if let saveEvidence {
+                            Button("Save Outcome Evidence", action: saveEvidence).controlHover().disabled(model.closing || evidenceModel?.isBusy == true)
+                                .help("Save the retained reviewed SQL, intended changes and step outcome as immutable local evidence.")
+                        }
+                        if let evidenceModel { SavedEvidenceStatusView(model: evidenceModel) }
+                        TableStructureExecutionReportView(review: review)
                             }
                         }
                         ForEach(Array(model.history.filter { outcome in !model.historyReviews.contains { $0.id == outcome.executionId } }.enumerated()), id: \.offset) { _, report in

@@ -46,6 +46,8 @@ struct OperationRequest: Codable, Equatable, Sendable {
     var structure: StructureApply?
     var parameters: [QueryParameterBinding]?
     var tableImport: TableImportRequest?
+    var nativeCommand: NativeCommand? = nil
+    var queryId: String? = nil
 }
 
 struct StatementAssessment: Codable, Equatable, Sendable {
@@ -166,7 +168,7 @@ enum ExecutionConfirmation {
                 attributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: assessed.kind == "read" ? NSColor.secondaryLabelColor : NSColor.systemRed]))
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let payload = operation.tableImport.flatMap { try? encoder.encode($0) } ?? operation.changes.flatMap { try? encoder.encode($0) }
+            let payload = operation.nativeCommand.flatMap { try? encoder.encode($0) } ?? operation.tableImport.flatMap { try? encoder.encode($0) } ?? operation.changes.flatMap { try? encoder.encode($0) }
             let sql = assessed.explain?.sql ?? operation.sql ?? (payload.flatMap { String(data: $0, encoding: .utf8) } ?? "")
             let displayed = NSMutableAttributedString(string: sql, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor])
             if operation.sql != nil {

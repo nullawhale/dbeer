@@ -83,13 +83,13 @@ final class AgentAccessCoordinator: ObservableObject {
             switch request.method {
             case "hello": response = await connect(clientID, request)
             case "connections": response = connections(clientID, request)
-            case "query", "catalog": response = await run(clientID, request, auditContext: auditContext)
+            case "query", "catalog", "command": response = await run(clientID, request, auditContext: auditContext)
             case "cancel": response = await cancel(clientID, request)
             default: response = failure(request, "Unsupported agent operation.")
             }
         }
         audit.append(.init(id: UUID(), clientID: clientID, profileID: profileID,
-            method: ["hello", "connections", "query", "catalog", "cancel"].contains(request.method) ? request.method : "invalid",
+            method: ["hello", "connections", "query", "catalog", "command", "cancel"].contains(request.method) ? request.method : "invalid",
             time: Date(), permission: auditContext.permission ?? permission, outcome: auditContext.outcome ?? (response.ok ? "success" : "rejected"),
             responseBytes: (try? JSONEncoder().encode(response).count) ?? 0))
         if audit.count > 200 { audit.removeFirst(audit.count - 200) }
@@ -192,6 +192,10 @@ final class AgentAccessCoordinator: ObservableObject {
                   sql.utf8.count <= 128 * 1_024, !sql.contains("\0") else {
                 return failure(request, "A query must contain at most 128 KiB of SQL, CQL or MongoDB JSON.")
             }
+        } else if request.method == "command" {
+            guard request.nativeCommand?.valid == true, request.sql == nil, request.kind == nil, request.schema == nil, request.object == nil else {
+                return failure(request, "A native command requires an ASCII name and bounded exact text or binary arguments.")
+            }
         } else {
             guard let requestedKind = request.kind,
                   [request.schema, request.object].allSatisfy({ $0 == nil || ($0!.utf8.count <= 1_024 && !$0!.contains("\0")) }),
@@ -233,6 +237,27 @@ final class AgentAccessCoordinator: ObservableObject {
             var command: BackendCommand
             if let catalog {
                 command = .catalog(sessionId: sessionID, queryId: queryID, request: catalog)
+            } else if let native = request.nativeCommand, request.method == "command" {
+                guard await backend.supportsNativeCommands(sessionId: sessionID) else { throw NativeCommandsUnavailable() }
+                let operations = [OperationRequest(type: "command.execute", nativeCommand: native, queryId: queryID)]
+                let assessed = try await backend.request(.assess(sessionId: sessionID, operations: operations))
+                guard valid(clientID, profile: profile, operation: operation), assessed.sessionId == sessionID,
+                      let assessment = assessed.assessment, assessment.policy == connection.policy,
+                      assessment.operations.count == 1, assessment.operations[0].statements.isEmpty,
+                      assessment.decision != "deny", let authorization = assessment.authorization else { throw AgentFailure() }
+                if connection.policy.readOnly && assessment.operations[0].kind != "read" { throw AgentFailure() }
+                operation.mayWrite = assessment.operations[0].kind != "read"
+                if assessment.decision == "confirm" {
+                    var effectiveProfile = profile; effectiveProfile.policy = connection.policy
+                    let confirmation = OperationConfirmation(profile: effectiveProfile, operations: operations, assessment: assessment, isScript: false)
+                    let task = Task { @MainActor in await self.confirm(confirmation) }
+                    operation.confirmationTask = task
+                    let accepted = await task.value
+                    operation.confirmationTask = nil
+                    guard accepted, !task.isCancelled, valid(clientID, profile: profile, operation: operation) else { throw AgentFailure() }
+                }
+                command = .executeCommand(sessionId: sessionID, queryId: queryID, command: native)
+                command.authorization = authorization
             } else {
                 let sql = request.sql!
                 if profile.engine == .sqlite {
@@ -278,7 +303,8 @@ final class AgentAccessCoordinator: ObservableObject {
             let knownFailure = remote?.outcomeUnknown == false || error is BackendRequestError
             let unknown = operation.submitted && operation.mayWrite && !operation.completed && !knownFailure
             auditContext.outcome = operation.completed ? "completed" : unknown ? "unknown" : operation.cancelled ? "cancelled" : operation.submitted ? "failed" : "rejected"
-            let message = operation.completed ? "The database operation completed, but its response is unavailable. Inspect its outcome before retrying." :
+            let message = error is NativeCommandsUnavailable ? "This connection does not support binary-safe native commands." :
+                operation.completed ? "The database operation completed, but its response is unavailable. Inspect its outcome before retrying." :
                 operation.cancelled ? "The agent operation was cancelled or timed out." :
                 "The agent operation could not complete. Review connection access and operation policy in DBeer."
             return failure(request, message + (unknown ? " A submitted write may have an unknown outcome." : ""))
@@ -336,7 +362,8 @@ final class AgentAccessCoordinator: ObservableObject {
         let sets = reply.resultSets ?? [QueryResultSet(columns: reply.columns ?? [], rows: reply.rows ?? [],
             commandTag: reply.commandTag ?? "", rowCount: reply.rowCount ?? 0,
             displayedRowCount: reply.displayedRowCount ?? 0, truncated: reply.truncated ?? false,
-            displayNotice: reply.displayNotice, affectedRowCountKnown: reply.affectedRowCountKnown)]
+            displayNotice: reply.displayNotice, affectedRowCountKnown: reply.affectedRowCountKnown,
+            sqliteValues: reply.sqliteValues, nativeValues: reply.nativeValues)]
         var remaining = limit
         var results: [AgentResult] = []
         for set in sets.prefix(16) {
@@ -344,13 +371,25 @@ final class AgentAccessCoordinator: ObservableObject {
             let result = AgentResult(columns: set.columns.map { AgentColumn(name: $0.name, type: $0.nativeType, encoding: $0.encoding) },
                 rows: Array(set.rows.prefix(count)), commandTag: String(set.commandTag.prefix(128)), rowCount: set.rowCount,
                 truncated: set.truncated || count < set.rows.count || sets.count > 16,
-                displayNotice: set.displayNotice, affectedRowCountKnown: set.affectedRowCountKnown, sqliteValues: set.sqliteValues.map { Array($0.prefix(count)) })
+                displayNotice: set.displayNotice, affectedRowCountKnown: set.affectedRowCountKnown, sqliteValues: set.sqliteValues.map { Array($0.prefix(count)) },
+                nativeValues: set.nativeValues.map { Array($0.prefix(count)) })
             remaining -= count; results.append(result)
         }
         let encoder = JSONEncoder()
+        func responseBytes(_ value: AgentResponse) throws -> Int {
+            let data = try encoder.encode(value)
+            var count = data.count, previous = 0
+            // The MCP bridge re-encodes with Go's HTML/line-separator escaping.
+            for byte in data {
+                if [38, 60, 62].contains(byte) { count += 5 }
+                if previous == 0xe280, byte == 0xa8 || byte == 0xa9 { count += 3 }
+                previous = ((previous << 8) | Int(byte)) & 0xffff
+            }
+            return count
+        }
         let maximumBytes = 1_048_576
         let full = AgentResponse(id: request.id, ok: true, results: results, queryId: request.queryId)
-        if try encoder.encode(full).count <= maximumBytes { return full }
+        if try responseBytes(full) <= maximumBytes { return full }
 
         // Preserve whole exact cells, NULL and binary metadata. A bounded binary search
         // avoids repeatedly encoding almost the entire result while blocking cancellation.
@@ -361,6 +400,7 @@ final class AgentAccessCoordinator: ObservableObject {
                 let keep = min(remaining, original.rows.count)
                 result.rows = Array(original.rows.prefix(keep))
                 result.sqliteValues = original.sqliteValues.map { Array($0.prefix(keep)) }
+                result.nativeValues = original.nativeValues.map { Array($0.prefix(keep)) }
                 result.truncated = original.truncated || keep < original.rows.count
                 remaining -= keep
                 return result
@@ -368,13 +408,13 @@ final class AgentAccessCoordinator: ObservableObject {
             return AgentResponse(id: request.id, ok: true, results: prefix, queryId: request.queryId)
         }
         var fitting = prefixResponse(0)
-        guard try encoder.encode(fitting).count <= maximumBytes else { throw AgentFailure() }
+        guard try responseBytes(fitting) <= maximumBytes else { throw AgentFailure() }
         var lower = 0
         var upper = results.reduce(0) { $0 + $1.rows.count }
         while lower + 1 < upper {
             let middle = lower + (upper - lower) / 2
             let candidate = prefixResponse(middle)
-            if try encoder.encode(candidate).count <= maximumBytes {
+            if try responseBytes(candidate) <= maximumBytes {
                 lower = middle; fitting = candidate
             } else { upper = middle }
         }
@@ -402,4 +442,5 @@ final class AgentAccessCoordinator: ObservableObject {
         AgentResponse(id: request.id, ok: false, error: message, queryId: request.queryId)
     }
     private struct AgentFailure: Error {}
+    private struct NativeCommandsUnavailable: Error {}
 }

@@ -133,7 +133,7 @@ func (s *Session) ExecuteWithSink(ctx context.Context, command protocol.Command,
 		if script.Aggregate {
 			tag = "AGGREGATE"
 		}
-		result, err := readDocuments(queryCtx, cursor, sink, command.Export != nil, 1000, tag)
+		result, err := readDocuments(queryCtx, cursor, sink, command.Export != nil, 1000, tag, command.ResultValues == protocol.NativeResultValuesFormat)
 		if err != nil {
 			response = safeError(command, ctx, err, script.Write, a)
 			if script.Write && a.acknowledged.Load() {

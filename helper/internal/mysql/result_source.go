@@ -40,7 +40,11 @@ func (session *Session) attachResultSource(ctx context.Context, sql string, coll
 		collector.response.Source = mysqlReadOnlySource(mysqlSourceUnavailable)
 		return nil
 	}
-	if session.work.client.IsInTransaction() {
+	inTransaction := session.work.client.IsInTransaction()
+	if collector.actualTerminalStatus != nil {
+		inTransaction = *collector.actualTerminalStatus&wire.SERVER_STATUS_IN_TRANS != 0
+	}
+	if inTransaction {
 		collector.response.Source = mysqlReadOnlySource("Source-row actions require a result loaded outside an explicit transaction.")
 		return nil
 	}

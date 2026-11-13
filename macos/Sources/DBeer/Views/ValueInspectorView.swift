@@ -48,8 +48,8 @@ struct ValueInspectorView: View {
                             .accessibilityIdentifier("valueInspectorWrap")
                         Spacer(minLength: 0)
                         if model.content.formatted != nil {
-                            Toggle("Format JSON", isOn: $model.formatted).toggleStyle(.checkbox).controlHover()
-                                .help("Show formatted JSON while preserving the original value")
+                            Toggle(value.nativeValue == nil ? "Format JSON" : "Format captured value", isOn: $model.formatted).toggleStyle(.checkbox).controlHover()
+                                .help("Format the captured representation while preserving its original type, order and bytes")
                                 .accessibilityIdentifier("valueInspectorFormatJSON")
                         }
                     }.font(.caption)

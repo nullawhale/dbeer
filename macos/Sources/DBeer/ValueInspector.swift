@@ -10,6 +10,7 @@ struct InspectedValue: Equatable, Sendable {
     let name: String
     let nativeType: String
     let value: ChangeValue
+    var nativeValue: NativeValue? = nil
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         let sameText: Bool
@@ -19,15 +20,27 @@ struct InspectedValue: Equatable, Sendable {
         default: sameText = false
         }
         return lhs.row == rhs.row && lhs.column == rhs.column && lhs.name.utf8.elementsEqual(rhs.name.utf8) &&
-            lhs.nativeType.utf8.elementsEqual(rhs.nativeType.utf8) && lhs.value.kind == rhs.value.kind && sameText
+            lhs.nativeType.utf8.elementsEqual(rhs.nativeType.utf8) && lhs.value.kind == rhs.value.kind && sameText && lhs.nativeValue == rhs.nativeValue
     }
 
     static func capture(cell: ResultGridCell?, columns: [ResultColumn], rows: [[String?]],
-                        valueKinds: [[String]]? = nil, sqliteValues: [[SQLiteValue]]? = nil) -> Self? {
+                        valueKinds: [[String]]? = nil, sqliteValues: [[SQLiteValue]]? = nil, nativeValues: [[NativeValue]]? = nil) -> Self? {
         guard let cell, columns.indices.contains(cell.column), rows.indices.contains(cell.row),
               rows[cell.row].indices.contains(cell.column) else { return nil }
         let column = columns[cell.column]
         let text = rows[cell.row][cell.column]
+        if let nativeValues {
+            guard nativeValues.count == rows.count, nativeValues.allSatisfy({ $0.count == columns.count }) else { return nil }
+            let native = nativeValues[cell.row][cell.column]
+            guard native.valid else { return nil }
+            if column.engine == .sqlite {
+                guard let sqliteValues, sqliteValues.indices.contains(cell.row), sqliteValues[cell.row].indices.contains(cell.column),
+                      NativeValue.matchesSQLite([[native]], storage: [[sqliteValues[cell.row][cell.column]]]) else { return nil }
+            }
+            return Self(row: cell.row, column: cell.column, name: column.name, nativeType: column.nativeType,
+                value: ChangeValue(kind: native.kind == "null" ? "null" : native.kind == "binary" ? "binary" : "unresolved",
+                    value: NativeValuePresentation.text(native)), nativeValue: native)
+        }
         if let sqliteValues, sqliteValues.indices.contains(cell.row), sqliteValues[cell.row].indices.contains(cell.column) {
             let typed = sqliteValues[cell.row][cell.column]
             return Self(row: cell.row, column: cell.column, name: column.name, nativeType: column.nativeType, value: typed.changeValue)
@@ -46,7 +59,8 @@ struct InspectedValue: Equatable, Sendable {
     }
 
     var text: String {
-        switch value.kind {
+        if let nativeValue { return NativeValuePresentation.text(nativeValue) ?? "NULL" }
+        return switch value.kind {
         case "sqliteInteger", "sqliteReal", "sqliteText", "sqliteBlob": value.displayText ?? ""
         case "null": "NULL"
         case "default": "DEFAULT"
@@ -55,6 +69,7 @@ struct InspectedValue: Equatable, Sendable {
     }
 
     var description: String {
+        if let nativeValue { return NativeValuePresentation.description(nativeValue) }
         if nativeType == "BSON document" { return "BSON · Canonical Extended JSON" }
         return switch value.kind {
         case "null": "SQL NULL"
@@ -87,6 +102,26 @@ enum ValueInspectorProcessing {
 
     static func prepare(_ value: InspectedValue) throws -> InspectorContent {
         try Task.checkCancellation()
+        if let native = value.nativeValue {
+            if ["text", "native"].contains(native.kind) {
+                let presentation = InspectedValue(row: value.row, column: value.column, name: value.name,
+                    nativeType: value.nativeType, value: ChangeValue(kind: "text", value: native.value))
+                var result = try prepare(presentation)
+                if native.kind == "native" { result.notice = NativeValuePresentation.description(native) }
+                return result
+            }
+            guard ["list", "tuple", "set", "map", "object", "opaque"].contains(native.kind) else { return InspectorContent() }
+            guard value.text.utf8.count <= maximumBytes else {
+                return InspectorContent(notice: "Native preview is limited to 8 MiB. The captured representation is shown.")
+            }
+            do {
+                var parser = InspectorJSONParser(value.text)
+                var result = try parser.parse()
+                if native.kind == "opaque" { result.notice = NativeValuePresentation.description(native) }
+                return result
+            } catch is CancellationError { throw CancellationError() }
+            catch { return InspectorContent(notice: "Native preview limits exceeded. The captured representation is shown.") }
+        }
         guard ["text", "sqliteText"].contains(value.value.kind) else { return InspectorContent() }
         guard value.text.utf8.count <= maximumBytes else {
             return InspectorContent(notice: "Structured preview is limited to 8 MiB. The original value is shown.")

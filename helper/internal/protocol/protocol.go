@@ -5,12 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"dbeer/helper/internal/jsoncheck"
 	"dbeer/helper/internal/productidentity"
 	"dbeer/helper/internal/tableedit"
 )
@@ -49,33 +49,36 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
-	CatalogMetadata    *CatalogMetadataRequest  `json:"catalogMetadata,omitempty"`
-	Transfer           *TransferRequest         `json:"transfer,omitempty"`
-	DatabaseTools      *DatabaseToolsRequest    `json:"databaseTools,omitempty"`
-	TableImport        *TableImportRequest      `json:"tableImport,omitempty"`
-	Structure          *tableedit.Request       `json:"structure,omitempty"`
-	PreparedExplainSQL string                   `json:"-"`
-	Explain            *ExplainRequest          `json:"explain,omitempty"`
-	DataComparison     *DataComparisonRequest   `json:"dataComparison,omitempty"`
-	SchemaComparison   *SchemaComparisonRequest `json:"schemaComparison,omitempty"`
-	Comparison         *ComparisonRequest       `json:"comparison,omitempty"`
-	SSHTrust           *SSHTrust                `json:"sshTrust,omitempty"`
-	Insert             *InsertFormatRequest     `json:"insert,omitempty"`
-	Type               string                   `json:"type"`
-	RequestID          string                   `json:"requestId"`
-	ProtocolVersion    int                      `json:"protocolVersion,omitempty"`
-	Connection         *Connection              `json:"connection,omitempty"`
-	SessionID          string                   `json:"sessionId,omitempty"`
-	QueryID            string                   `json:"queryId,omitempty"`
-	SQL                string                   `json:"sql,omitempty"`
-	Parameters         []QueryParameter         `json:"parameters,omitempty"`
-	Catalog            *CatalogRequest          `json:"catalog,omitempty"`
-	Stream             bool                     `json:"stream,omitempty"`
-	Export             *ExportRequest           `json:"export,omitempty"`
-	Sequence           int                      `json:"sequence,omitempty"`
-	Changes            *ChangesRequest          `json:"changes,omitempty"`
-	Operations         []OperationRequest       `json:"operations,omitempty"`
-	Authorization      string                   `json:"authorization,omitempty"`
+	NativeCommand      *NativeCommand            `json:"nativeCommand,omitempty"`
+	SchemaObservation  *SchemaObservationRequest `json:"schemaObservation,omitempty"`
+	CatalogMetadata    *CatalogMetadataRequest   `json:"catalogMetadata,omitempty"`
+	Transfer           *TransferRequest          `json:"transfer,omitempty"`
+	DatabaseTools      *DatabaseToolsRequest     `json:"databaseTools,omitempty"`
+	TableImport        *TableImportRequest       `json:"tableImport,omitempty"`
+	Structure          *tableedit.Request        `json:"structure,omitempty"`
+	PreparedExplainSQL string                    `json:"-"`
+	Explain            *ExplainRequest           `json:"explain,omitempty"`
+	DataComparison     *DataComparisonRequest    `json:"dataComparison,omitempty"`
+	SchemaComparison   *SchemaComparisonRequest  `json:"schemaComparison,omitempty"`
+	Comparison         *ComparisonRequest        `json:"comparison,omitempty"`
+	SSHTrust           *SSHTrust                 `json:"sshTrust,omitempty"`
+	Insert             *InsertFormatRequest      `json:"insert,omitempty"`
+	Type               string                    `json:"type"`
+	RequestID          string                    `json:"requestId"`
+	ProtocolVersion    int                       `json:"protocolVersion,omitempty"`
+	Connection         *Connection               `json:"connection,omitempty"`
+	SessionID          string                    `json:"sessionId,omitempty"`
+	QueryID            string                    `json:"queryId,omitempty"`
+	SQL                string                    `json:"sql,omitempty"`
+	Parameters         []QueryParameter          `json:"parameters,omitempty"`
+	Catalog            *CatalogRequest           `json:"catalog,omitempty"`
+	Stream             bool                      `json:"stream,omitempty"`
+	ResultValues       string                    `json:"resultValues,omitempty"`
+	Export             *ExportRequest            `json:"export,omitempty"`
+	Sequence           int                       `json:"sequence,omitempty"`
+	Changes            *ChangesRequest           `json:"changes,omitempty"`
+	Operations         []OperationRequest        `json:"operations,omitempty"`
+	Authorization      string                    `json:"authorization,omitempty"`
 }
 
 type ExportRequest struct {
@@ -208,9 +211,11 @@ type CatalogSort struct {
 	Direction string `json:"direction"`
 }
 type CatalogFilter struct {
-	Column   string  `json:"column"`
-	Operator string  `json:"operator"`
-	Value    *string `json:"value,omitempty"`
+	Column      string                 `json:"column"`
+	Operator    string                 `json:"operator"`
+	Value       *string                `json:"value,omitempty"`
+	SQLiteValue *SQLiteValue           `json:"sqliteValue,omitempty"`
+	NativeValue *NativeCellFilterValue `json:"nativeValue,omitempty"`
 }
 
 func (request CatalogRequest) Valid() bool {
@@ -231,7 +236,7 @@ func (request CatalogRequest) Valid() bool {
 	if request.Page < 0 || request.Page > 1000000 || len(request.Sort) > 32 || len(request.Filters) > 32 {
 		return false
 	}
-	if request.FilterExpression != nil && (len(request.Filters) != 0 || !request.FilterExpression.Valid()) {
+	if _, valid := request.EffectiveFilterExpression(); !valid {
 		return false
 	}
 	if request.Kind != "browse" && (len(request.Sort) != 0 || len(request.Filters) != 0 || request.FilterExpression != nil || request.Page != 0 && request.Kind != "completion") {
@@ -246,11 +251,6 @@ func (request CatalogRequest) Valid() bool {
 			return false
 		}
 		seenSort[sort.Column] = true
-	}
-	for _, filter := range request.Filters {
-		if !filter.Valid() {
-			return false
-		}
 	}
 	for _, name := range []string{request.Schema, request.Object, request.ObjectKind, request.Search} {
 		if len(name) > 1024 || !utf8.ValidString(name) || strings.ContainsRune(name, 0) {
@@ -415,7 +415,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -456,7 +456,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.Changes = &request
 		}
-		if command.Type == "execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "import.apply" {
+		if command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "import.apply" {
 			allowed["authorization"] = true
 			if _, exists := fields["authorization"]; exists && (!stringField(fields, "authorization", &command.Authorization) || !ValidID(command.Authorization)) {
 				return command, failure
@@ -477,6 +477,14 @@ func ParseCommand(frame []byte) (Command, error) {
 				return command, failure
 			}
 			command.Operations = operations
+		}
+		if command.Type == "command.execute" {
+			allowed["nativeCommand"], allowed["resultValues"] = true, true
+			var native NativeCommand
+			if json.Unmarshal(fields["nativeCommand"], &native) != nil || json.Unmarshal(fields["resultValues"], &command.ResultValues) != nil || command.ResultValues != NativeResultValuesFormat {
+				return command, failure
+			}
+			command.NativeCommand = &native
 		}
 		if command.Type == "execute" {
 			allowed["sql"] = true
@@ -504,6 +512,10 @@ func ParseCommand(frame []byte) (Command, error) {
 		}
 		if command.Type == "execute" || command.Type == "catalog" {
 			allowed["stream"] = true
+			allowed["resultValues"] = true
+			if raw, exists := fields["resultValues"]; exists && (json.Unmarshal(raw, &command.ResultValues) != nil || command.ResultValues != NativeResultValuesFormat) {
+				return command, failure
+			}
 			if raw, exists := fields["stream"]; exists && (bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &command.Stream) != nil) {
 				return command, failure
 			}
@@ -529,10 +541,17 @@ func ParseCommand(frame []byte) (Command, error) {
 		failure.Message = "Unknown protocol command."
 		return command, failure
 	}
+	if command.ResultValues != "" && command.Type == "catalog" && (command.Catalog == nil || command.Catalog.Kind != "browse") {
+		return command, failure
+	}
 	for name := range fields {
 		if !allowed[name] {
 			return command, failure
 		}
+	}
+	if (command.NativeCommand != nil || command.Operations != nil || command.ResultValues != "" || command.SchemaComparison != nil || command.Catalog != nil && command.Catalog.HasNativeValue()) && !JSONUnicodeValid(frame) {
+		failure.RequestID, failure.SessionID, failure.QueryID = "", "", ""
+		return Command{}, failure
 	}
 	return command, nil
 }
@@ -631,6 +650,9 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 		if _, exists := fields["identity"]; exists {
 			return request, false
 		}
+	}
+	if request.HasNativeValue() && (!nativeJSONUnicodeValid(raw) || !uniqueObjectKeys(raw)) {
+		return request, false
 	}
 	return request, request.Valid()
 }
@@ -771,50 +793,7 @@ func stringField(fields map[string]json.RawMessage, name string, target *string)
 
 // Reject repeated object keys, including keys inside connection, rather than
 // allowing the JSON decoder to silently select the last value.
-func uniqueObjectKeys(frame []byte) bool {
-	decoder := json.NewDecoder(bytes.NewReader(frame))
-	decoder.UseNumber()
-	var value func() bool
-	value = func() bool {
-		token, err := decoder.Token()
-		if err != nil {
-			return false
-		}
-		delimiter, nested := token.(json.Delim)
-		if !nested {
-			return true
-		}
-		if delimiter == '{' {
-			keys := make(map[string]bool)
-			for decoder.More() {
-				keyToken, err := decoder.Token()
-				key, ok := keyToken.(string)
-				if err != nil || !ok || keys[key] {
-					return false
-				}
-				keys[key] = true
-				if !value() {
-					return false
-				}
-			}
-		} else if delimiter == '[' {
-			for decoder.More() {
-				if !value() {
-					return false
-				}
-			}
-		} else {
-			return false
-		}
-		_, err = decoder.Token()
-		return err == nil
-	}
-	if !value() {
-		return false
-	}
-	_, err := decoder.Token()
-	return errors.Is(err, io.EOF)
-}
+func uniqueObjectKeys(frame []byte) bool { return jsoncheck.UniqueObjectKeys(frame) }
 
 type Column struct {
 	Index        int    `json:"index"`
@@ -827,6 +806,7 @@ type Column struct {
 }
 
 type ResultSet struct {
+	NativeValues  [][]NativeValue `json:"nativeValues,omitempty"`
 	SQLiteValues  [][]SQLiteValue `json:"sqliteValues,omitempty"`
 	Source        *ResultSource   `json:"source,omitempty"`
 	StorageTokens []string        `json:"storageTokens,omitempty"`
@@ -850,13 +830,25 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 	if result.Rows == nil {
 		result.Rows = [][]*string{}
 	}
-	return json.Marshal(plain(result))
+	if result.NativeValues != nil && !NativeMatrixValid(result.NativeValues, len(result.Rows), len(result.Columns)) {
+		return nil, errors.New("invalid native result matrix")
+	}
+	var native *[][]NativeValue
+	if result.NativeValues != nil {
+		native = &result.NativeValues
+	}
+	return json.Marshal(struct {
+		plain
+		NativeValues *[][]NativeValue `json:"nativeValues,omitempty"`
+	}{plain(result), native})
 }
 
 type Response struct {
+	NativeValues          [][]NativeValue
+	SchemaObservation     *SchemaObservation
 	CatalogMetadata       *CatalogMetadataReply
 	MetadataStale         bool
-	MetadataTarget        *CatalogRelationTarget
+	MetadataTarget        *CatalogRelationTarget // Internal adapter proof; only the metadata store serializes it.
 	Transfer              *TransferReply
 	DatabaseTools         *DatabaseToolsReply
 	Monitor               *SessionMonitorSnapshot
@@ -938,6 +930,16 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	}
 	if response.SQLiteValues != nil && (response.Type == "query.result" || response.Type == "query.chunk") {
 		fields["sqliteValues"] = response.SQLiteValues
+	}
+	if response.NativeValues != nil {
+		columns := len(response.Columns)
+		if response.Type == "query.chunk" && response.Columns == nil && len(response.Rows) > 0 {
+			columns = len(response.Rows[0])
+		}
+		if (response.Type != "query.result" && response.Type != "query.chunk") || !NativeMatrixValid(response.NativeValues, len(response.Rows), columns) {
+			return nil, errors.New("invalid native response matrix")
+		}
+		fields["nativeValues"] = response.NativeValues
 	}
 	switch response.Type {
 	case "catalog.page.result", "catalog.batch.result", "catalog.close.result":

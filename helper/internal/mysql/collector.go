@@ -16,6 +16,9 @@ const MaxResultRows = 1000
 const MaxResultBytes = 8 * 1024 * 1024
 
 type collector struct {
+	nativeRequested        bool
+	actualTerminalStatus   *uint16
+	nativeBudget           protocol.NativeMatrixBudget
 	response               protocol.Response
 	bytes                  int
 	count                  int64
@@ -48,8 +51,12 @@ func (collector *collector) deliver(action func(adapter.ResultSink) error) {
 }
 
 func newCollector(command protocol.Command) *collector {
-	return &collector{maxRows: MaxResultRows, maxBytes: MaxResultBytes, response: protocol.Response{Type: "query.result", RequestID: command.RequestID,
+	collector := &collector{nativeRequested: command.ResultValues == protocol.NativeResultValuesFormat, maxRows: MaxResultRows, maxBytes: MaxResultBytes, response: protocol.Response{Type: "query.result", RequestID: command.RequestID,
 		SessionID: command.SessionID, QueryID: command.QueryID, Rows: make([][]*string, 0)}}
+	if collector.nativeRequested {
+		collector.response.NativeValues = [][]protocol.NativeValue{}
+	}
+	return collector
 }
 
 func (collector *collector) columns(result *wire.Result) error {
@@ -86,6 +93,10 @@ func (collector *collector) columns(result *wire.Result) error {
 }
 
 func (collector *collector) row(values []wire.FieldValue) error {
+	return collector.rowWithRawText(values, nil)
+}
+
+func (collector *collector) rowWithRawText(values []wire.FieldValue, rawText [][]byte) error {
 	collector.count++
 	if collector.stopped && (collector.delivery == nil || collector.delivery.failure != nil) {
 		return nil
@@ -107,6 +118,9 @@ func (collector *collector) row(values []wire.FieldValue) error {
 			return err
 		}
 		values = values[:len(values)-collector.hiddenStorageFields]
+		if rawText != nil {
+			rawText = rawText[:len(rawText)-collector.hiddenStorageFields]
+		}
 	}
 	row := make([]*string, len(values))
 	estimated := 2 + len(storageToken)
@@ -144,20 +158,43 @@ func (collector *collector) row(values []wire.FieldValue) error {
 		}
 		row[index] = &text
 	}
+	var native []protocol.NativeValue
+	if collector.nativeRequested {
+		native = nativeMySQLRow(collector.valueColumns, collector.originFields, values, rawText)
+		collector.deliver(func(sink adapter.ResultSink) error {
+			return adapter.DeliverNativeRow(sink, collector.resultIndex, native)
+		})
+	}
 	collector.deliver(func(sink adapter.ResultSink) error { return sink.Row(collector.resultIndex, row) })
 	if collector.stopped {
 		return nil
 	}
 	encoded, _ := json.Marshal(row)
-	if collector.bytes+len(encoded)+len(storageToken)+1024 > collector.maxBytes {
+	nativeBytes := 0
+	if collector.nativeRequested {
+		if !collector.nativeBudget.Append(native, len(row)) {
+			collector.response.Truncated, collector.stopped = true, true
+			return nil
+		}
+		encodedNative, err := json.Marshal(native)
+		if err != nil {
+			collector.response.Truncated, collector.stopped = true, true
+			return nil
+		}
+		nativeBytes = len(encodedNative) + 1
+	}
+	if collector.bytes+len(encoded)+nativeBytes+len(storageToken)+1024 > collector.maxBytes {
 		collector.response.Truncated, collector.stopped = true, true
 		return nil
 	}
 	collector.response.Rows = append(collector.response.Rows, row)
+	if collector.nativeRequested {
+		collector.response.NativeValues = append(collector.response.NativeValues, native)
+	}
 	if storageToken != "" {
 		collector.response.StorageTokens = append(collector.response.StorageTokens, storageToken)
 	}
-	collector.bytes += len(encoded) + len(storageToken) + 1
+	collector.bytes += len(encoded) + nativeBytes + len(storageToken) + 1
 	return nil
 }
 
@@ -209,6 +246,7 @@ func boundResultSets(response protocol.Response) protocol.Response {
 		set := response.ResultSets[primary]
 		response.Columns, response.Rows, response.CommandTag, response.RowCount = set.Columns, set.Rows, set.CommandTag, set.RowCount
 		response.StorageTokens = set.StorageTokens
+		response.NativeValues = set.NativeValues
 		response.Source = set.Source
 		response.DisplayedRowCount, response.Truncated = set.DisplayedRowCount, set.Truncated
 		if response.DisplayNotice == "" {
@@ -234,6 +272,9 @@ func boundResultSets(response protocol.Response) protocol.Response {
 				}
 				excess -= multiplier * (len(row) + 1)
 				set.Rows = set.Rows[:last]
+				if set.NativeValues != nil {
+					set.NativeValues = set.NativeValues[:last]
+				}
 				if len(set.StorageTokens) > last {
 					set.StorageTokens = set.StorageTokens[:last]
 				}

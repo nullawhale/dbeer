@@ -330,6 +330,27 @@ before Explain. The tab retains its physical session, temporary tables and
 transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
 confirmed SQL completion, and a lost completion is never retried. Plans stay in
 memory and are excluded from restored documents, SQL history and snapshots.
+## Saved operation evidence (unreleased)
+
+Use **Save Outcome Evidence** in a retained structure report or **Save Evidence**
+in Session Monitor to copy the current observation into the local library.
+Choose **Query → Saved Operation Evidence…** to search, open, import or export
+versioned `.dbeerevidence` files. Saving is explicit and includes the reviewed
+SQL or visible diagnostic SQL. Artifacts retain original step acknowledgements,
+unknown outcomes, observation times and incomplete/stale notices. Opening a
+saved report never refreshes live status, connects, reconciles or executes SQL.
+
+Files contain the recorded engine, profile name and environment, with no
+connection settings, credentials, session handles or execution grants. Imported
+files receive a fresh local identity. Each file is limited to 8 MiB and shares
+the saved-plan quota. Artifacts are immutable; later live changes do not rewrite
+them. A known failed or rolled-back operation remains failed or rolled back.
+
+A snapshot's **Evidence…** button attaches local evidence through separate link
+metadata. An investigation's **Saved Operation Evidence…** block action inserts
+a local reference that opens inside DBeer. Deletion checks snapshot links and
+saved, unopened and unsaved investigation references. Remove the links and save
+the affected investigation before deleting its evidence.
 
 ## Table structure drafts
 
@@ -754,8 +775,8 @@ restriction and sorting.
 Navigation in the current view with pending edits offers the existing
 Apply/Discard/Cancel review; Apply still previews and confirms the generated
 changes. Opening related rows in a new tab uses confirmed source values and
-preserves unrelated pending edits; changed key values require Apply or Discard
-first. A failed relationship load preserves the source view. Other table views
+preserves unrelated pending edits; changed key bytes require Apply or Discard
+first, including visually identical Unicode text with a different representation. A failed relationship load preserves the source view. Other table views
 keep their own context and drafts. Autosave keeps the last confirmed location
 while a transition loads and excludes temporary related tabs until they load
 successfully. Navigation history stays in memory; workspace restoration saves the
@@ -1025,6 +1046,27 @@ source text. Search highlights up to 10,000 matches. Inspection never executes
 SQL, connects to a server or changes pending grid edits; use the existing cell
 editor and Preview/Apply workflow to make changes.
 
+## Captured native values (unreleased)
+
+Results retain typed evidence separately from their displayed text. Exact
+integer/decimal strings, SQL NULL, binary bytes and floating-point width/bits
+remain distinct. MongoDB BSON objects and Cassandra collections retain captured
+entry order and duplicate elements or keys. Inspection, JSON copying, exports,
+snapshots and agent results preserve these records. Opaque values retain their
+bytes and type labels without implying semantic equality. MySQL floating-point
+text remains labelled native text when original IEEE bits are unavailable;
+non-roundtrippable Cassandra scalar text retains its original opaque bytes.
+
+Editing, filtering and key navigation require a proven lossless binding to the
+target. An unsupported original value makes its affected row read only; other
+proven rows remain editable. Profiles aggregate eligible exact integers and
+decimals, while floating-point and unsupported arithmetic show their limits.
+Native representation frequencies do not imply database semantic equality.
+
+One loaded result retains up to 100,000 native nodes, depth 32 and 4 MiB of typed
+evidence, including encoding overhead. A complete **Run to File** JSON export
+applies the native budget per row and can exceed the loaded-result limit.
+
 ## Result copying
 
 Copy cells, rows or ranges as TSV, CSV, JSON, Markdown or SQL INSERT. Ordinary
@@ -1097,6 +1139,13 @@ stops new history entries and keeps existing history and favorites.
 History uses versioned workspace storage, currently v11. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values.
+
+JSON result export version 2 pairs each displayed row with its captured native
+values and any SQLite storage evidence. Version 1 remains readable. **Import
+JSON…** in Result Snapshots imports a local export as disconnected snapshots,
+with unknown original SQL/execution outcome and the import time recorded.
+Imports accept files up to 64 MiB and the native budget per result stated above;
+large complete exports remain intact when they exceed local snapshot limits.
 
 ## Result snapshot storage
 
@@ -1668,12 +1717,20 @@ active clients or revoke access in **Settings → Agents**. Restarting a client
 requires fresh approval; restored documents never establish an agent grant.
 
 The tools are `dbeer_connections` (approved profile identifiers, engine, query
-language and readonly enforcement), `dbeer_catalog`, `dbeer_query` and
-`dbeer_cancel`. PostgreSQL/MySQL accept SQL, Cassandra accepts CQL, and MongoDB
+language and readonly enforcement), `dbeer_catalog`, `dbeer_query`,
+`dbeer_cancel` and the separate `dbeer_command` foundation (unreleased).
+PostgreSQL/MySQL/SQLite accept SQL, Cassandra accepts CQL, and MongoDB
 accepts the same single JSON find/aggregation request as the editor, all through
 the query tool's `sql` string argument. MongoDB writes are limited to supported
 `$out`/`$merge` aggregation stages; JavaScript, arbitrary CRUD and administrative
 commands are not exposed.
+
+`dbeer_command` accepts a command name and ordered text or canonical-Base64
+binary arguments, with the same explicit grants, cancellation and uncertain
+write handling. The existing five engines currently return an unsupported
+command reason; this contract does not add a Redis connection or command
+adapter. The query tool keeps its existing `sql` argument. Native typed replies
+use an additive matrix and preserve ordered entries and original scalar bytes.
 
 Catalog kinds `schemas`, `tables` and `columns` remain available for every engine.
 Cassandra also accepts `keyspaces`; MongoDB accepts `databases`, `collections` and

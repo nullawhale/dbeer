@@ -28,6 +28,7 @@ final class ResultSnapshotsModel: ObservableObject {
     /// R18 supplies the current document references here. Recheck at deletion
     /// time so references created after the alert cannot be deleted implicitly.
     var investigationReferences: @MainActor (UUID) throws -> Set<UUID>
+    var didDelete: @MainActor (UUID) async -> Void = { _ in }
 
     init(store: ResultSnapshotStore = ResultSnapshotStore(),
          investigationReferences: @escaping @MainActor (UUID) throws -> Set<UUID> = { _ in [] }) {
@@ -65,6 +66,37 @@ final class ResultSnapshotsModel: ObservableObject {
             try await reload()
             return saved
         } catch { report(error); return nil }
+    }
+
+    @discardableResult
+    func importResultJSON(_ file: URL) async -> [ResultSnapshotSummary] {
+        guard !isBusy else { return [] }
+        isBusy = true
+        defer { isBusy = false }
+        error = nil
+        var saved: [ResultSnapshotSummary] = []
+        do {
+            let sets = try ResultExport.readJSON(file)
+            let captures = try sets.enumerated().compactMap { index, set -> ResultSnapshotCapture? in
+                guard let engine = set.columns.first?.engine else { return nil }
+                guard set.columns.allSatisfy({ $0.engine == engine }) else { throw ResultExportError.malformed }
+                return ResultSnapshotCapture(title: "Imported · " + file.deletingPathExtension().lastPathComponent + " · result \(index + 1)",
+                    sql: "-- Imported result JSON; original SQL and execution outcome are not recorded.",
+                    engine: engine, columns: set.columns, rows: set.rows, sqliteValues: set.sqliteValues,
+                    nativeValues: set.nativeValues, outcome: .unknown, truncated: set.truncated, partial: true,
+                    sourceRowCount: set.rowCount, commandTag: set.commandTag)
+            }
+            guard !captures.isEmpty else { throw ResultExportError.malformed }
+            for capture in captures { saved.append(try await store.save(capture)) }
+            try await reload()
+            return saved
+        } catch {
+            for summary in saved { try? await store.delete(id: summary.id, referencedBy: [], confirmation: true) }
+            try? await reload()
+            self.error = error is ResultExportError || error is ResultSnapshotError
+                ? error.localizedDescription : "The result JSON could not be imported."
+            return []
+        }
     }
 
     @discardableResult
@@ -107,6 +139,7 @@ final class ResultSnapshotsModel: ObservableObject {
         error = nil
         do {
             try await store.delete(id: request.id, referencedBy: Array(references), confirmation: true)
+            await didDelete(request.id)
             for model in trackedDocuments where model.snapshotID == request.id { model.invalidateArtifact(.notFound) }
             try await reload()
             return true

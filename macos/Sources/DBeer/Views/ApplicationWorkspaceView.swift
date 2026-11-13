@@ -81,7 +81,8 @@ struct ApplicationWorkspaceView: View {
             .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.structureEditor) { model in
-            TableStructureEditorView(model: model) { Task { await workspace.closeTableStructure() } }
+            TableStructureEditorView(model: model, close: { Task { await workspace.closeTableStructure() } },
+                saveEvidence: { workspace.saveStructureEvidence(model) }, evidenceModel: workspace.savedEvidence)
                 .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.tableImporter) { model in
@@ -120,6 +121,9 @@ struct ApplicationWorkspaceView: View {
         .sheet(item: Binding(get: { workspace.schemaComparison }, set: { if $0 == nil { workspace.dismissSchemaComparison() } })) { model in
             SchemaComparisonView(model: model, close: { workspace.dismissSchemaComparison() })
                 .applicationTheme(appearance: appearance)
+        }
+        .sheet(isPresented: $workspace.isSavedEvidencePresented) {
+            SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence).applicationTheme(appearance: appearance)
         }
         .sheet(isPresented: $workspace.isSnapshotsPresented) {
             ResultSnapshotsView(model: workspace.resultSnapshots) { snapshot in
@@ -944,6 +948,12 @@ struct SQLDocumentPane: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Saved filters").font(.headline)
                         Text(expression.displayText).font(.callout).textSelection(.enabled)
+                        if expression.hasNativeOperands {
+                            Button("Remove Typed Key Conditions") { document.removeUnloadedNativeKeyConditions() }
+                                .controlHover().disabled(!workspace.canStartOperation(document) || document.isNavigatingTable || document.isApplyingBrowse)
+                                .accessibilityIdentifier("removeUnloadedNativeKeyConditions")
+                            Text("This changes saved settings only. Load Data separately to read rows.").font(.caption).appSecondaryText()
+                        }
                     }
                 }
                 if !document.tableSort.isEmpty {
@@ -1119,7 +1129,7 @@ struct SQLDocumentPane: View {
                     if let grid = document.grid {
                         DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
-                        InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues,
+                        InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues, nativeValues: result.nativeValues,
                             copySettings: workspace.copySettings,
                             onSQLInsertCopy: { payload, pasteboard in
                                 workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)

@@ -1,0 +1,137 @@
+{
+  "capability": "nativeCommandsV1",
+  "valid": [
+    {
+      "name": "READ",
+      "arguments": []
+    },
+    {
+      "name": "ECHO",
+      "arguments": [
+        {
+          "kind": "text",
+          "value": ""
+        },
+        {
+          "kind": "binary",
+          "value": ""
+        },
+        {
+          "kind": "text",
+          "value": "two words \"quoted\"\n\u0000é é"
+        },
+        {
+          "kind": "binary",
+          "value": "AP8="
+        }
+      ]
+    },
+    {
+      "name": "sub.command-1",
+      "arguments": [
+        {
+          "kind": "text",
+          "value": "$(private); *"
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "name": "READ ECHO",
+      "arguments": []
+    },
+    {
+      "name": "é",
+      "arguments": []
+    },
+    {
+      "name": "",
+      "arguments": []
+    },
+    {
+      "name": "1READ",
+      "arguments": []
+    },
+    {
+      "name": "READ"
+    },
+    {
+      "name": "READ",
+      "arguments": null
+    },
+    {
+      "name": "READ",
+      "arguments": [
+        {
+          "kind": "text"
+        }
+      ]
+    },
+    {
+      "name": "READ",
+      "arguments": [
+        {
+          "kind": "text",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "READ",
+      "arguments": [
+        {
+          "kind": "binary",
+          "value": "AB=="
+        }
+      ]
+    },
+    {
+      "name": "READ",
+      "arguments": [
+        {
+          "kind": "binary",
+          "value": "AA"
+        }
+      ]
+    },
+    {
+      "name": "READ",
+      "arguments": [
+        {
+          "kind": "binary",
+          "value": "AA==\n"
+        }
+      ]
+    },
+    {
+      "name": "READ",
+      "arguments": [
+        {
+          "kind": "unknown",
+          "value": "x"
+        }
+      ]
+    },
+    {
+      "name": "READ",
+      "arguments": [],
+      "sql": "SELECT 1"
+    },
+    {
+      "name": "READ",
+      "arguments": [
+        {
+          "kind": "text",
+          "value": "x",
+          "extra": true
+        }
+      ]
+    }
+  ],
+  "invalidJSON": [
+    "{\"name\":\"READ\",\"name\":\"WRITE\",\"arguments\":[]}",
+    "{\"name\":\"READ\",\"arguments\":[{\"kind\":\"text\",\"value\":\"\\ud800\"}]}",
+    "{\"name\":\"READ\",\"arguments\":[{\"kind\":\"text\",\"value\":\"a\",\"value\":\"b\"}]}"
+  ]
+}

@@ -49,7 +49,7 @@ func (r *Result) key(row []*string, side byte) ([]byte, bool) {
 			index = m.Right
 		}
 		c := columns[index]
-		if !known(c) {
+		if !knownCell(c, row[index]) {
 			return nil, false
 		}
 		key = tagged(key, c.Engine)

@@ -28,7 +28,10 @@ func mysqlStableProjection(name, kind string) string {
 	case "timestamp":
 		// AT TIME ZONE does not preserve the legacy zero timestamp sentinel.
 		// Keep its exact text, including any stored fractional component.
-		return "IF(LEFT(CAST(" + column + " AS CHAR),10)='0000-00-00',CAST(" + column + " AS CHAR),CAST(" + column + " AT TIME ZONE '+00:00' AS DATETIME(6)))"
+		// UTC conversion and temporal IF aggregation can discard the stored
+		// fractional component. Keep UTC whole seconds and exact native
+		// microseconds separate, then combine them as text before IF typing.
+		return "IF(LEFT(CAST(" + column + " AS CHAR),10)='0000-00-00',CAST(" + column + " AS CHAR),CONCAT(DATE_FORMAT(CAST(" + column + " AT TIME ZONE '+00:00' AS DATETIME(6)),'%Y-%m-%d %H:%i:%s'),'.',LPAD(MICROSECOND(" + column + "),6,'0')))"
 	}
 	return column
 }

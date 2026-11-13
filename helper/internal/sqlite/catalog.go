@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/browsevalue"
 	"dbeer/helper/internal/protocol"
 )
 
@@ -117,7 +118,7 @@ func (s *Session) catalog(ctx context.Context, c protocol.Command, sink adapter.
 			return s.fail(c, ctx, err)
 		}
 		editable := s.editableTable(ctx, r.Object, cols) && !s.readOnly
-		names := []string{"name", "nativeType", "nullable", "default", "generated", "primaryKey", "editable", "editReason"}
+		names := []string{"name", "nativeType", "nullable", "default", "generated", "primaryKey", "editable", "editReason", "comparison"}
 		rows := [][]protocol.SQLiteValue{}
 		for _, col := range cols {
 			if col.Hidden == 1 {
@@ -142,7 +143,7 @@ func (s *Session) catalog(ctx context.Context, c protocol.Command, sink adapter.
 			if col.Hidden != 0 {
 				generated = "generated"
 			}
-			rows = append(rows, []protocol.SQLiteValue{stringValue(col.Name), stringValue(native), stringValue(strconv.FormatBool(!col.NotNull)), def, stringValue(generated), stringValue(strconv.Itoa(col.PrimaryKey)), stringValue(strconv.FormatBool(can)), stringValue(reason)})
+			rows = append(rows, []protocol.SQLiteValue{stringValue(col.Name), stringValue(native), stringValue(strconv.FormatBool(!col.NotNull)), def, stringValue(generated), stringValue(strconv.Itoa(col.PrimaryKey)), stringValue(strconv.FormatBool(can)), stringValue(reason), stringValue(sqliteComparisonJSON(col.NativeType))})
 		}
 		return s.catalogRows(ctx, c, names, rows, sink)
 	case "referencingTables":
@@ -322,6 +323,21 @@ func buildBrowse(r protocol.CatalogRequest, cols []columnInfo) (string, []any, e
 			}
 			if f.Operator == "isNotNull" {
 				return q + " IS NOT NULL", nil
+			}
+			if f.NativeValue != nil {
+				scalar, err := browsevalue.SQLite(*f.NativeValue)
+				if err != nil {
+					return "", err
+				}
+				args = append(args, scalar)
+				op := "="
+				if f.Operator == "ne" {
+					op = "<>"
+				}
+				return q + op + "?", nil
+			}
+			if f.SQLiteValue != nil {
+				return "", errors.New("SQLite cell filter operands are unavailable.")
 			}
 			if f.Value == nil {
 				return "", errors.New("Missing filter operand.")

@@ -24,7 +24,7 @@ struct SQLResultSource: Codable, Sendable, Equatable {
         guard !columns.isEmpty, columns.count <= 4_096, columns.count == resultColumns.count,
               resultColumns.allSatisfy({ $0.engine == .postgresql || $0.engine == .mysql }),
               Set(resultColumns.map(\.engine)).count == 1,
-              Set(columns.map(\.name)).count == columns.count,
+              Set(columns.map { Data($0.name.utf8) }).count == columns.count,
               Set(columns.map(\.tableIndex)).count == columns.count,
               columns.allSatisfy({ !$0.name.isEmpty && validText($0.name, limit: 256) &&
                   !$0.nativeType.isEmpty && validText($0.nativeType, limit: 65_536) &&

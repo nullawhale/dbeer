@@ -87,7 +87,13 @@ func TestSQLiteRelationshipDiscoveryCanonicalCompositeSelfAndSeparateSources(t *
 			}
 		}
 	}
-
+	integer := protocol.SQLiteValue{Type: "integer", Value: "9223372036854775807"}
+	blob := protocol.SQLiteValue{Type: "blob", Value: "AP+A"}
+	filters := []protocol.CatalogFilter{{Column: "TenantRef", Operator: "eq", SQLiteValue: &integer}, {Column: "KeyRef", Operator: "eq", SQLiteValue: &blob}}
+	rows, reply := h.catalog(sid, protocol.CatalogRequest{Kind: "browse", Schema: "main", Object: "ChildA", ObjectKind: "table", Filters: filters})
+	if reply.Type != "query.result" || len(rows) != 1 || rows[0]["Id"] != "1" {
+		t.Fatal("parent-to-child composite filters changed integer or binary values")
+	}
 }
 
 func TestSQLiteRelationshipDiscoveryDoesNotFoldUnicodeOrInventMissingTargets(t *testing.T) {

@@ -29,9 +29,18 @@ func CanonicalDocument(raw bson.Raw) (string, error) {
 	return string(encoded), err
 }
 
-func readDocuments(ctx context.Context, cursor *mongo.Cursor, sink adapter.ResultSink, full bool, rowLimit int, tag string) (protocol.ResultSet, error) {
+func readDocuments(ctx context.Context, cursor *mongo.Cursor, sink adapter.ResultSink, full bool, rowLimit int, tag string, nativeRequested ...bool) (protocol.ResultSet, error) {
 	known := false
 	r := protocol.ResultSet{Columns: documentColumns(), Rows: [][]*string{}, CommandTag: tag, AffectedRowCountKnown: &known}
+	wantsNative := len(nativeRequested) > 0 && nativeRequested[0]
+	resultLimit := maxResultBytes
+	if wantsNative {
+		resultLimit += protocol.MaxNativeValueBytes
+	}
+	var nativeBudget protocol.NativeMatrixBudget
+	if wantsNative {
+		r.NativeValues = [][]protocol.NativeValue{}
+	}
 	if sink != nil {
 		if err := sink.Begin(0, r.Columns); err != nil {
 			return r, err
@@ -45,7 +54,21 @@ func readDocuments(ctx context.Context, cursor *mongo.Cursor, sink adapter.Resul
 		}
 		row := []*string{&text}
 		encoded, _ := json.Marshal(row)
-		fits := len(r.Rows) < rowLimit && bytes+len(encoded) < maxResultBytes
+		var native []protocol.NativeValue
+		nativeBytes := 0
+		if wantsNative {
+			value, err := nativeDocument(cursor.Current)
+			if err != nil {
+				return r, err
+			}
+			native = []protocol.NativeValue{value}
+			data, err := json.Marshal(native)
+			if err != nil {
+				return r, errNativeDocument
+			}
+			nativeBytes = len(data)
+		}
+		fits := len(r.Rows) < rowLimit && bytes+len(encoded)+nativeBytes < resultLimit && (!wantsNative || nativeBudget.Append(native, 1))
 		if !full && !fits {
 			r.Truncated = true
 			if len(r.Rows) == 0 {
@@ -56,11 +79,19 @@ func readDocuments(ctx context.Context, cursor *mongo.Cursor, sink adapter.Resul
 		r.RowCount++
 		if fits {
 			r.Rows = append(r.Rows, row)
-			bytes += len(encoded)
+			if wantsNative {
+				r.NativeValues = append(r.NativeValues, native)
+			}
+			bytes += len(encoded) + nativeBytes
 		} else {
 			r.Truncated = true
 		}
 		if sink != nil {
+			if wantsNative {
+				if err := adapter.DeliverNativeRow(sink, 0, native); err != nil {
+					return r, err
+				}
+			}
 			if err := sink.Row(0, row); err != nil {
 				return r, err
 			}
@@ -87,7 +118,7 @@ func readDocuments(ctx context.Context, cursor *mongo.Cursor, sink adapter.Resul
 
 func resultResponse(command protocol.Command, result protocol.ResultSet) protocol.Response {
 	return protocol.Response{Type: "query.result", RequestID: command.RequestID, SessionID: command.SessionID, QueryID: command.QueryID,
-		Connected: true, TransactionStatus: "unsupported", Columns: result.Columns, Rows: result.Rows, ResultSets: []protocol.ResultSet{result},
+		Connected: true, TransactionStatus: "unsupported", Columns: result.Columns, Rows: result.Rows, NativeValues: result.NativeValues, ResultSets: []protocol.ResultSet{result},
 		RowCount: result.RowCount, DisplayedRowCount: result.DisplayedRowCount, CommandTag: result.CommandTag, Truncated: result.Truncated,
 		DisplayNotice: result.DisplayNotice, NextCursor: result.NextCursor, AffectedRowCountKnown: result.AffectedRowCountKnown}
 }

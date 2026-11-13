@@ -43,7 +43,7 @@ every day, with independent sessions for each SQL tab.
 | **An editor that gets you** | Contextual completion, multiple cursors, find/replace, offline formatting and code folding. |
 | **Tabs with their own space** | Each SQL tab keeps its connection, transaction, session settings and temporary tables until disconnected. |
 | **Edits you can review** | Stage cell changes, inspect **Preview SQL**, then **Apply**. Conflicts roll back the batch. |
-| **A workspace worth keeping** | Split panes, SQL files, a shared query library, result snapshots and investigation documents. |
+| **A workspace worth keeping** | Split panes, SQL files, a shared query library, result snapshots and investigation documents. Unreleased: saved structure and diagnostic evidence. |
 | **Data on the move** | Copy cells and ranges, export loaded results, or use **Run to File** for a complete export. |
 | **A look that fits** | System appearance, light **Lager**, dark **Porter**, and importable editor color schemes. |
 

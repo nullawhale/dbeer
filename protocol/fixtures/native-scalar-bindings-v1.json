@@ -1,0 +1,224 @@
+{
+  "version": 1,
+  "cassandra": [
+    {
+      "column": {
+        "index": 0,
+        "name": "key",
+        "engine": "cassandra",
+        "nativeType": "uuid",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"uuid\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}"
+      },
+      "native": {
+        "engine": "cassandra",
+        "kind": "native",
+        "nativeType": "uuid",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"uuid\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}",
+        "value": "00112233-4455-6677-8899-aabbccddeeff"
+      },
+      "wire": "ABEiM0RVZneImaq7zN3u/w=="
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "key",
+        "engine": "cassandra",
+        "nativeType": "timeuuid",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"timeuuid\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}"
+      },
+      "native": {
+        "engine": "cassandra",
+        "kind": "native",
+        "nativeType": "timeuuid",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"timeuuid\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}",
+        "value": "f47ac10b-58cc-11cf-a447-001122334455"
+      },
+      "wire": "9HrBC1jMEc+kRwARIjNEVQ=="
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "key",
+        "engine": "cassandra",
+        "nativeType": "inet",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"inet\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}"
+      },
+      "native": {
+        "engine": "cassandra",
+        "kind": "native",
+        "nativeType": "inet",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"inet\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}",
+        "value": "2001:db8::1"
+      },
+      "wire": "IAENuAAAAAAAAAAAAAAAAQ=="
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "key",
+        "engine": "cassandra",
+        "nativeType": "date",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"date\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}"
+      },
+      "native": {
+        "engine": "cassandra",
+        "kind": "native",
+        "nativeType": "date",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"date\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}",
+        "value": "2026-11-13"
+      },
+      "wire": "gABRIg=="
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "key",
+        "engine": "cassandra",
+        "nativeType": "time",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"time\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}"
+      },
+      "native": {
+        "engine": "cassandra",
+        "kind": "native",
+        "nativeType": "time",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"time\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}",
+        "value": "23:59:59.123456789"
+      },
+      "wire": "AABOlF0QAxU="
+    }
+  ],
+  "mysql": [
+    {
+      "column": {
+        "index": 0,
+        "name": "value",
+        "engine": "mysql",
+        "nativeType": "DATE",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":10,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}"
+      },
+      "native": {
+        "engine": "mysql",
+        "kind": "native",
+        "nativeType": "DATE",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":10,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}",
+        "value": "2026-11-13"
+      }
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "value",
+        "engine": "mysql",
+        "nativeType": "TIME",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":11,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}"
+      },
+      "native": {
+        "engine": "mysql",
+        "kind": "native",
+        "nativeType": "TIME",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":11,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}",
+        "value": "-25:04:05.123456"
+      }
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "value",
+        "engine": "mysql",
+        "nativeType": "DATETIME",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":12,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}"
+      },
+      "native": {
+        "engine": "mysql",
+        "kind": "native",
+        "nativeType": "DATETIME",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":12,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}",
+        "value": "2026-11-13 10:11:12.123456"
+      }
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "value",
+        "engine": "mysql",
+        "nativeType": "JSON",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":245,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}"
+      },
+      "native": {
+        "engine": "mysql",
+        "kind": "native",
+        "nativeType": "JSON",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":245,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}",
+        "value": "{\"integer\":9007199254740993}"
+      }
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "value",
+        "engine": "mysql",
+        "nativeType": "DOUBLE",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":5,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}"
+      },
+      "native": {
+        "engine": "mysql",
+        "kind": "native",
+        "nativeType": "DOUBLE",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":5,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":0}",
+        "value": "1.0000000000000002"
+      }
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "value",
+        "engine": "mysql",
+        "nativeType": "DOUBLE UNSIGNED",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":5,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":32}"
+      },
+      "native": {
+        "engine": "mysql",
+        "kind": "native",
+        "nativeType": "DOUBLE UNSIGNED",
+        "typeIdentity": "{\"engine\":\"mysql\",\"type\":5,\"charset\":63,\"length\":32,\"decimals\":31,\"flags\":32}",
+        "value": "1.0000000000000002"
+      }
+    }
+  ],
+  "cassandraUnsupported": [
+    {
+      "column": {
+        "index": 0,
+        "name": "key",
+        "engine": "cassandra",
+        "nativeType": "inet",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"inet\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}"
+      },
+      "native": {
+        "engine": "cassandra",
+        "kind": "opaque",
+        "nativeType": "inet",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"inet\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}",
+        "value": "AAAAAAAAAAAAAP//wAACAQ=="
+      },
+      "wire": "AAAAAAAAAAAAAP//wAACAQ=="
+    },
+    {
+      "column": {
+        "index": 0,
+        "name": "key",
+        "engine": "cassandra",
+        "nativeType": "date",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"date\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}"
+      },
+      "native": {
+        "engine": "cassandra",
+        "kind": "opaque",
+        "nativeType": "date",
+        "typeIdentity": "{\"type\":{\"ref\":{\"kind\":\"type\",\"schema\":\"\",\"name\":\"date\"},\"kind\":\"builtin\",\"modifiers\":{\"state\":\"known\",\"value\":{\"length\":null,\"precision\":null,\"scale\":null,\"datetimePrecision\":null,\"interval\":null,\"arrayDimensions\":0,\"unsigned\":false,\"zerofill\":false}},\"labels\":{\"items\":[],\"complete\":true,\"state\":\"known\"}},\"definitions\":[]}",
+        "value": "/////w=="
+      },
+      "wire": "/////w=="
+    }
+  ]
+}

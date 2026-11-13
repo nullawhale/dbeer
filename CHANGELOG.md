@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Preserve captured native values separately from display text across results,
+  inspection, JSON copying/export, snapshots, comparisons, profiling and Agent/MCP
+  replies. Retain exact numeric strings, binary bytes, IEEE widths/bits and
+  ordered nested entries with duplicate keys. Bind edits and key predicates only
+  from proven source values, keeping unsupported rows read only. Add JSON export
+  version 2, snapshot version 3 and explicit offline JSON import while preserving
+  older readers and guarded file publication.
+
+- Save immutable structure outcomes and session diagnostics as portable local
+  evidence, with historical acknowledgements, collection times and completeness
+  notices. Reuse the saved-plan library's guarded storage and shared quota, add
+  offline viewers, snapshot attachments and Investigation references, and keep
+  live session handles and execution grants out of files.
+
+- Add a separate binary-safe `dbeer_command` MCP contract with ordered arguments,
+  exact operation grants and existing cancellation/unknown-outcome handling.
+  The five existing engines explicitly reject native commands; a Redis engine
+  and its command implementation remain future work.
+
 - Discover declared incoming PostgreSQL/MySQL/SQLite foreign keys and open child
   rows from a stored parent row in the current view or an independent tab.
   Preserve complete composite mappings, canonical target identity and exact key

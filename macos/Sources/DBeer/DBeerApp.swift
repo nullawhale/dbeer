@@ -124,6 +124,9 @@ private struct WorkspaceCommands: Commands {
             commandItem(.showSQLHistory)
             Button("Result Snapshots…") { workspace.isSnapshotsPresented = true }
                 .disabled(!workspace.canManageWorkspace)
+            Button("Saved Operation Evidence…") { workspace.isSavedEvidencePresented = true }
+                .disabled(!workspace.canManageWorkspace)
+                .disabled(!workspace.canManageWorkspace)
         }
         CommandMenu("Connections") {
             Button("Compare Table Data…") { workspace.showDataComparison() }

@@ -63,26 +63,117 @@ enum SQLFileBinding {
 
     static func digestText(_ text: String) -> String { digest(Data(text.utf8)) }
 
-    static func read(_ url: URL) throws -> LoadedSQLFile {
+    static func read(_ url: URL, maximumBytes: Int? = nil, expectedParent: SQLFileIdentity? = nil) throws -> LoadedSQLFile {
         guard isLocalFile(url) else { throw SQLFileBindingError.invalidTarget }
         let parent = try openParent(of: url)
         defer { close(parent) }
-        guard let contents = try contents(at: url.lastPathComponent, in: parent),
+        if let expectedParent {
+            var metadata = stat()
+            guard fstat(parent, &metadata) == 0, SQLFileIdentity(metadata) == expectedParent else { throw SQLFileBindingError.changed }
+        }
+        guard let contents = try contents(at: url.lastPathComponent, in: parent, maximumBytes: maximumBytes),
               parentMatches(parent, url: url.deletingLastPathComponent()),
               let loaded = contents.loaded else { throw SQLFileBindingError.read }
         return loaded
     }
 
+    static func version(of url: URL, maximumBytes: Int, expectedParent: SQLFileIdentity? = nil) throws -> SQLFileVersion {
+        guard isLocalFile(url) else { throw SQLFileBindingError.invalidTarget }
+        let parent = try openParent(of: url)
+        defer { close(parent) }
+        if let expectedParent {
+            var metadata = stat()
+            guard fstat(parent, &metadata) == 0, SQLFileIdentity(metadata) == expectedParent else { throw SQLFileBindingError.changed }
+        }
+        guard let value = try contents(at: url.lastPathComponent, in: parent, maximumBytes: maximumBytes),
+              parentMatches(parent, url: url.deletingLastPathComponent()) else { throw SQLFileBindingError.read }
+        return value.version
+    }
+
+    static func reviewedVersion(at url: URL, maximumBytes: Int = 16 * 1_024 * 1_024) throws -> SQLFileVersion? {
+        var metadata = stat()
+        guard lstat(url.path, &metadata) == 0 else {
+            guard errno == ENOENT else { throw SQLFileBindingError.read }
+            return nil
+        }
+        return try version(of: url, maximumBytes: maximumBytes)
+    }
+
+    static func parentIdentity(of url: URL) throws -> SQLFileIdentity {
+        let parent = try openParent(of: url)
+        defer { close(parent) }
+        var value = stat()
+        guard fstat(parent, &value) == 0, parentMatches(parent, url: url.deletingLastPathComponent()) else { throw SQLFileBindingError.changed }
+        return SQLFileIdentity(value)
+    }
+
+    /// Commit an already streamed file using the same reviewed-version and recovery rules as SQL saves.
+    static func publishPreparedFile(_ temporary: URL, to destination: URL, expectedVersion: SQLFileVersion?, expectedParent: SQLFileIdentity,
+                                    expectedSHA256: String, maximumBytes: Int,
+                                    publicationHook: ((SQLFilePublicationStage, URL?) throws -> Void)? = nil) throws {
+        guard isLocalFile(temporary), isLocalFile(destination),
+              Data(temporary.deletingLastPathComponent().path.utf8) == Data(destination.deletingLastPathComponent().path.utf8),
+              temporary.lastPathComponent != destination.lastPathComponent else { throw SQLFileBindingError.invalidTarget }
+        let parent = try openParent(of: destination)
+        defer { close(parent) }
+        var metadata = stat()
+        guard fstat(parent, &metadata) == 0, SQLFileIdentity(metadata) == expectedParent,
+              let prepared = try contents(at: temporary.lastPathComponent, in: parent, maximumBytes: maximumBytes)?.version,
+              prepared.sha256 == expectedSHA256 else { throw SQLFileBindingError.changed }
+        let directory = destination.deletingLastPathComponent()
+        let name = destination.lastPathComponent
+        let recovery = ".dbeer-report-\(UUID().uuidString).recovery"
+        var displaced = false
+        do {
+            try Task.checkCancellation()
+            guard parentMatches(parent, url: directory),
+                  try contents(at: name, in: parent, maximumBytes: maximumBytes)?.version == expectedVersion else { throw SQLFileBindingError.changed }
+            try publicationHook?(.willDisplace, nil)
+            if expectedVersion != nil {
+                guard renameatx_np(parent, name, parent, recovery, UInt32(RENAME_EXCL)) == 0 else { throw SQLFileBindingError.changed }
+                displaced = true
+                try publicationHook?(.didDisplace, resolvedDirectory(parent, fallback: directory).appendingPathComponent(recovery))
+                guard try contents(at: recovery, in: parent, maximumBytes: maximumBytes)?.version == expectedVersion else { throw SQLFileBindingError.changed }
+            }
+            guard parentMatches(parent, url: directory),
+                  try contents(at: temporary.lastPathComponent, in: parent, maximumBytes: maximumBytes)?.version == prepared else { throw SQLFileBindingError.changed }
+            try publicationHook?(.willPublish, displaced ? resolvedDirectory(parent, fallback: directory).appendingPathComponent(recovery) : nil)
+            try Task.checkCancellation()
+            guard renameatx_np(parent, temporary.lastPathComponent, parent, name, UInt32(RENAME_EXCL)) == 0 else { throw SQLFileBindingError.changed }
+            try publicationHook?(.didPublish, displaced ? resolvedDirectory(parent, fallback: directory).appendingPathComponent(recovery) : nil)
+            let displacedVersion: SQLFileVersion?
+            if displaced { displacedVersion = try contents(at: recovery, in: parent, maximumBytes: maximumBytes)?.version }
+            else { displacedVersion = nil }
+            guard parentMatches(parent, url: directory),
+                  try contents(at: name, in: parent, maximumBytes: maximumBytes)?.version == prepared,
+                  !displaced || displacedVersion == expectedVersion else { throw SQLFileBindingError.changed }
+            if displaced { _ = unlinkat(parent, recovery, 0); displaced = false }
+            _ = fsync(parent)
+        } catch {
+            if displaced {
+                if renameatx_np(parent, recovery, parent, name, UInt32(RENAME_EXCL)) != 0 {
+                    _ = fsync(parent)
+                    throw SQLFileBindingError.recovery(resolvedDirectory(parent, fallback: directory).appendingPathComponent(recovery))
+                }
+                _ = fsync(parent)
+            }
+            throw error
+        }
+    }
+
     /// A reviewed version binds replacement to one inode and its exact bytes.
     /// A nil version only creates a new destination; it cannot replace a file.
-    static func write(_ text: String, to destination: URL, expectedVersion: SQLFileVersion?,
+    static func write(_ text: String, to destination: URL, expectedVersion: SQLFileVersion?, expectedParent: SQLFileIdentity? = nil, maximumBytes: Int? = nil,
                       publicationHook: ((SQLFilePublicationStage, URL?) throws -> Void)? = nil) throws -> LoadedSQLFile {
         guard isLocalFile(destination) else { throw SQLFileBindingError.invalidTarget }
+        if let maximumBytes {
+            guard maximumBytes >= 0, maximumBytes < Int.max, text.utf8.count <= maximumBytes else { throw SQLFileBindingError.invalidTarget }
+        }
         var coordinationError: NSError?
         var result: Result<LoadedSQLFile, any Error>?
         let coordinator = NSFileCoordinator(filePresenter: nil)
         coordinator.coordinate(writingItemAt: destination, options: .forReplacing, error: &coordinationError) { url in
-            result = Result { try publish(text, to: url, expectedVersion: expectedVersion, hook: publicationHook) }
+            result = Result { try publish(text, to: url, expectedVersion: expectedVersion, expectedParent: expectedParent, maximumBytes: maximumBytes, hook: publicationHook) }
         }
         if let result { return try result.get() }
         throw SQLFileBindingError.write
@@ -99,14 +190,18 @@ enum SQLFileBinding {
         return try write(text, to: destination, expectedVersion: version).sha256
     }
 
-    private static func publish(_ text: String, to destination: URL, expectedVersion: SQLFileVersion?,
+    private static func publish(_ text: String, to destination: URL, expectedVersion: SQLFileVersion?, expectedParent: SQLFileIdentity?, maximumBytes: Int?,
                                 hook: ((SQLFilePublicationStage, URL?) throws -> Void)?) throws -> LoadedSQLFile {
         let parent = try openParent(of: destination)
         defer { close(parent) }
+        if let expectedParent {
+            var metadata = stat()
+            guard fstat(parent, &metadata) == 0, SQLFileIdentity(metadata) == expectedParent else { throw SQLFileBindingError.changed }
+        }
         let directory = destination.deletingLastPathComponent()
         let name = destination.lastPathComponent
         let original: Contents?
-        do { original = try contents(at: name, in: parent) }
+        do { original = try contents(at: name, in: parent, maximumBytes: maximumBytes) }
         catch { throw expectedVersion == nil ? SQLFileBindingError.invalidTarget : SQLFileBindingError.changed }
         if let expectedVersion {
             guard original?.version == expectedVersion else { throw SQLFileBindingError.changed }
@@ -135,7 +230,7 @@ enum SQLFileBinding {
             // Pin the parent and reviewed target immediately before moving
             // anything. Recheck the displaced inode so a pathname replacement
             // between these steps cannot silently lose the external bytes.
-            guard parentMatches(parent, url: directory), try contents(at: name, in: parent)?.version == expectedVersion else {
+            guard parentMatches(parent, url: directory), try contents(at: name, in: parent, maximumBytes: maximumBytes)?.version == expectedVersion else {
                 throw SQLFileBindingError.changed
             }
             try hook?(.willDisplace, nil)
@@ -143,17 +238,17 @@ enum SQLFileBinding {
                 guard renameatx_np(parent, name, parent, recovery, UInt32(RENAME_EXCL)) == 0 else { throw SQLFileBindingError.changed }
                 displaced = true
                 try hook?(.didDisplace, resolvedDirectory(parent, fallback: directory).appendingPathComponent(recovery))
-                guard try contents(at: recovery, in: parent)?.version == expectedVersion else { throw SQLFileBindingError.changed }
+                guard try contents(at: recovery, in: parent, maximumBytes: maximumBytes)?.version == expectedVersion else { throw SQLFileBindingError.changed }
             }
             guard parentMatches(parent, url: directory) else { throw SQLFileBindingError.changed }
             try hook?(.willPublish, displaced ? resolvedDirectory(parent, fallback: directory).appendingPathComponent(recovery) : nil)
             guard renameatx_np(parent, temporary, parent, name, UInt32(RENAME_EXCL)) == 0 else { throw SQLFileBindingError.changed }
             try hook?(.didPublish, displaced ? resolvedDirectory(parent, fallback: directory).appendingPathComponent(recovery) : nil)
             let displacedVersion: SQLFileVersion?
-            if displaced { displacedVersion = try contents(at: recovery, in: parent)?.version }
+            if displaced { displacedVersion = try contents(at: recovery, in: parent, maximumBytes: maximumBytes)?.version }
             else { displacedVersion = nil }
             guard parentMatches(parent, url: directory),
-                  let published = try contents(at: name, in: parent), published.version == publishedVersion,
+                  let published = try contents(at: name, in: parent, maximumBytes: maximumBytes), published.version == publishedVersion,
                   !displaced || displacedVersion == expectedVersion,
                   let loaded = published.loaded else {
                 if displaced { keepRecovery = true }
@@ -210,7 +305,7 @@ enum SQLFileBinding {
         return fstat(current, &metadata) == 0 && SQLFileIdentity(pinned) == SQLFileIdentity(metadata)
     }
 
-    private static func contents(at name: String, in parent: Int32) throws -> Contents? {
+    private static func contents(at name: String, in parent: Int32, maximumBytes: Int? = nil) throws -> Contents? {
         let descriptor = openat(parent, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
         guard descriptor >= 0 else {
             if errno == ENOENT { return nil }
@@ -220,7 +315,15 @@ enum SQLFileBinding {
         defer { try? handle.close() }
         var before = stat()
         guard fstat(descriptor, &before) == 0, before.st_mode & S_IFMT == S_IFREG else { throw SQLFileBindingError.read }
-        let data = try handle.readToEnd() ?? Data()
+        let data: Data
+        if let maximumBytes {
+            guard maximumBytes >= 0, maximumBytes < Int.max, before.st_size >= 0,
+                  before.st_size <= Int64(maximumBytes) else { throw SQLFileBindingError.read }
+            data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
+            guard data.count <= maximumBytes else { throw SQLFileBindingError.read }
+        } else {
+            data = try handle.readToEnd() ?? Data()
+        }
         var after = stat()
         var pathname = stat()
         guard fstat(descriptor, &after) == 0, before.st_dev == after.st_dev, before.st_ino == after.st_ino,

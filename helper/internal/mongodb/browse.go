@@ -19,10 +19,11 @@ import (
 )
 
 type browseCursor struct {
-	cursor    *mongo.Cursor
-	signature [32]byte
-	expires   time.Time
-	pending   *string
+	cursor     *mongo.Cursor
+	signature  [32]byte
+	expires    time.Time
+	pending    *string
+	pendingRaw bson.Raw
 }
 
 func (s *Session) clearCursors(ctx context.Context) {
@@ -31,6 +32,8 @@ func (s *Session) clearCursors(ctx context.Context) {
 		delete(s.cursors, token)
 	}
 }
+
+var errNativeCellFilter = errors.New("Native cell filters require a PostgreSQL, MySQL, or SQLite connection.")
 
 func browseScript(r protocol.CatalogRequest) (mongoscript.Script, error) {
 	s := mongoscript.Script{Database: r.Schema, Collection: r.Object, Filter: bson.D{}}
@@ -43,6 +46,12 @@ func browseScript(r protocol.CatalogRequest) (mongoscript.Script, error) {
 		return true
 	}
 	compileCondition := func(f protocol.CatalogFilter) (bson.D, error) {
+		if f.NativeValue != nil {
+			return nil, errNativeCellFilter
+		}
+		if f.SQLiteValue != nil {
+			return nil, mongoscript.ErrInvalid
+		}
 		if !validField(f.Column) {
 			return nil, mongoscript.ErrInvalid
 		}
@@ -136,6 +145,9 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 		return s.failure(command, "unsupported", "MongoDB browsing uses sequential cursors. Refresh the first page.")
 	}
 	script, err := browseScript(r)
+	if errors.Is(err, errNativeCellFilter) {
+		return s.failure(command, "unsupported", errNativeCellFilter.Error())
+	}
 	if err != nil {
 		return s.failure(command, "validation", "MongoDB filter values require JSON or Extended JSON. Quote string values, for example \"hello\".")
 	}
@@ -171,6 +183,15 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 	}()
 	known := false
 	result := protocol.ResultSet{Columns: documentColumns(), Rows: [][]*string{}, CommandTag: "FIND", AffectedRowCountKnown: &known}
+	nativeRequested := command.ResultValues == protocol.NativeResultValuesFormat
+	resultLimit := maxResultBytes
+	if nativeRequested {
+		resultLimit += protocol.MaxNativeValueBytes
+	}
+	var nativeBudget protocol.NativeMatrixBudget
+	if nativeRequested {
+		result.NativeValues = [][]protocol.NativeValue{}
+	}
 	if sink != nil {
 		if err = sink.Begin(0, result.Columns); err != nil {
 			return safeError(command, ctx, err, false, nil)
@@ -179,30 +200,57 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 	bytes := 0
 	for len(result.Rows) < 200 {
 		var text string
+		var raw bson.Raw
 		if c.pending != nil {
 			text = *c.pending
+			raw = c.pendingRaw
 			c.pending = nil
+			c.pendingRaw = nil
 		} else {
 			if !c.cursor.Next(ctx) {
 				break
 			}
 			text, err = CanonicalDocument(c.cursor.Current)
+			raw = c.cursor.Current
 			if err != nil {
 				return safeError(command, ctx, err, false, nil)
 			}
 		}
 		row := []*string{&text}
 		encoded, _ := json.Marshal(row)
-		if bytes+len(encoded) > maxResultBytes {
+		var native []protocol.NativeValue
+		nativeBytes := 0
+		if nativeRequested {
+			value, e := nativeDocument(raw)
+			if e != nil {
+				return safeError(command, ctx, e, false, nil)
+			}
+			native = []protocol.NativeValue{value}
+			data, e := json.Marshal(native)
+			if e != nil {
+				return safeError(command, ctx, errNativeDocument, false, nil)
+			}
+			nativeBytes = len(data)
+		}
+		if bytes+len(encoded)+nativeBytes > resultLimit || nativeRequested && !nativeBudget.Append(native, 1) {
 			c.pending = &text
+			c.pendingRaw = append(bson.Raw(nil), raw...)
 			if len(result.Rows) == 0 {
 				return safeError(command, ctx, errDocumentLimit, false, nil)
 			}
 			break
 		}
-		bytes += len(encoded)
+		bytes += len(encoded) + nativeBytes
 		result.Rows = append(result.Rows, row)
+		if nativeRequested {
+			result.NativeValues = append(result.NativeValues, native)
+		}
 		if sink != nil {
+			if nativeRequested {
+				if err = adapter.DeliverNativeRow(sink, 0, native); err != nil {
+					return safeError(command, ctx, err, false, nil)
+				}
+			}
 			if err = sink.Row(0, row); err != nil {
 				return safeError(command, ctx, err, false, nil)
 			}

@@ -20,7 +20,7 @@ type structureReader interface {
 }
 
 func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tableedit.Baseline, error) {
-	if !t.Valid() || s.TransactionStatus() != "idle" {
+	if !t.Valid() || s.TransactionStatus() != "idle" || !nativePostgresEncodingSafe(s.conn.PgConn().ParameterStatus("client_encoding"), s.conn.PgConn().ParameterStatus("server_encoding")) {
 		return tableedit.Baseline{}, tableedit.ErrUnsupported
 	}
 	tx, e := s.conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})

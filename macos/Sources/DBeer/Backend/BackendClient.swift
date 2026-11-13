@@ -90,13 +90,19 @@ actor BackendClient {
     private var insertFormattingSupported = false
     private var resultComparisonSupported = false
     private var schemaComparisonSupported = false
+    private var schemaBundleSupported = false
+    private var schemaBundleSourceSupported = false
     private var dataComparisonSupported = false
     private var synchronizationPlanSupported = false
     private var queryParametersSupported = false
     private var tableImportSupported = false
     private var sessionMonitorSupported = false
+    private var schemaObservationSupported = false
     private var databaseToolsSupported = false
     private var dataTransferSupported = false
+    private var nativeCommandsSupported = false
+    private var nativeResultValuesSupported = false
+    private var sessionCapabilities: [String: Set<String>] = [:]
     private var shuttingDown = false
     private var wasForced = false
     private var shutdownTask: Task<Shutdown, Never>?
@@ -195,17 +201,60 @@ actor BackendClient {
 
     /// Returns the terminal reply. `query.started` is delivered separately;
     /// cancelling a SQL query uses an explicit cancel command, not Task.cancel.
+    func supportsNativeCommands(sessionId: String) -> Bool {
+        nativeCommandsSupported && nativeResultValuesSupported &&
+            sessionCapabilities[sessionId]?.contains(NativeCommand.capability) == true &&
+            sessionCapabilities[sessionId]?.contains(NativeValue.capability) == true
+    }
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
     func supportsQueryParameters() -> Bool { queryParametersSupported }
     func supportsTableImport() -> Bool { tableImportSupported }
     func supportsSessionMonitor() -> Bool { sessionMonitorSupported }
+    func supportsSchemaObservation() -> Bool { schemaObservationSupported }
     func supportsDatabaseTools() -> Bool { databaseToolsSupported }
     func supportsDataTransfer() -> Bool { dataTransferSupported }
 
     func request(_ command: BackendCommand,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        var command = command
+        if nativeResultValuesSupported,
+           let session = command.sessionId, sessionCapabilities[session]?.contains(NativeValue.capability) == true,
+           command.type == "execute" || command.type == "command.execute" || (command.type == "catalog" && command.catalog?.kind == "browse") {
+            command.resultValues = NativeValue.format
+        }
+        if let format = command.resultValues {
+            guard nativeResultValuesSupported, format == NativeValue.format,
+                  command.type == "execute" || command.type == "command.execute" || (command.type == "catalog" && command.catalog?.kind == "browse"),
+                  command.sessionId.flatMap({ sessionCapabilities[$0] })?.contains(NativeValue.capability) == true else {
+                throw BackendRequestError.invalidCommand
+            }
+        }
+        if command.type == "command.execute" {
+            guard let session = command.sessionId, supportsNativeCommands(sessionId: session),
+                  command.queryId.map(BackendMessage.validID) == true, command.nativeCommand?.valid == true,
+                  command.resultValues == NativeValue.format, command.sql == nil, command.parameters == nil,
+                  command.connection == nil, command.catalog == nil, command.catalogMetadata == nil,
+                  command.stream == nil, command.export == nil, command.sequence == nil, command.changes == nil,
+                  command.operations == nil, command.sshTrust == nil, command.insert == nil, command.comparison == nil,
+                  command.schemaComparison == nil, command.dataComparison == nil, command.explain == nil,
+                  command.structure == nil, command.tableImport == nil, command.databaseTools == nil,
+                  command.transfer == nil, command.schemaObservation == nil, command.protocolVersion == nil,
+                  command.authorization.map(BackendMessage.validID) == true else { throw BackendRequestError.invalidCommand }
+        } else if command.nativeCommand != nil { throw BackendRequestError.invalidCommand }
+        for operation in command.operations ?? [] {
+            if operation.type == "command.execute" {
+                guard command.type == "operation.assess", let session = command.sessionId,
+                      supportsNativeCommands(sessionId: session), operation.nativeCommand?.valid == true,
+                      operation.queryId.map(BackendMessage.validID) == true, operation.sql == nil,
+                      operation.parameters == nil, operation.export == nil, operation.changes == nil,
+                      operation.explain == nil, operation.structure == nil, operation.tableImport == nil else { throw BackendRequestError.invalidCommand }
+            } else if operation.nativeCommand != nil || operation.queryId != nil { throw BackendRequestError.invalidCommand }
+        }
+        if command.type == "monitor.schema" {
+            guard schemaObservationSupported, command.validSchemaObservationCommand else { throw BackendRequestError.invalidCommand }
+        } else if command.schemaObservation != nil { throw BackendRequestError.invalidCommand }
         if ["catalog.page", "catalog.batch", "catalog.close"].contains(command.type) {
             guard command.catalogMetadata?.valid(for: command.type) == true,
                   command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
@@ -323,7 +372,9 @@ actor BackendClient {
             }
         } else if command.dataComparison != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("schema.") {
-            guard schemaComparisonSupported, command.schemaComparison?.valid(for: command.type) == true,
+            let supported = command.type.hasPrefix("schema.import.") ? schemaBundleSourceSupported :
+                command.type.hasPrefix("schema.bundle.") ? schemaBundleSupported : schemaComparisonSupported
+            guard supported, command.schemaComparison?.valid(for: command.type) == true,
                   command.sessionId == nil, command.queryId == nil, command.connection == nil, command.sql == nil, command.catalog == nil,
                   command.protocolVersion == nil, command.stream == nil, command.export == nil, command.changes == nil,
                   command.operations == nil, command.authorization == nil, command.sequence == nil, command.sshTrust == nil,
@@ -464,7 +515,7 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
-        if reply.type == "query.started", (["execute", "explain.run", "monitor.snapshot", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
+        if reply.type == "query.started", (["execute", "command.execute", "explain.run", "monitor.snapshot", "monitor.schema", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
             request.started = true
             pending[reply.requestId] = request
             request.onEvent?(reply)
@@ -501,13 +552,24 @@ actor BackendClient {
             insertFormattingSupported = reply.capabilities?.contains("formatInsertsV1") == true
             resultComparisonSupported = reply.capabilities?.contains("resultComparisonV1") == true
             schemaComparisonSupported = reply.capabilities?.contains("schemaComparisonV1") == true
+            schemaBundleSupported = reply.capabilities?.contains("schemaBundleV1") == true
+            schemaBundleSourceSupported = reply.capabilities?.contains("schemaBundleSourceV1") == true
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
             queryParametersSupported = reply.capabilities?.contains("queryParametersV1") == true
             tableImportSupported = reply.capabilities?.contains("tableImportV1") == true
             sessionMonitorSupported = reply.capabilities?.contains("sessionMonitorV1") == true
+            schemaObservationSupported = reply.capabilities?.contains("schemaObservationV1") == true
             databaseToolsSupported = reply.capabilities?.contains("databaseToolsV1") == true
             dataTransferSupported = reply.capabilities?.contains("dataTransferV1") == true
+            nativeCommandsSupported = reply.capabilities?.contains(NativeCommand.capability) == true
+            nativeResultValuesSupported = reply.capabilities?.contains(NativeValue.capability) == true
+        }
+        if reply.type == "connect.result", let session = reply.sessionId {
+            sessionCapabilities[session] = Set(reply.capabilities ?? [])
+        }
+        if reply.type == "disconnect.ack" || reply.connected == false, let session = reply.sessionId {
+            sessionCapabilities.removeValue(forKey: session)
         }
         if reply.type == "hello.ack", reply.protocolVersion != BackendProtocol.version {
             fail(BackendTransportError(.incompatibleVersion(reply.protocolVersion ?? -1)))
@@ -515,6 +577,9 @@ actor BackendClient {
         }
         if command.type == "explain.run", reply.type == "explain.result",
            !request.started || reply.explain?.mode != command.explain?.mode {
+            fail(BackendTransportError(.invalidMessage)); return
+        }
+        if command.type == "monitor.schema", reply.type == "monitor.schema.result", !request.started {
             fail(BackendTransportError(.invalidMessage)); return
         }
         if command.type == "monitor.snapshot", reply.type == "monitor.result", !request.started {
@@ -616,7 +681,7 @@ actor BackendClient {
         }
         for chunk in [response.value, response.export].compactMap({ $0 }) {
             guard chunk.offset == (requested.offset ?? 0), (chunk.data?.count ?? Int.max) <= (requested.maxBytes ?? 65_536),
-                  response.value == nil || chunk.valueRef == requested.valueRef else { throw BackendTransportError(.invalidMessage) }
+                  response.value == nil && command.type != "schema.bundle.export" || chunk.valueRef == requested.valueRef else { throw BackendTransportError(.invalidMessage) }
         }
     }
 
@@ -649,6 +714,16 @@ actor BackendClient {
               rows.allSatisfy({ $0.count == request.streamSets[index].columns.count }) else {
             throw BackendTransportError(.invalidMessage)
         }
+        let wantsNative = request.command.resultValues == NativeValue.format
+        guard wantsNative == (reply.nativeValues != nil),
+              NativeValue.validMatrix(reply.nativeValues, rows: rows.count, columns: request.streamSets[index].columns.count) else {
+            throw BackendTransportError(.invalidMessage)
+        }
+        if let native = reply.nativeValues {
+            request.streamBytes += try encoder.encode(native).count
+            if request.streamSets[index].nativeValues == nil { request.streamSets[index].nativeValues = [] }
+            request.streamSets[index].nativeValues?.append(contentsOf: native)
+        }
         request.streamRows += rows.count
         for row in rows { request.streamBytes += try encoder.encode(row).count + 1 }
         guard request.streamRows <= 1_000, request.streamBytes <= 8 * 1_024 * 1_024 else {
@@ -672,6 +747,11 @@ actor BackendClient {
     private func hydrate(_ reply: BackendMessage, request: Pending) throws -> BackendMessage {
         guard reply.streamed == true else {
             guard request.streamSequence == 0 else { throw BackendTransportError(.invalidMessage) }
+            if reply.type == "query.result" {
+                let wantsNative = request.command.resultValues == NativeValue.format
+                guard wantsNative == (reply.nativeValues != nil),
+                      reply.resultSets?.allSatisfy({ ($0.nativeValues != nil) == wantsNative }) ?? true else { throw BackendTransportError(.invalidMessage) }
+            }
             try validateAggregate(reply)
             return reply
         }
@@ -685,6 +765,8 @@ actor BackendClient {
                 throw BackendTransportError(.invalidMessage)
             }
             sets[index].rows = request.streamSets[index].rows
+            guard sets[index].nativeValues == nil else { throw BackendTransportError(.invalidMessage) }
+            sets[index].nativeValues = request.streamSets[index].nativeValues
             // Terminal notices can be added after the last streaming summary,
             // including an explanation that SQL source exceeded a size limit.
             // Retain them when presenting any selected result set.
@@ -701,11 +783,13 @@ actor BackendClient {
                 result.truncated = first.truncated; result.displayNotice = first.displayNotice
                 result.affectedRowCountKnown = first.affectedRowCountKnown; result.nextCursor = first.nextCursor
                 result.sqliteValues = first.sqliteValues
+                result.nativeValues = first.nativeValues
                 result.storageTokens = first.storageTokens
                 result.source = first.source
             } else {
                 result.columns = []; result.rows = []; result.displayedRowCount = 0
                 result.sqliteValues = nil
+                result.nativeValues = nil
                 result.storageTokens = nil
                 result.source = nil
             }
@@ -730,7 +814,7 @@ actor BackendClient {
             sets = [QueryResultSet(columns: reply.columns ?? [], rows: reply.rows ?? [],
                 commandTag: reply.commandTag ?? "", rowCount: reply.rowCount ?? 0,
                 displayedRowCount: reply.displayedRowCount ?? 0, truncated: reply.truncated ?? false,
-                displayNotice: reply.displayNotice, sqliteValues: reply.sqliteValues, storageTokens: reply.storageTokens, source: reply.source)]
+                displayNotice: reply.displayNotice, sqliteValues: reply.sqliteValues, nativeValues: reply.nativeValues, storageTokens: reply.storageTokens, source: reply.source)]
         } else { return }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.withoutEscapingSlashes]
@@ -759,7 +843,7 @@ actor BackendClient {
         pending.removeAll()
         for request in requests {
             var contextualError = error
-            contextualError.outcomeUnknown = ["execute", "explain.run", "catalog", "changes.apply", "structure.apply", "import.apply", "transfer.apply", "dbtools.start"].contains(request.command.type)
+            contextualError.outcomeUnknown = ["execute", "command.execute", "explain.run", "catalog", "changes.apply", "structure.apply", "import.apply", "transfer.apply", "dbtools.start"].contains(request.command.type)
             request.continuation.resume(throwing: contextualError)
         }
     }

@@ -90,6 +90,8 @@ struct InvestigationDocumentView: View {
     @ObservedObject var model: InvestigationDocumentModel
     @ObservedObject var workspace: ApplicationWorkspace
     private var choosingSnapshot = SwiftUI.State(initialValue: false)
+    private var choosingEvidence = SwiftUI.State(initialValue: false)
+    private var openingEvidence = SwiftUI.State<SavedEvidenceReference?>(initialValue: nil)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -145,6 +147,29 @@ struct InvestigationDocumentView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("investigationDocument")
+        .environment(\.openURL, OpenURLAction { url in
+            if let reference = SavedEvidenceLink.reference(from: url) {
+                openingEvidence.wrappedValue = reference
+                return .handled
+            }
+            return ["dbeer-plan", "dbeer-evidence"].contains(url.scheme?.lowercased() ?? "") ? .discarded : .systemAction
+        })
+        .sheet(isPresented: choosingEvidence.projectedValue) {
+            SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence, insert: { artifact in
+                guard canEdit else { return }
+                _ = model.addMarkdown(text: SavedEvidenceLink.markdown(artifact.reference, title: artifact.title))
+            })
+        }
+        .sheet(item: openingEvidence.projectedValue) { reference in
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Saved Operation Evidence").font(.headline)
+                    Spacer()
+                    Button("Done") { openingEvidence.wrappedValue = nil }.controlHover().keyboardShortcut(.cancelAction)
+                }
+                SavedEvidenceArtifactView(store: workspace.savedEvidence.store, reference: reference, revision: workspace.savedEvidence.revision)
+            }.padding(16).frame(minWidth: 900, minHeight: 650)
+        }
         .sheet(isPresented: choosingSnapshot.projectedValue) {
             InvestigationSnapshotPicker(workspace: workspace) { snapshot in
                 _ = workspace.addInvestigationSnapshot(document, snapshotID: snapshot.id)
@@ -225,6 +250,7 @@ struct InvestigationDocumentView: View {
             Button("Markdown") { addMarkdown() }
             Button("SQL") { addSQL() }
             Button("Saved Snapshot…") { if commitBlockEditor() { choosingSnapshot.wrappedValue = true } }
+            Button("Saved Operation Evidence…") { if commitBlockEditor() { choosingEvidence.wrappedValue = true } }
         } label: { Image(systemName: "plus").frame(width: 18) }
             .menuIndicator(.hidden).fixedSize().controlHover().disabled(!canEdit)
             .help("Add a block").accessibilityLabel("Add Investigation Block")

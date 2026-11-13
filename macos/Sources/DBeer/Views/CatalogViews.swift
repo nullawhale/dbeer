@@ -257,7 +257,7 @@ struct CatalogInspectionView: View {
             }
             if let result = inspection.structure {
                 Text("Columns").font(.headline).padding(.horizontal, 20)
-                ResultTableView(columns: result.columns ?? [], rows: result.rows ?? []).frame(minHeight: 180)
+                ResultTableView(columns: result.columns ?? [], rows: result.rows ?? [], sqliteValues: result.sqliteValues, nativeValues: result.nativeValues).frame(minHeight: 180)
             }
             if let definition = inspection.definition {
                 Text("Definition").font(.headline).padding(.horizontal, 20)

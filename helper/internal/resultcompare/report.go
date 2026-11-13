@@ -49,7 +49,7 @@ func (r *Result) cells(report int64, lrow, rrow []*string, mapping int) Cell {
 	if lrow != nil && rrow != nil {
 		a, b := r.left.Metadata().Columns[m.Left], r.right.Metadata().Columns[m.Right]
 		cell.Different = !sameType(a, b) || !sameValue(lrow[m.Left], rrow[m.Right])
-		cell.Uncertain = !known(a) || !known(b)
+		cell.Uncertain = !knownCell(a, lrow[m.Left]) || !knownCell(b, rrow[m.Right])
 	}
 	return cell
 }

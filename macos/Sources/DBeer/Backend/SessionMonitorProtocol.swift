@@ -59,7 +59,7 @@ struct SessionMonitorSnapshot: Codable, Sendable, Equatable {
     static func validText(_ value: String?, limit: Int) -> Bool {
         value.map { $0.utf8.count <= limit && !$0.contains("\0") } ?? true
     }
-    private static func date(_ value: String) -> (Int64, Int64)? {
+    static func date(_ value: String) -> (Int64, Int64)? {
         guard value.utf8.count <= 40,
               value.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})$"#, options: .regularExpression) == value.startIndex..<value.endIndex else { return nil }
         let bytes = Array(value.utf8)

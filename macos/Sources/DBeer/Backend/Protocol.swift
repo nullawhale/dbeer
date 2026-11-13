@@ -174,16 +174,18 @@ struct CatalogFilter: Codable, Sendable, Equatable {
     var `operator`: String
     var value: String?
     var sqliteValue: SQLiteValue?
+    var nativeValue: NativeCellFilterValue?
 
-    init(column: String, operator operation: String, value: String? = nil, sqliteValue: SQLiteValue? = nil) {
+    init(column: String, operator operation: String, value: String? = nil, sqliteValue: SQLiteValue? = nil, nativeValue: NativeCellFilterValue? = nil) {
         self.column = column
         self.operator = operation
         self.value = value
         self.sqliteValue = sqliteValue
+        self.nativeValue = nativeValue
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
-        guard Data(lhs.column.utf8) == Data(rhs.column.utf8), lhs.operator == rhs.operator, lhs.sqliteValue == rhs.sqliteValue else { return false }
+        guard Data(lhs.column.utf8) == Data(rhs.column.utf8), lhs.operator == rhs.operator, lhs.sqliteValue == rhs.sqliteValue, lhs.nativeValue == rhs.nativeValue else { return false }
         switch (lhs.value, rhs.value) {
         case (nil, nil): return true
         case let (left?, right?): return Data(left.utf8) == Data(right.utf8)
@@ -191,7 +193,7 @@ struct CatalogFilter: Codable, Sendable, Equatable {
         }
     }
 
-    private enum CodingKeys: String, CodingKey { case column, `operator`, value, sqliteValue }
+    private enum CodingKeys: String, CodingKey { case column, `operator`, value, sqliteValue, nativeValue }
     private struct Key: CodingKey {
         let stringValue: String
         var intValue: Int? { nil }
@@ -201,7 +203,7 @@ struct CatalogFilter: Codable, Sendable, Equatable {
 
     init(from decoder: Decoder) throws {
         let fields = try decoder.container(keyedBy: Key.self)
-        guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value", "sqliteValue"]) else {
+        guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value", "sqliteValue", "nativeValue"]) else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown filter condition field."))
         }
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -209,6 +211,13 @@ struct CatalogFilter: Codable, Sendable, Equatable {
         self.operator = try values.decode(String.self, forKey: .operator)
         value = try values.decodeIfPresent(String.self, forKey: .value)
         sqliteValue = nil
+        nativeValue = nil
+        if values.contains(.nativeValue) {
+            guard !values.contains(.value), !values.contains(.sqliteValue) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Ambiguous native filter operands."))
+            }
+            nativeValue = try values.decode(NativeCellFilterValue.self, forKey: .nativeValue)
+        }
         if values.contains(.sqliteValue) {
             guard !values.contains(.value) else {
                 throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Ambiguous filter operands."))
@@ -301,6 +310,7 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     var affectedRowCountKnown: Bool?
     var nextCursor: String?
     var sqliteValues: [[SQLiteValue]]?
+    var nativeValues: [[NativeValue]]? = nil
     var storageTokens: [String]?
     var source: SQLResultSource?
 
@@ -310,6 +320,8 @@ struct QueryResultSet: Codable, Sendable, Equatable {
         (nextCursor == nil || Self.validCursor(nextCursor!)) && rowCount >= 0 && displayedRowCount >= 0 &&
             Self.validStorageTokens(storageTokens, rowCount: displayedRowCount) &&
             SQLiteValue.validMatrix(sqliteValues, rows: displayedRowCount, columns: columns.count) &&
+            NativeValue.validMatrix(nativeValues, rows: displayedRowCount, columns: columns.count) &&
+            (!columns.contains(where: { $0.engine == .sqlite }) || NativeValue.matchesSQLite(nativeValues, storage: sqliteValues)) &&
             (source?.valid(for: columns) ?? true) &&
             (streamed ? rows.isEmpty : displayedRowCount == rows.count) &&
             columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
@@ -336,6 +348,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var catalog: CatalogRequest?
     var catalogMetadata: CatalogMetadataPageRequest?
     var stream: Bool?
+    var resultValues: String? = nil
     var export: ExportRequest?
     var sequence: Int?
     var changes: ChangesRequest?
@@ -352,6 +365,8 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var tableImport: TableImportRequest?
     var databaseTools: DatabaseToolsRequest?
     var transfer: DataTransferRequest?
+    var schemaObservation: SchemaObservationRequest?
+    var nativeCommand: NativeCommand? = nil
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -377,6 +392,11 @@ struct BackendCommand: Codable, Sendable, Equatable {
                         parameters: [QueryParameterBinding]? = nil) -> Self {
         Self(type: "execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, sql: sql, stream: true,
             parameters: parameters)
+    }
+
+    static func executeCommand(sessionId: String, queryId: String = UUID().uuidString, command: NativeCommand) -> Self {
+        Self(type: "command.execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId,
+            resultValues: NativeValue.format, nativeCommand: command)
     }
 
     static func catalog(sessionId: String, queryId: String = UUID().uuidString, request: CatalogRequest) -> Self {
@@ -459,10 +479,11 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "ssh.trust": "ssh.trust.result"
         case "connect": "connect.result"
         case "sqlite.create": "sqlite.create.result"
-        case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
+        case "execute", "command.execute", "catalog", "changes.preview", "changes.apply": "query.result"
         case "catalog.page", "catalog.batch", "catalog.close": type + ".result"
         case "explain.run": "explain.result"
         case "monitor.snapshot": "monitor.result"
+        case "monitor.schema": "monitor.schema.result"
         case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close": type + ".result"
         case "import.describe", "import.preview", "import.apply": type + ".result"
         case "cancel": "cancel.ack"
@@ -546,6 +567,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var columns: [ResultColumn]?
     var rows: [[String?]]?
     var sqliteValues: [[SQLiteValue]]?
+    var nativeValues: [[NativeValue]]? = nil
     var storageTokens: [String]?
     var source: SQLResultSource?
     var commandTag: String?
@@ -581,11 +603,12 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var dataComparison: DataComparisonResponse? = nil
     @OptionalTransportPayload var explain: ExplainResult? = nil
     @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
-    @OptionalTransportPayload var operationSupport: OperationSupport? = nil
     @OptionalTransportPayload var catalogMetadata: CatalogMetadataReply? = nil
+    @OptionalTransportPayload var operationSupport: OperationSupport? = nil
     var structure: StructureReply?
     var tableImport: TableImportReply?
     var monitor: SessionMonitorSnapshot?
+    @OptionalTransportPayload var schemaObservation: SchemaObservation? = nil
     var databaseTools: DatabaseToolsReply?
     var transfer: DataTransferReply?
 
@@ -603,6 +626,13 @@ struct BackendMessage: Codable, Sendable, Equatable {
         if let sqliteValues {
             let typedColumns = streamed == true ? resultSets?.first?.columns.count ?? 0 : columns?.count ?? 0
             guard type == "query.result", SQLiteValue.validMatrix(sqliteValues, rows: displayedRowCount ?? -1, columns: typedColumns) else { throw BackendTransportError(.invalidMessage) }
+        }
+        if let nativeValues {
+            let width = columns?.count ?? rows?.first?.count ?? 0
+            guard ["query.result", "query.chunk"].contains(type), streamed != true,
+                  NativeValue.validMatrix(nativeValues, rows: rows?.count ?? -1, columns: width),
+                  type != "query.result" || columns?.contains(where: { $0.engine == .sqlite }) != true ||
+                    NativeValue.matchesSQLite(nativeValues, storage: sqliteValues) else { throw BackendTransportError(.invalidMessage) }
         }
         let sourceColumns = streamed == true
             ? (resultSets?.first(where: { !$0.columns.isEmpty })?.columns ?? columns ?? []) : (columns ?? [])
@@ -652,6 +682,9 @@ struct BackendMessage: Codable, Sendable, Equatable {
             valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
                 catalogMetadata?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
                 (type == "catalog.close.result" ? catalogMetadata?.closed == true : catalogMetadata?.closed != true)
+        case "monitor.schema.result":
+            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                schemaObservation?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
         case "monitor.result":
             valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
                 monitor?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
@@ -690,13 +723,14 @@ struct BackendMessage: Codable, Sendable, Equatable {
               databaseTools == nil || type.hasPrefix("dbtools."),
               transfer == nil || type.hasPrefix("transfer."),
               monitor == nil || type == "monitor.result",
+              !_schemaObservation.isPresent || type == "monitor.schema.result",
               !_catalogMetadata.isPresent || ["catalog.page.result", "catalog.batch.result", "catalog.close.result"].contains(type),
               structure == nil || type.hasPrefix("structure."),
-              explain == nil || type == "explain.result",
-              explainSupport == nil || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,
-              dataComparison == nil || type.hasPrefix("data."),
-              schemaComparison == nil || type.hasPrefix("schema."),
-              comparison == nil || type.hasPrefix("compare."),
+              !_explain.isPresent || type == "explain.result",
+              !_explainSupport.isPresent || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,
+              !_dataComparison.isPresent || type.hasPrefix("data."),
+              !_schemaComparison.isPresent || type.hasPrefix("schema."),
+              !_comparison.isPresent || type.hasPrefix("compare."),
               sql == nil || (type == "insertSQL" || type == "query.result") &&
                 sql?.isEmpty == false && (sql?.utf8.count ?? Int.max) <= BackendProtocol.maxFrameBytes / 2 &&
                 sql?.contains("\0") == false,

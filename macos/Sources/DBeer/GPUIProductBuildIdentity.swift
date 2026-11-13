@@ -209,15 +209,15 @@ private struct GPUIBuildMetadataJSON {
         index += 1
     }
     private mutating func object(depth: Int, capture: Bool = false) throws -> [String: Range<Int>] {
-        guard depth <= 64 else { throw Self.failure }
+        guard depth <= 128 else { throw Self.failure }
         try take(123)
-        var seen: Set<String> = []
+        var seen: Set<Data> = []
         var fields: [String: Range<Int>] = [:]
         whitespace()
         if index < bytes.count, bytes[index] == 125 { index += 1; return fields }
         while true {
             let key = try string()
-            guard seen.insert(key).inserted else { throw Self.failure }
+            guard seen.insert(Data(key.utf8)).inserted else { throw Self.failure }
             try take(58)
             whitespace()
             let start = index
@@ -274,7 +274,7 @@ private struct GPUIBuildMetadataJSON {
         return code
     }
     private mutating func value(depth: Int) throws {
-        guard depth <= 64 else { throw Self.failure }
+        guard depth <= 128 else { throw Self.failure }
         whitespace()
         guard index < bytes.count else { throw Self.failure }
         switch bytes[index] {

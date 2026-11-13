@@ -118,21 +118,31 @@ struct DataComparisonResponse: Codable, Equatable, Sendable {
     var offset: Int64?
     var cellOffset: Int?
     var plan: SynchronizationSQLPlan?
+    private var payloadMask: Int {
+        var mask = 0
+        if descriptors != nil { mask |= 1 }
+        if summary != nil { mask |= 2 }
+        if page != nil { mask |= 4 }
+        if value != nil { mask |= 8 }
+        if diff != nil { mask |= 16 }
+        if offset != nil { mask |= 32 }
+        if cellOffset != nil { mask |= 64 }
+        if plan != nil { mask |= 128 }
+        return mask
+    }
     func valid(for type: String) -> Bool {
-        guard plan == nil || type == "data.plan.result" else { return false }
-        guard (diff == nil && offset == nil && cellOffset == nil) || type == "data.diff.result" else { return false }
+        let mask = payloadMask
         guard BackendMessage.validID(jobId), (message?.utf8.count ?? 0) <= 4_096, (code?.utf8.count ?? 0) <= 128,
               phase == nil || ["capturing", "comparing"].contains(phase), summary?.valid != false, descriptors?.valid != false else { return false }
         switch type {
-        case "data.plan.result": return state == .completed && plan?.valid == true && plan?.kind == "data" && descriptors == nil && summary == nil && page == nil && value == nil
-        case "data.diff.result": return state == .completed && diff?.valid == true && (offset ?? -1) >= 0 && (cellOffset ?? -1) >= 0 && descriptors == nil && summary == nil && page == nil && value == nil
-        case "data.start.result", "data.describe.result": return state == .pending && descriptors == nil && summary == nil && page == nil && value == nil
-        case "data.status.result": return page == nil && value == nil &&
-            (state == .completed ? (descriptors != nil) != (summary != nil) : descriptors == nil && summary == nil)
-        case "data.page.result": return state == .completed && summary == nil && descriptors == nil && page?.valid == true && value == nil
-        case "data.value.result": return state == .completed && summary == nil && descriptors == nil && value?.valid == true && page == nil
-        case "data.cancel.result": return state == .cancelled && descriptors == nil && summary == nil && page == nil && value == nil
-        case "data.close.result": return state == .closed && descriptors == nil && summary == nil && page == nil && value == nil
+        case "data.plan.result": return state == .completed && mask == 128 && plan?.valid == true && plan?.kind == "data"
+        case "data.diff.result": return state == .completed && mask == 112 && diff?.valid == true && (offset ?? -1) >= 0 && (cellOffset ?? -1) >= 0
+        case "data.start.result", "data.describe.result": return state == .pending && mask == 0
+        case "data.status.result": return state == .completed ? (mask == 1 || mask == 2) : mask == 0
+        case "data.page.result": return state == .completed && mask == 4 && page?.valid == true
+        case "data.value.result": return state == .completed && mask == 8 && value?.valid == true
+        case "data.cancel.result": return state == .cancelled && mask == 0
+        case "data.close.result": return state == .closed && mask == 0
         default: return false
         }
     }

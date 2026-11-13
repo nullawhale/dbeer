@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"dbeer/helper/internal/nativevalue"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -46,24 +47,25 @@ type Column struct {
 }
 
 type Metadata struct {
-	Version        int
-	ID             string
-	Title          string
-	CapturedAt     float64
-	Engine         string
-	SQL            string
-	ProfileID      *string
-	ProfileName    *string
-	Environment    string
-	Outcome        string
-	Columns        []Column
-	RowCount       int64
-	SourceRowCount *int64
-	Truncated      bool
-	Partial        bool
-	CommandTag     string
-	RowsBytes      int64
-	RowsSHA256     string
+	NativeValuesFormat string
+	Version            int
+	ID                 string
+	Title              string
+	CapturedAt         float64
+	Engine             string
+	SQL                string
+	ProfileID          *string
+	ProfileName        *string
+	Environment        string
+	Outcome            string
+	Columns            []Column
+	RowCount           int64
+	SourceRowCount     *int64
+	Truncated          bool
+	Partial            bool
+	CommandTag         string
+	RowsBytes          int64
+	RowsSHA256         string
 }
 
 func (m Metadata) Complete() bool {
@@ -291,6 +293,7 @@ func (r *reader) Scan(ctx context.Context, visit func(RowRef, []*string) error) 
 	input := bufio.NewReaderSize(contextReader{ctx, section}, 64<<10)
 	digest := sha256.New()
 	var index, offset int64
+	var nativeBudget nativevalue.NativeMatrixBudget
 	for {
 		line, err := readRowLine(input)
 		if err == io.EOF {
@@ -308,7 +311,10 @@ func (r *reader) Scan(ctx context.Context, visit func(RowRef, []*string) error) 
 		if index >= r.metadata.RowCount {
 			return ErrCorrupt
 		}
-		row, err := decodeRow(line[:len(line)-1], r.metadata.Columns)
+		row, native, err := decodeArtifactRow(line[:len(line)-1], r.metadata.Columns, r.metadata.NativeValuesFormat, r.metadata.Engine)
+		if err == nil && native != nil && !nativeBudget.Append(native, len(r.metadata.Columns)) {
+			return ErrCorrupt
+		}
 		if err != nil {
 			return err
 		}
@@ -356,7 +362,7 @@ func (r *reader) ReadRow(ctx context.Context, ref RowRef) ([]*string, error) {
 	if !hmac.Equal(digest[:], ref.Digest[:]) || data[len(data)-1] != '\n' {
 		return nil, ErrCorrupt
 	}
-	row, err := decodeRow(data[:len(data)-1], r.metadata.Columns)
+	row, _, err := decodeArtifactRow(data[:len(data)-1], r.metadata.Columns, r.metadata.NativeValuesFormat, r.metadata.Engine)
 	if err != nil {
 		return nil, err
 	}

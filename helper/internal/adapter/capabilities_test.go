@@ -29,6 +29,16 @@ func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 		t.Fatal("unknown engine advertises features")
 	}
 	for _, engine := range []string{"postgresql", "mysql", "sqlite", "cassandra", "mongodb"} {
+		seen := make(map[string]bool)
+		for _, capability := range Capabilities(engine) {
+			if seen[capability] {
+				t.Fatalf("%s repeats a capability", engine)
+			}
+			seen[capability] = true
+		}
+		if !slices.Contains(Capabilities(engine), protocol.NativeResultValuesCapability) {
+			t.Fatalf("%s lacks its completed native result contract", engine)
+		}
 		if slices.Contains(Capabilities(engine), protocol.SessionMonitorCapability) != (engine == "postgresql" || engine == "mysql") {
 			t.Fatalf("%s has an invalid session monitor capability", engine)
 		}

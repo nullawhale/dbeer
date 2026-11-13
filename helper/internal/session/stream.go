@@ -46,13 +46,19 @@ func (state *creditState) ack(sequence int) bool {
 	return true
 }
 
-func (state *creditState) send(ctx context.Context, index int, columns []protocol.Column, rows [][]*string) (bool, error) {
+func (state *creditState) send(ctx context.Context, index int, columns []protocol.Column, rows [][]*string, native ...[][]protocol.NativeValue) (bool, error) {
 	state.mu.Lock()
 	state.sequence++
 	sequence := state.sequence
 	state.expected = sequence
 	state.mu.Unlock()
 	response := protocol.Response{Type: "query.chunk", RequestID: state.command.RequestID, SessionID: state.command.SessionID, QueryID: state.command.QueryID, Sequence: sequence, ResultIndex: index, Columns: columns, Rows: rows}
+	if state.command.ResultValues == protocol.NativeResultValuesFormat {
+		response.NativeValues = [][]protocol.NativeValue{}
+		if len(native) > 0 {
+			response.NativeValues = native[0]
+		}
+	}
 	select {
 	case state.owner.manager.events <- event{sessionID: state.owner.id, response: response}:
 	case <-ctx.Done():
@@ -71,25 +77,31 @@ func (state *creditState) send(ctx context.Context, index int, columns []protoco
 }
 
 type streamSet struct {
-	sqliteValues [][]protocol.SQLiteValue
-	columns      []protocol.Column
-	summary      protocol.ResultSet
-	batch        [][]*string
-	batchBytes   int
-	sent         int
-	seen         int64
-	dropped      bool
-	ended        bool
+	nativeBatch   [][]protocol.NativeValue
+	nativeBudget  protocol.NativeMatrixBudget
+	sourceWidth   int
+	nativeDropped bool
+	sqliteValues  [][]protocol.SQLiteValue
+	columns       []protocol.Column
+	summary       protocol.ResultSet
+	batch         [][]*string
+	batchBytes    int
+	sent          int
+	seen          int64
+	dropped       bool
+	ended         bool
 }
 
 type streamSink struct {
-	pendingSQLite []protocol.SQLiteValue
-	ctx           context.Context
-	credit        *creditState
-	sets          []*streamSet
-	bytes         int
-	rows          int
-	err           error
+	pendingNative   []protocol.NativeValue
+	nativeRequested bool
+	pendingSQLite   []protocol.SQLiteValue
+	ctx             context.Context
+	credit          *creditState
+	sets            []*streamSet
+	bytes           int
+	rows            int
+	err             error
 }
 
 func (sink *streamSink) Begin(index int, columns []protocol.Column) error {
@@ -101,7 +113,7 @@ func (sink *streamSink) Begin(index int, columns []protocol.Column) error {
 		return sink.err
 	}
 	encoded, _ := json.Marshal(columns)
-	set := &streamSet{columns: append([]protocol.Column{}, columns...)}
+	set := &streamSet{columns: append([]protocol.Column{}, columns...), sourceWidth: len(columns)}
 	if sink.bytes+len(encoded)+1024 > displayBytes {
 		set.columns = []protocol.Column{}
 		set.dropped = true
@@ -113,18 +125,33 @@ func (sink *streamSink) Begin(index int, columns []protocol.Column) error {
 	return sink.err
 }
 
+func (sink *streamSink) NativeRow(index int, row []protocol.NativeValue) error {
+	if !sink.nativeRequested || sink.pendingNative != nil || index < 0 || index >= len(sink.sets) || !protocol.NativeMatrixValid([][]protocol.NativeValue{row}, 1, sink.sets[index].sourceWidth) {
+		sink.err = errors.New("Invalid native result sequence.")
+		return sink.err
+	}
+	sink.pendingNative = row
+	return nil
+}
+
 func (sink *streamSink) SQLiteRow(index int, row []protocol.SQLiteValue) error {
 	sink.pendingSQLite = row
 	return nil
 }
 
 func (sink *streamSink) Row(index int, row []*string) error {
+	native := sink.pendingNative
+	sink.pendingNative = nil
 	typed := sink.pendingSQLite
 	sink.pendingSQLite = nil
 	if index < 0 || index >= len(sink.sets) {
 		return errors.New("Invalid result sequence.")
 	}
 	set := sink.sets[index]
+	if sink.nativeRequested != (native != nil) {
+		sink.err = errors.New("Missing native result row.")
+		return sink.err
+	}
 	set.seen++
 	if sink.err != nil {
 		return sink.err
@@ -135,15 +162,28 @@ func (sink *streamSink) Row(index int, row []*string) error {
 	}
 	encoded, _ := json.Marshal(row)
 	typedBytes := 0
+	nativeBytes := 0
 	if typed != nil {
 		b, _ := json.Marshal(typed)
 		typedBytes = len(b) + 1
+	}
+	if native != nil {
+		encoded, err := json.Marshal(native)
+		if err != nil {
+			return err
+		}
+		nativeBytes = len(encoded) + 1
+		typedBytes += nativeBytes
+		if !set.nativeBudget.Append(native, set.sourceWidth) {
+			set.dropped, set.nativeDropped = true, true
+			return nil
+		}
 	}
 	if sink.bytes+len(encoded)+typedBytes+1 > displayBytes {
 		set.dropped = true
 		return nil
 	}
-	if set.batchBytes+len(encoded) > chunkTarget && len(set.batch) > 0 {
+	if set.batchBytes+len(encoded)+nativeBytes > chunkTarget && len(set.batch) > 0 {
 		if err := sink.flush(index); err != nil {
 			return err
 		}
@@ -151,8 +191,11 @@ func (sink *streamSink) Row(index int, row []*string) error {
 	if typed != nil {
 		set.sqliteValues = append(set.sqliteValues, typed)
 	}
+	if native != nil {
+		set.nativeBatch = append(set.nativeBatch, native)
+	}
 	set.batch = append(set.batch, row)
-	set.batchBytes += len(encoded) + 1
+	set.batchBytes += len(encoded) + nativeBytes + 1
 	sink.bytes += len(encoded) + typedBytes + 1
 	sink.rows++
 	if set.batchBytes >= chunkTarget {
@@ -166,13 +209,14 @@ func (sink *streamSink) flush(index int) error {
 	if len(set.batch) == 0 {
 		return sink.err
 	}
-	queued, err := sink.credit.send(sink.ctx, index, nil, set.batch)
+	queued, err := sink.credit.send(sink.ctx, index, nil, set.batch, set.nativeBatch)
 	if queued {
 		set.sent += len(set.batch)
 	} else {
 		set.dropped = true
 	}
 	set.batch = nil
+	set.nativeBatch = nil
 	set.batchBytes = 0
 	if err != nil {
 		sink.err = err
@@ -188,6 +232,7 @@ func (sink *streamSink) End(index int, summary protocol.ResultSet) error {
 	err := sink.flush(index)
 	set.ended = true
 	set.summary = summary
+	set.summary.NativeValues = nil
 	set.summary.Columns, set.summary.Rows = set.columns, nil
 	set.summary.DisplayedRowCount = set.sent
 	set.summary.SQLiteValues = nil
@@ -225,10 +270,14 @@ func (sink *streamSink) End(index int, summary protocol.ResultSet) error {
 	if set.summary.Truncated && !strings.Contains(set.summary.DisplayNotice, "Cassandra") {
 		set.summary.DisplayNotice = "Result display is limited to 1000 rows and 8 MiB. The command completed in full."
 	}
+	if set.nativeDropped {
+		set.summary.DisplayNotice += " Typed result evidence is limited to 4 MiB."
+	}
 	return err
 }
 
 func (sink *streamSink) finish(response protocol.Response) protocol.Response {
+	response.NativeValues = nil
 	response.Streamed = true
 	response.ResultSets = []protocol.ResultSet{}
 	first := true
@@ -265,6 +314,16 @@ func (sink *streamSink) finish(response protocol.Response) protocol.Response {
 }
 
 type fanoutSink []adapter.ResultSink
+
+func (sinks fanoutSink) NativeRow(index int, row []protocol.NativeValue) error {
+	var first error
+	for _, sink := range sinks {
+		if err := adapter.DeliverNativeRow(sink, index, row); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
 
 func (sinks fanoutSink) Begin(index int, columns []protocol.Column) error {
 	var first error
@@ -361,6 +420,9 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 		failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
 		return failure
 	}
+	if command.Type == "command.execute" {
+		return runNativeCommand(ctx, physical, command)
+	}
 	if command.Type == "explain.run" {
 		if explain, ok := physical.(adapter.ExplainSession); ok {
 			return explain.ExecuteExplain(ctx, command)
@@ -386,13 +448,13 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 	var sinks fanoutSink
 	var display *streamSink
 	if command.Stream {
-		display = &streamSink{ctx: ctx, credit: credit}
+		display = &streamSink{ctx: ctx, credit: credit, nativeRequested: command.ResultValues == protocol.NativeResultValuesFormat}
 		sinks = append(sinks, display)
 	}
 	var file *exportfile.Writer
 	if command.Export != nil {
 		var err error
-		file, err = exportfile.New(*command.Export)
+		file, err = exportfile.NewWithNative(*command.Export, command.ResultValues == protocol.NativeResultValuesFormat)
 		if err != nil {
 			failure := protocol.ErrorResponse(command, "export", "The export file could not be created. SQL was not executed.")
 			failure.Connected, failure.TransactionStatus = true, physical.TransactionStatus()
@@ -432,6 +494,11 @@ func runExecution(ctx context.Context, physical adapter.Session, command protoco
 		}
 	}
 	if display != nil {
+		if display.err != nil && response.Type == "query.result" {
+			failure := protocol.ErrorResponse(command, "result", "SQL completed, but its result could not be delivered losslessly. Do not rerun the operation to recover the result.")
+			failure.Connected, failure.TransactionStatus, failure.SQLCompleted = true, response.TransactionStatus, true
+			response = failure
+		}
 		response = display.finish(response)
 	}
 	return response

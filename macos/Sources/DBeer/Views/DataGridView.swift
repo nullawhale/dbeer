@@ -124,10 +124,12 @@ struct DataGridView: View {
         let presentation = grid.presentation
         var view = ResultTableView(columns: grid.columns, rows: presentation.rows)
         view.editableColumns = canEdit ? grid.editableColumns : []
+        view.uneditableRows = grid.uneditableRows
         view.modifiedCells = presentation.modifiedCells
         view.deletedRows = presentation.deletedRows
         view.valueKinds = presentation.valueKinds
         view.sqliteValues = grid.sqliteValues
+        view.nativeValues = grid.nativeValues
         view.selectedRows = grid.selectedRows
         view.onInlineDraftChanged = { grid.hasInlineDraft = $0 }
         view.dataIdentity = presentation
@@ -192,7 +194,7 @@ struct DataGridView: View {
                 Button("Insert Row") { finishEditing(); grid.insert() }.controlHover().disabled(!canEdit)
                     .accessibilityIdentifier("gridInsertRow")
                 Button("Delete Selected") { finishEditing(); grid.deleteSelected() }.controlHover()
-                    .disabled(!canEdit || grid.selectedRows.isEmpty).accessibilityIdentifier("gridDeleteRows")
+                    .disabled(!canEdit || !grid.canDeleteSelectedRows).accessibilityIdentifier("gridDeleteRows")
             }
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
@@ -320,7 +322,7 @@ struct DataGridView: View {
     private func finishEditing() { grid.commitEditing?() }
 
     private func openEditor(_ cell: ResultGridCell) {
-        guard canEdit, grid.rows.indices.contains(cell.row), grid.columns.indices.contains(cell.column),
+        guard canEdit, grid.canEditRow(cell.row), grid.columns.indices.contains(cell.column),
               let value = grid.value(row: cell.row, column: cell.column) else { return }
         editing.wrappedValue = GridCellEdit(cell: cell, rowID: grid.rows[cell.row].id,
             value: value, column: grid.columns[cell.column], metadata: grid.metadata[cell.column])

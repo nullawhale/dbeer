@@ -144,7 +144,7 @@ func (r *mysqlSchemaCapture) capture() error {
 	for _, schema := range r.spec.Schemas {
 		visible := global
 		if grantProof && !visible {
-			grants, e := r.rows("SELECT PRIVILEGE_TYPE FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND TABLE_SCHEMA=? AND PRIVILEGE_TYPE='SELECT'", grantee, schema)
+			grants, e := r.rows("SELECT PRIVILEGE_TYPE FROM information_schema.SCHEMA_PRIVILEGES WHERE GRANTEE=? AND BINARY TABLE_SCHEMA=BINARY ? AND PRIVILEGE_TYPE='SELECT'", grantee, schema)
 			if e != nil {
 				return e
 			}
@@ -168,7 +168,7 @@ func (r *mysqlSchemaCapture) capture() error {
 				return e
 			}
 		}
-		tables, e := r.tracked("SELECT TABLE_NAME,ENGINE,TABLE_COLLATION,CREATE_OPTIONS,TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_TYPE='BASE TABLE' ORDER BY BINARY TABLE_NAME", schema)
+		tables, e := r.tracked("SELECT TABLE_NAME,ENGINE,TABLE_COLLATION,CREATE_OPTIONS,TABLE_COMMENT FROM information_schema.TABLES WHERE BINARY TABLE_SCHEMA=BINARY ? AND TABLE_TYPE='BASE TABLE' ORDER BY BINARY TABLE_NAME", schema)
 		if e != nil {
 			return e
 		}
@@ -221,7 +221,7 @@ func (r *mysqlSchemaCapture) table(ref sc.Ref, row []*string) error {
 			return e
 		}
 	}
-	columns, e := r.tracked("SELECT COLUMN_NAME,ORDINAL_POSITION,DATA_TYPE,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,EXTRA,GENERATION_EXPRESSION,CHARACTER_SET_NAME,COLLATION_NAME,COLUMN_COMMENT,CHARACTER_MAXIMUM_LENGTH,NUMERIC_PRECISION,NUMERIC_SCALE,DATETIME_PRECISION,SRS_ID FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION", ref.Schema, ref.Name)
+	columns, e := r.tracked("SELECT COLUMN_NAME,ORDINAL_POSITION,DATA_TYPE,COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT,EXTRA,GENERATION_EXPRESSION,CHARACTER_SET_NAME,COLLATION_NAME,COLUMN_COMMENT,CHARACTER_MAXIMUM_LENGTH,NUMERIC_PRECISION,NUMERIC_SCALE,DATETIME_PRECISION,SRS_ID FROM information_schema.COLUMNS WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ? ORDER BY ORDINAL_POSITION", ref.Schema, ref.Name)
 	if e != nil {
 		return e
 	}
@@ -308,7 +308,7 @@ func (r *mysqlSchemaCapture) table(ref sc.Ref, row []*string) error {
 }
 func intValue(s string) int { n, _ := strconv.Atoi(s); return n }
 func (r *mysqlSchemaCapture) constraints(table sc.Ref) ([]sc.Constraint, error) {
-	rows, e := r.tracked("SELECT tc.CONSTRAINT_NAME,tc.CONSTRAINT_TYPE,tc.ENFORCED,cc.CHECK_CLAUSE,rc.UNIQUE_CONSTRAINT_SCHEMA,rc.REFERENCED_TABLE_NAME,rc.UPDATE_RULE,rc.DELETE_RULE,rc.MATCH_OPTION FROM information_schema.TABLE_CONSTRAINTS tc LEFT JOIN information_schema.CHECK_CONSTRAINTS cc ON cc.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA AND cc.CONSTRAINT_NAME=tc.CONSTRAINT_NAME LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_SCHEMA=tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME=tc.TABLE_NAME AND rc.CONSTRAINT_NAME=tc.CONSTRAINT_NAME WHERE tc.TABLE_SCHEMA=? AND tc.TABLE_NAME=? ORDER BY BINARY tc.CONSTRAINT_NAME", table.Schema, table.Name)
+	rows, e := r.tracked("SELECT tc.CONSTRAINT_NAME,tc.CONSTRAINT_TYPE,tc.ENFORCED,cc.CHECK_CLAUSE,rc.UNIQUE_CONSTRAINT_SCHEMA,rc.REFERENCED_TABLE_NAME,rc.UPDATE_RULE,rc.DELETE_RULE,rc.MATCH_OPTION FROM information_schema.TABLE_CONSTRAINTS tc LEFT JOIN information_schema.CHECK_CONSTRAINTS cc ON BINARY cc.CONSTRAINT_SCHEMA=BINARY tc.CONSTRAINT_SCHEMA AND BINARY cc.CONSTRAINT_NAME=BINARY tc.CONSTRAINT_NAME LEFT JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON BINARY rc.CONSTRAINT_SCHEMA=BINARY tc.CONSTRAINT_SCHEMA AND BINARY rc.TABLE_NAME=BINARY tc.TABLE_NAME AND BINARY rc.CONSTRAINT_NAME=BINARY tc.CONSTRAINT_NAME WHERE BINARY tc.TABLE_SCHEMA=BINARY ? AND BINARY tc.TABLE_NAME=BINARY ? ORDER BY BINARY tc.CONSTRAINT_NAME", table.Schema, table.Name)
 	if e != nil {
 		return nil, e
 	}
@@ -325,7 +325,7 @@ func (r *mysqlSchemaCapture) constraints(table sc.Ref) ([]sc.Constraint, error) 
 		if v[3] != nil {
 			c.Check = sc.Known(sc.Expression{Text: *v[3], Dependencies: sc.Collection[sc.Ref]{Items: []sc.Ref{}, State: "unavailable", Code: "expressionDependencies"}})
 		}
-		keys, e := r.tracked("SELECT COLUMN_NAME,REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND CONSTRAINT_NAME=? ORDER BY ORDINAL_POSITION", table.Schema, table.Name, ref.Name)
+		keys, e := r.tracked("SELECT COLUMN_NAME,REFERENCED_TABLE_SCHEMA,REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ? AND BINARY CONSTRAINT_NAME=BINARY ? ORDER BY ORDINAL_POSITION", table.Schema, table.Name, ref.Name)
 		if e != nil {
 			return nil, e
 		}
@@ -347,7 +347,7 @@ func (r *mysqlSchemaCapture) constraints(table sc.Ref) ([]sc.Constraint, error) 
 	return out, nil
 }
 func (r *mysqlSchemaCapture) indexes(table sc.Ref, constraints []sc.Constraint) ([]sc.Index, error) {
-	rows, e := r.tracked("SELECT INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,COLLATION,SUB_PART,INDEX_TYPE,IS_VISIBLE,EXPRESSION,INDEX_COMMENT FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY BINARY INDEX_NAME,SEQ_IN_INDEX", table.Schema, table.Name)
+	rows, e := r.tracked("SELECT INDEX_NAME,NON_UNIQUE,SEQ_IN_INDEX,COLUMN_NAME,COLLATION,SUB_PART,INDEX_TYPE,IS_VISIBLE,EXPRESSION,INDEX_COMMENT FROM information_schema.STATISTICS WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ? ORDER BY BINARY INDEX_NAME,SEQ_IN_INDEX", table.Schema, table.Name)
 	if e != nil {
 		return nil, e
 	}

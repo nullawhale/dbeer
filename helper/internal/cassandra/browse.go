@@ -33,6 +33,9 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 	if expression, valid := request.EffectiveFilterExpression(); !valid {
 		return s.failure(command, "validation", "The Cassandra browse filter is invalid.")
 	} else if expression != nil {
+		if expression.HasNativeValue() {
+			return s.failure(command, "unsupported", errNativeBrowse.Error())
+		}
 		if _, ok := expression.FlattenAND(); !ok {
 			return s.failure(command, "unsupported", "Cassandra browsing supports AND conditions only. OR groups are unavailable.")
 		}
@@ -45,6 +48,9 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 		return s.failure(command, "sql", "The Cassandra table or materialized view is unavailable.")
 	}
 	sql, values, err := browseStatement(request, columns)
+	if errors.Is(err, errNativeBrowse) {
+		return s.failure(command, "unsupported", errNativeBrowse.Error())
+	}
 	if errors.Is(err, errBrowseType) {
 		return s.failure(command, "unsupported", "Generated Cassandra filters support scalar values only. Use explicit CQL to filter tuple, user-defined, collection, frozen, or vector keys.")
 	}
@@ -128,6 +134,7 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 	response := s.response(command)
 	response.Columns = result.Columns
 	response.Rows = result.Rows
+	response.NativeValues = result.NativeValues
 	response.RowCount = result.RowCount
 	response.DisplayedRowCount = result.DisplayedRowCount
 	response.Truncated = result.Truncated
@@ -139,6 +146,8 @@ func (s *Session) browse(ctx context.Context, command protocol.Command, sink ada
 }
 
 var errBrowse = errors.New("unsupported Cassandra browse condition")
+var errNativeBrowse = errors.New("Native cell filters require a PostgreSQL, MySQL, or SQLite connection.")
+
 var errBrowseType = errors.New("unsupported Cassandra generated-filter type")
 
 // Complex values remain lossless in execution/display/export. Generated text
@@ -166,6 +175,9 @@ func buildBrowseStatement(request protocol.CatalogRequest, columns []tableColumn
 		return "", nil, errBrowse
 	}
 	if expression != nil {
+		if expression.HasNativeValue() {
+			return "", nil, errNativeBrowse
+		}
 		filters, ok := expression.FlattenAND()
 		if !ok {
 			return "", nil, errBrowse
@@ -186,6 +198,9 @@ func buildBrowseStatement(request protocol.CatalogRequest, columns []tableColumn
 	}
 	filters := map[string][]protocol.CatalogFilter{}
 	for _, filter := range request.Filters {
+		if filter.NativeValue != nil {
+			return "", nil, errNativeBrowse
+		}
 		column, ok := byName[filter.Column]
 		if !ok || filter.Value == nil {
 			return "", nil, errBrowse

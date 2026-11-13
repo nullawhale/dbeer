@@ -70,6 +70,22 @@ for ((attempt = 0; attempt < 120; attempt++)); do
     sleep 1
 done
 if [[ "$ready" != 1 ]]; then printf 'MySQL test container did not become ready.\n' >&2; exit 1; fi
+if [[ "${DBEER_TEST_MYSQL_NATIVE_FILTER_FIXTURE:-0}" == 1 ]]; then
+    # Owned Unicode and mojibake controls exist only in this disposable server.
+    docker exec -i "$container_id" sh -ec '
+        MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --default-character-set=utf8mb4
+    ' <<'NATIVE_FILTER_SQL'
+CREATE DATABASE `dbeer_native_é` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE DATABASE `dbeer_native_Ã©` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE DATABASE `dbeer_native_e` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+GRANT ALL PRIVILEGES ON `dbeer_native_é`.* TO 'dbeer'@'%';
+GRANT ALL PRIVILEGES ON `dbeer_native_Ã©`.* TO 'dbeer'@'%';
+GRANT ALL PRIVILEGES ON `dbeer_native_e`.* TO 'dbeer'@'%';
+NATIVE_FILTER_SQL
+    export DBEER_TEST_MYSQL_NATIVE_SCHEMA="dbeer_native_é"
+    export DBEER_TEST_MYSQL_NATIVE_SHADOW_SCHEMA="dbeer_native_Ã©"
+    export DBEER_TEST_MYSQL_NATIVE_ACCENT_SCHEMA="dbeer_native_e"
+fi
 if [[ "${DBEER_TEST_MYSQL_STRUCTURE_PRIVILEGES:-0}" == 1 ]]; then
     docker exec "$container_id" sh -ec '
         MYSQL_PWD="$(cat /fixtures/root-password)" mysql --user=root --execute="GRANT SELECT ON *.* TO '\''dbeer'\''@'\''%'\'';"

@@ -93,6 +93,14 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 		}
 	}
 	for _, operation := range command.Operations {
+		if operation.Type == "command.execute" {
+			if len(sessions) == 0 {
+				return rejectedCommand(command, "capability", "Native commands are unavailable for this adapter.")
+			}
+			if _, ok := sessions[0].(adapter.NativeCommandSession); !ok {
+				return rejectedCommand(command, "capability", "Native commands are unavailable for this adapter.")
+			}
+		}
 		if operation.Type == "execute" {
 			if _, err := queryparams.Bind(engine, operation.SQL, operation.Parameters); err != nil {
 				return protocol.ErrorResponse(command, "validation", err.Error())
@@ -163,9 +171,9 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 
 func (owner *owner) authorize(command protocol.Command, engine string, policy protocol.ExecutionPolicy, sessions ...adapter.Session) bool {
 	if owner.monitorOnly {
-		return command.Type == "monitor.snapshot"
+		return command.Type == "monitor.snapshot" || command.Type == "monitor.schema"
 	}
-	if command.Type != "execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "import.apply" {
+	if command.Type != "execute" && command.Type != "command.execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "import.apply" {
 		return true
 	}
 	if owner.structureOnly && command.Type != "structure.apply" || command.Type != "structure.apply" && command.Structure != nil {
@@ -176,7 +184,14 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		owner.invalidateGrant()
 		return false
 	}
-	operation := protocol.OperationRequest{TableImport: command.TableImport, Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
+	operation := protocol.OperationRequest{NativeCommand: command.NativeCommand, TableImport: command.TableImport, Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
+	if command.Type == "command.execute" {
+		if command.SessionID != owner.id {
+			owner.invalidateGrant()
+			return false
+		}
+		operation.QueryID = command.QueryID
+	}
 	if command.Type == "structure.apply" {
 		if !owner.structureOnly || command.Structure == nil || !command.Structure.Valid(command.Type) || command.Structure.Apply == nil {
 			owner.invalidateGrant()
@@ -210,7 +225,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 			return false
 		}
 		owner.grant = nil
-		return command.Type != "explain.run" && policyDecision(policy, owner.assessRetainedOperation(engine, operation, policy, sessions...)) == "allow"
+		return command.Type != "command.execute" && command.Type != "explain.run" && policyDecision(policy, owner.assessRetainedOperation(engine, operation, policy, sessions...)) == "allow"
 	}
 	grant := owner.grant
 	if grant == nil || grant.token != command.Authorization || grant.next >= len(grant.operations) {
@@ -247,6 +262,18 @@ func (owner *owner) takeApprovedExplainSQL() string {
 
 func (owner *owner) assessRetainedOperation(engine string, operation protocol.OperationRequest, policy protocol.ExecutionPolicy, sessions ...adapter.Session) protocol.AssessedOperation {
 	result := assessOperation(engine, operation)
+	if operation.Type == "command.execute" {
+		result.Kind, result.Statements = "unknown", []protocol.StatementAssessment{}
+		if operation.NativeCommand != nil && len(sessions) > 0 {
+			if native, ok := sessions[0].(adapter.NativeCommandSession); ok {
+				switch kind := native.ClassifyNativeCommand(*operation.NativeCommand); kind {
+				case "read", "write", "destructive":
+					result.Kind = kind
+				}
+			}
+		}
+		return result
+	}
 	if policy.ReadOnly && len(sessions) > 0 {
 		if readonly, ok := sessions[0].(adapter.ReadOnlyOperationSession); ok && readonly.IsReadOnlyOperation(operation) {
 			result.Kind = "read"

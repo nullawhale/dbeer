@@ -146,7 +146,7 @@ func (r *Result) comparePair(ctx context.Context, lref, rref RowRef, lrow, rrow 
 	for _, m := range r.options.Columns {
 		a, b := r.left.Metadata().Columns[m.Left], r.right.Metadata().Columns[m.Right]
 		different = different || !sameType(a, b) || !sameValue(lrow[m.Left], rrow[m.Right])
-		uncertain = uncertain || !known(a) || !known(b)
+		uncertain = uncertain || !knownCell(a, lrow[m.Left]) || !knownCell(b, rrow[m.Right])
 	}
 	if different {
 		if uncertain {

@@ -17,6 +17,8 @@ struct AgentAccessTests {
         var approvalHook: (@MainActor () async -> Void)?
         var settingsCalls = 0
         var changeDuringSettings = false
+        var nativeResults = false
+        var nativeCommands = false
         var connectingDelay = false
         var coordinator: AgentAccessCoordinator!
         var log: URL { directory.appendingPathComponent("commands.jsonl") }
@@ -46,7 +48,7 @@ struct AgentAccessTests {
             BackendClient(executableURL: URL(fileURLWithPath: "/usr/bin/python3"), arguments: ["-u", "-c", """
             import json, os, sys, time, uuid
             from pathlib import Path
-            log, entered, release, delay = sys.argv[1:]
+            log, entered, release, delay, native, commands = sys.argv[1:]
             policy = None
             sid = str(uuid.uuid4())
             def send(r): print(json.dumps(r), flush=True)
@@ -55,23 +57,36 @@ struct AgentAccessTests {
                 with open(log, 'a') as f: f.write(json.dumps(c) + '\\n')
                 r = {'requestId':c['requestId']}
                 k = c['type']
-                if k == 'hello': r.update(type='hello.ack', protocolVersion=6)
+                if k == 'hello': r.update(type='hello.ack', protocolVersion=6, capabilities=(['nativeResultValuesV1'] if native == 'native' else []) + (['nativeCommandsV1'] if commands == 'commands' else []))
                 elif k == 'connect':
                     policy = c['connection']['policy']
                     if delay == 'delay':
                         Path(entered).touch()
                         until = time.monotonic() + 3
                         while not Path(release).exists() and time.monotonic() < until: time.sleep(.005)
-                    r.update(type='connect.result', sessionId=sid, engine='postgresql', capabilities=['execute','catalog','cancel'], transactionStatus='idle')
+                    r.update(type='connect.result', sessionId=sid, engine='postgresql', capabilities=['execute','catalog','cancel'] + (['nativeResultValuesV1'] if native == 'native' else []) + (['nativeCommandsV1'] if commands == 'commands' else []), transactionStatus='idle')
                 elif k == 'operation.assess':
                     sql = c['operations'][0].get('sql','')
-                    write = 'DELETE' in sql
+                    command = c['operations'][0].get('nativeCommand')
+                    write = command['name'] != 'READ' if command else 'DELETE' in sql
                     decision = 'deny' if write and policy['readOnly'] else 'confirm' if write else 'allow'
                     statements = [{'start':0,'end':len(sql.encode()),'kind':'destructive' if write else 'read','reason':'fixture'}]
+                    if command: statements = []
                     if 'MULTI' in sql: statements.append(statements[0])
-                    a = {'decision':decision,'policy':policy,'operations':[{'kind':'destructive' if write else 'read','statements':statements}]}
+                    a = {'decision':decision,'policy':policy,'operations':[{'kind':('unknown' if command and command['name'] == 'MYSTERY' else 'destructive' if write else 'read'),'statements':statements}]}
                     if decision != 'deny': a['authorization'] = 'private-authorization'
                     r.update(type='operation.assessment',sessionId=sid,queryId=c['queryId'],assessment=a)
+                elif k == 'command.execute':
+                    send(dict(type='query.started',requestId=c['requestId'],sessionId=sid,queryId=c['queryId']))
+                    if c['nativeCommand']['name'] == 'BLOCK':
+                        Path(entered).touch()
+                        continue
+                    if c['nativeCommand']['name'] == 'ERROR':
+                        r.update(type='error',sessionId=sid,queryId=c['queryId'],category='command',message='private argument',connected=True,outcomeUnknown=True)
+                    else:
+                        r.update(type='query.result',sessionId=sid,queryId=c['queryId'],transactionStatus='idle',durationMs=1,
+                            columns=[{'index':0,'name':'reply','nativeType':'native'}],rows=[['display']],commandTag='NATIVE',rowCount=1,displayedRowCount=1,truncated=False,
+                            nativeValues=[[{'kind':'tuple','items':[{'kind':a['kind'],'value':a['value']} for a in c['nativeCommand']['arguments']]}]])
                 elif k in ['execute','catalog']:
                     send(dict(type='query.started',requestId=c['requestId'],sessionId=sid,queryId=c['queryId']))
                     sql = c.get('sql','')
@@ -86,13 +101,24 @@ struct AgentAccessTests {
                         if 'MANY' in sql: rows = [[str(i) + ':' + 'x' * 8180] for i in range(1000)]
                         r.update(type='query.result',sessionId=sid,queryId=c['queryId'],transactionStatus='idle',durationMs=1,
                             columns=[{'index':0,'name':'value','nativeType':'numeric'}],rows=rows,commandTag='SELECT',rowCount=len(rows),displayedRowCount=len(rows),truncated=False)
+                        if native == 'native':
+                            r['nativeValues'] = [[{'kind':'object','entries':[
+                                {'key':{'kind':'text','value':'duplicate'},'value':{'kind':'integer','value':'9007199254740993'}},
+                                {'key':{'kind':'text','value':'duplicate'},'value':{'kind':'binary','value':'AP8='}}]}] for row in rows]
+                            if 'NATIVE_LARGE' in sql:
+                                r['rows'] = [['display']] * 3
+                                r['nativeValues'] = [[{'kind':'text','value':'x' * 600000}]] * 3
+                            if 'NATIVE_ESCAPED' in sql:
+                                r['rows'] = [['display']] * 3
+                                r['nativeValues'] = [[{'kind':'text','value':'<&>' * 40000}]] * 3
+
                 elif k == 'cancel': r.update(type='cancel.ack',sessionId=sid,queryId=c['queryId'],status='accepted')
                 elif k == 'disconnect': r.update(type='disconnect.ack',sessionId=sid)
                 elif k == 'shutdown': r.update(type='shutdown.ack')
                 else: sys.exit(42)
                 send(r)
                 if k == 'shutdown': break
-            """, log.path, entered.path, release.path, connectingDelay ? "delay" : "immediate"])
+            """, log.path, entered.path, release.path, connectingDelay ? "delay" : "immediate", nativeResults ? "native" : "legacy", nativeCommands ? "commands" : "no-commands"])
         }
         func hello(_ id: UUID) async -> AgentResponse {
             await coordinator.handle(clientID: id, request: AgentRequest(id: "hello", method: "hello", clientName: "Test agent"))
@@ -101,6 +127,11 @@ struct AgentAccessTests {
             await coordinator.handle(clientID: id, request: AgentRequest(id: UUID().uuidString, method: "query",
                 profileId: profiles[0].id.uuidString, sql: sql, queryId: queryID, maxRows: limit))
         }
+        func command(_ id: UUID, name: String = "READ", queryID: String = UUID().uuidString) async -> AgentResponse {
+            await coordinator.handle(clientID: id, request: AgentRequest(id: UUID().uuidString, method: "command",
+                profileId: profiles[0].id.uuidString, queryId: queryID,
+                nativeCommand: NativeCommand(name: name, arguments: [.init(kind: "text", value: ""), .init(kind: "binary", value: "AP8="), .init(kind: "text", value: "é e\u{0301} two words")])))
+        }
         func waitForEntry() async throws {
             for _ in 0..<500 {
                 if FileManager.default.fileExists(atPath: entered.path) { return }
@@ -108,6 +139,53 @@ struct AgentAccessTests {
             }
             Issue.record("The helper did not reach the expected operation phase.")
         }
+    }
+
+    @Test func nativeCommandsUseIndependentOwnedAssessmentAndExactArguments() async throws {
+        let fixture = try Fixture(writes: true); fixture.nativeCommands = true; fixture.nativeResults = true
+        let id = UUID(); _ = await fixture.hello(id)
+        let response = await fixture.command(id)
+        let reply = try #require(response.results?.first?.nativeValues?.first?.first)
+        #expect(response.ok && reply.kind == "tuple")
+        #expect(reply.items == [.init(kind: "text", value: ""), .init(kind: "binary", value: "AP8="), .init(kind: "text", value: "é e\u{0301} two words")])
+        let assessed = try #require(fixture.commands.first { $0["type"] as? String == "operation.assess" })
+        let executed = try #require(fixture.commands.first { $0["type"] as? String == "command.execute" })
+        let operation = try #require((assessed["operations"] as? [[String: Any]])?.first)
+        #expect(operation["queryId"] as? String == executed["queryId"] as? String)
+        #expect(try JSONSerialization.data(withJSONObject: operation["nativeCommand"]!, options: .sortedKeys) == JSONSerialization.data(withJSONObject: executed["nativeCommand"]!, options: .sortedKeys))
+        #expect(executed["authorization"] as? String == "private-authorization")
+        #expect(fixture.commands.filter { $0["type"] as? String == "execute" }.isEmpty)
+        #expect((await fixture.command(id, name: "MYSTERY")).ok && fixture.confirmationCalls == 1)
+        await fixture.coordinator.shutdown()
+    }
+
+    @Test func unsupportedAndReadonlyNativeCommandsNeverReachAdapterExecution() async throws {
+        for supported in [false, true] {
+            let fixture = try Fixture(); fixture.nativeCommands = supported; fixture.nativeResults = supported
+            let id = UUID(); _ = await fixture.hello(id)
+            #expect(!(await fixture.command(id, name: "MYSTERY")).ok)
+            #expect(fixture.confirmationCalls == 0)
+            #expect(fixture.commands.filter { $0["type"] as? String == "command.execute" }.isEmpty)
+            if !supported { #expect(fixture.commands.filter { $0["type"] as? String == "operation.assess" }.isEmpty) }
+            await fixture.coordinator.shutdown()
+        }
+    }
+
+    @Test func nativeCommandCancellationRetainsOwnershipAndUnknownWriteOutcome() async throws {
+        let fixture = try Fixture(writes: true); fixture.nativeCommands = true; fixture.nativeResults = true
+        let id = UUID(), other = UUID(); _ = await fixture.hello(id); _ = await fixture.hello(other)
+        let task = Task { await fixture.command(id, name: "BLOCK", queryID: "native-block") }
+        try await fixture.waitForEntry()
+        let otherCancel = await fixture.coordinator.handle(clientID: other, request: AgentRequest(id: "other-cancel", method: "cancel", queryId: "native-block"))
+        #expect(otherCancel.ok && !fixture.commands.contains { $0["type"] as? String == "cancel" })
+        _ = await fixture.coordinator.handle(clientID: id, request: AgentRequest(id: "cancel", method: "cancel", queryId: "native-block"))
+        let response = await task.value
+        #expect(!response.ok && response.error?.contains("unknown outcome") == true)
+        #expect(!(await fixture.command(id, queryID: "native-block")).ok)
+        #expect(fixture.commands.filter { $0["type"] as? String == "command.execute" }.count == 1)
+        let text = String(describing: fixture.coordinator.audit)
+        for secret in ["private-authorization", "AP8=", "two words", "BLOCK"] { #expect(!text.contains(secret)) }
+        await fixture.coordinator.shutdown()
     }
 
     @Test func approvalRestrictsProfilesAndNeverExportsConnectionSettings() async throws {
@@ -164,6 +242,34 @@ struct AgentAccessTests {
         let large = await fixture.query(id, sql: "SELECT LARGE")
         #expect(large.ok && large.results?.first?.rows.count == 1 && large.results?.first?.truncated == true)
         #expect(try JSONEncoder().encode(large).count <= 1_048_576)
+        await fixture.coordinator.shutdown()
+    }
+
+    @Test func nativeEvidenceRemainsPairedWhenAgentResponsesAreBounded() async throws {
+        let fixture = try Fixture(); fixture.nativeResults = true
+        let id = UUID(); _ = await fixture.hello(id)
+        let exact = await fixture.query(id, limit: 1)
+        let result = try #require(exact.results?.first)
+        #expect(exact.ok && result.rows == [["ok"]] && result.nativeValues?.count == 1)
+        let entries = try #require(result.nativeValues?.first?.first?.entries)
+        #expect(entries.count == 2 && entries[0].key == entries[1].key)
+        #expect(entries[0].value.value == "9007199254740993" && entries[1].value.value == "AP8=")
+        let large = await fixture.query(id, sql: "SELECT NATIVE_LARGE")
+        let bounded = try #require(large.results?.first)
+        #expect(large.ok && bounded.truncated && bounded.rows == [["display"]])
+        #expect(bounded.nativeValues?.count == 1 && bounded.nativeValues?[0][0].value?.utf8.count == 600_000)
+        #expect(try JSONEncoder().encode(large).count <= 1_048_576)
+        await fixture.coordinator.shutdown()
+    }
+
+    @Test func nativeResponseLimitRetainsWholeCellsAfterMCPJSONEscaping() async throws {
+        let fixture = try Fixture(); fixture.nativeResults = true
+        let id = UUID(); _ = await fixture.hello(id)
+        let response = await fixture.query(id, sql: "SELECT NATIVE_ESCAPED")
+        let result = try #require(response.results?.first)
+        #expect(response.ok && result.truncated && result.rows == [["display"]])
+        #expect(result.nativeValues?.count == 1 && result.nativeValues?[0][0].value == String(repeating: "<&>", count: 40_000))
+        // Each cell is 720,000 bytes in Go JSON; two exceed the 1 MiB response budget.
         await fixture.coordinator.shutdown()
     }
 
@@ -297,7 +403,7 @@ struct AgentAccessTests {
         let fixture = try JSONDecoder().decode(WireFixture.self, from: data)
         #expect(fixture.version == 1)
         #expect(fixture.requests.prefix(5).map(\.method) == ["hello", "connections", "catalog", "query", "cancel"])
-        #expect(Set(fixture.requests.map(\.method)) == Set(["hello", "connections", "catalog", "query", "cancel"]))
+        #expect(Set(fixture.requests.map(\.method)) == Set(["hello", "connections", "catalog", "query", "command", "cancel"]))
         let response = try #require(fixture.responses.first { $0.id == "request-query" })
         let result = try #require(response.results?.first)
         #expect(result.rows == [[nil, "", "NULL", "12345678901234567890.123456789", "AP8="]])

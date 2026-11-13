@@ -27,14 +27,14 @@ func TestSharedAgentProtocolFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 		switch command.Method {
-		case "hello", "connections", "catalog", "query", "cancel":
+		case "hello", "connections", "catalog", "query", "command", "cancel":
 			methods[command.Method] = true
 		default:
 			t.Fatal("fixture includes a non-allowlisted operation")
 		}
 		assertJSONRoundtrip(t, encoded, command)
 	}
-	if len(methods) != 5 {
+	if len(methods) != 6 {
 		t.Fatal("fixture omits an allowed method")
 	}
 	for _, encoded := range fixture.Responses {

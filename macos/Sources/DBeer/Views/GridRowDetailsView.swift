@@ -50,7 +50,7 @@ private struct GridInspectorField: View {
     private var value: ChangeValue { row.flatMap { grid.value(row: $0, column: column) } ?? .null }
     private var policy: GridColumnEditing { GridColumnEditing(column: grid.columns[column], metadata: grid.metadata[column]) }
     private var isEditable: Bool {
-        canEdit && policy.isEditable && row.map { !grid.rows[$0].isDeleted } == true
+        canEdit && policy.isEditable && row.map { grid.canEditRow($0) } == true
     }
     private var text: Binding<String> {
         Binding(get: { value.value ?? "" }, set: { newValue in

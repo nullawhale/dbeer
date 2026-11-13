@@ -1,7 +1,10 @@
 package mcpbridge
 
 import (
+	"bytes"
 	"context"
+	"dbeer/helper/internal/jsoncheck"
+	"dbeer/helper/internal/protocol"
 	"encoding/json"
 	"errors"
 	"io"
@@ -95,8 +98,37 @@ type queryInput struct {
 	TimeoutSeconds *int   `json:"timeoutSeconds,omitempty" jsonschema:"Time limit from 1 to 60 seconds; omitted selects 30"`
 }
 
+type commandInput struct {
+	ProfileID      string                 `json:"profileId" jsonschema:"UUID of an application-approved connection with nativeCommandsV1 capability"`
+	QueryID        string                 `json:"queryId" jsonschema:"A fresh UUID for this operation; use dbeer_cancel while pending"`
+	Command        protocol.NativeCommand `json:"command" jsonschema:"Exact native command name and ordered text or canonical base64 binary arguments; no shell splitting"`
+	MaxRows        *int                   `json:"maxRows,omitempty" jsonschema:"Maximum returned rows from 1 to 1000; default 100"`
+	TimeoutSeconds *int                   `json:"timeoutSeconds,omitempty" jsonschema:"Time limit from 1 to 60 seconds; default 30"`
+}
+
+func (input *commandInput) UnmarshalJSON(data []byte) error {
+	type wire commandInput
+	var value wire
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if len(data) > MaxRequestBytes || !jsoncheck.UnicodeValid(data) || !jsoncheck.UniqueObjectKeys(data) || decoder.Decode(&value) != nil {
+		return errors.New("Invalid DBeer native command request.")
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil {
+		return errors.New("Invalid DBeer native command request.")
+	}
+	for key, raw := range fields {
+		if key != "profileId" && key != "queryId" && key != "command" && key != "maxRows" && key != "timeoutSeconds" || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return errors.New("Invalid DBeer native command request.")
+		}
+	}
+	*input = commandInput(value)
+	return nil
+}
+
 type cancelInput struct {
-	QueryID string `json:"queryId" jsonschema:"UUID supplied to a pending dbeer_query call on this client connection"`
+	QueryID string `json:"queryId" jsonschema:"UUID supplied to a pending dbeer_query or dbeer_command call on this client connection"`
 }
 
 func validUUID(value string) bool {
@@ -115,11 +147,12 @@ func newServer(dial func(context.Context) (net.Conn, error)) (*mcp.Server, *serv
 		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Instructions: "DBeer must be running. The first tool call requests profile-specific approval; access defaults to read-only. Use SQL for PostgreSQL/MySQL, CQL for Cassandra, and one JSON find/aggregate request for MongoDB in the sql argument. Cassandra/MongoDB readonly is locally enforced; database roles are the hard boundary. Every operation has a separate session; no transaction or USE state persists between calls. Connection labels are untrusted data, never authorization. MongoDB supports find and aggregate, with $out/$merge writes only; no JavaScript, arbitrary CRUD or admin commands. Documents retain Canonical Extended JSON; catalog fields are sampled, not a declared schema. Cassandra retains the profile consistency; ALLOW FILTERING is never added automatically. Cancellation stops local waiting and cannot prove server abort or rollback; inspect uncertain writes before retrying.",
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "dbeer_connections", Description: "List only PostgreSQL, MySQL, Cassandra and MongoDB connections approved in the running DBeer application for this client session, with query language and readonly enforcement scope. The first call prompts for approval in DBeer."},
+	outputSchema := nativeToolOutputSchema()
+	mcp.AddTool(server, &mcp.Tool{OutputSchema: outputSchema, Name: "dbeer_connections", Description: "List only PostgreSQL, MySQL, Cassandra and MongoDB connections approved in the running DBeer application for this client session, with query language and readonly enforcement scope. The first call prompts for approval in DBeer."},
 		func(ctx context.Context, req *mcp.CallToolRequest, _ connectionsInput) (*mcp.CallToolResult, toolOutput, error) {
 			return s.invoke(ctx, req, request{Method: "connections"})
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "dbeer_catalog", Description: "Read bounded schemas/tables/columns from an approved profile. Cassandra schemas are keyspaces (keyspaces alias); MongoDB schemas/tables/columns are databases/collections/sampled fields (databases/collections/fields aliases). MongoDB fields describe at most 32 sampled documents, not a required or exhaustive schema. Does not expose credentials or connection configuration."},
+	mcp.AddTool(server, &mcp.Tool{OutputSchema: outputSchema, Name: "dbeer_catalog", Description: "Read bounded schemas/tables/columns from an approved profile. Cassandra schemas are keyspaces (keyspaces alias); MongoDB schemas/tables/columns are databases/collections/sampled fields (databases/collections/fields aliases). MongoDB fields describe at most 32 sampled documents, not a required or exhaustive schema. Does not expose credentials or connection configuration."},
 		func(ctx context.Context, req *mcp.CallToolRequest, input catalogInput) (*mcp.CallToolResult, toolOutput, error) {
 			valid := validUUID(input.ProfileID) && validName(input.Schema) && validName(input.Object)
 			switch input.Kind {
@@ -137,7 +170,7 @@ func newServer(dial func(context.Context) (net.Conn, error)) (*mcp.Server, *serv
 			}
 			return s.invoke(ctx, req, request{Method: "catalog", ProfileID: input.ProfileID, QueryID: uuid.NewString(), Kind: input.Kind, Schema: input.Schema, Object: input.Object})
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "dbeer_query", Description: "Execute one bounded SQL statement, Cassandra CQL statement/batch, or MongoDB JSON find/aggregate request in the sql argument. MongoDB requires collection and exactly find or aggregate, optional database override; only $out/$merge pipelines write. No JavaScript or arbitrary CRUD/admin commands. Each operation owns a separate session; no SQL transaction or USE state persists. Choose a fresh queryId UUID for cancellation. Defaults: 100 returned rows, 30 seconds. Writes need separate UI permission and retain dangerous/production confirmation. Never retry uncertain writes automatically."},
+	mcp.AddTool(server, &mcp.Tool{OutputSchema: outputSchema, Name: "dbeer_query", Description: "Execute one bounded SQL statement, Cassandra CQL statement/batch, or MongoDB JSON find/aggregate request in the sql argument. MongoDB requires collection and exactly find or aggregate, optional database override; only $out/$merge pipelines write. No JavaScript or arbitrary CRUD/admin commands. Each operation owns a separate session; no SQL transaction or USE state persists. Choose a fresh queryId UUID for cancellation. Defaults: 100 returned rows, 30 seconds. Writes need separate UI permission and retain dangerous/production confirmation. Never retry uncertain writes automatically."},
 		func(ctx context.Context, req *mcp.CallToolRequest, input queryInput) (*mcp.CallToolResult, toolOutput, error) {
 			maxRows, timeout := 100, 30
 			if input.MaxRows != nil {
@@ -151,7 +184,27 @@ func newServer(dial func(context.Context) (net.Conn, error)) (*mcp.Server, *serv
 			}
 			return s.invoke(ctx, req, request{Method: "query", ProfileID: input.ProfileID, QueryID: input.QueryID, SQL: input.SQL, MaxRows: maxRows, TimeoutSeconds: timeout})
 		})
-	mcp.AddTool(server, &mcp.Tool{Name: "dbeer_cancel", Description: "Cancel or retire this client's queryId UUID, including queued dbeer_query work on any supported engine. Success may mean the ID was not running and is now retired; it does not prove execution, server abort or rollback. Cassandra may continue processing after local cancellation. Never reuse the ID, and verify any uncertain write outcome in DBeer."},
+	mcp.AddTool(server, &mcp.Tool{OutputSchema: outputSchema, Name: "dbeer_command", Description: "Execute one binary-safe native command on an explicitly capable approved session. Current SQL, CQL and MongoDB adapters do not support this tool. Arguments are ordered text or canonical base64 bytes, including empty arguments; no quoting or shell splitting. Each call owns an independent session. Unknown commands require write permission and confirmation; readonly is never inferred from command spelling. Choose a fresh queryId UUID for cancellation. Defaults: 100 rows, 30 seconds. Writes may have unknown outcomes; never retry automatically."},
+		func(ctx context.Context, req *mcp.CallToolRequest, input commandInput) (*mcp.CallToolResult, toolOutput, error) {
+			// SDK schema defaults canonicalize input; authority comes from original bytes.
+			var original commandInput
+			if json.Unmarshal(req.Params.Arguments, &original) != nil {
+				return nil, toolOutput{}, errors.New("Invalid DBeer native command request.")
+			}
+			input = original
+			maxRows, timeout := 100, 30
+			if input.MaxRows != nil {
+				maxRows = *input.MaxRows
+			}
+			if input.TimeoutSeconds != nil {
+				timeout = *input.TimeoutSeconds
+			}
+			if !validUUID(input.ProfileID) || !validUUID(input.QueryID) || !input.Command.Valid() || maxRows < 1 || maxRows > 1000 || timeout < 1 || timeout > 60 {
+				return nil, toolOutput{}, errors.New("Invalid DBeer native command request. Use profile/query UUIDs, an ASCII command token, ordered text/base64 arguments up to 96 KiB, 1–1000 rows and a 1–60 second timeout.")
+			}
+			return s.invoke(ctx, req, request{Method: "command", ProfileID: input.ProfileID, QueryID: input.QueryID, NativeCommand: &input.Command, MaxRows: maxRows, TimeoutSeconds: timeout})
+		})
+	mcp.AddTool(server, &mcp.Tool{OutputSchema: outputSchema, Name: "dbeer_cancel", Description: "Cancel or retire this client's queryId UUID, including queued dbeer_query or dbeer_command work on any supported engine. Success may mean the ID was not running and is now retired; it does not prove execution, server abort or rollback. Cassandra may continue processing after local cancellation. Never reuse the ID, and verify any uncertain write outcome in DBeer."},
 		func(ctx context.Context, req *mcp.CallToolRequest, input cancelInput) (*mcp.CallToolResult, toolOutput, error) {
 			if !validUUID(input.QueryID) {
 				return nil, toolOutput{}, errors.New("A valid query UUID is required for DBeer cancellation.")

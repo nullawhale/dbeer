@@ -28,6 +28,7 @@ struct ResultSnapshotCapture: Sendable {
     var columns: [ResultColumn]
     var rows: [[String?]]
     var sqliteValues: [[SQLiteValue]]?
+    var nativeValues: [[NativeValue]]?
     var capturedAt: Date
     var profileID: UUID?
     var profileName: String?
@@ -39,10 +40,11 @@ struct ResultSnapshotCapture: Sendable {
     var commandTag: String
 
     init(title: String, sql: String, engine: DatabaseEngine, columns: [ResultColumn], rows: [[String?]],
-         sqliteValues: [[SQLiteValue]]? = nil, capturedAt: Date = Date(), profileID: UUID? = nil, profileName: String? = nil,
+         sqliteValues: [[SQLiteValue]]? = nil, nativeValues: [[NativeValue]]? = nil, capturedAt: Date = Date(), profileID: UUID? = nil, profileName: String? = nil,
          environment: ConnectionEnvironment = .unspecified, outcome: SQLHistoryOutcome = .succeeded,
          truncated: Bool = false, partial: Bool = false, sourceRowCount: Int64? = nil, commandTag: String = "") {
         self.sqliteValues = sqliteValues
+        self.nativeValues = nativeValues
         self.title = title; self.sql = sql; self.engine = engine; self.columns = columns; self.rows = rows
         self.capturedAt = capturedAt; self.profileID = profileID; self.profileName = profileName
         self.environment = environment; self.outcome = outcome; self.truncated = truncated
@@ -51,7 +53,7 @@ struct ResultSnapshotCapture: Sendable {
 }
 
 struct ResultSnapshotManifest: Codable, Equatable, Sendable {
-    static let currentVersion = 2
+    static let currentVersion = 3
     var version: Int
     var id: UUID
     var title: String
@@ -71,6 +73,7 @@ struct ResultSnapshotManifest: Codable, Equatable, Sendable {
     var commandTag: String
     var rowsBytes: Int64
     var rowsSHA256: String
+    var nativeValuesFormat: String? = nil
 
     var isComplete: Bool {
         !truncated && !partial && outcome == .succeeded &&
@@ -94,12 +97,47 @@ struct ResultSnapshotSummary: Identifiable, Equatable, Sendable {
 private struct SQLiteSnapshotRow: Codable {
     var values: [String?]
     var sqliteValues: [SQLiteValue]
+    private enum CodingKeys: String, CodingKey { case values, sqliteValues }
+    init(values: [String?], sqliteValues: [SQLiteValue]) { self.values = values; self.sqliteValues = sqliteValues }
+    init(from decoder: any Decoder) throws {
+        let raw = try decoder.container(keyedBy: SnapshotKey.self)
+        guard Set(raw.allKeys.map(\.stringValue)) == ["values", "sqliteValues"] else { throw ResultSnapshotError.corrupt }
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        values = try fields.decode([String?].self, forKey: .values)
+        sqliteValues = try fields.decode([SQLiteValue].self, forKey: .sqliteValues)
+    }
+}
+
+private struct NativeSnapshotRow: Codable {
+    var values: [String?]
+    var nativeValues: [NativeValue]
+    var sqliteValues: [SQLiteValue]?
+    private enum CodingKeys: String, CodingKey { case values, nativeValues, sqliteValues }
+    init(values: [String?], nativeValues: [NativeValue], sqliteValues: [SQLiteValue]?) {
+        self.values = values; self.nativeValues = nativeValues; self.sqliteValues = sqliteValues
+    }
+    init(from decoder: any Decoder) throws {
+        let raw = try decoder.container(keyedBy: SnapshotKey.self)
+        guard Set(raw.allKeys.map(\.stringValue)).isSubset(of: ["values", "nativeValues", "sqliteValues"]),
+              raw.allKeys.allSatisfy({ (try? raw.decodeNil(forKey: $0)) == false }) else { throw ResultSnapshotError.corrupt }
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        values = try fields.decode([String?].self, forKey: .values)
+        nativeValues = try fields.decode([NativeValue].self, forKey: .nativeValues)
+        sqliteValues = try fields.decodeIfPresent([SQLiteValue].self, forKey: .sqliteValues)
+    }
+}
+private struct SnapshotKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
 }
 
 struct ResultSnapshotArtifact: Sendable {
     var manifest: ResultSnapshotManifest
     var rows: [[String?]]
     var sqliteValues: [[SQLiteValue]]? = nil
+    var nativeValues: [[NativeValue]]? = nil
     var offset: Int
     var hasMore: Bool
 }
@@ -194,7 +232,9 @@ actor ResultSnapshotStore {
                     try Task.checkCancellation()
                     try writeInterceptor?(.row(index))
                     var bytes: Data
-                    if let values = capture.sqliteValues {
+                    if let native = capture.nativeValues {
+                        bytes = try encoder.encode(NativeSnapshotRow(values: row, nativeValues: native[index], sqliteValues: capture.sqliteValues?[index]))
+                    } else if let values = capture.sqliteValues {
                         bytes = try encoder.encode(SQLiteSnapshotRow(values: row, sqliteValues: values[index]))
                     } else { bytes = try encoder.encode(row) }
                     guard bytes.count <= Self.maximumRowBytes else { throw ResultSnapshotError.invalid }
@@ -213,7 +253,8 @@ actor ResultSnapshotStore {
                     truncated: capture.truncated,
                     partial: capture.partial || (capture.sourceRowCount.map { $0 > Int64(capture.rows.count) } ?? false),
                     commandTag: capture.commandTag,
-                    rowsBytes: rowsBytes, rowsSHA256: Self.hex(digest.finalize()))
+                    rowsBytes: rowsBytes, rowsSHA256: Self.hex(digest.finalize()),
+                    nativeValuesFormat: capture.nativeValues == nil ? nil : NativeValue.format)
                 try writeInterceptor?(.manifest)
                 let metadata = try encoder.encode(manifest)
                 guard metadata.count <= Self.maximumManifestBytes else { throw ResultSnapshotError.invalid }
@@ -253,6 +294,8 @@ actor ResultSnapshotStore {
             var rowCount = 0
             var page: [[String?]] = []
             var typedPage: [[SQLiteValue]] = []
+            var nativePage: [[NativeValue]] = []
+            var nativeBudget = NativeValue.MatrixBudget()
             do {
                 while let chunk = try handle.read(upToCount: 65_536), !chunk.isEmpty {
                     try Task.checkCancellation()
@@ -265,7 +308,17 @@ actor ResultSnapshotStore {
                         guard !line.isEmpty, line.count <= Self.maximumRowBytes else { throw ResultSnapshotError.corrupt }
                         let row: [String?]
                         var typed: [SQLiteValue]?
-                        if manifest.engine == .sqlite {
+                        var native: [NativeValue]?
+                        try ExactJSONKeys.validate(Data(line), maximumBytes: Self.maximumRowBytes, maximumDepth: 128)
+                        if manifest.nativeValuesFormat != nil {
+                            guard let stored = try? JSONDecoder().decode(NativeSnapshotRow.self, from: line),
+                                  nativeBudget.append(stored.nativeValues, columns: manifest.columns.count),
+                                  (manifest.engine != .sqlite || stored.sqliteValues != nil),
+                                  (manifest.engine == .sqlite || stored.sqliteValues == nil),
+                                  SQLiteValue.validMatrix(stored.sqliteValues.map { [$0] }, rows: 1, columns: manifest.columns.count),
+                                  (manifest.engine != .sqlite || NativeValue.matchesSQLite([stored.nativeValues], storage: stored.sqliteValues.map { [$0] })) else { throw ResultSnapshotError.corrupt }
+                            row = stored.values; typed = stored.sqliteValues; native = stored.nativeValues
+                        } else if manifest.engine == .sqlite {
                             guard manifest.version >= 2, let stored = try? JSONDecoder().decode(SQLiteSnapshotRow.self, from: line),
                                   SQLiteValue.validMatrix([stored.sqliteValues], rows: 1, columns: manifest.columns.count) else { throw ResultSnapshotError.corrupt }
                             row = stored.values
@@ -278,6 +331,7 @@ actor ResultSnapshotStore {
                         if rowCount >= offset, page.count < limit {
                             page.append(row)
                             if let typed { typedPage.append(typed) }
+                            if let native { nativePage.append(native) }
                         }
                         rowCount += 1
                         guard rowCount <= manifest.rowCount else { throw ResultSnapshotError.corrupt }
@@ -289,7 +343,8 @@ actor ResultSnapshotStore {
             catch { throw ResultSnapshotError.corrupt }
             guard pending.isEmpty, rowCount == manifest.rowCount, byteCount == manifest.rowsBytes,
                   Self.hex(digest.finalize()) == manifest.rowsSHA256 else { throw ResultSnapshotError.corrupt }
-            return ResultSnapshotArtifact(manifest: manifest, rows: page, sqliteValues: manifest.engine == .sqlite ? typedPage : nil, offset: offset,
+            return ResultSnapshotArtifact(manifest: manifest, rows: page, sqliteValues: manifest.engine == .sqlite ? typedPage : nil,
+                nativeValues: manifest.nativeValuesFormat == nil ? nil : nativePage, offset: offset,
                 hasMore: offset < rowCount && page.count < rowCount - offset)
         }
     }
@@ -411,6 +466,9 @@ actor ResultSnapshotStore {
         var info = stat()
         guard fstat(descriptor, &info) == 0, info.st_size > 0, info.st_size <= Self.maximumManifestBytes,
               let data = try? file.readToEnd(), data.count <= Self.maximumManifestBytes,
+              (try? ExactJSONKeys.validate(data, maximumBytes: Self.maximumManifestBytes)) != nil,
+              let shape = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              shape["nativeValuesFormat"] == nil || shape["nativeValuesFormat"] as? String == NativeValue.format,
               let manifest = try? Self.decoder().decode(ResultSnapshotManifest.self, from: data), manifest.id == id,
               (1...ResultSnapshotManifest.currentVersion).contains(manifest.version),
               manifest.rowsBytes >= 0, manifest.rowCount >= 0, Self.validDigest(manifest.rowsSHA256),
@@ -545,6 +603,8 @@ actor ResultSnapshotStore {
               (capture.engine != .sqlite || capture.sqliteValues != nil),
               (capture.engine == .sqlite || capture.sqliteValues == nil),
               SQLiteValue.validMatrix(capture.sqliteValues, rows: capture.rows.count, columns: capture.columns.count),
+              NativeValue.validMatrix(capture.nativeValues, rows: capture.rows.count, columns: capture.columns.count),
+              (capture.engine != .sqlite || NativeValue.matchesSQLite(capture.nativeValues, storage: capture.sqliteValues)),
               validColumns(capture.columns), capture.rows.allSatisfy({ validRow($0, columns: capture.columns) }) else { throw ResultSnapshotError.invalid }
     }
 
@@ -552,7 +612,8 @@ actor ResultSnapshotStore {
         !manifest.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && manifest.title.utf8.count <= 4096 &&
         manifest.sql.utf8.count <= maximumManifestBytes / 2 && manifest.capturedAt.timeIntervalSince1970.isFinite &&
         (manifest.profileName?.utf8.count ?? 0) <= 4096 && manifest.commandTag.utf8.count <= 4096 &&
-        (manifest.sourceRowCount.map { $0 >= Int64(manifest.rowCount) } ?? true) && validColumns(manifest.columns)
+        (manifest.sourceRowCount.map { $0 >= Int64(manifest.rowCount) } ?? true) &&
+        (manifest.nativeValuesFormat == nil || (manifest.version == 3 && manifest.nativeValuesFormat == NativeValue.format)) && validColumns(manifest.columns)
     }
 
     private static func validColumns(_ columns: [ResultColumn]) -> Bool {

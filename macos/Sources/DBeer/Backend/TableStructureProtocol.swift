@@ -27,12 +27,13 @@ struct StructureDataType: Codable, Equatable, Sendable {
     var length: Int?
     var precision: Int?
     var scale: Int?
+    var reference: StructureTypeReference? = nil
 }
 extension StructureDataType {
-    private enum CodingKeys: String, CodingKey { case kind, length, precision, scale }
+    private enum CodingKeys: String, CodingKey { case kind, length, precision, scale, reference }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["kind", "length", "precision", "scale"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["kind", "length", "precision", "scale", "reference"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         kind = try c.decode(String.self, forKey: .kind)
         if c.contains(.length), try c.decodeNil(forKey: .length) { throw BackendTransportError(.invalidMessage) }
@@ -41,6 +42,8 @@ extension StructureDataType {
         precision = try c.decodeIfPresent(Int.self, forKey: .precision)
         if c.contains(.scale), try c.decodeNil(forKey: .scale) { throw BackendTransportError(.invalidMessage) }
         scale = try c.decodeIfPresent(Int.self, forKey: .scale)
+        if c.contains(.reference), try c.decodeNil(forKey: .reference) { throw BackendTransportError(.invalidMessage) }
+        reference = try c.decodeIfPresent(StructureTypeReference.self, forKey: .reference)
     }
 }
 
@@ -65,17 +68,23 @@ struct StructureColumn: Codable, Equatable, Sendable {
     var type: StructureDataType
     var nullable: Bool
     var `default`: StructureDefault
+    var generated: StructureGeneration? = nil
+    var identity: StructureIdentity? = nil
 }
 extension StructureColumn {
-    private enum CodingKeys: String, CodingKey { case name, type, nullable, `default` }
+    private enum CodingKeys: String, CodingKey { case name, type, nullable, `default`, generated, identity }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["name", "type", "nullable", "default"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["name", "type", "nullable", "default", "generated", "identity"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         type = try c.decode(StructureDataType.self, forKey: .type)
         nullable = try c.decode(Bool.self, forKey: .nullable)
         self.`default` = try c.decode(StructureDefault.self, forKey: .`default`)
+        if c.contains(.generated), try c.decodeNil(forKey: .generated) { throw BackendTransportError(.invalidMessage) }
+        generated = try c.decodeIfPresent(StructureGeneration.self, forKey: .generated)
+        if c.contains(.identity), try c.decodeNil(forKey: .identity) { throw BackendTransportError(.invalidMessage) }
+        identity = try c.decodeIfPresent(StructureIdentity.self, forKey: .identity)
     }
 }
 
@@ -85,12 +94,14 @@ struct StructureDraft: Codable, Equatable, Sendable {
     var indexes: [StructureIndexEdit]?
     var keys: [StructureKeyEdit]?
     var allowDestructive: Bool?
+    var renameTable: String? = nil
+    var authoringVersion: Int? = nil
 }
 extension StructureDraft {
-    private enum CodingKeys: String, CodingKey { case columns, changes, indexes, keys, allowDestructive }
+    private enum CodingKeys: String, CodingKey { case columns, changes, indexes, keys, allowDestructive, renameTable, authoringVersion }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["columns", "changes", "indexes", "keys", "allowDestructive"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["columns", "changes", "indexes", "keys", "allowDestructive", "renameTable", "authoringVersion"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         columns = try c.decode([StructureColumn].self, forKey: .columns)
         if c.contains(.changes), try c.decodeNil(forKey: .changes) { throw BackendTransportError(.invalidMessage) }
@@ -101,6 +112,10 @@ extension StructureDraft {
         keys = try c.decodeIfPresent([StructureKeyEdit].self, forKey: .keys)
         if c.contains(.allowDestructive), try c.decodeNil(forKey: .allowDestructive) { throw BackendTransportError(.invalidMessage) }
         allowDestructive = try c.decodeIfPresent(Bool.self, forKey: .allowDestructive)
+        if c.contains(.renameTable), try c.decodeNil(forKey: .renameTable) { throw BackendTransportError(.invalidMessage) }
+        renameTable = try c.decodeIfPresent(String.self, forKey: .renameTable)
+        if c.contains(.authoringVersion), try c.decodeNil(forKey: .authoringVersion) { throw BackendTransportError(.invalidMessage) }
+        authoringVersion = try c.decodeIfPresent(Int.self, forKey: .authoringVersion)
     }
 }
 
@@ -170,12 +185,13 @@ struct StructurePlan: Codable, Equatable, Sendable {
     var sql: [String]
     var risks: [String]
     var destructive: Bool?
+    var resultTarget: StructureTarget? = nil
 }
 extension StructurePlan {
-    private enum CodingKeys: String, CodingKey { case id, baselineId, digest, target, sql, risks, destructive }
+    private enum CodingKeys: String, CodingKey { case id, baselineId, digest, target, sql, risks, destructive, resultTarget }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["id", "baselineId", "digest", "target", "sql", "risks", "destructive"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["id", "baselineId", "digest", "target", "sql", "risks", "destructive", "resultTarget"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         baselineId = try c.decode(String.self, forKey: .baselineId)
@@ -185,6 +201,8 @@ extension StructurePlan {
         risks = try c.decode([String].self, forKey: .risks)
         if c.contains(.destructive), try c.decodeNil(forKey: .destructive) { throw BackendTransportError(.invalidMessage) }
         destructive = try c.decodeIfPresent(Bool.self, forKey: .destructive)
+        if c.contains(.resultTarget), try c.decodeNil(forKey: .resultTarget) { throw BackendTransportError(.invalidMessage) }
+        resultTarget = try c.decodeIfPresent(StructureTarget.self, forKey: .resultTarget)
     }
 }
 
@@ -299,12 +317,15 @@ struct StructureColumnChange: Codable, Equatable, Sendable {
     var nullable: Bool?
     var `default`: StructureDefault?
     var type: StructureDataType?
+    var renameTo: String? = nil
+    var generated: StructureGeneration? = nil
+    var identity: StructureIdentity? = nil
 }
 extension StructureColumnChange {
-    private enum CodingKeys: String, CodingKey { case name, nullable, `default`, type }
+    private enum CodingKeys: String, CodingKey { case name, nullable, `default`, type, renameTo, generated, identity }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["name", "nullable", "default", "type"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["name", "nullable", "default", "type", "renameTo", "generated", "identity"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
         if c.contains(.nullable), try c.decodeNil(forKey: .nullable) { throw BackendTransportError(.invalidMessage) }
@@ -313,6 +334,12 @@ extension StructureColumnChange {
         self.`default` = try c.decodeIfPresent(StructureDefault.self, forKey: .`default`)
         if c.contains(.type), try c.decodeNil(forKey: .type) { throw BackendTransportError(.invalidMessage) }
         type = try c.decodeIfPresent(StructureDataType.self, forKey: .type)
+        if c.contains(.renameTo), try c.decodeNil(forKey: .renameTo) { throw BackendTransportError(.invalidMessage) }
+        renameTo = try c.decodeIfPresent(String.self, forKey: .renameTo)
+        if c.contains(.generated), try c.decodeNil(forKey: .generated) { throw BackendTransportError(.invalidMessage) }
+        generated = try c.decodeIfPresent(StructureGeneration.self, forKey: .generated)
+        if c.contains(.identity), try c.decodeNil(forKey: .identity) { throw BackendTransportError(.invalidMessage) }
+        identity = try c.decodeIfPresent(StructureIdentity.self, forKey: .identity)
     }
 }
 
@@ -435,7 +462,9 @@ extension StructureTarget {
 }
 extension StructureDataType {
     var valid: Bool {
-        switch kind {
+        if kind == "reference" { return reference?.valid == true && (length ?? 0) == 0 && (precision ?? 0) == 0 && (scale ?? 0) == 0 }
+        guard reference == nil else { return false }
+        return switch kind {
         case "integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric": (length ?? 0) == 0 && (precision ?? 0) == 0 && (scale ?? 0) == 0
         case "varchar": (1...16_383).contains(length ?? 0) && (precision ?? 0) == 0 && (scale ?? 0) == 0
         case "numeric": (length ?? 0) == 0 && (1...65).contains(precision ?? 0) && (0...30).contains(scale ?? 0) && (scale ?? 0) <= (precision ?? 0)
@@ -450,7 +479,7 @@ extension StructureDefault {
     }
 }
 extension StructureColumnChange {
-    var valid: Bool { StructureTarget.identifier(name) && (nullable != nil || self.default != nil || type != nil) && (self.default?.valid ?? true) && (type?.valid ?? true) && !(nullable == false && self.default?.kind == "null") }
+    var valid: Bool { StructureTarget.identifier(name) && (nullable != nil || self.default != nil || type != nil || renameTo != nil || generated != nil || identity != nil) && (self.default?.valid ?? true) && (type?.valid ?? true) && !(nullable == false && self.default?.kind == "null") && (renameTo.map { StructureTarget.identifier($0) && !StructureTarget.sameIdentifier($0, name) } ?? true) && (generated?.valid ?? true) && (identity?.valid ?? true) && !(generated?.storage != nil && generated?.storage != "none" && (self.default != nil || identity?.kind != nil && identity?.kind != "none")) }
 }
 extension StructureIndexEdit {
     var valid: Bool { ["add", "drop", "replace"].contains(action) && StructureTarget.identifier(name) && (action == "drop" ? (columns?.isEmpty ?? true) && unique != true : StructureTarget.columns(columns ?? [])) }
@@ -468,13 +497,15 @@ extension StructureKeyEdit {
 extension StructureDraft {
     var destructive: Bool { (indexes ?? []).contains { $0.action != "add" } || (keys ?? []).contains { $0.action != "add" } }
     var valid: Bool {
+        if requiresAuthoringV2 || authoringVersion != nil { return false }
         let changes = changes ?? []; let indexes = indexes ?? []; let keys = keys ?? []
-        guard columns.count <= 128, changes.count + indexes.count + keys.count <= 64,
-              columns.count + changes.count + indexes.count + keys.count > 0,
+        guard (authoringVersion == nil || authoringVersion == 2), !requiresAuthoringV2 || authoringVersion == 2, columns.count <= 128, changes.count + indexes.count + keys.count <= 64,
+              columns.count + changes.count + indexes.count + keys.count > 0 || renameTable != nil,
+              renameTable.map(StructureTarget.identifier) ?? true,
               Set((columns.map(\.name) + changes.map(\.name)).map { Data($0.utf8) }).count == columns.count + changes.count,
               Set(indexes.map { Data($0.name.utf8) }).count == indexes.count, Set(keys.map { Data($0.name.utf8) }).count == keys.count,
               !destructive || allowDestructive == true else { return false }
-        return columns.allSatisfy { StructureTarget.identifier($0.name) && $0.type.valid && $0.default.valid && ($0.nullable || $0.default.kind != "null") } && changes.allSatisfy(\.valid) && indexes.allSatisfy(\.valid) && keys.allSatisfy(\.valid)
+        return columns.allSatisfy(\.valid) && changes.allSatisfy(\.valid) && indexes.allSatisfy(\.valid) && keys.allSatisfy(\.valid)
     }
 }
 extension StructureApply {
@@ -503,7 +534,7 @@ extension StructureBaseline {
 }
 extension StructurePlan {
     var valid: Bool {
-        BackendMessage.validID(id) && BackendMessage.validID(baselineId) && StructureBaseline.digest(digest) && target.valid && target.reconcile != true && !sql.isEmpty && sql.count <= 64 && sql.reduce(0) { $0 + $1.utf8.count } <= 1_048_576 && sql.allSatisfy { !$0.isEmpty && !$0.contains("\0") } && risks.count <= 64 && risks.allSatisfy { $0.utf8.count <= 4096 }
+        BackendMessage.validID(id) && BackendMessage.validID(baselineId) && StructureBaseline.digest(digest) && target.valid && target.reconcile != true && (resultTarget.map { $0.valid && !$0.create && $0.reconcile != true && StructureTarget.sameIdentifier($0.schema, target.schema) } ?? true) && !sql.isEmpty && sql.count <= 64 && sql.reduce(0) { $0 + $1.utf8.count } <= 1_048_576 && sql.allSatisfy { !$0.isEmpty && !$0.contains("\0") } && risks.count <= 64 && risks.allSatisfy { $0.utf8.count <= 4096 }
     }
 }
 extension StructureOutcome {
@@ -512,8 +543,9 @@ extension StructureOutcome {
               ["applied", "failed", "partiallyApplied", "cancelled", "outcomeUnknown", "applying"].contains(state),
               steps.allSatisfy({ ["notStarted", "applied", "failed", "rolledBack", "unknown"].contains($0.state) && ($0.message?.utf8.count ?? 0) <= 4096 }),
               (refreshError?.utf8.count ?? 0) <= 4096, observed?.valid ?? true else { return false }
+        let atomicTerminal = steps.allSatisfy { $0.state == "rolledBack" } || steps.allSatisfy { $0.state == "unknown" }
         var stopped = false
-        for step in steps { if stopped && step.state != "notStarted" { return false }; if step.state != "applied" { stopped = true } }
+        for step in steps { if !atomicTerminal && stopped && step.state != "notStarted" { return false }; if step.state != "applied" { stopped = true } }
         let applied = steps.filter { $0.state == "applied" }.count; let unknown = steps.contains { $0.state == "unknown" }
         switch state {
         case "applied": return applied == steps.count
@@ -544,3 +576,90 @@ extension StructureTarget {
 }
 extension StructureDraft { static func == (a: Self, b: Self) -> Bool { StructureTarget.intentBytes(a) == StructureTarget.intentBytes(b) } }
 extension StructurePlan { static func == (a: Self, b: Self) -> Bool { StructureTarget.intentBytes(a) == StructureTarget.intentBytes(b) } }
+
+
+struct StructureTypeReference: Codable, Equatable, Sendable {
+    var schema: String
+    var name: String
+    var valid: Bool { StructureTarget.identifier(schema) && StructureTarget.identifier(name) }
+    private enum CodingKeys: String, CodingKey { case schema, name }
+    init(schema: String, name: String) { self.schema = schema; self.name = name }
+    init(from decoder: any Decoder) throws {
+        let all = try decoder.container(keyedBy: StructureCodingKey.self)
+        guard Set(all.allKeys.map(\.stringValue)) == ["schema", "name"] else { throw BackendTransportError(.invalidMessage) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schema = try c.decode(String.self, forKey: .schema); name = try c.decode(String.self, forKey: .name)
+    }
+}
+struct StructureGeneration: Codable, Equatable, Sendable {
+    var storage: String
+    var expression: String?
+    var valid: Bool { storage == "none" ? expression == nil || expression == "" : ["stored", "virtual"].contains(storage) && expression.map { !$0.isEmpty && $0.utf8.count <= 4096 && !$0.contains("\0") } == true }
+    private enum CodingKeys: String, CodingKey { case storage, expression }
+    init(storage: String, expression: String? = nil) { self.storage = storage; self.expression = expression }
+    init(from decoder: any Decoder) throws {
+        let all = try decoder.container(keyedBy: StructureCodingKey.self)
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["storage", "expression"]) else { throw BackendTransportError(.invalidMessage) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        storage = try c.decode(String.self, forKey: .storage)
+        if c.contains(.expression), try c.decodeNil(forKey: .expression) { throw BackendTransportError(.invalidMessage) }
+        expression = try c.decodeIfPresent(String.self, forKey: .expression)
+    }
+}
+struct StructureIdentity: Codable, Equatable, Sendable {
+    var kind: String
+    var start: String? = nil
+    var increment: String? = nil
+    var minimum: String? = nil
+    var maximum: String? = nil
+    var cache: String? = nil
+    var cycle: Bool? = nil
+    var valid: Bool {
+        guard ["none", "always", "byDefault", "autoIncrement"].contains(kind) else { return false }
+        let options = [start, increment, minimum, maximum, cache]
+        guard options.allSatisfy({ value in
+            guard let value else { return true }; guard let number = Int64(value) else { return false }; return String(number) == value
+        }) else { return false }
+        if kind == "none" || kind == "autoIncrement" { return options.allSatisfy { $0 == nil } && cycle == nil }
+        if increment == "0" || cache.map({ (Int64($0) ?? 0) < 1 }) == true { return false }
+        if let minimum, let maximum, let a = Int64(minimum), let b = Int64(maximum), a >= b { return false }
+        return true
+    }
+    private enum CodingKeys: String, CodingKey { case kind, start, increment, minimum, maximum, cache, cycle }
+    init(kind: String, start: String? = nil, increment: String? = nil, minimum: String? = nil, maximum: String? = nil, cache: String? = nil, cycle: Bool? = nil) {
+        self.kind = kind; self.start = start; self.increment = increment; self.minimum = minimum; self.maximum = maximum; self.cache = cache; self.cycle = cycle
+    }
+    init(from decoder: any Decoder) throws {
+        let all = try decoder.container(keyedBy: StructureCodingKey.self)
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["kind", "start", "increment", "minimum", "maximum", "cache", "cycle"]) else { throw BackendTransportError(.invalidMessage) }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(String.self, forKey: .kind)
+        if c.contains(.start), try c.decodeNil(forKey: .start) { throw BackendTransportError(.invalidMessage) }
+        start = try c.decodeIfPresent(String.self, forKey: .start)
+        if c.contains(.increment), try c.decodeNil(forKey: .increment) { throw BackendTransportError(.invalidMessage) }
+        increment = try c.decodeIfPresent(String.self, forKey: .increment)
+        if c.contains(.minimum), try c.decodeNil(forKey: .minimum) { throw BackendTransportError(.invalidMessage) }
+        minimum = try c.decodeIfPresent(String.self, forKey: .minimum)
+        if c.contains(.maximum), try c.decodeNil(forKey: .maximum) { throw BackendTransportError(.invalidMessage) }
+        maximum = try c.decodeIfPresent(String.self, forKey: .maximum)
+        if c.contains(.cache), try c.decodeNil(forKey: .cache) { throw BackendTransportError(.invalidMessage) }
+        cache = try c.decodeIfPresent(String.self, forKey: .cache)
+        if c.contains(.cycle), try c.decodeNil(forKey: .cycle) { throw BackendTransportError(.invalidMessage) }
+        cycle = try c.decodeIfPresent(Bool.self, forKey: .cycle)
+    }
+}
+extension StructureColumn {
+    var valid: Bool {
+        guard StructureTarget.identifier(name), type.valid, self.default.valid, nullable || self.default.kind != "null", generated?.valid ?? true, identity?.valid ?? true else { return false }
+        if let generated, generated.storage != "none", self.default.kind != "none" || identity?.kind != nil && identity?.kind != "none" { return false }
+        if let identity, identity.kind != "none", self.default.kind != "none" || nullable || !["integer", "bigint"].contains(type.kind) { return false }
+        return true
+    }
+}
+
+extension StructureDraft {
+    var requiresAuthoringV2: Bool {
+        renameTable != nil || columns.contains { $0.type.reference != nil || $0.generated != nil || $0.identity != nil || $0.default.kind == "expression" } ||
+        (changes ?? []).contains { $0.renameTo != nil || $0.generated != nil || $0.identity != nil || $0.type?.reference != nil || $0.default?.kind == "expression" }
+    }
+}

@@ -15,7 +15,7 @@ func (r *Result) MappedTypesCompatible() bool {
 			return false
 		}
 		a, b := left.Columns[mapping.Left], right.Columns[mapping.Right]
-		if !known(a) || !known(b) || !sameType(a, b) {
+		if a.Encoding == "nativeValue" || b.Encoding == "nativeValue" || !known(a) || !known(b) || !sameType(a, b) {
 			return false
 		}
 	}

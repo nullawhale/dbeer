@@ -81,6 +81,31 @@
       "sql": "{\"database\":\"fixture_db\",\"collection\":\"items\",\"find\":{\"n\":{\"$numberLong\":\"9007199254740993\"}},\"sort\":{\"label\":1,\"n\":-1},\"limit\":100}",
       "maxRows": 100,
       "timeoutSeconds": 30
+    },
+    {
+      "id": "request-native-command",
+      "method": "command",
+      "profileId": "11111111-1111-4111-8111-111111111111",
+      "queryId": "99999999-9999-4999-8999-999999999999",
+      "nativeCommand": {
+        "name": "ECHO",
+        "arguments": [
+          {
+            "kind": "text",
+            "value": ""
+          },
+          {
+            "kind": "binary",
+            "value": "AP8="
+          },
+          {
+            "kind": "text",
+            "value": "é é two words"
+          }
+        ]
+      },
+      "maxRows": 100,
+      "timeoutSeconds": 30
     }
   ],
   "responses": [

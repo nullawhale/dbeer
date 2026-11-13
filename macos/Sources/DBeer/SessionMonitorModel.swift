@@ -50,6 +50,7 @@ enum SessionMonitorSort: String, CaseIterable, Identifiable, Sendable {
 final class SessionMonitorModel: ObservableObject, Identifiable {
     let id = UUID()
     let profile: SavedConnection
+    let isOffline: Bool
     @Published private(set) var snapshot: SessionMonitorSnapshot? { didSet { indexRelationships() } }
     @Published private(set) var isBusy = false
     @Published private(set) var isClosing = false
@@ -79,12 +80,29 @@ final class SessionMonitorModel: ObservableObject, Identifiable {
     init(profile: SavedConnection, connect: @escaping @MainActor () async throws -> String,
          send: @escaping @MainActor (BackendCommand) async throws -> BackendMessage,
          bindingIsCurrent: @escaping @MainActor () -> Bool,
-         cancelPreparation: @escaping @MainActor () -> Void = {}) {
+         cancelPreparation: @escaping @MainActor () -> Void = {}, savedSnapshot: SessionMonitorSnapshot? = nil) {
         self.profile = profile
+        isOffline = savedSnapshot != nil
         self.connect = connect
         self.send = send
         self.bindingIsCurrent = bindingIsCurrent
         self.cancelPreparation = cancelPreparation
+        snapshot = savedSnapshot
+        if savedSnapshot != nil { indexRelationships() }
+    }
+
+    static func offline(_ value: SavedEvidenceArtifact) throws -> SessionMonitorModel {
+        guard value.valid, let snapshot = value.diagnostic else { throw PlanArtifactError.invalid }
+        let profile = SavedConnection(name: value.profileName ?? "Saved diagnostic", settings: .init(host: "offline.invalid", port: 1,
+            database: "", user: "", password: "", sslMode: "disable", engine: value.engine,
+            policy: .init(environment: value.environment, readOnly: true)))
+        let model = SessionMonitorModel(profile: profile,
+            connect: { throw ExecutionPolicyError(message: "Saved diagnostics are offline.") },
+            send: { _ in throw ExecutionPolicyError(message: "Saved diagnostics are offline.") },
+            bindingIsCurrent: { false }, savedSnapshot: snapshot)
+        model.isStale = value.sourceWasStale
+        model.notice = "Saved offline observation. Session identifiers are historical labels; no live status is requested."
+        return model
     }
 
     var selectedSession: MonitoredSession? { snapshot?.sessions.first { $0.id == selectedSessionID } }
@@ -166,6 +184,7 @@ final class SessionMonitorModel: ObservableObject, Identifiable {
     }
 
     func refresh() async {
+        guard !isOffline else { return }
         guard !closed, !isBusy, !isClosing else { return }
         guard bindingIsCurrent() else { invalidateBinding(); return }
         generation &+= 1
@@ -288,6 +307,7 @@ final class SessionMonitorModel: ObservableObject, Identifiable {
     }
 
     private func updateAutoRefresh() {
+        guard !isOffline else { return }
         timer?.cancel(); timer = nil
         guard autoRefresh, !closed else { return }
         timer = Task { @MainActor [weak self] in

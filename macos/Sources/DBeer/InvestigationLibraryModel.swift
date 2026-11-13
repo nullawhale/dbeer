@@ -108,6 +108,22 @@ final class InvestigationLibraryModel: ObservableObject {
         return references
     }
 
+
+    func referencingInvestigations(evidenceID: UUID) async throws -> Set<UUID> {
+        guard isLoaded, !isLoading else { throw InvestigationStoreError.notLoaded }
+        let latest = try await store.load()
+        guard latest.isValid else { throw InvestigationStoreError.read }
+        func references(_ document: StoredInvestigation) -> Bool {
+            document.blocks.contains { block in
+                let markdown = block.kind == .markdown ? block.text : block.kind == .snapshot ? block.explanation : ""
+                return SavedEvidenceLink.references(in: markdown).contains { $0.id == evidenceID }
+            }
+        }
+        var result = Set((persisted + latest.documents).filter(references).map(\.id))
+        for model in models.values where references(model.storedState) { result.insert(model.id) }
+        return result
+    }
+
     @discardableResult
     func saveInvestigation(_ id: UUID) async -> Bool {
         guard isLoaded, models[id]?.isAvailable == true else {

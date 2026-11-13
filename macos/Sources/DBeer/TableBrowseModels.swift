@@ -21,13 +21,15 @@ struct CatalogFilterExpression: Codable, Equatable, Sendable {
     var isValid: Bool {
         var nodes = 0
         var conditions = 0
+        var nativeBytes = 0
         func validate(_ expression: Self, depth: Int) -> Bool {
             nodes += 1
             guard depth <= 4, nodes <= 64 else { return false }
             if expression.kind == "condition" {
                 conditions += 1
                 guard conditions <= 32, expression.children == nil, let condition = expression.condition, condition.isValid else { return false }
-                return true
+                nativeBytes += condition.nativeValue?.encodedByteCount ?? 0
+                return nativeBytes <= 4 * 1_024 * 1_024
             }
             guard ["and", "or"].contains(expression.kind), expression.condition == nil,
                   let children = expression.children, !children.isEmpty else { return false }
@@ -87,7 +89,7 @@ struct CatalogFilterExpression: Codable, Equatable, Sendable {
         children = try values.decodeIfPresent([Self].self, forKey: .children)
         if values.contains(.condition) {
             let operand = try values.superDecoder(forKey: .condition).container(keyedBy: BrowseCodingKey.self)
-            guard Set(operand.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value", "sqliteValue"]) else {
+            guard Set(operand.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value", "sqliteValue", "nativeValue"]) else {
                 throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown condition field."))
             }
         }
@@ -106,12 +108,16 @@ private struct BrowseCodingKey: CodingKey {
 
 extension CatalogFilter {
     var operandDisplayText: String? {
+        if let nativeValue { return nativeValue.displayText }
         guard let sqliteValue else { return value }
         return sqliteValue.type == "blob" ? "Base64 \(sqliteValue.value)" : sqliteValue.displayText
     }
 
     var isValid: Bool {
         guard validBrowseName(column) else { return false }
+        if let nativeValue {
+            return value == nil && sqliteValue == nil && nativeValue.isValid && ["eq", "ne"].contains(self.operator)
+        }
         if let sqliteValue {
             guard value == nil, sqliteValue.valid, sqliteValue.type != "null", sqliteValue.value.utf8.count <= 1_024 * 1_024,
                   ["eq", "ne"].contains(self.operator) else { return false }
@@ -130,6 +136,14 @@ extension CatalogFilter {
 }
 
 extension CatalogFilterExpression {
+    var hasNativeOperands: Bool {
+        condition?.nativeValue != nil || (children ?? []).contains(where: \.hasNativeOperands)
+    }
+    func removingNativeOperands() -> Self? {
+        if kind == "condition" { return condition?.nativeValue == nil ? self : nil }
+        let retained = (children ?? []).compactMap { $0.removingNativeOperands() }
+        return retained.isEmpty ? nil : .group(kind, retained)
+    }
     var hasSQLiteOperands: Bool {
         condition?.sqliteValue != nil || (children ?? []).contains(where: \.hasSQLiteOperands)
     }

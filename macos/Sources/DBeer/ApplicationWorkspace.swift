@@ -492,6 +492,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var sessionMonitorProfileObservation: AnyCancellable?
     private var sessionMonitorPresentation = SessionMonitorPresentationIntent()
     @Published var isSnapshotsPresented = false
+    @Published var isSavedEvidencePresented = false
     @Published private(set) var isClosing = false
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
@@ -508,6 +509,7 @@ final class ApplicationWorkspace: ObservableObject {
     let sqlLibrary: SQLLibrary
     let tableBrowsePresets: TableBrowsePresetStore
     let resultSnapshots: ResultSnapshotsModel
+    let savedEvidence: SavedEvidenceModel
     let investigations: InvestigationLibraryModel
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
@@ -552,6 +554,7 @@ final class ApplicationWorkspace: ObservableObject {
     private var folderSaveObservation: AnyCancellable?
     private var sqlLibraryObservation: AnyCancellable?
     private var sqlLibrarySaveObservation: AnyCancellable?
+    private var savedEvidenceObservation: AnyCancellable?
     private var resultSnapshotsObservation: AnyCancellable?
     private var investigationsObservation: AnyCancellable?
     private var investigationSnapshotDocuments: [UUID: [UUID: SQLDocument]] = [:]
@@ -588,6 +591,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.tableBrowsePresets = tableBrowsePresets ?? TableBrowsePresetStore()
         let snapshots = resultSnapshots ?? ResultSnapshotsModel()
         self.resultSnapshots = snapshots
+        savedEvidence = SavedEvidenceModel(store: PlanArtifactStore())
         self.investigations = investigations ?? InvestigationLibraryModel(snapshotStore: snapshots.store)
         self.automaticallyWatchFiles = automaticallyWatchFiles
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
@@ -609,11 +613,19 @@ final class ApplicationWorkspace: ObservableObject {
         folderObservation = self.sqlFolders.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
         sqlLibraryObservation = self.sqlLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        savedEvidenceObservation = savedEvidence.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         resultSnapshotsObservation = self.resultSnapshots.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         investigationsObservation = self.investigations.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         self.resultSnapshots.investigationReferences = { [weak self] id in
             guard let self else { throw InvestigationReferenceError() }
             return try self.investigations.referencingInvestigations(snapshotID: id)
+        }
+        savedEvidence.investigationReferences = { [weak self] id in
+            guard let self else { throw InvestigationReferenceError() }
+            return try await self.investigations.referencingInvestigations(evidenceID: id)
+        }
+        snapshots.didDelete = { [weak self] id in
+            await self?.savedEvidence.snapshotDeleted(id)
         }
         sqlLibrarySaveObservation = self.sqlLibrary.$snapshot.dropFirst().sink { [weak self] snapshot in
             self?.bindIndexedSQLViews(snapshot)
@@ -1070,7 +1082,10 @@ final class ApplicationWorkspace: ObservableObject {
             SSHConnectionReview.cancel(profileId: reviewID)
             SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, attempt))
         })
-        let controller = SessionMonitorWindowController(model: model, appearance: appearance, requestClose: { [weak self] in
+        let controller = SessionMonitorWindowController(model: model, appearance: appearance, evidenceModel: savedEvidence, saveEvidence: { [weak self, weak model] in
+            guard let self, let model, self.canManageWorkspace else { return }
+            self.saveDiagnosticEvidence(model)
+        }, requestClose: { [weak self] in
             Task { await self?.closeSessionMonitor(expectedID: model.id) }
         })
         sessionMonitorWindow = controller
@@ -1836,6 +1851,10 @@ final class ApplicationWorkspace: ObservableObject {
                     document.localError = "This helper cannot apply the saved relationship restriction. Update the helper or remove the restriction explicitly."
                     return
                 }
+                if configuration.filterExpression?.hasNativeOperands == true, !runtime.capabilities.contains(NativeCellFilterValue.capability) {
+                    document.localError = "This helper cannot apply the saved typed key conditions. Update the helper or remove those conditions explicitly."
+                    return
+                }
                 let supportsTree = runtime.capabilities.contains("browseFilterTreeV1")
                 if !supportsTree, let expression = configuration.filterExpression, expression.flattenedConjunction == nil {
                     document.localError = "This helper does not support grouped filters. Update the application and helper together."
@@ -2182,6 +2201,7 @@ final class ApplicationWorkspace: ObservableObject {
             isClosing = true
             defer { isClosing = false }
             guard commitNativeEditors(in: documents + affected) else { return false }
+            await savedEvidence.waitForPendingWork()
             if investigations.isLoaded, !(await investigations.flush()) {
                 reportError(investigations.error ?? "The investigations could not be saved. Their drafts remain open.")
                 return false
@@ -2811,8 +2831,10 @@ final class ApplicationWorkspace: ObservableObject {
             : "This exports the loaded result without running SQL again."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         do {
+            let parent = try SQLFileBinding.parentIdentity(of: destination)
+            let reviewed = try SQLFileBinding.reviewedVersion(at: destination, maximumBytes: ResultExport.maximumImportBytes)
             let data = format == "csv" ? try ResultExport.csv(result, nullMarker: marker!) : try ResultExport.json([result])
-            try ResultExport.write(data, to: destination)
+            try ResultExport.write(data, to: destination, expectedVersion: reviewed, expectedParent: parent)
         } catch { reportError(error.localizedDescription) }
     }
 
@@ -3836,6 +3858,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func shutdown() async {
+        await savedEvidence.waitForPendingWork()
         cancelQueryParameterPrompt()
         if let model = tableImporter {
             await model.stop()
@@ -3906,4 +3929,23 @@ final class ApplicationWorkspace: ObservableObject {
 
 private struct InvestigationReferenceError: LocalizedError {
     var errorDescription: String? { "The investigation library is unavailable. Snapshot references could not be checked." }
+}
+
+
+extension ApplicationWorkspace {
+    func saveDiagnosticEvidence(_ model: SessionMonitorModel) {
+        guard canManageWorkspace else { return }
+        do {
+            let value = try SavedEvidenceArtifact.capture(model, title: model.profile.name + " · session diagnostic")
+            Task { _ = await savedEvidence.save(value) }
+        } catch { savedEvidence.captureFailed() }
+    }
+
+    func saveStructureEvidence(_ model: TableStructureEditorModel) {
+        guard canManageWorkspace else { return }
+        do {
+            let value = try SavedEvidenceArtifact.capture(model, title: model.profile.name + " · " + model.schema + "." + model.table)
+            Task { _ = await savedEvidence.save(value) }
+        } catch { savedEvidence.captureFailed() }
+    }
 }
