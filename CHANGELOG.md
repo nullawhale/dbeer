@@ -30,6 +30,15 @@
   character sets/collations and SQLite target-affinity equality; keep unproven
   comparisons and cross-profile JOIN restrictions visible.
 
+- Combine saved PostgreSQL/MySQL/SQLite profiles in one ER diagram with separate
+  metadata loads, progress, errors, Stop and schema observation. Preserve exact
+  profile ownership, manual positions, independent source lifetimes and shared
+  graph bounds. Add explicit source removal and reviewed object rebinding, keep
+  legacy restoration disconnected until binding review, and retain remaining
+  sources after the original source is removed. Label card and export owners,
+  including external local-link endpoints, and distinguish pending decisions
+  from accepted source retirement.
+
 - Discover declared incoming PostgreSQL/MySQL/SQLite foreign keys and open child
   rows from a stored parent row in the current view or an independent tab.
   Preserve complete composite mappings, canonical target identity and exact key

@@ -505,6 +505,7 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var isSnapshotsPresented = false
     @Published var isSavedEvidencePresented = false
     @Published private(set) var isClosing = false
+    private var activeProfileCloseReview: UUID?
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
     @Published var insertCopySelection: InsertCopySelection?
@@ -1462,8 +1463,6 @@ final class ApplicationWorkspace: ObservableObject {
         }),
               disconnectingProfiles.insert(id).inserted else { return false }
         let affected = allOwnedRuntimeDocuments.filter { $0.profileID == id }
-        invalidateERDiagrams(profileID: id, reason: "The profile is disconnecting. Connect and Build explicitly to reload metadata.")
-        invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
         guard commitNativeEditors(in: affected) else { disconnectingProfiles.remove(id); return false }
         let grids = affected.compactMap(\.grid)
         for grid in grids { grid.isClosing = true }
@@ -1472,6 +1471,10 @@ final class ApplicationWorkspace: ObservableObject {
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.profile(id)) else { return false }
+        invalidateERDiagrams(profileID: id, includePreparing: true, reason: "The profile is disconnecting. Connect and Build explicitly to reload metadata.")
+        invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
+        await closeDatabaseValueSearch(profileID: id)
+        await closeGridProfileServers(profileID: id)
         if let connecting = profileConnections[id] {
             services[id]?.cancelConnection()
             connecting.cancel()
@@ -1533,9 +1536,11 @@ final class ApplicationWorkspace: ObservableObject {
            model.allSQLDocuments.contains(where: {
                closingDocuments.contains($0.id) || $0.profileID.map { disconnectingProfiles.contains($0) } == true
            }) { return false }
-        return !isClosing && (!document.isNavigatingTable || forNavigating) &&
+        let hasUnblockedERSource = activeProfileCloseReview != nil &&
+            document.erDiagramModel?.sourceProfileIDs.contains(where: { canStartERSource($0) }) == true
+        return (!isClosing || hasUnblockedERSource) && (!document.isNavigatingTable || forNavigating) &&
             !closingDocuments.contains(owner.tab.id) && !closingDocuments.contains(document.id) &&
-            document.profileID.map { !disconnectingProfiles.contains($0) } != false
+            (document.isERDiagram || document.profileID.map { !disconnectingProfiles.contains($0) } != false)
     }
 
     private func disconnectRuntimeDocuments(_ affected: [SQLDocument]) async -> Bool {
@@ -2235,7 +2240,9 @@ final class ApplicationWorkspace: ObservableObject {
             guard closingDocuments.isEmpty || isClearingDocuments else { return false }
             affected = allOwnedRuntimeDocuments
         }
-        guard await prepareToClose(affected), await prepareStructureToClose(scope), await prepareTableImportToClose(scope) else { return false }
+        let profileReviewID: UUID?
+        if case .profile(let id) = scope { profileReviewID = id } else { profileReviewID = nil }
+        guard await prepareToClose(affected, profileReviewID: profileReviewID), await prepareStructureToClose(scope), await prepareTableImportToClose(scope) else { return false }
         if case .application = scope {
             isClosing = true
             defer { isClosing = false }
@@ -2320,12 +2327,13 @@ final class ApplicationWorkspace: ObservableObject {
         return true
     }
 
-    private func prepareToClose(_ affected: [SQLDocument]) async -> Bool {
+    private func prepareToClose(_ affected: [SQLDocument], profileReviewID: UUID? = nil) async -> Bool {
         guard !isClosing else { return false }
         guard !affected.contains(where: \.isNavigatingTable) else { return false }
         guard commitNativeEditors(in: affected) else { return false }
+        activeProfileCloseReview = profileReviewID
         isClosing = true
-        defer { isClosing = false }
+        defer { isClosing = false; activeProfileCloseReview = nil }
         let gridLocks = affected.compactMap(\.grid).map { ($0, $0.isClosing) }
         for (grid, _) in gridLocks { grid.isClosing = true }
         defer { for (grid, wasClosing) in gridLocks { grid.isClosing = wasClosing } }
@@ -3156,7 +3164,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func canStartERSource(_ profileID: UUID) -> Bool {
         shutdownTask == nil && !hasBegunShutdown && !disconnectingProfiles.contains(profileID) &&
-            !isClosing
+            (!isClosing || activeProfileCloseReview != nil)
     }
 
     func recordStructureOutcome(_ profileID: UUID, schema: String, table: String, review: TableStructureExecutionReview) {
@@ -3834,7 +3842,7 @@ final class ApplicationWorkspace: ObservableObject {
                  metadataRequest: CatalogMetadataRequest? = nil, onMetadataPage: CatalogMetadataPageHandler? = nil) async throws -> BackendMessage {
         let client: BackendClient
         if let connectedSessionID {
-            guard shutdownTask == nil, !helperFailed, !disconnectingProfiles.contains(profileID),
+            guard shutdownTask == nil, !helperFailed,
                   services[profileID]?.sessionId == connectedSessionID,
                   services[profileID]?.connectionState == .connected, let helper else {
                 throw CatalogFailure(message: "The profile was disconnected while loading metadata.")

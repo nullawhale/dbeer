@@ -409,19 +409,62 @@ refresh suggestions; completion itself cannot connect or read row values.
 
 ## ER diagrams
 
-Choose **Open ER Diagram…** on a PostgreSQL or MySQL table or schema in the
-catalog. Add tables by schema-filtered search or by separate exact schema and
-table names, then choose **Build / Update** or **Connect and Build**. Selecting
-an area is a local draft; opening or restoring the diagram never connects or
-loads metadata. Multiple visible schemas/databases on the same profile may
-participate; the saved connection's database context remains fixed.
+Choose **Open ER Diagram…** on a PostgreSQL, MySQL or SQLite table or schema in
+the catalog. Use **Add Profile** and the **Profile** selector to combine saved
+relational profiles in one diagram. Add tables by schema-filtered search or by
+separate exact schema and table names, then choose **Build Source / Update Source**
+or **Connect and Build** for that source. Selecting an area is a local draft;
+opening or restoring the diagram never connects or loads metadata. Multiple
+visible schemas/databases on the same profile may participate; each saved
+connection's database context remains fixed.
+
+Each source retains its own progress, errors, completeness, Stop and schema
+observation. Loading or disconnecting one source retains the other sources'
+facts and manual positions. Cards, inspectors and PNG/PDF/SVG exports identify
+the owning profile, including equal schema/table names from different profiles.
+The limits of 16 profiles, 100 tables, 10,000 columns and 1,000 relationships apply
+to the whole diagram.
+
+Legacy diagrams require **Review Current Binding…** before their first metadata
+load. Changed or missing saved profiles remain visible and never fall back to
+another connection. To move an object, select its destination profile and exact
+schema/table, choose **Rebind Selected Table…**, then review the old and new
+ownership. Rebinding preserves placement and clears incompatible metadata for
+an explicit Build; existing destinations are not merged. **Remove Source…**
+removes only that source's diagram tables. Saved profiles, databases and confirmed
+local mappings are retained. Removing the original source leaves remaining
+sources independently loadable and exportable after disconnected restoration.
 
 Cards preserve catalog column order, native types, nullability and explicit PK
 positions. One arrow represents one declared FK, directed toward its referenced
 table. Relationship details retain every ordered pair in a composite key;
 self-references, parallel keys and cross-schema targets stay separate. References
-to tables outside the area offer **Add to Diagram**. Incoming FKs from unselected
-tables are outside discovery scope; cardinality and PK membership are not inferred.
+to tables outside the area offer **Add to Diagram**. Build loads outgoing FKs
+for the selected source; cardinality and PK membership are not inferred. Declared
+FKs stay within their actual profile. Cross-profile confirmed mappings keep their
+distinct local-link style and do not generate cross-server SQL.
+
+For a connected profile, **Find Neighbours** explicitly discovers a selected
+table's declared incoming and outgoing relationships. Sources with the same
+constraint name remain separate, including self-references and cross-schema
+references. Add chosen neighbours to the draft, then **Build / Update** to load
+the expanded area. Discovery never adds tables or rebuilds the graph automatically.
+
+In **Add Tables**, **Discover Schema** lists table names in the exact schema or
+database; **Discover All Visible** walks the visible schemas/databases on the
+current connection. Names appear progressively with a scope report. Name discovery
+retains at most 256 schemas and 10,000 table names and has a 120-second deadline.
+Neighbour discovery retains at most 1,000 source tables and 1,000 relationships.
+**Stop** cancels the owned metadata request and keeps a partial observation.
+Denied, missing, incomplete and stale metadata remain explicit; unavailable
+sources are not treated as proof of no relationships.
+
+These are client observation limits. The helper may finish an initial immutable
+metadata capture before the first page reaches the client, so page progress and
+retained-name bounds do not bound server catalog scan cost. Permissions determine
+visibility. Opening or restoring a diagram never starts this discovery; choose
+candidates, **Add** them to the draft, then **Build** explicitly. The selected
+area still has a separate 100-table limit.
 
 Drag cards to preserve manual positions, drag or scroll the background to pan,
 and pinch, Option-scroll or use the toolbar to zoom. **Fit All**, **Focus** and
@@ -435,7 +478,7 @@ and 16 MiB of normalized metadata. Existing per-response catalog limits still
 apply. Missing, denied, truncated and stale metadata remain visible limitations;
 failed collections never become an assertion of no relationships. Metadata is a
 best-effort read rather than a transactionally consistent schema snapshot.
-Workspace v12 saves table selections, placement, collapse and viewport state with
+The workspace saves table selections, placement, collapse and viewport state with
 private migration backups. Live metadata and session identifiers are not saved;
 restored diagrams require an explicit rebuild. Diagrams do not edit structure or
 relationships and cannot run SQL, edit result grids or export query results.

@@ -59,8 +59,8 @@ extension ApplicationWorkspace {
             let signature = LogicalRelationshipERCache.Signature(library: self.logicalRelationships.revision,
                 profiles: self.logicalProfileRevision, metadata: model.logicalMetadataRevision, tables: model.stored.tables,
                 current: Set(model.stored.tables.map(\.profileID)).filter { id in
-                    guard let context = model.context else { return false }
-                    return self.erDiagramContext(model) == context
+                    guard let context = model.sourceState(id).context else { return false }
+                    return self.erDiagramContext(model, profileID: id) == context
                 })
             if cache.signature == signature { return cache.edges }
             cache.edges = LogicalRelationshipER.edges(self.logicalRelationships.relationships, tables: model.stored.tables,

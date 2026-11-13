@@ -250,7 +250,7 @@ private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) thro
 /// results and passwords never enter the format; restoring the snapshot cannot
 /// reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 14
+    static let currentVersion = 15
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -319,6 +319,7 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
         if version < 12, documents.contains(where: { $0.kind == .erDiagram }) { throw SQLDocumentStoreError.read }
         if version < 13, documents.contains(where: { $0.table?.relationshipScope != nil }) { throw SQLDocumentStoreError.read }
         if version < 14, documents.contains(where: { $0.table?.filterExpression?.hasNativeOperands == true }) { throw SQLDocumentStoreError.read }
+        if version < 15, documents.contains(where: { $0.erDiagram?.sources.isEmpty == false }) { throw SQLDocumentStoreError.read }
         let investigationIDs = documents.compactMap(\.investigationID)
         guard Set(investigationIDs).count == investigationIDs.count else { throw SQLDocumentStoreError.read }
         selectedDocumentID = try values.decodeIfPresent(UUID.self, forKey: .selectedDocumentID)

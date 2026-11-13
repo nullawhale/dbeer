@@ -52,17 +52,17 @@ extension ApplicationWorkspace {
     }
 
     func discoverERVisibleTables(_ document: SQLDocument, schema: String? = nil) async {
-        guard canStartOperation(document), let model = document.erDiagramModel, canStartERSource(model.stored.profileID), !model.isLoading, !model.isSearching,
+        guard canStartOperation(document), let model = document.erDiagramModel, canStartERSource(model.activeSourceID), !model.activeSourceIsLoading, !model.isSearching,
               model.visibleTableDiscovery?.isBusy != true, model.neighbourDiscovery?.isBusy != true,
-              supportsRelationshipDiscovery(profileID: model.stored.profileID), let context = erDiagramContext(model) else {
+              supportsRelationshipDiscovery(profileID: model.activeSourceID), let context = erDiagramContext(model) else {
             document.erDiagramModel?.candidateNotice = "Connect explicitly before discovering visible tables."
             return
         }
-        let generation = model.generation
+        let generation = model.sourceState(context.profileID).generation
         let reader = discoveryReader(context: context, current: { [weak self, weak document, weak model] in
             guard let self, let document, let model else { return false }
             return self.relationshipDocumentIsCurrent(document) &&
-                document.erDiagramModel === model && model.stored.profileID == context.profileID && model.generation == generation && self.erDiagramContext(model) == context
+                document.erDiagramModel === model && model.activeSourceID == context.profileID && model.sourceState(context.profileID).generation == generation && self.erDiagramContext(model, profileID: context.profileID) == context
         })
         let discovery = VisibleTableDiscoveryModel(profileID: context.profileID, reader: reader)
         model.visibleTableDiscovery = discovery
@@ -73,18 +73,18 @@ extension ApplicationWorkspace {
         guard canStartOperation(document), let model = document.erDiagramModel, !model.isSearching,
               model.visibleTableDiscovery?.isBusy != true, model.neighbourDiscovery?.isBusy != true,
               let target = model.stored.selected, canStartERSource(target.profileID), model.stored.tables.contains(target),
-              !model.isLoading, supportsRelationshipDiscovery(profileID: target.profileID), let context = erDiagramContext(model) else { return }
-        let generation = model.generation
+              !model.sourceState(target.profileID).loading, supportsRelationshipDiscovery(profileID: target.profileID), let context = erDiagramContext(model, profileID: target.profileID) else { return }
+        let generation = model.sourceState(context.profileID).generation
         let reader = discoveryReader(context: context, current: { [weak self, weak document, weak model] in
             guard let self, let document, let model else { return false }
             return self.relationshipDocumentIsCurrent(document) &&
-                document.erDiagramModel === model && model.generation == generation && model.stored.selected == target &&
-                model.stored.tables.contains(target) && self.erDiagramContext(model) == context
+                document.erDiagramModel === model && model.sourceState(context.profileID).generation == generation && model.stored.selected == target &&
+                model.stored.tables.contains(target) && self.erDiagramContext(model, profileID: context.profileID) == context
         })
         let discovery = IncomingRelationshipDiscoveryModel(target: target, reader: reader)
         model.neighbourDiscovery = discovery
         await discovery.discover(includeOutgoing: true)
-        if model.generation == generation, erDiagramContext(model) == context,
+        if model.sourceState(context.profileID).generation == generation, erDiagramContext(model, profileID: context.profileID) == context,
            model.stored.selected == target, let canonical = discovery.resolvedTarget, discovery.reader.contextIsCurrent {
             model.adoptCanonicalIdentity(target, resolved: canonical)
         }

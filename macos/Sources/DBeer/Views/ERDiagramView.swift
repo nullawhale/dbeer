@@ -61,24 +61,24 @@ struct ERDiagramView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(workspace.library.savedConnections.first(where: { $0.id == model.stored.profileID })?.name ?? "Missing connection")
+                Text(model.ownerName(model.activeSourceID))
                     .font(.headline).lineLimit(1)
                 Text("\(model.stored.tables.count) tables · \(model.relationships.count) relationships")
                     .font(.caption).appSecondaryText().lineLimit(1)
                     .help("Diagrams support up to 100 tables. Declared foreign keys and confirmed local mappings are shown separately.")
             }
             Divider().frame(height: 24)
-            if model.isLoading {
+            if model.activeSourceIsLoading {
                 ProgressView().controlSize(.small)
-                Text("\(model.progress)/\(model.stored.tables.count)").font(.caption).monospacedDigit()
-                Button("Stop") { workspace.stopERDiagram(model) }.controlHover()
+                Text("\(model.progress)/\(model.stored.tables.filter { $0.profileID == model.activeSourceID }.count)").font(.caption).monospacedDigit()
+                Button("Stop Source") { workspace.stopERDiagramSource(model, profileID: model.activeSourceID) }.controlHover()
             } else {
                 Button {
                     Task { await workspace.buildERDiagram(document, connect: !connected) }
                 } label: {
-                    Label(connected ? (model.metadata.isEmpty ? "Build Diagram" : "Update Diagram") : "Connect and Build", systemImage: "arrow.clockwise")
+                    Label(connected ? (model.metadata.keys.contains(where: { $0.profileID == model.activeSourceID }) ? "Update Source" : "Build Source") : "Connect and Build", systemImage: "arrow.clockwise")
                 }.controlHover()
-                .disabled(model.stored.tables.isEmpty || model.request?.finished == false || model.isSearching)
+                .disabled(!model.stored.tables.contains(where: { $0.profileID == model.activeSourceID }) || model.request?.finished == false || model.isSearching || model.source(model.activeSourceID) == nil)
                 .accessibilityIdentifier("erBuild")
             }
             Spacer(minLength: 4)
@@ -253,7 +253,7 @@ private final class ERCanvasView: NSView {
             NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: ERDiagramLayout.header - 4).fill()
         }
         text(table.name, at: NSPoint(x: point.x + 14, y: point.y + 12), width: 312, size: 14, color: AppPalette.textNS, bold: true)
-        text(table.schema, at: NSPoint(x: point.x + 14, y: point.y + 35), width: 312, size: 10.5, color: AppPalette.secondaryTextNS)
+        text(model.ownerName(table.profileID) + " · " + table.schema, at: NSPoint(x: point.x + 14, y: point.y + 35), width: 312, size: 10.5, color: AppPalette.secondaryTextNS)
         AppPalette.borderNS.setFill()
         NSRect(x: rect.minX, y: point.y + ERDiagramLayout.header - 4, width: rect.width, height: 1 / zoom).fill()
         let columns = ERDiagramLayout.columns(facts, collapsed: collapsed)
