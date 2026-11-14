@@ -603,6 +603,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var schemaComparison: SchemaComparisonResponse? = nil
     @OptionalTransportPayload var dataComparison: DataComparisonResponse? = nil
     @OptionalTransportPayload var explain: ExplainResult? = nil
+    @OptionalTransportPayload var explainDML: ExplainDMLResult? = nil
     @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
     @OptionalTransportPayload var catalogMetadata: CatalogMetadataReply? = nil
     @OptionalTransportPayload var operationSupport: OperationSupport? = nil
@@ -614,6 +615,16 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var transfer: DataTransferReply?
 
     func validate() throws {
+        // Keep phase frames separate from receive/hydrate on the worker stack.
+        try validateTransportValues()
+        try validateOperationSupport()
+        let valid = validMessageShape()
+        try validateProductPayloadPlacement()
+        try validateSQLCompletion(valid: valid)
+    }
+
+    @inline(never)
+    private func validateTransportValues() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
         if let sessionId, !Self.validID(sessionId) { throw BackendTransportError(.invalidMessage) }
         if let queryId, !Self.validID(queryId) { throw BackendTransportError(.invalidMessage) }
@@ -640,7 +651,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
         if let source, type != "query.result" || !source.valid(for: sourceColumns) {
             throw BackendTransportError(.invalidMessage)
         }
-        let valid: Bool
+    }
+
+    @inline(never)
+    private func validateOperationSupport() throws {
         if let operationSupport {
             guard operationSupport.valid,
                   type == "connect.result" ? operationSupport.scope == .session && operationSupport.engine == engine :
@@ -649,78 +663,124 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 throw BackendTransportError(.invalidMessage)
             }
         }
+    }
+
+    @inline(never)
+    private func validMessageShape() -> Bool {
         switch type {
-        case "hello.ack": valid = protocolVersion != nil
-        case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
-                streamed == nil && source == nil && databaseTools?.valid(for: type) == true
-        case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
-                streamed == nil && source == nil && transfer?.valid == true
-        case "sqlite.create.result": valid = sessionId == nil && queryId == nil
         case "import.describe.result", "import.preview.result", "import.apply.result":
-            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+            return validStructuralMessageShape()
+        case "structure.load.result", "structure.preview.result", "structure.validate.result", "structure.apply.result", "structure.status.result", "structure.close.result",
+             "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
+            return validStructuralMessageShape()
+        case "query.progress":
+            return validSQLMessageShape()
+        case "explain.result":
+            return validSQLMessageShape()
+        case "query.started":
+            return validSQLMessageShape()
+        case "query.chunk":
+            return validSQLMessageShape()
+        case "query.result":
+            return validSQLMessageShape()
+        case "error":
+            return validSQLMessageShape()
+        default: return validServiceMessageShape()
+        }
+    }
+
+    @inline(never)
+    private func validStructuralMessageShape() -> Bool {
+        switch type {
+        case "import.describe.result", "import.preview.result", "import.apply.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
                 columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
                 tableImport?.valid(for: type) == true && (durationMs.map { $0.isFinite && $0 >= 0 } ?? true)
         case "structure.load.result", "structure.preview.result", "structure.validate.result", "structure.apply.result", "structure.status.result", "structure.close.result",
              "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
-            valid = sessionId != nil && queryId != nil && connected != nil &&
+            return sessionId != nil && queryId != nil && connected != nil &&
                 (transactionStatus != nil || connected == false) && columns == nil && rows == nil &&
                 resultSets == nil && streamed == nil && source == nil && structure?.valid(for: type) == true
-        case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && dataComparison?.valid(for: type) == true
-        case "schema.import.start.result", "schema.import.status.result", "schema.import.cancel.result", "schema.import.close.result", "schema.bundle.start.result", "schema.bundle.status.result", "schema.bundle.export.result", "schema.bundle.cancel.result", "schema.bundle.close.result", "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.plan.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && schemaComparison?.valid(for: type) == true
-        case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
-                comparison?.valid(for: type) == true
-        case "insertSQL":
-            valid = sessionId == nil && queryId == nil && sql?.isEmpty == false &&
-                (sql?.utf8.count ?? Int.max) <= InsertFormatRequest.maximumBytes && sql?.contains("\0") == false
-        case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
-        case "ssh.probe.result", "ssh.trust.result": valid = ssh?.isValid == true
-        case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
-        case "catalog.page.result", "catalog.batch.result", "catalog.close.result":
-            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
-                catalogMetadata?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
-                (type == "catalog.close.result" ? catalogMetadata?.closed == true : catalogMetadata?.closed != true)
-        case "monitor.schema.result":
-            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
-                schemaObservation?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
-        case "monitor.result":
-            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
-                monitor?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
-        case "query.progress": valid = (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
+        default: return false
+        }
+    }
+
+    @inline(never)
+    private func validSQLMessageShape() -> Bool {
+        switch type {
+        case "query.progress": return (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
         case "explain.result":
-            valid = sessionId != nil && queryId != nil && transactionStatus != nil && sqlCompleted == true &&
+            return sessionId != nil && queryId != nil && transactionStatus != nil && sqlCompleted == true &&
                 durationMs.map { $0.isFinite && $0 >= 0 } == true && explain?.valid == true &&
                 columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
-        case "query.started": valid = sessionId != nil && queryId != nil
+        case "query.started": return sessionId != nil && queryId != nil
         case "query.chunk":
-            valid = sessionId != nil && queryId != nil && (sequence ?? 0) > 0 &&
+            return sessionId != nil && queryId != nil && (sequence ?? 0) > 0 &&
                 (resultIndex ?? -1) >= 0 && (resultIndex ?? 1_024) < 1_024 && rows != nil &&
                 (columns?.enumerated().allSatisfy { $0.offset == $0.element.index &&
                     ($0.element.encoding == nil || $0.element.encoding == "base64") } ?? true)
         case "query.result":
             if let columns, let rows, let durationMs, let rowCount, let displayedRowCount {
-                valid = sessionId != nil && queryId != nil && transactionStatus != nil &&
+                return sessionId != nil && queryId != nil && transactionStatus != nil &&
                     durationMs.isFinite && durationMs >= 0 && rowCount >= 0 &&
                     (streamed == true ? (rows.isEmpty && displayedRowCount >= 0) : displayedRowCount == rows.count) && truncated != nil && commandTag != nil &&
                     columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
                         ($0.element.encoding == nil || $0.element.encoding == "base64") } &&
                     rows.allSatisfy { $0.count == columns.count } &&
                     (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
-            } else { valid = false }
-        case "cancel.ack":
-            valid = sessionId != nil && queryId != nil && ["accepted", "alreadyFinished"].contains(status)
-        case "disconnect.ack": valid = sessionId != nil
-        case "shutdown.ack": valid = true
+            } else { return false }
         case "error":
-            valid = category != nil && message != nil && connected != nil && outcomeUnknown != nil &&
+            return category != nil && message != nil && connected != nil && outcomeUnknown != nil &&
                 (errorPosition == nil || errorPosition! > 0)
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
-        default: valid = false
+        default: return false
         }
+    }
+
+    @inline(never)
+    private func validServiceMessageShape() -> Bool {
+        switch type {
+        case "hello.ack": return protocolVersion != nil
+        case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                streamed == nil && source == nil && databaseTools?.valid(for: type) == true
+        case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                streamed == nil && source == nil && transfer?.valid == true
+        case "sqlite.create.result": return sessionId == nil && queryId == nil
+        case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && dataComparison?.valid(for: type) == true
+        case "schema.import.start.result", "schema.import.status.result", "schema.import.cancel.result", "schema.import.close.result", "schema.bundle.start.result", "schema.bundle.status.result", "schema.bundle.export.result", "schema.bundle.cancel.result", "schema.bundle.close.result", "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.plan.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && schemaComparison?.valid(for: type) == true
+        case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                comparison?.valid(for: type) == true
+        case "insertSQL":
+            return sessionId == nil && queryId == nil && sql?.isEmpty == false &&
+                (sql?.utf8.count ?? Int.max) <= InsertFormatRequest.maximumBytes && sql?.contains("\0") == false
+        case "operation.assessment": return sessionId != nil && queryId != nil && assessment?.valid == true
+        case "ssh.probe.result", "ssh.trust.result": return ssh?.isValid == true
+        case "connect.result": return sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
+        case "catalog.page.result", "catalog.batch.result", "catalog.close.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                catalogMetadata?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
+                (type == "catalog.close.result" ? catalogMetadata?.closed == true : catalogMetadata?.closed != true)
+        case "monitor.schema.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                schemaObservation?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
+        case "monitor.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                monitor?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
+        case "cancel.ack":
+            return sessionId != nil && queryId != nil && ["accepted", "alreadyFinished"].contains(status)
+        case "disconnect.ack": return sessionId != nil
+        case "shutdown.ack": return true
+        default: return false
+        }
+    }
+
+    @inline(never)
+    private func validateProductPayloadPlacement() throws {
         guard tableImport == nil || (type.hasPrefix("import.") || type == "error") && tableImport?.valid(for: type) == true,
               databaseTools == nil || type.hasPrefix("dbtools."),
               transfer == nil || type.hasPrefix("transfer."),
@@ -729,16 +789,44 @@ struct BackendMessage: Codable, Sendable, Equatable {
               !_catalogMetadata.isPresent || ["catalog.page.result", "catalog.batch.result", "catalog.close.result"].contains(type),
               structure == nil || type.hasPrefix("structure."),
               !_explain.isPresent || type == "explain.result",
+              validExplainDMLErrorEnvelope,
               !_explainSupport.isPresent || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,
               !_dataComparison.isPresent || type.hasPrefix("data."),
               !_schemaComparison.isPresent || type.hasPrefix("schema."),
-              !_comparison.isPresent || type.hasPrefix("compare."),
-              sql == nil || (type == "insertSQL" || type == "query.result") &&
+              !_comparison.isPresent || type.hasPrefix("compare.") else { throw BackendTransportError(.invalidMessage) }
+    }
+
+    @inline(never)
+    private func validateSQLCompletion(valid: Bool) throws {
+        guard sql == nil || (type == "insertSQL" || type == "query.result") &&
                 sql?.isEmpty == false && (sql?.utf8.count ?? Int.max) <= BackendProtocol.maxFrameBytes / 2 &&
                 sql?.contains("\0") == false,
               sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
-              sqlCompleted != true || ((type == "error" || type == "explain.result") && outcomeUnknown != true),
+              sqlCompleted != true || ((type == "error" || type == "explain.result") &&
+                (outcomeUnknown != true || permitsExplainDMLUnknownCompletion)),
               exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }
+    }
+
+    private var permitsExplainDMLUnknownCompletion: Bool {
+        guard type == "error", let dml = explainDML, dml.execution == "completed" else { return false }
+        return dml.persistence == "unknown" || dml.targetExecution == "suppressed" &&
+            dml.persistence == "notExecuted" && dml.transactionAfter == "unknown"
+    }
+
+    private var validExplainDMLErrorEnvelope: Bool {
+        guard _explainDML.isPresent else { return true }
+        guard type == "error", let dml = explainDML,
+              columns == nil, rows == nil, resultSets == nil, streamed == nil, source == nil, tableImport == nil,
+              exportPublication == nil, exportPath == nil, exportFormat == nil, exportRowCount == nil,
+              [DatabaseEngine.postgresql, .mysql].contains(where: { dml.valid(engine: $0, mode: .analyze) }),
+              (dml.transactionAfter == "unknown" ? transactionStatus == nil :
+                transactionStatus?.rawValue == dml.transactionAfter || connected == false && transactionStatus == nil) else { return false }
+        switch dml.execution {
+        case "completed": return sqlCompleted == true && (outcomeUnknown == true) == permitsExplainDMLUnknownCompletion
+        case "notExecuted": return sqlNotExecuted == true
+        case "unknown": return sqlCompleted != true && sqlNotExecuted != true && outcomeUnknown == true
+        default: return sqlCompleted != true && sqlNotExecuted != true
+        }
     }
 
     static func validID(_ value: String) -> Bool {

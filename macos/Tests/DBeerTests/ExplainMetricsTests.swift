@@ -146,7 +146,7 @@ struct ExplainMetricsTests {
         let artifact = try makeArtifact(serial())
         let text = try artifact.encoded()
         let restored = try PlanArtifact.decode(text)
-        #expect(restored.version == 5 && restored.result == artifact.result && restored.request.context == nil)
+        #expect(restored.version == PlanArtifact.currentVersion && restored.result == artifact.result && restored.request.context == nil)
         #expect(!text.contains("private-") && !text.contains("private editor") && !text.contains("authorization"))
         #expect(restored.displayPlan.sessionID == nil && restored.displayPlan.sourceDocumentID == nil && restored.displayPlan.targetDocumentID == nil && restored.displayPlan.profile == nil)
         let original = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])

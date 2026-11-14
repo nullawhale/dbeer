@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Explain INSERT/UPDATE/DELETE and PostgreSQL data-changing CTEs without
+  executing the outer DML, while retaining routine/side-effect policy during
+  planning. Authorize actual DML Analyze separately with exact typed
+  values and current-session transaction conditions; support PostgreSQL and
+  MySQL multi-table UPDATE/DELETE iterator diagnostics, explicitly distinguishing
+  their suppressed target writes from PostgreSQL execution. Preserve acknowledged
+  completion, pending transactional changes and uncertain persistence without
+  hidden transaction commands, rewrites or retries; never infer affected rows
+  from plan-node output.
+
 - Compose dependency-ordered multi-object migrations from typed table drafts and
   individually selected foreign-key repairs, including explicit rename mappings
   across PostgreSQL schemas and supported MySQL databases on the same server.

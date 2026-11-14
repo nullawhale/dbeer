@@ -30,13 +30,15 @@ struct ExplainRequest: Codable, Sendable, Equatable {
     var planKind: ExplainPlanKind? = nil
     var context: ExplainContext? = nil
     var options: ExplainOptions? = nil
-    private enum CodingKeys: String, CodingKey { case sql, mode, parameters, planKind, context, options }
+    var writeIntent: ExplainWriteIntent? = nil
+    private enum CodingKeys: String, CodingKey { case sql, mode, parameters, planKind, context, options, writeIntent }
     var valid: Bool {
         !sql.isEmpty && sql.utf8.count <= 1_048_576 && !sql.contains("\0") &&
+        (writeIntent.map { $0.valid && mode == .analyze && context != nil && context?.transactionStatus == $0.expectedTransactionStatus } ?? true) &&
         (options?.valid ?? true) && (parameters.map { (try? QueryParameterBinding.validate($0)) != nil } ?? true) &&
         (planKind != .generic || mode == .plan) && (context.map { $0.valid && $0.rangeLength == sql.utf16.count } ?? true)
     }
-    var portable: Self { var copy = self; copy.context = nil; return copy }
+    var portable: Self { var copy = self; copy.context = nil; copy.writeIntent = nil; return copy }
 }
 extension ExplainContext {
     init(from decoder: Decoder) throws {
@@ -54,7 +56,7 @@ extension ExplainContext {
 }
 extension ExplainRequest {
     init(from decoder: Decoder) throws {
-        try requireExplainKeys(decoder, required: ["sql", "mode"], optional: ["parameters", "planKind", "context", "options"])
+        try requireExplainKeys(decoder, required: ["sql", "mode"], optional: ["parameters", "planKind", "context", "options", "writeIntent"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         sql = try values.decode(String.self, forKey: .sql)
         mode = try values.decode(ExplainMode.self, forKey: .mode)
@@ -62,6 +64,7 @@ extension ExplainRequest {
         planKind = values.contains(.planKind) ? try values.decode(ExplainPlanKind.self, forKey: .planKind) : nil
         context = values.contains(.context) ? try values.decode(ExplainContext.self, forKey: .context) : nil
         options = values.contains(.options) ? try values.decode(ExplainOptions.self, forKey: .options) : nil
+        writeIntent = values.contains(.writeIntent) ? try values.decode(ExplainWriteIntent.self, forKey: .writeIntent) : nil
         guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid Explain request.")) }
     }
 }
@@ -89,7 +92,10 @@ struct ExplainSupport: Codable, Sendable, Equatable {
     var options: ExplainOptionSupport? = nil
     var analyzeUnavailableReason: String? = nil
     var notices: [String]? = nil
+    var dml: ExplainDMLSupport? = nil
+    private enum CodingKeys: String, CodingKey { case engine, serverVersion, format, modes, unavailableReason, planKinds, diagnosticModel, options, analyzeUnavailableReason, notices, dml }
     var valid: Bool {
+        (dml.map { $0.valid(engine: engine) && !modes.isEmpty && ($0.analyze.isEmpty || modes.contains(.analyze)) } ?? true) &&
         [.postgresql, .mysql, .sqlite, .mongodb, .cassandra].contains(engine) && serverVersion.utf8.count <= 256 &&
         (engine == .mysql ? ["tree", "json"].contains(format) : format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : engine == .mysql ? "tree" : engine == .mongodb ? "mongodbExplain" : "cassandraTrace")) &&
         (engine == .mongodb ? diagnosticModel == "mongodbExplain" : engine == .cassandra ? diagnosticModel == "cassandraTrace" && modes == [.analyze] : diagnosticModel == nil) && modes.count <= 2 &&
@@ -107,7 +113,9 @@ struct ExplainPreview: Codable, Sendable, Equatable {
     var support: ExplainSupport
     var options: ExplainOptions? = nil
     var format: String? = nil
-    var valid: Bool { support.valid && validExplainSelection(support: support, options: options, mode: mode, format: format) && support.modes.contains(mode) && !sql.isEmpty && sql.utf8.count <= 1_049_600 && !sql.contains("\0") }
+    var dml: ExplainDMLTarget? = nil
+    private enum CodingKeys: String, CodingKey { case sql, mode, support, options, format, dml }
+    var valid: Bool { (dml.map { $0.valid(engine: support.engine) && support.dml != nil && (mode != .analyze || support.dml!.analyze.contains($0.analyzeForm)) } ?? true) && support.valid && validExplainSelection(support: support, options: options, mode: mode, format: format) && support.modes.contains(mode) && !sql.isEmpty && sql.utf8.count <= 1_049_600 && !sql.contains("\0") }
 }
 struct ExplainMetric: Codable, Sendable, Equatable {
     var value: String?
@@ -179,9 +187,11 @@ struct ExplainResult: Codable, Sendable, Equatable {
     var engineDiagnostic: EngineDiagnostic? = nil
     var options: ExplainOptions? = nil
     var format: String? = nil
-    private enum CodingKeys: String, CodingKey { case support, mode, status, raw, complete, diagnostic, roots, nodes, metrics, advancedMetrics, engineDiagnostic, options, format }
+    var dml: ExplainDMLResult? = nil
+    private enum CodingKeys: String, CodingKey { case support, mode, status, raw, complete, diagnostic, roots, nodes, metrics, advancedMetrics, engineDiagnostic, options, format, dml }
     var valid: Bool {
-        guard support.valid, support.modes.contains(mode),
+        guard dml.map({ $0.valid(engine: support.engine, mode: mode) && support.dml != nil && (mode != .analyze || $0.execution == "completed" && support.dml!.analyze.contains($0.target.analyzeForm)) }) ?? true,
+              support.valid, support.modes.contains(mode),
               advancedMetrics == nil || status == "tree" && advancedMetrics?.valid(engine: support.engine) == true,
               validExplainSelection(support: support, options: options, mode: mode, format: format, status: status), raw.utf8.count <= Self.maximumRawBytes,
               nodes.count <= 10_000, metrics.count <= 16, metrics.values.allSatisfy(\.valid),
@@ -233,7 +243,7 @@ extension ExplainNode {
 }
 extension ExplainResult {
     init(from decoder: Decoder) throws {
-        try requireExplainKeys(decoder, required: ["support", "mode", "status", "raw", "complete", "roots", "nodes", "metrics"], optional: ["diagnostic", "engineDiagnostic", "options", "format", "advancedMetrics"])
+        try requireExplainKeys(decoder, required: ["support", "mode", "status", "raw", "complete", "roots", "nodes", "metrics"], optional: ["diagnostic", "engineDiagnostic", "options", "format", "advancedMetrics", "dml"])
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         support = try fields.decode(ExplainSupport.self, forKey: .support)
         mode = try fields.decode(ExplainMode.self, forKey: .mode)
@@ -248,6 +258,7 @@ extension ExplainResult {
         options = try fields.decodeIfPresent(ExplainOptions.self, forKey: .options)
         format = try fields.decodeIfPresent(String.self, forKey: .format)
         advancedMetrics = fields.contains(.advancedMetrics) ? try fields.decode(ExplainPlanMetrics.self, forKey: .advancedMetrics) : nil
+        dml = fields.contains(.dml) ? try fields.decode(ExplainDMLResult.self, forKey: .dml) : nil
     }
 }
 
@@ -259,5 +270,35 @@ extension ExplainMetric {
         unit = try fields.decode(String.self, forKey: .unit)
         basis = try fields.decode(String.self, forKey: .basis)
         unavailableReason = try fields.decodeIfPresent(String.self, forKey: .unavailableReason)
+    }
+}
+
+extension ExplainSupport {
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["engine", "serverVersion", "format", "modes"], optional: ["unavailableReason", "planKinds", "diagnosticModel", "options", "analyzeUnavailableReason", "notices", "dml"])
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try fields.decode(DatabaseEngine.self, forKey: .engine)
+        serverVersion = try fields.decode(String.self, forKey: .serverVersion)
+        format = try fields.decode(String.self, forKey: .format)
+        modes = try fields.decode([ExplainMode].self, forKey: .modes)
+        unavailableReason = try fields.decodeIfPresent(String.self, forKey: .unavailableReason)
+        planKinds = try fields.decodeIfPresent([ExplainPlanKind].self, forKey: .planKinds)
+        diagnosticModel = try fields.decodeIfPresent(String.self, forKey: .diagnosticModel)
+        options = try fields.decodeIfPresent(ExplainOptionSupport.self, forKey: .options)
+        analyzeUnavailableReason = try fields.decodeIfPresent(String.self, forKey: .analyzeUnavailableReason)
+        notices = try fields.decodeIfPresent([String].self, forKey: .notices)
+        dml = fields.contains(.dml) ? try fields.decode(ExplainDMLSupport.self, forKey: .dml) : nil
+    }
+}
+extension ExplainPreview {
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["sql", "mode", "support"], optional: ["options", "format", "dml"])
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        sql = try fields.decode(String.self, forKey: .sql)
+        mode = try fields.decode(ExplainMode.self, forKey: .mode)
+        support = try fields.decode(ExplainSupport.self, forKey: .support)
+        options = try fields.decodeIfPresent(ExplainOptions.self, forKey: .options)
+        format = try fields.decodeIfPresent(String.self, forKey: .format)
+        dml = fields.contains(.dml) ? try fields.decode(ExplainDMLTarget.self, forKey: .dml) : nil
     }
 }

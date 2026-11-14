@@ -52,6 +52,7 @@ struct ExplainPlanModel {
     var transactionStatus: TransactionStatus?
     var sourceEvidence: ExplainSourceEvidence?
     var result: ExplainResult?
+    var dmlOutcome: ExplainDMLResult?
     var status = "Starting"
     var clientDurationMs: Double?
     var failure: WorkspaceModel.QueryFailure?
@@ -90,8 +91,8 @@ struct ExplainPlanModel {
         let parsed = SQLScriptParser.parse(request.sql, engine: engine)
         let tokens = parsed.tokens.filter { $0.kind != .comment }
         guard let first = tokens.first, first.kind == .keyword,
-              (engine == .cassandra ? ["SELECT"] : ["SELECT", "WITH"]).contains((request.sql as NSString).substring(with: first.range).uppercased()) else {
-            throw ExecutionPolicyError(message: "Explain requires an unwrapped SELECT or WITH … SELECT statement.")
+              (engine == .cassandra ? ["SELECT"] : ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]).contains((request.sql as NSString).substring(with: first.range).uppercased()) else {
+            throw ExecutionPolicyError(message: "Explain requires one unwrapped SELECT, INSERT, UPDATE, DELETE or WITH statement.")
         }
         var prefix = (request.sql as NSString).substring(to: first.range.location)
         for comment in parsed.tokens.filter({ $0.kind == .comment && NSMaxRange($0.range) <= first.range.location }).reversed() {

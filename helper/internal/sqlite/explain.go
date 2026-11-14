@@ -19,16 +19,20 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	if err == nil && len(rows) == 1 {
 		version = cellText(rows[0][0])
 	}
-	return protocol.ExplainSupport{Engine: "sqlite", ServerVersion: version, Format: "queryPlan", Modes: []string{"plan"}}
+	return protocol.ExplainSupport{Engine: "sqlite", ServerVersion: version, Format: "queryPlan", Modes: []string{"plan"}, DML: &protocol.ExplainDMLSupport{Estimated: true, Analyze: []string{}, AnalyzeTargetExecution: "unavailable"}}
 }
 func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExplain, error) {
 	p := adapter.PreparedExplain{Request: r, Prefix: "EXPLAIN QUERY PLAN\n"}
 	bound, err := queryparams.Bind("sqlite", r.SQL, r.Parameters)
-	if r.Mode != "plan" || r.PlanKind != "" || r.Options != nil || !r.Valid() || err != nil || !safety.VisualExplainTarget("sqlite", bound.AssessmentSQL) {
-		return p, errors.New("SQLite Explain requires one SELECT or read CTE; Analyze is unavailable.")
+	target, targetOK := safety.ClassifyExplainTarget("sqlite", bound.AssessmentSQL)
+	if r.Mode != "plan" || r.PlanKind != "" || r.Options != nil || !r.Valid() || err != nil || !targetOK {
+		return p, errors.New("SQLite Explain requires one SELECT, INSERT, UPDATE, DELETE or read CTE; Analyze and data-changing CTE bodies are unavailable.")
+	}
+	if target.DML() {
+		p.Preview.DML = &protocol.ExplainDMLTarget{Statement: target.Statement}
 	}
 	p.Bound = bound
-	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s.ExplainSupport()}
+	p.Preview = protocol.ExplainPreview{DML: p.Preview.DML, SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s.ExplainSupport()}
 	return p, nil
 }
 func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protocol.Response {
@@ -84,7 +88,7 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		}
 	}
 	raw, _ := json.MarshalIndent(rawRows, "", "  ")
-	result := protocol.ExplainResult{Support: p.Preview.Support, Mode: "plan", Status: "tree", Raw: string(raw), Complete: true, Roots: roots, Nodes: nodes, Metrics: sqliteUnavailableMetrics()}
+	result := protocol.ExplainResult{DML: adapter.ExplainDMLOutcome(p, protocol.Response{}), Support: p.Preview.Support, Mode: "plan", Status: "tree", Raw: string(raw), Complete: true, Roots: roots, Nodes: nodes, Metrics: sqliteUnavailableMetrics()}
 	if len(nodes) == 0 {
 		result.Status = "rawOnly"
 		result.Diagnostic = "SQLite returned no plan operations."

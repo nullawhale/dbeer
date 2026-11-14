@@ -4,7 +4,7 @@ import Foundation
 /// Explicit user artifacts retain only the SQL and evidence from the original
 /// Explain operation. Runtime ownership and connection settings are excluded.
 struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
-    static let currentVersion = 5
+    static let currentVersion = 6
     static let maximumBytes = 16 * 1_024 * 1_024
     var version = Self.currentVersion
     var id: UUID
@@ -19,7 +19,8 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
     var source: ExplainSourceEvidence? = nil
 
     var valid: Bool {
-        (1...Self.currentVersion).contains(version) && request.context == nil &&
+        (1...Self.currentVersion).contains(version) && request.context == nil && request.writeIntent == nil &&
+        (version >= 6 || result.dml == nil && result.support.dml == nil) &&
         (version >= 5 || result.advancedMetrics == nil && result.nodes.allSatisfy { $0.advancedMetrics == nil }) &&
         (version >= 4 || request.options == nil && result.options == nil && result.format == nil && result.support.options == nil && result.support.analyzeUnavailableReason == nil && result.support.notices == nil &&
             !(result.support.engine == .mysql && result.support.format == "json") &&
@@ -63,6 +64,7 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
             sourceRange: NSRange(location: 0, length: (request.sql as NSString).length), profileID: UUID())
         plan.sourceEvidence = source
         plan.result = result
+        plan.dmlOutcome = result.dml
         plan.status = "Saved \(capturedAt.formatted(date: .abbreviated, time: .shortened))" + (sourceWasStale == true ? " · earlier query or connection at save" : "")
         return plan
     }
@@ -93,6 +95,7 @@ struct PlanArtifact: Codable, Equatable, Sendable, Identifiable {
               version >= 3 || result["engineDiagnostic"] == nil && support["diagnosticModel"] == nil else { throw PlanArtifactError.invalid }
         guard version >= 4 || request["options"] == nil && result["options"] == nil && result["format"] == nil &&
               support["options"] == nil && support["analyzeUnavailableReason"] == nil && support["notices"] == nil else { throw PlanArtifactError.invalid }
+        guard version >= 6 || !result.keys.contains("dml") && !support.keys.contains("dml") else { throw PlanArtifactError.invalid }
         guard version >= 5 || result["advancedMetrics"] == nil &&
               (result["nodes"] as? [[String: Any]])?.allSatisfy({ $0["advancedMetrics"] == nil }) == true else { throw PlanArtifactError.invalid }
         if let source = fields["source"] {

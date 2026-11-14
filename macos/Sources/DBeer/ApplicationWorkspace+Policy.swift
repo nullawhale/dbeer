@@ -8,7 +8,8 @@ extension ApplicationWorkspace {
         guard let assessment = reply.assessment, assessment.operations.count == operations.count,
               assessment.policy == profile.policy, reply.sessionId == sessionID,
               zip(operations, assessment.operations).allSatisfy({ operation, assessed in
-                  if let explain = operation.explain { return assessed.explain?.mode == explain.mode && assessed.explain?.valid == true && assessed.explain?.support.engine == profile.engine && assessed.explain?.options == explain.options }
+                  if let explain = operation.explain { return assessed.explain?.mode == explain.mode && assessed.explain?.valid == true && assessed.explain?.support.engine == profile.engine && assessed.explain?.options == explain.options &&
+                      (explain.writeIntent == nil || assessed.explain?.dml != nil && assessed.kind != "read") }
                   return assessed.explain == nil
               }),
               !operations.contains(where: { $0.explain?.mode == .analyze }) || assessment.decision != "allow" else {

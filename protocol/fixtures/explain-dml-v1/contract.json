@@ -1,0 +1,494 @@
+{
+  "version": 1,
+  "capability": "explainDMLV1",
+  "commands": [
+    {
+      "type": "explain.run",
+      "requestId": "fixture-request",
+      "sessionId": "fixture-session",
+      "queryId": "fixture-query",
+      "explain": {
+        "sql": "UPDATE fixture SET note=:note WHERE id=:id AND :empty='' AND :null IS NULL AND :decimal=9007199254740993.125",
+        "mode": "analyze",
+        "parameters": [
+          {
+            "name": "note",
+            "type": "text",
+            "value": "NULL 🍺"
+          },
+          {
+            "name": "id",
+            "type": "integer",
+            "value": "9007199254740993"
+          },
+          {
+            "name": "empty",
+            "type": "text",
+            "value": ""
+          },
+          {
+            "name": "null",
+            "type": "text",
+            "value": null
+          },
+          {
+            "name": "decimal",
+            "type": "decimal",
+            "value": "9007199254740993.125"
+          }
+        ],
+        "context": {
+          "documentId": "source",
+          "targetDocumentId": "target",
+          "rangeLocation": 23,
+          "rangeLength": 108,
+          "profileId": "fixture-profile",
+          "sessionId": "fixture-session",
+          "transactionStatus": "transaction"
+        },
+        "writeIntent": {
+          "disposition": "currentSession",
+          "expectedTransactionStatus": "transaction"
+        }
+      }
+    },
+    {
+      "type": "explain.run",
+      "requestId": "plan",
+      "sessionId": "fixture-session",
+      "queryId": "plan",
+      "explain": {
+        "sql": "WITH changed AS (DELETE FROM fixture RETURNING *) SELECT * FROM changed",
+        "mode": "plan"
+      }
+    }
+  ],
+  "invalidCommands": [
+    {
+      "id": "nullIntent",
+      "command": {
+        "type": "explain.run",
+        "requestId": "fixture-request",
+        "sessionId": "fixture-session",
+        "queryId": "fixture-query",
+        "explain": {
+          "sql": "UPDATE fixture SET note=:note WHERE id=:id AND :empty='' AND :null IS NULL AND :decimal=9007199254740993.125",
+          "mode": "analyze",
+          "parameters": [
+            {
+              "name": "note",
+              "type": "text",
+              "value": "NULL 🍺"
+            },
+            {
+              "name": "id",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            },
+            {
+              "name": "decimal",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "target",
+            "rangeLocation": 23,
+            "rangeLength": 108,
+            "profileId": "fixture-profile",
+            "sessionId": "fixture-session",
+            "transactionStatus": "transaction"
+          },
+          "writeIntent": null
+        }
+      }
+    },
+    {
+      "id": "wrongDisposition",
+      "command": {
+        "type": "explain.run",
+        "requestId": "fixture-request",
+        "sessionId": "fixture-session",
+        "queryId": "fixture-query",
+        "explain": {
+          "sql": "UPDATE fixture SET note=:note WHERE id=:id AND :empty='' AND :null IS NULL AND :decimal=9007199254740993.125",
+          "mode": "analyze",
+          "parameters": [
+            {
+              "name": "note",
+              "type": "text",
+              "value": "NULL 🍺"
+            },
+            {
+              "name": "id",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            },
+            {
+              "name": "decimal",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "target",
+            "rangeLocation": 23,
+            "rangeLength": 108,
+            "profileId": "fixture-profile",
+            "sessionId": "fixture-session",
+            "transactionStatus": "transaction"
+          },
+          "writeIntent": {
+            "disposition": "rollback",
+            "expectedTransactionStatus": "transaction"
+          }
+        }
+      }
+    },
+    {
+      "id": "wrongTransaction",
+      "command": {
+        "type": "explain.run",
+        "requestId": "fixture-request",
+        "sessionId": "fixture-session",
+        "queryId": "fixture-query",
+        "explain": {
+          "sql": "UPDATE fixture SET note=:note WHERE id=:id AND :empty='' AND :null IS NULL AND :decimal=9007199254740993.125",
+          "mode": "analyze",
+          "parameters": [
+            {
+              "name": "note",
+              "type": "text",
+              "value": "NULL 🍺"
+            },
+            {
+              "name": "id",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            },
+            {
+              "name": "decimal",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "target",
+            "rangeLocation": 23,
+            "rangeLength": 108,
+            "profileId": "fixture-profile",
+            "sessionId": "fixture-session",
+            "transactionStatus": "transaction"
+          },
+          "writeIntent": {
+            "disposition": "currentSession",
+            "expectedTransactionStatus": "idle"
+          }
+        }
+      }
+    },
+    {
+      "id": "missingContext",
+      "command": {
+        "type": "explain.run",
+        "requestId": "fixture-request",
+        "sessionId": "fixture-session",
+        "queryId": "fixture-query",
+        "explain": {
+          "sql": "UPDATE fixture SET note=:note WHERE id=:id AND :empty='' AND :null IS NULL AND :decimal=9007199254740993.125",
+          "mode": "analyze",
+          "parameters": [
+            {
+              "name": "note",
+              "type": "text",
+              "value": "NULL 🍺"
+            },
+            {
+              "name": "id",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            },
+            {
+              "name": "decimal",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            }
+          ],
+          "writeIntent": {
+            "disposition": "currentSession",
+            "expectedTransactionStatus": "transaction"
+          }
+        }
+      }
+    },
+    {
+      "id": "nullExtra",
+      "command": {
+        "type": "explain.run",
+        "requestId": "fixture-request",
+        "sessionId": "fixture-session",
+        "queryId": "fixture-query",
+        "explain": {
+          "sql": "UPDATE fixture SET note=:note WHERE id=:id AND :empty='' AND :null IS NULL AND :decimal=9007199254740993.125",
+          "mode": "analyze",
+          "parameters": [
+            {
+              "name": "note",
+              "type": "text",
+              "value": "NULL 🍺"
+            },
+            {
+              "name": "id",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "empty",
+              "type": "text",
+              "value": ""
+            },
+            {
+              "name": "null",
+              "type": "text",
+              "value": null
+            },
+            {
+              "name": "decimal",
+              "type": "decimal",
+              "value": "9007199254740993.125"
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "target",
+            "rangeLocation": 23,
+            "rangeLength": 108,
+            "profileId": "fixture-profile",
+            "sessionId": "fixture-session",
+            "transactionStatus": "transaction"
+          },
+          "writeIntent": {
+            "disposition": "currentSession",
+            "expectedTransactionStatus": "transaction",
+            "commit": null
+          }
+        }
+      }
+    }
+  ],
+  "targets": [
+    {
+      "statement": "update",
+      "dataModifyingCTE": false,
+      "mysqlMultiTable": false
+    },
+    {
+      "statement": "select",
+      "dataModifyingCTE": true,
+      "mysqlMultiTable": false
+    },
+    {
+      "statement": "delete",
+      "dataModifyingCTE": false,
+      "mysqlMultiTable": true
+    }
+  ],
+  "supports": [
+    {
+      "engine": "postgresql",
+      "dml": {
+        "estimated": true,
+        "analyze": [
+          "insert",
+          "update",
+          "delete",
+          "dataModifyingCTE"
+        ],
+        "analyzeTargetExecution": "executes"
+      }
+    },
+    {
+      "engine": "mysql",
+      "dml": {
+        "estimated": true,
+        "analyze": [
+          "mysqlMultiTableUpdate",
+          "mysqlMultiTableDelete"
+        ],
+        "analyzeTargetExecution": "suppresses"
+      }
+    },
+    {
+      "engine": "sqlite",
+      "dml": {
+        "estimated": true,
+        "analyze": [],
+        "analyzeTargetExecution": "unavailable"
+      }
+    }
+  ],
+  "outcomes": [
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "estimated",
+      "persistence": "notExecuted",
+      "transactionBefore": "",
+      "transactionAfter": "",
+      "affectedRowsUnavailableReason": "notExecuted",
+      "targetExecution": "notExecuted"
+    },
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "completed",
+      "persistence": "transactionPending",
+      "transactionBefore": "transaction",
+      "transactionAfter": "transaction",
+      "affectedRowsUnavailableReason": "notReported",
+      "targetExecution": "executed"
+    },
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "completed",
+      "persistence": "committed",
+      "transactionBefore": "idle",
+      "transactionAfter": "idle",
+      "affectedRowsUnavailableReason": "notReported",
+      "targetExecution": "executed"
+    },
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "unknown",
+      "persistence": "unknown",
+      "transactionBefore": "idle",
+      "transactionAfter": "unknown",
+      "affectedRowsUnavailableReason": "notReported",
+      "targetExecution": "unknown"
+    },
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "notExecuted",
+      "persistence": "notExecuted",
+      "transactionBefore": "idle",
+      "transactionAfter": "idle",
+      "affectedRowsUnavailableReason": "notExecuted",
+      "targetExecution": "notExecuted"
+    },
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "failed",
+      "persistence": "unknown",
+      "transactionBefore": "transaction",
+      "transactionAfter": "failedTransaction",
+      "affectedRowsUnavailableReason": "notReported",
+      "targetExecution": "unknown"
+    }
+  ],
+  "mysqlOutcomes": [
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": true
+      },
+      "execution": "completed",
+      "persistence": "notExecuted",
+      "transactionBefore": "idle",
+      "transactionAfter": "idle",
+      "affectedRowsUnavailableReason": "notReported",
+      "targetExecution": "suppressed"
+    },
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": true
+      },
+      "execution": "completed",
+      "persistence": "notExecuted",
+      "transactionBefore": "transaction",
+      "transactionAfter": "transaction",
+      "affectedRowsUnavailableReason": "notReported",
+      "targetExecution": "suppressed"
+    },
+    {
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": true
+      },
+      "execution": "completed",
+      "persistence": "notExecuted",
+      "transactionBefore": "idle",
+      "transactionAfter": "unknown",
+      "affectedRowsUnavailableReason": "notReported",
+      "targetExecution": "suppressed"
+    }
+  ]
+}

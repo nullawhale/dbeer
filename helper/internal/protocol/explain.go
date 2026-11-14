@@ -35,21 +35,22 @@ func (c ExplainContext) Valid() bool {
 }
 
 type ExplainRequest struct {
-	SQL        string           `json:"sql"`
-	Mode       string           `json:"mode"`
-	Parameters []QueryParameter `json:"parameters,omitempty"`
-	PlanKind   string           `json:"planKind,omitempty"`
-	Context    *ExplainContext  `json:"context,omitempty"`
-	Options    *ExplainOptions  `json:"options,omitempty"`
+	WriteIntent *ExplainWriteIntent `json:"writeIntent,omitempty"`
+	SQL         string              `json:"sql"`
+	Mode        string              `json:"mode"`
+	Parameters  []QueryParameter    `json:"parameters,omitempty"`
+	PlanKind    string              `json:"planKind,omitempty"`
+	Context     *ExplainContext     `json:"context,omitempty"`
+	Options     *ExplainOptions     `json:"options,omitempty"`
 }
 
 func (r ExplainRequest) Valid() bool {
 	return (r.Mode == "plan" || r.Mode == "analyze") && len(r.SQL) > 0 && len(r.SQL) <= 1024*1024 && utf8.ValidString(r.SQL) && !strings.ContainsRune(r.SQL, 0) &&
-		(r.Options == nil || r.Options.Valid()) && QueryParametersValid(r.Parameters) && (r.PlanKind == "" || r.PlanKind == "custom" || r.PlanKind == "generic" && r.Mode == "plan") &&
+		(r.WriteIntent == nil || r.WriteIntent.Valid() && r.Mode == "analyze" && r.Context != nil && r.Context.TransactionStatus == r.WriteIntent.ExpectedTransactionStatus) && (r.Options == nil || r.Options.Valid()) && QueryParametersValid(r.Parameters) && (r.PlanKind == "" || r.PlanKind == "custom" || r.PlanKind == "generic" && r.Mode == "plan") &&
 		(r.Context == nil || r.Context.Valid() && r.Context.RangeLength == len(utf16.Encode([]rune(r.SQL))))
 }
 func parseExplain(raw json.RawMessage) (*ExplainRequest, bool) {
-	fields, ok := changesObject(raw, "sql|mode|parameters|planKind|context|options", "sql", "mode")
+	fields, ok := changesObject(raw, "sql|mode|parameters|planKind|context|options|writeIntent", "sql", "mode")
 	if !ok {
 		return nil, false
 	}
@@ -82,10 +83,17 @@ func parseExplain(raw json.RawMessage) (*ExplainRequest, bool) {
 			return nil, false
 		}
 	}
+	if raw, exists := fields["writeIntent"]; exists {
+		r.WriteIntent, ok = parseExplainWriteIntent(raw)
+		if !ok {
+			return nil, false
+		}
+	}
 	return &r, r.Valid()
 }
 
 type ExplainSupport struct {
+	DML                      *ExplainDMLSupport    `json:"dml,omitempty"`
 	Notices                  []string              `json:"notices,omitempty"`
 	Options                  *ExplainOptionSupport `json:"options,omitempty"`
 	AnalyzeUnavailableReason string                `json:"analyzeUnavailableReason,omitempty"`
@@ -98,11 +106,12 @@ type ExplainSupport struct {
 	UnavailableReason        string                `json:"unavailableReason,omitempty"`
 }
 type ExplainPreview struct {
-	Options *ExplainOptions `json:"options,omitempty"`
-	Format  string          `json:"format,omitempty"`
-	SQL     string          `json:"sql"`
-	Mode    string          `json:"mode"`
-	Support ExplainSupport  `json:"support"`
+	DML     *ExplainDMLTarget `json:"dml,omitempty"`
+	Options *ExplainOptions   `json:"options,omitempty"`
+	Format  string            `json:"format,omitempty"`
+	SQL     string            `json:"sql"`
+	Mode    string            `json:"mode"`
+	Support ExplainSupport    `json:"support"`
 }
 type ExplainMetric struct {
 	Value             *string `json:"value,omitempty"`
@@ -120,6 +129,7 @@ type ExplainNode struct {
 	Metrics         map[string]ExplainMetric `json:"metrics"`
 }
 type ExplainResult struct {
+	DML              *ExplainDMLResult        `json:"dml,omitempty"`
 	AdvancedMetrics  *ExplainPlanMetrics      `json:"advancedMetrics,omitempty"`
 	Options          *ExplainOptions          `json:"options,omitempty"`
 	Format           string                   `json:"format,omitempty"`
@@ -155,6 +165,9 @@ func (m ExplainMetric) Valid() bool {
 	return false
 }
 func (s ExplainSupport) Valid() bool {
+	if s.DML != nil && (!s.DML.Valid(s.Engine) || len(s.Modes) == 0 || len(s.DML.Analyze) > 0 && !containsExplainString(s.Modes, "analyze")) {
+		return false
+	}
 	if s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "sqlite" && s.Engine != "mongodb" && s.Engine != "cassandra" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
 		return false
 	}
@@ -203,6 +216,9 @@ func (s ExplainSupport) Valid() bool {
 	return len(s.Modes) > 0 && s.UnavailableReason == "" || len(s.Modes) == 0 && s.UnavailableReason != ""
 }
 func (r ExplainResult) Valid() bool {
+	if r.DML != nil && (!r.DML.Valid(r.Support.Engine, r.Mode) || r.Support.DML == nil || r.Mode == "analyze" && (r.DML.Execution != "completed" || !containsExplainString(r.Support.DML.Analyze, explainDMLForm(r.DML.Target)))) {
+		return false
+	}
 	if r.AdvancedMetrics != nil && (r.Status != "tree" || !r.AdvancedMetrics.Valid(r.Support.Engine)) {
 		return false
 	}

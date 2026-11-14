@@ -32,11 +32,39 @@ func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (Prepa
 	if r.PlanKind == "generic" {
 		bound, err = queryparams.BindGeneric(r.SQL, r.Parameters)
 	}
-	if !r.Valid() || err != nil || !safety.VisualExplainTarget(s.Engine, bound.AssessmentSQL) {
-		return p, errors.New("Visual Explain requires one unwrapped SELECT or read CTE, without locking, known side effects, or client commands.")
+	target, targetOK := safety.ClassifyExplainTarget(s.Engine, bound.AssessmentSQL)
+	if !r.Valid() || err != nil || !targetOK {
+		return p, errors.New("Visual Explain requires one unwrapped SELECT, INSERT, UPDATE, DELETE or supported CTE; client commands, wrappers and multiple statements are unavailable.")
 	}
 	if !s.Valid() || len(s.Modes) == 0 {
 		return p, errors.New("Visual Explain is unavailable for this server version or engine fork.")
+	}
+	if target.DML() {
+		if s.DML == nil || !s.DML.Estimated {
+			return p, errors.New("Data-changing Explain is unavailable for this server.")
+		}
+		dml := protocol.ExplainDMLTarget{Statement: target.Statement, DataModifyingCTE: target.DataModifyingCTE, MySQLMultiTable: target.MySQLMultiTable}
+		p.Preview.DML = &dml
+		if r.Mode == "analyze" {
+			form := target.Statement
+			if target.DataModifyingCTE {
+				form = "dataModifyingCTE"
+			} else if s.Engine == "mysql" && target.MySQLMultiTable {
+				if form == "update" {
+					form = "mysqlMultiTableUpdate"
+				} else {
+					form = "mysqlMultiTableDelete"
+				}
+			}
+			if !explainContains(s.DML.Analyze, form) {
+				return p, errors.New("Actual DML Analyze is unavailable for this statement form. PostgreSQL supports INSERT, UPDATE, DELETE and data-changing CTEs; MySQL supports only multi-table UPDATE/DELETE from 8.0.18. Choose estimated Explain; the SQL is never rewritten.")
+			}
+			if r.WriteIntent == nil || r.Context == nil {
+				return p, errors.New("DML Analyze requires explicit current-session write intent and a fresh review of the exact values and transaction context.")
+			}
+		}
+	} else if r.WriteIntent != nil {
+		return p, errors.New("Write intent is valid only for data-changing Explain Analyze.")
 	}
 	if r.PlanKind != "" {
 		allowed := false
@@ -130,7 +158,7 @@ func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (Prepa
 	} else {
 		return p, errors.New("Unsupported relational Explain engine.")
 	}
-	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s, Options: r.Options, Format: format}
+	p.Preview = protocol.ExplainPreview{DML: p.Preview.DML, SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s, Options: r.Options, Format: format}
 	return p, nil
 }
 
@@ -179,6 +207,7 @@ func ExplainSupport(engine, version string) protocol.ExplainSupport {
 				pg.Analyze = append(pg.Analyze, "memory", "serialize")
 			}
 			s.Options = &protocol.ExplainOptionSupport{PostgreSQL: pg}
+			s.DML = &protocol.ExplainDMLSupport{Estimated: true, Analyze: []string{"insert", "update", "delete", "dataModifyingCTE"}, AnalyzeTargetExecution: "executes"}
 		}
 	} else if engine == "mysql" && oracleExplainVersion.MatchString(version) && (strings.HasPrefix(version, "5.7.") || mysqlVersionAtLeast(version, 8, 0, 0)) {
 		s.Format = "json"
@@ -205,6 +234,11 @@ func ExplainSupport(engine, version string) protocol.ExplainSupport {
 			my.JSONAnalyzeRequiresVersion2 = true
 		}
 		s.Options = &protocol.ExplainOptionSupport{MySQL: my}
+		s.DML = &protocol.ExplainDMLSupport{Estimated: true, Analyze: []string{}, AnalyzeTargetExecution: "unavailable"}
+		if mysqlVersionAtLeast(version, 8, 0, 18) {
+			s.DML.Analyze = []string{"mysqlMultiTableUpdate", "mysqlMultiTableDelete"}
+			s.DML.AnalyzeTargetExecution = "suppresses"
+		}
 	}
 	if len(s.Modes) == 0 {
 		s.UnavailableReason = "Visual Explain requires PostgreSQL 14+ or recognized Oracle MySQL 5.7+; MySQL Analyze requires 8.0.18+."
@@ -257,6 +291,13 @@ func (c *ExplainCapture) Row(_ int, values []*string) error {
 func (c *ExplainCapture) End(_ int, _ protocol.ResultSet) error { return nil }
 func FinishExplain(ctx context.Context, command protocol.Command, response protocol.Response, p PreparedExplain, c *ExplainCapture, parse func(context.Context, string, string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error)) protocol.Response {
 	if response.Type == "error" {
+		response.ExplainDML = ExplainDMLOutcome(p, response)
+		if p.Preview.DML != nil && response.TransactionStatus == "unknown" {
+			response.TransactionStatus = ""
+		}
+		if response.ExplainDML != nil && response.ExplainDML.Execution == "unknown" || response.ExplainDML != nil && response.SQLCompleted && (response.ExplainDML.Persistence == "unknown" || response.ExplainDML.TransactionAfter == "unknown") {
+			response.OutcomeUnknown = true
+		}
 		if len(p.Request.Parameters) > 0 {
 			response.ErrorPosition = 0
 		}
@@ -275,7 +316,7 @@ func FinishExplain(ctx context.Context, command protocol.Command, response proto
 		response.StorageTokens = nil
 		return response
 	}
-	result := &protocol.ExplainResult{Support: p.Preview.Support, Mode: p.Request.Mode, Options: p.Request.Options, Format: p.Preview.Format, Raw: c.Raw, Status: "rawOnly", Complete: !c.Limited, Roots: []string{}, Nodes: []protocol.ExplainNode{}, Metrics: map[string]protocol.ExplainMetric{}, Diagnostic: "The SQL completed, but its plan could not be visualized. Inspect Raw Plan."}
+	result := &protocol.ExplainResult{DML: ExplainDMLOutcome(p, response), Support: p.Preview.Support, Mode: p.Request.Mode, Options: p.Request.Options, Format: p.Preview.Format, Raw: c.Raw, Status: "rawOnly", Complete: !c.Limited, Roots: []string{}, Nodes: []protocol.ExplainNode{}, Metrics: map[string]protocol.ExplainMetric{}, Diagnostic: "The SQL completed, but its plan could not be visualized. Inspect Raw Plan."}
 	if c.Limited {
 		result.Status = "limited"
 		result.Diagnostic = "The SQL completed. Plan capture exceeded 4 MiB; Raw Plan is an incomplete prefix."

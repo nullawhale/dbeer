@@ -126,6 +126,8 @@ enum ExecutionConfirmation {
         let alert = NSAlert()
         alert.alertStyle = confirmation.assessment.decision == "confirm" ? .warning : .informational
         let isAnalyze = confirmation.operations.contains { $0.explain?.mode == .analyze }
+        let isDMLAnalyze = confirmation.operations.contains { $0.explain?.writeIntent != nil }
+        let suppressesTarget = confirmation.assessment.operations.contains { $0.explain?.support.dml?.analyzeTargetExecution == "suppresses" }
         let profile = confirmation.profile
         alert.messageText = isAnalyze ? "Run " + ExplainMode.analyze.title(engine: profile.engine) + "?" : confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
         alert.informativeText = "\(profile.name) · \(profile.engine.displayName) · \(profile.endpointDescription)\n\(profile.policy.label)\nDestructive and unknown commands require confirmation. Production confirms every evaluated write. Functions and database objects can hide side effects; use restricted database privileges for strict protection."
@@ -136,7 +138,19 @@ enum ExecutionConfirmation {
                 alert.informativeText += "\nOnly the first server page (200 rows) is requested. Trace metadata is collected at consistency ONE; your selected read retains the saved consistency. Trace events are eventual and the bounded observation is incomplete."
             }
         }
-        alert.addButton(withTitle: "Execute")
+        if isDMLAnalyze {
+            let transactions = confirmation.operations.compactMap { $0.explain?.writeIntent?.expectedTransactionStatus }
+            if suppressesTarget {
+                alert.informativeText += "\n" + ExplainDMLResult.suppressedEffectsCaveat +
+                    " The diagnostic uses the chosen SQL tab's current physical session and transaction context. Session state after execution is reported separately."
+            } else {
+                alert.informativeText += "\nDML Analyze performs real database writes in the chosen SQL tab's current physical session. " +
+                    (transactions.contains("transaction") ? "Changes join the existing transaction and remain uncommitted until you commit it. " :
+                        "The server's current transaction/autocommit settings decide whether changes commit or remain pending. ") +
+                    ExplainDMLResult.effectsCaveat
+            }
+        }
+        alert.addButton(withTitle: isDMLAnalyze ? (suppressesTarget ? "Run DML Diagnostic" : "Execute DML Analyze") : "Execute")
         alert.addButton(withTitle: "Cancel")
         // Cancel is the default key action; Return must not accidentally approve.
         alert.buttons[0].keyEquivalent = ""
@@ -188,7 +202,12 @@ enum ExecutionConfirmation {
             }
             content.append(displayed)
             content.append(NSAttributedString(string: "\n"))
-            if let parameters = operation.parameters, !parameters.isEmpty,
+            if let context = operation.explain?.context, operation.explain?.writeIntent != nil {
+                content.append(NSAttributedString(string: "\nPhysical SQL tab: " + context.targetDocumentId +
+                    "\nTransaction before execution: " + context.transactionStatus + "\n",
+                    attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.systemRed]))
+            }
+            if let parameters = operation.explain?.parameters ?? operation.parameters, !parameters.isEmpty,
                let data = try? encoder.encode(parameters), let preview = String(data: data, encoding: .utf8) {
                 content.append(NSAttributedString(string: "Bound parameters\n" + preview + "\n",
                     attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))

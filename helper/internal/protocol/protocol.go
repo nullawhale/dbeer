@@ -852,66 +852,70 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
-	NativeValues          [][]NativeValue
-	SchemaObservation     *SchemaObservation
-	CatalogMetadata       *CatalogMetadataReply
-	MetadataStale         bool
-	MetadataTarget        *CatalogRelationTarget // Internal adapter proof; only the metadata store serializes it.
-	Transfer              *TransferReply
-	DatabaseTools         *DatabaseToolsReply
-	Monitor               *SessionMonitorSnapshot
-	SQLiteValues          [][]SQLiteValue
-	TableImport           *TableImportReply
-	Structure             *tableedit.Reply
-	Explain               *ExplainResult
-	ExplainSupport        *ExplainSupport
-	OperationSupport      *OperationSupport
-	Source                *ResultSource
-	StorageTokens         []string
-	DataComparison        *DataComparisonResponse
-	SchemaComparison      *SchemaComparisonResponse
-	Comparison            *ComparisonResponse
-	SQL                   string
-	SSH                   *SSHProbe
-	AppliedChangeCount    *int
-	CurrentKeyspace       *string
-	AffectedRowCountKnown *bool
-	NextCursor            string
-	Type                  string
-	RequestID             string
-	ProtocolVersion       int
-	BuildIdentity         *productidentity.Identity
-	SessionID             string
-	QueryID               string
-	DurationMS            float64
-	Columns               []Column
-	Rows                  [][]*string
-	CommandTag            string
-	RowCount              int64
-	DisplayedRowCount     int
-	Truncated             bool
-	TransactionStatus     string
-	DisplayNotice         string
-	Status                string
-	Category              string
-	Message               string
-	SQLState              string
-	ErrorPosition         int
-	Connected             bool
-	OutcomeUnknown        bool
-	SQLCompleted          bool
-	SQLNotExecuted        bool
-	ExportPublication     string
-	Engine                string
-	Capabilities          []string
-	ResultSets            []ResultSet
-	Streamed              bool
-	Sequence              int
-	ResultIndex           int
-	ExportPath            string
-	ExportFormat          string
-	ExportRowCount        int64
-	Assessment            *OperationAssessment
+	NativeValues      [][]NativeValue
+	SchemaObservation *SchemaObservation
+	CatalogMetadata   *CatalogMetadataReply
+	MetadataStale     bool
+	MetadataTarget    *CatalogRelationTarget // Internal adapter proof; only the metadata store serializes it.
+	Transfer          *TransferReply
+	DatabaseTools     *DatabaseToolsReply
+	Monitor           *SessionMonitorSnapshot
+	SQLiteValues      [][]SQLiteValue
+	TableImport       *TableImportReply
+	Structure         *tableedit.Reply
+	// AcknowledgedTransactionStatus is private driver evidence, never serialized.
+	// It survives cleanup failure after the final SQL/transaction acknowledgement.
+	AcknowledgedTransactionStatus string
+	ExplainDML                    *ExplainDMLResult
+	Explain                       *ExplainResult
+	ExplainSupport                *ExplainSupport
+	OperationSupport              *OperationSupport
+	Source                        *ResultSource
+	StorageTokens                 []string
+	DataComparison                *DataComparisonResponse
+	SchemaComparison              *SchemaComparisonResponse
+	Comparison                    *ComparisonResponse
+	SQL                           string
+	SSH                           *SSHProbe
+	AppliedChangeCount            *int
+	CurrentKeyspace               *string
+	AffectedRowCountKnown         *bool
+	NextCursor                    string
+	Type                          string
+	RequestID                     string
+	ProtocolVersion               int
+	BuildIdentity                 *productidentity.Identity
+	SessionID                     string
+	QueryID                       string
+	DurationMS                    float64
+	Columns                       []Column
+	Rows                          [][]*string
+	CommandTag                    string
+	RowCount                      int64
+	DisplayedRowCount             int
+	Truncated                     bool
+	TransactionStatus             string
+	DisplayNotice                 string
+	Status                        string
+	Category                      string
+	Message                       string
+	SQLState                      string
+	ErrorPosition                 int
+	Connected                     bool
+	OutcomeUnknown                bool
+	SQLCompleted                  bool
+	SQLNotExecuted                bool
+	ExportPublication             string
+	Engine                        string
+	Capabilities                  []string
+	ResultSets                    []ResultSet
+	Streamed                      bool
+	Sequence                      int
+	ResultIndex                   int
+	ExportPath                    string
+	ExportFormat                  string
+	ExportRowCount                int64
+	Assessment                    *OperationAssessment
 }
 
 func (response Response) MarshalJSON() ([]byte, error) {
@@ -1010,6 +1014,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 			fields["capabilities"] = response.Capabilities
 		}
 	case "explain.result":
+		if response.Explain != nil && response.Explain.DML != nil {
+			fields["connected"] = response.Connected
+		}
 		fields["explain"] = response.Explain
 		fields["transactionStatus"] = response.TransactionStatus
 		fields["durationMs"] = response.DurationMS
@@ -1082,6 +1089,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	case "cancel.ack":
 		fields["status"] = response.Status
 	case "error":
+		if response.ExplainDML != nil {
+			fields["explainDML"] = response.ExplainDML
+		}
 		if response.TableImport != nil {
 			fields["tableImport"] = response.TableImport
 		}

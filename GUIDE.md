@@ -595,15 +595,63 @@ overlap; work estimates are not wall time. Missing metrics and never-executed
 operations remain explicit. A source or profile change marks the retained plan
 as belonging to an earlier query. Viewing a plan never runs SQL.
 
-Each request accepts one unwrapped SELECT or read CTE with explicit typed
-parameters. Select multiple fragments through the existing batch chooser; each
-statement and setup command retains its separate review. Known writes/side
-effects and locking queries are rejected; unknown functions still follow
-readonly/confirmation policy. Resolve pending grid edits
+Each request accepts one unwrapped SELECT, INSERT, UPDATE, DELETE or supported
+CTE with explicit typed parameters. Select multiple fragments through the
+existing batch chooser; each statement and setup command retains its separate
+review. Locking reads and client commands remain unavailable; unknown read
+functions still follow readonly/confirmation policy. Resolve pending grid edits
 before Explain. The tab retains its physical session, temporary tables and
 transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
 confirmed SQL completion, and a lost completion is never retried. The current
 plan is held by its SQL tab. **Save Plan…** explicitly creates a local artifact.
+
+### Data-changing Explain and Analyze
+
+Estimated Explain plans INSERT, UPDATE and DELETE without executing the outer
+DML. Planning can still evaluate routines: MySQL derived-table optimization can
+invoke stored functions that change other data. Unknown or known-side-effect
+routines retain exact review and readonly rejection, including in development
+profiles. The original SQL is never rewritten to bypass this policy.
+PostgreSQL also supports data-modifying WITH bodies, including a SELECT whose
+CTE changes data. SQLite offers estimated EQP only; simple writes may return no
+scan operations. MySQL and SQLite do not support data-modifying CTE bodies.
+
+Analyze executes the exact reviewed diagnostic and typed values once. PostgreSQL
+actually performs the target INSERT, UPDATE, DELETE or data-changing CTE.
+It requires write access and a separate confirmation, even in a development
+profile. The review binds the source selection, target document/profile/session,
+options, values and current transaction state. A changed state requires another
+review. PostgreSQL 14+ supports INSERT, UPDATE, DELETE and data-changing CTEs.
+Oracle MySQL 8.0.18+ supports runtime iterator Analyze only for explicit multi-table
+UPDATE and DELETE forms; the server suppresses their target row modifications.
+It can still execute predicates/routines, acquire locks or cause external effects,
+so a write-capable owner and exact confirmation remain required. INSERT and
+single-table DML remain estimated only. The server behavior is explicit in its
+[UPDATE iterator](https://github.com/mysql/mysql-server/blob/mysql-8.4.13/sql/sql_update.cc#L2248-L2252)
+and [DELETE iterator](https://github.com/mysql/mysql-server/blob/mysql-8.4.13/sql/sql_delete.cc#L973-L977). DBeer never
+rewrites a single-table statement to obtain Analyze support. SQLite has no actual
+DML Analyze. See the [PostgreSQL EXPLAIN reference](https://www.postgresql.org/docs/14/sql-explain.html),
+[MySQL EXPLAIN reference](https://dev.mysql.com/doc/refman/8.0/en/explain.html) and
+[SQLite EQP reference](https://www.sqlite.org/eqp.html).
+
+The only disposition is **current session**. DBeer adds no BEGIN, COMMIT,
+ROLLBACK, savepoint or session-setting change. In an existing transaction,
+transactional row changes remain pending for the user's explicit commit or
+rollback. With autocommit, an acknowledged completed transaction is committed.
+An idle MySQL session with autocommit disabled can start a transaction during
+Analyze. Its target-row persistence stays **not executed** because target writes
+are suppressed; the separate returned transaction state records the session
+boundary. This does not promise that routines or external effects were absent.
+Sequences, nontransactional tables, triggers and external effects may persist
+even after a user rollback. DBeer does not promise that rollback undoes every
+effect. An error can also leave a transaction failed, requiring user recovery.
+
+Execution completion and persistence are separate facts. A confirmed completed
+statement remains completed if later connection cleanup fails; persistence stays
+unknown without the final transaction acknowledgement. Losing acknowledgement
+never becomes proof of rollback or commit. No retry, format fallback or reconnect
+reruns Analyze. Plan-node output rows, including ModifyTable output, are not an
+affected-row count; DML affected rows remain explicitly unreported.
 
 ### Advanced plan metrics
 

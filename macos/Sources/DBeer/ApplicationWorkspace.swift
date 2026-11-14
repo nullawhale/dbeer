@@ -2325,6 +2325,43 @@ final class ApplicationWorkspace: ObservableObject {
                         request.options = decision.options
                     }
                     if extended { request.context = source.explainExecutions[index].context }
+                    if ExplainDMLAdmission.possibleDML(statement.sql, engine: choice.profile.engine) {
+                        let helperSupportsDML = await client.supportsExplainDML()
+                        guard targetValid(), let support = runtime.explainSupport,
+                              ExplainDMLAdmission.validOwner(support: support, engine: choice.profile.engine,
+                                capabilities: Set(runtime.capabilities), helperSupports: helperSupportsDML) else {
+                            throw ExecutionPolicyError(message: "DML Explain is unavailable for this physical SQL session. Update the app and helper together.")
+                        }
+                        if draft.mode == .analyze {
+                            guard !runtime.policy.readOnly, let transaction = runtime.transactionStatus,
+                                  [.idle, .transaction].contains(transaction), request.context != nil else {
+                                throw ExecutionPolicyError(message: "DML Analyze requires a writable session with a known idle or active transaction context.")
+                            }
+                            // Classification prepares estimated SQL only. Its grant is
+                            // discarded; no SQL is executed before the final review.
+                            var classification = request
+                            classification.mode = .plan
+                            classification.options = nil
+                            let classified = try await client.request(.assess(sessionId: sessionID,
+                                operations: [.init(type: "explain.run", explain: classification)]))
+                            // Revoke the preparation grant even when the source or
+                            // physical owner changed while assessment was pending.
+                            if let queryID = classified.queryId {
+                                _ = try await client.request(.cancel(sessionId: sessionID, queryId: queryID))
+                            }
+                            let stillSupportsDML = await client.supportsExplainDML()
+                            guard targetValid(), runtime.explainSupport == support, runtime.transactionStatus == transaction,
+                                  let assessment = classified.assessment, assessment.policy == choice.profile.policy,
+                                  assessment.operations.count == 1, let preview = assessment.operations[0].explain,
+                                  preview.mode == .plan, preview.support == support, preview.valid, let dml = preview.dml,
+                                  ExplainDMLAdmission.accepts(dml, support: support, mode: .analyze),
+                                  ExplainDMLAdmission.validOwner(support: runtime.explainSupport, engine: choice.profile.engine,
+                                    capabilities: Set(runtime.capabilities), helperSupports: stillSupportsDML) else {
+                                throw ExecutionPolicyError(message: "The helper cannot Analyze this DML form in the chosen session. SQL was not executed.")
+                            }
+                            request.writeIntent = ExplainWriteIntent(expectedTransactionStatus: transaction.rawValue)
+                        }
+                    }
                     guard request.valid else { throw ExecutionPolicyError(message: "The captured Explain request is invalid.") }
                     var plan = ExplainPlanModel(request: request, sourceText: draft.sourceText, sourceRange: statement.range,
                         profileID: choice.profile.id, profile: choice.profile, profileBinding: choice.binding, sessionID: sessionID)
@@ -2341,7 +2378,8 @@ final class ApplicationWorkspace: ObservableObject {
                 let operation = statement.action == .plan ? OperationRequest(type: "explain.run", explain: request) :
                     OperationRequest(type: "execute", sql: statement.sql, parameters: parameters)
                 guard let authorization = try await authorizeOperations([operation], sessionID: sessionID,
-                    profile: choice.profile, client: client, sourceSQL: statement.sql) else {
+                    profile: choice.profile, client: client, sourceSQL: statement.sql,
+                    forceConfirmation: request.writeIntent != nil) else {
                     source.explainExecutions[index].status = "Not executed — review cancelled"
                     if statement.action == .plan {
                         source.explainPlan?.status = "Not executed — review cancelled"
@@ -2365,7 +2403,9 @@ final class ApplicationWorkspace: ObservableObject {
                 let elapsed = started.duration(to: .now).components
                 guard ownedSQLContext(for: source) != nil else { return }
                 let failure = completion?.failure ?? runtime.queryFailure
-                let status = failure.map { $0.outcomeUnknown ? "Unknown SQL outcome — not repeated" : $0.title } ??
+                let suppressedUnknown = completion?.reply?.explainDML?.targetExecution == "suppressed" && failure?.outcomeUnknown == true
+                let status = suppressedUnknown ? "Diagnostic completed — session effects unknown" :
+                    failure.map { $0.outcomeUnknown ? ($0.sqlCompleted ? "SQL completed — persistence unknown" : "Unknown SQL outcome — not repeated") : $0.title } ??
                     (completion == nil ? "Not executed" : "Completed")
                 source.explainExecutions[index].status = status
                 source.explainExecutions[index].failure = failure
@@ -2379,6 +2419,13 @@ final class ApplicationWorkspace: ObservableObject {
                 }
                 if statement.action == .plan {
                     source.explainPlan?.result = completion?.reply?.explain
+                    source.explainPlan?.dmlOutcome = completion?.reply?.explain?.dml ?? completion?.reply?.explainDML
+                    if let outcome = source.explainPlan?.dmlOutcome,
+                       outcome.execution != "estimated" && outcome.execution != "notExecuted" {
+                        for document in allOwnedSQLDocuments where document.profileID == choice.profile.id {
+                            document.markQueryResultStale()
+                        }
+                    }
                     source.explainPlan?.failure = failure
                     source.explainPlan?.status = status
                     source.explainPlan?.clientDurationMs = max(0, Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)

@@ -37,7 +37,7 @@ func TestExplainBoundReviewAndGenericVersionGate(t *testing.T) {
 	if _, err := PrepareExplain(ExplainSupport("postgresql", "17.6"), r); err == nil {
 		t.Fatal("generic Analyze accepted")
 	}
-	for _, sql := range []string{"SELECT :n; DELETE FROM evidence", "SELECT fixture_unknown(:n) FOR UPDATE", "WITH x AS (DELETE FROM evidence RETURNING *) SELECT * FROM x", "SELECT nextval(:n)"} {
+	for _, sql := range []string{"SELECT :n; DELETE FROM evidence", "SELECT fixture_unknown(:n) FOR UPDATE", "SELECT nextval(:n)"} {
 		r.SQL = sql
 		r.Mode = "plan"
 		r.PlanKind = ""

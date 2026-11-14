@@ -69,6 +69,7 @@ struct ExplainPlanView: View {
                 ScrollView { Text(plan.request.sql).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 100)
             }
             if stale { Label("Earlier query or connection — collect again to refresh", systemImage: "clock.arrow.circlepath").foregroundStyle(.orange) }
+            if let dml = plan.dmlOutcome ?? plan.result?.dml { ExplainDMLStatusView(outcome: dml) }
             if let failure = plan.failure { Text(failure.message).foregroundStyle(.red).textSelection(.enabled) }
             if let result = plan.result {
                 Text("\(result.support.engine.displayName) \(result.support.serverVersion) · \((result.format ?? result.support.format).uppercased()) · Command completed")

@@ -18,6 +18,7 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	if !strings.HasPrefix(s.explainVendor, "MySQL Community Server") && !strings.HasPrefix(s.explainVendor, "MySQL Enterprise Server") {
 		support.Modes = []string{}
 		support.Options = nil
+		support.DML = nil
 		support.Notices = nil
 		support.AnalyzeUnavailableReason = ""
 		support.UnavailableReason = "Visual Explain requires a recognized Oracle MySQL server; this server vendor could not be verified."
@@ -37,6 +38,10 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		r.SQLNotExecuted = true
 		r.Connected = !s.closed.Load()
 		r.TransactionStatus = s.TransactionStatus()
+		r.ExplainDML = adapter.ExplainDMLOutcome(p, r)
+		if p.Preview.DML != nil && r.TransactionStatus == "unknown" {
+			r.TransactionStatus = ""
+		}
 		return r
 	}
 	capture := &adapter.ExplainCapture{}
@@ -55,6 +60,10 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 			if !valid {
 				return &adapter.ConnectionError{Category: "validation", Message: "JSON Explain Analyze requires this session's explain_json_format_version to be 2. The analyzed SQL was not executed; choose TREE or explicitly configure the session first."}
 			}
+		}
+		s.updateTransaction()
+		if !adapter.ExplainWriteContextMatches(c.Explain, s.TransactionStatus()) {
+			return &adapter.ConnectionError{Category: "conflict", Message: "The DML Analyze transaction context changed before dispatch. Review it again."}
 		}
 		if ctx.Err() != nil {
 			return &adapter.ConnectionError{Category: "cancelled", Message: "Explain was cancelled before the analyzed SQL was sent."}
@@ -79,6 +88,9 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 	parser := parseExplainTree
 	if selected == "json" {
 		parser = parseExplainJSON
+	}
+	if response.Type != "error" {
+		response.Connected = !s.closed.Load()
 	}
 	finished := adapter.FinishExplain(ctx, c, response, p, capture, parser)
 	return finished

@@ -18,6 +18,7 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	if !strings.HasPrefix(s.explainIdentity, "PostgreSQL ") || strings.Contains(lower, "yugabyte") || strings.Contains(lower, "cockroach") || strings.Contains(lower, "aurora") || strings.Contains(lower, "redshift") || strings.Contains(lower, "greenplum") {
 		support.Modes = []string{}
 		support.Options = nil
+		support.DML = nil
 		support.AnalyzeUnavailableReason = ""
 		support.PlanKinds = nil
 		support.UnavailableReason = "Visual Explain requires a recognized PostgreSQL server; this server vendor could not be verified."
@@ -29,6 +30,9 @@ func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExp
 }
 func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protocol.Response {
 	p, err := s.PrepareExplain(*c.Explain)
+	if err == nil && !adapter.ExplainWriteContextMatches(c.Explain, s.TransactionStatus()) {
+		err = errors.New("The DML Analyze transaction context changed. Review the exact operation again.")
+	}
 	if err == nil && p.Preview.SQL != c.PreparedExplainSQL {
 		err = errors.New("Explain requires fresh authorization of the exact prepared SQL.")
 	}
@@ -37,6 +41,10 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		r.SQLNotExecuted = true
 		r.Connected = !s.conn.IsClosed()
 		r.TransactionStatus = s.TransactionStatus()
+		r.ExplainDML = adapter.ExplainDMLOutcome(p, r)
+		if p.Preview.DML != nil && r.TransactionStatus == "unknown" {
+			r.TransactionStatus = ""
+		}
 		return r
 	}
 	capture := &adapter.ExplainCapture{}
@@ -53,6 +61,9 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		}
 	}
 	response := executeParamsSinkWithStorageOIDs(ctx, s.conn, c, p.Preview.SQL, values, capture, false, oids)
+	if response.Type != "error" {
+		response.Connected = !s.conn.IsClosed()
+	}
 	return adapter.FinishExplain(ctx, c, response, p, capture, func(ctx context.Context, raw, mode string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
 		return parseExplainJSONWithOptions(ctx, raw, mode, p.Request.Options)
 	})

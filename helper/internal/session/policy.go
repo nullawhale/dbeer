@@ -63,6 +63,9 @@ func assessOperation(engine string, operation protocol.OperationRequest) protoco
 		sql = bound.AssessmentSQL
 	}
 	statements := safety.Classify(engine, sql)
+	if operation.Type == "explain.run" && operation.Explain != nil && operation.Explain.Mode == "plan" {
+		statements = safety.ClassifyEstimatedExplain(engine, sql)
+	}
 	if len(statements) == 0 {
 		result.Kind = "unknown"
 	}
@@ -164,7 +167,7 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 		preparedSQL = append(preparedSQL, sql)
 		assessment.Operations = append(assessment.Operations, item)
 		decision := policyDecision(policy, item)
-		if (operation.Type == "explain.run" && operation.Explain.Mode == "analyze" || operation.Type == "structure.validate") && decision == "allow" {
+		if (operation.Type == "explain.run" && (operation.Explain.Mode == "analyze" || item.Kind != "read") || operation.Type == "structure.validate") && decision == "allow" {
 			decision = "confirm"
 		}
 		if decision == "deny" || decision == "confirm" && assessment.Decision == "allow" {

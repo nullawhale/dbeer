@@ -122,6 +122,11 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 			}
 		}
 	}
+	if command.Type == "explain.run" && !adapter.ExplainWriteContextMatches(command.Explain, transactionStatus(conn)) {
+		failure := protocol.ErrorResponse(command, "conflict", "The DML Analyze transaction context changed before dispatch. Review it again.")
+		failure.Connected, failure.TransactionStatus, failure.SQLNotExecuted = !conn.IsClosed(), transactionStatus(conn), true
+		return failure
+	}
 	var reader *pgconn.ResultReader
 	var simple *pgconn.MultiResultReader
 	if genericExplain {

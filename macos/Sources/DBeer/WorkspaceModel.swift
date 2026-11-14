@@ -49,6 +49,7 @@ final class WorkspaceModel: ObservableObject {
         let sqlState: String?
         let outcomeUnknown: Bool
         var sqlNotExecuted: Bool = false
+        var sqlCompleted: Bool = false
 
         var title: String {
             if sqlNotExecuted { return "Not executed" }
@@ -662,12 +663,13 @@ final class WorkspaceModel: ObservableObject {
         } catch let error as BackendRemoteError {
             let failure = QueryFailure(category: error.reply.category ?? "sql",
                 message: error.reply.message ?? "The query failed.", sqlState: error.reply.sqlState,
-                outcomeUnknown: error.reply.outcomeUnknown == true, sqlNotExecuted: error.reply.sqlNotExecuted == true)
+                outcomeUnknown: error.reply.outcomeUnknown == true, sqlNotExecuted: error.reply.sqlNotExecuted == true,
+                sqlCompleted: error.reply.sqlCompleted == true)
             let terminal = completion(reply: error.reply, failure: failure)
             guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
             if let keyspace = error.reply.currentKeyspace { currentKeyspace = keyspace }
             queryErrorPosition = error.reply.errorPosition
-            if error.reply.resultSets?.isEmpty == false { result = error.reply }
+            if explain == nil && error.reply.resultSets?.isEmpty == false { result = error.reply }
             queryDurationMs = error.reply.durationMs ?? elapsedMilliseconds()
             queryFailure = failure
             showRemoteFailure(error)
@@ -797,7 +799,13 @@ final class WorkspaceModel: ObservableObject {
         errorMessage = error.localizedDescription
         if let sqlState = error.reply.sqlState { errorMessage! += " (SQLSTATE \(sqlState))" }
         if error.reply.outcomeUnknown == true {
-            errorMessage! += " The SQL outcome is unknown; the command was not repeated."
+            if error.reply.explainDML?.targetExecution == "suppressed" && error.reply.sqlCompleted == true {
+                errorMessage! += " The diagnostic completed and target row changes were suppressed, but session or routine effects are unknown; it was not repeated."
+            } else {
+                errorMessage! += error.reply.sqlCompleted == true ?
+                    " SQL execution completed, but persistence is unknown; the command was not repeated." :
+                    " The SQL outcome is unknown; the command was not repeated."
+            }
         }
         if error.reply.connected == true, sessionId != nil {
             connectionState = .connected

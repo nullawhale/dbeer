@@ -94,6 +94,15 @@ actor BackendClient {
     private var schemaBundleSourceSupported = false
     private var dataComparisonSupported = false
     private var synchronizationPlanSupported = false
+    private var explainDMLSupported = false
+    private var sessionExplainDMLSupport: [String: ExplainSupport] = [:]
+    private struct ExplainDMLGrant {
+        let session: String
+        let request: Data
+        let target: ExplainDMLTarget
+    }
+    private var explainDMLGrants: [String: ExplainDMLGrant] = [:]
+    private var explainDMLExecutionTargets: [String: ExplainDMLTarget] = [:]
     private var explainMetricsSupported = false
     private var sessionExplainMetricsSupport: [String: ExplainSupport] = [:]
     private var explainOptionsSupported = false
@@ -244,6 +253,7 @@ actor BackendClient {
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
+    func supportsExplainDML() -> Bool { explainDMLSupported }
     func supportsExplainMetrics() -> Bool { explainMetricsSupported }
     func supportsExplainOptions() -> Bool { explainOptionsSupported }
     func supportsExplainParameters() -> Bool { explainParametersSupported }
@@ -400,6 +410,12 @@ actor BackendClient {
         for explain in explainRequests {
             guard let session = command.sessionId, explain.valid,
                   explain.context.map({ $0.sessionId == session }) ?? true else { throw BackendRequestError.invalidCommand }
+            if explain.writeIntent != nil || sessionExplainDMLSupport[session] != nil && ExplainDMLAdmission.possibleDML(explain.sql, engine: sessionExplainDMLSupport[session]!.engine) {
+                guard let owner = sessionExplainDMLSupport[session], ExplainDMLAdmission.validOwner(support: owner,
+                    engine: owner.engine, capabilities: sessionCapabilities[session] ?? [], helperSupports: explainDMLSupported) else {
+                    throw BackendRequestError.invalidCommand
+                }
+            }
             if let options = explain.options {
                 guard ExplainOptionsAdmission.validOwner(support: sessionExplainOptionSupport[session],
                     engine: sessionExplainOptionSupport[session]?.engine,
@@ -515,6 +531,15 @@ actor BackendClient {
                 throw BackendRequestError.invalidCommand
             }
         }
+        if command.type == "cancel", let session = command.sessionId {
+            explainDMLGrants = explainDMLGrants.filter { $0.value.session != session }
+        }
+        if command.type == "explain.run", let request = command.explain, request.writeIntent != nil {
+            guard let authorization = command.authorization, let grant = explainDMLGrants.removeValue(forKey: authorization),
+                  grant.session == command.sessionId, grant.request == request.exactBindingData else { throw BackendRequestError.invalidCommand }
+            explainDMLExecutionTargets[command.requestId] = grant.target
+        }
+        defer { explainDMLExecutionTargets.removeValue(forKey: command.requestId) }
         return try await send(command, onEvent: onEvent)
     }
 
@@ -644,6 +669,34 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
+        // Validate against the live physical owner before a terminal frame can
+        // retire its capabilities or disconnect the tab.
+        if reply.explain?.support.dml != nil {
+            guard let session = command.sessionId, let owner = sessionExplainDMLSupport[session], reply.explain?.support == owner,
+                  ExplainDMLAdmission.validOwner(support: owner, engine: owner.engine,
+                    capabilities: sessionCapabilities[session] ?? [], helperSupports: explainDMLSupported) else {
+                fail(BackendTransportError(.invalidMessage)); return
+            }
+        }
+        // A correlated refusal before execution has no collected DML facts.
+        // Keep it a normal remote error without failing other physical owners.
+        let refusedDML = command.type == "explain.run" && command.explain?.writeIntent != nil &&
+            explainDMLExecutionTargets[command.requestId] != nil && reply.type == "error" &&
+            reply.sqlNotExecuted == true && reply.sqlCompleted != true && reply.outcomeUnknown != true &&
+            reply.explainDML == nil && reply.explain == nil
+        if !refusedDML && (reply.explainDML != nil || reply.explain?.dml != nil || command.explain?.writeIntent != nil) {
+            guard command.type == "explain.run", let requested = command.explain, let session = command.sessionId,
+                  let owner = sessionExplainDMLSupport[session],
+                  ExplainDMLAdmission.validOwner(support: owner, engine: owner.engine,
+                    capabilities: sessionCapabilities[session] ?? [], helperSupports: explainDMLSupported),
+                  let outcome = reply.explain?.dml ?? reply.explainDML,
+                  reply.explain == nil || reply.explain?.support == owner,
+                  requested.writeIntent == nil || explainDMLExecutionTargets[command.requestId] == outcome.target,
+                  ExplainDMLAdmission.accepts(outcome, request: requested, support: owner,
+                    transactionStatus: reply.transactionStatus, connected: reply.connected, sqlCompleted: reply.sqlCompleted,
+                    outcomeUnknown: reply.outcomeUnknown, sqlNotExecuted: reply.sqlNotExecuted),
+                  outcome.execution == "notExecuted" || request.started else { fail(BackendTransportError(.invalidMessage)); return }
+        }
         if command.type == "explain.run", reply.type == "explain.result" {
             guard request.started, let result = reply.explain, result.mode == command.explain?.mode else {
                 fail(BackendTransportError(.invalidMessage)); return
@@ -675,6 +728,12 @@ actor BackendClient {
         if command.type == "operation.assess", let operations = command.operations, let assessment = reply.assessment {
             for (operation, assessed) in zip(operations, assessment.operations) {
                 guard let requested = operation.explain, let preview = assessed.explain else { continue }
+                if requested.writeIntent != nil || preview.dml != nil || preview.support.dml != nil {
+                    guard let session = command.sessionId, let owner = sessionExplainDMLSupport[session], preview.support == owner,
+                          ExplainDMLAdmission.validOwner(support: owner, engine: owner.engine,
+                            capabilities: sessionCapabilities[session] ?? [], helperSupports: explainDMLSupported),
+                          requested.writeIntent == nil || preview.dml != nil else { fail(BackendTransportError(.invalidMessage)); return }
+                }
                 if requested.options != nil || preview.options != nil || preview.format != nil || preview.support.notices != nil {
                     guard let session = command.sessionId, let owner = sessionExplainOptionSupport[session], preview.support == owner,
                           ExplainOptionsAdmission.validOwner(support: owner, engine: preview.support.engine,
@@ -683,6 +742,15 @@ actor BackendClient {
                         fail(BackendTransportError(.invalidMessage)); return
                     }
                 }
+            }
+        }
+        if command.type == "operation.assess", let session = command.sessionId, let operations = command.operations,
+           let assessment = reply.assessment {
+            explainDMLGrants = explainDMLGrants.filter { $0.value.session != session }
+            if let authorization = assessment.authorization, operations.count == 1,
+               let requested = operations[0].explain, let target = assessment.operations.first?.explain?.dml,
+               let binding = requested.exactBindingData {
+                explainDMLGrants[authorization] = ExplainDMLGrant(session: session, request: binding, target: target)
             }
         }
         // The original frame has already validated optional product metadata.
@@ -699,6 +767,7 @@ actor BackendClient {
             schemaBundleSourceSupported = reply.capabilities?.contains("schemaBundleSourceV1") == true
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
+            explainDMLSupported = reply.capabilities?.contains(ExplainDMLSupport.capability) == true
             explainMetricsSupported = reply.capabilities?.contains(ExplainNodeMetrics.capability) == true
             explainOptionsSupported = reply.capabilities?.contains("explainOptionsV1") == true
             explainParametersSupported = reply.capabilities?.contains("explainParametersV1") == true
@@ -719,6 +788,11 @@ actor BackendClient {
         if reply.type == "connect.result", let session = reply.sessionId {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
             reconstructionSessions[session] = false
+            if let support = reply.explainSupport,
+               ExplainDMLAdmission.validOwner(support: support, engine: reply.engine,
+                 capabilities: Set(reply.capabilities ?? []), helperSupports: explainDMLSupported) {
+                sessionExplainDMLSupport[session] = support
+            } else { sessionExplainDMLSupport.removeValue(forKey: session) }
             if let support = reply.explainSupport,
                ExplainMetricsAdmission.validOwner(support: support, engine: reply.engine,
                  capabilities: Set(reply.capabilities ?? []), helperSupports: explainMetricsSupported) {
@@ -742,6 +816,8 @@ actor BackendClient {
         }
         if reply.type == "disconnect.ack" || reply.connected == false, let session = reply.sessionId {
             sessionCapabilities.removeValue(forKey: session)
+            sessionExplainDMLSupport.removeValue(forKey: session)
+            explainDMLGrants = explainDMLGrants.filter { $0.value.session != session }
             sessionExplainOptionSupport.removeValue(forKey: session)
             sessionExplainMetricsSupport.removeValue(forKey: session)
             sessionDiagnosticSupport.removeValue(forKey: session)
@@ -1023,6 +1099,8 @@ actor BackendClient {
     private func outputEnded() {
         retainedStructureCapabilities.removeAll()
         reconstructionSessions.removeAll()
+        sessionExplainDMLSupport.removeAll()
+        explainDMLGrants.removeAll()
         if shuttingDown {
             failPending(BackendTransportError(.unexpectedEOF))
         } else if let process, !process.isRunning {
@@ -1048,6 +1126,8 @@ actor BackendClient {
         ready = false
         retainedStructureCapabilities.removeAll()
         reconstructionSessions.removeAll()
+        sessionExplainDMLSupport.removeAll()
+        explainDMLGrants.removeAll()
         failPending(error)
         for waiter in failureWaiters { waiter.resume(returning: error) }
         failureWaiters.removeAll()

@@ -612,6 +612,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						support := explain.ExplainSupport()
 						response.ExplainSupport = &support
 						response.Capabilities = append(response.Capabilities, protocol.VisualExplainCapability)
+						if support.DML != nil {
+							response.Capabilities = append(response.Capabilities, protocol.ExplainDMLCapability)
+						}
 						if support.Engine == "postgresql" || support.Engine == "mysql" {
 							response.Capabilities = append(response.Capabilities, protocol.ExplainMetricsCapability)
 						}
