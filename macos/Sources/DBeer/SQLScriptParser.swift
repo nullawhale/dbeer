@@ -127,16 +127,16 @@ enum SQLScriptParser {
                     segmentStart = index
                     continue
                 }
-                if matches([45, 45], at: index), engine != .mysql || index + 2 == units.count ||
+                if matches([45, 45], at: index), !engine.usesMySQLSyntax || index + 2 == units.count ||
                     SQLScriptParser.isWhitespace(units[index + 2]) {
                     scanLineComment()
                     continue
                 }
                 if engine == .cassandra, matches([47, 47], at: index) { scanLineComment(); continue }
-                if engine == .mysql, units[index] == 35 { scanLineComment(); continue }
+                if engine.usesMySQLSyntax, units[index] == 35 { scanLineComment(); continue }
                 if matches([47, 42], at: index) { scanBlockComment(); continue }
                 let unit = units[index]
-                if unit == 39 || unit == 34 || ([.mysql, .sqlite].contains(engine) && unit == 96) || (engine == .sqlite && unit == 91) {
+                if unit == 39 || unit == 34 || ([.mysql, .mariadb, .sqlite].contains(engine) && unit == 96) || (engine == .sqlite && unit == 91) {
                     scanQuoted(unit)
                     continue
                 }
@@ -288,10 +288,10 @@ enum SQLScriptParser {
             let range = NSRange(location: start, length: index - start)
             let value = text.substring(with: NSRange(location: start + 9, length: max(0, index - start - 9)))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard engine == .mysql, !hasCode, !value.isEmpty,
+            guard engine.usesMySQLSyntax, !hasCode, !value.isEmpty,
                   !value.utf16.contains(where: SQLScriptParser.isWhitespace), value.utf16.count <= 32 else {
                 diagnostics.append(SQLDiagnostic(range: range,
-                    message: engine != .mysql ? "DELIMITER is a MySQL script directive." :
+                    message: !engine.usesMySQLSyntax ? "DELIMITER is a MySQL/MariaDB script directive." :
                         "Place DELIMITER and a delimiter without spaces on their own line between statements."))
                 return
             }
@@ -329,7 +329,7 @@ enum SQLScriptParser {
             let closingQuote: UInt16 = quote == 91 ? 93 : quote
             let postgresEscape = engine == .postgresql && quote == 39 && start > 0 && (units[start - 1] == 69 || units[start - 1] == 101) &&
                 (start < 2 || !isIdentifierPart(units[start - 2]))
-            let escapes = (engine == .mysql && quote != 96) || postgresEscape
+            let escapes = (engine.usesMySQLSyntax && quote != 96) || postgresEscape
             index += 1
             var closed = false
             while index < units.count {
@@ -341,7 +341,7 @@ enum SQLScriptParser {
                 } else { index += 1 }
             }
             let range = NSRange(location: start, length: index - start)
-            let kind: SQLToken.Kind = quote == 39 || (engine == .mysql && quote == 34) ? .string : .identifier
+            let kind: SQLToken.Kind = quote == 39 || (engine.usesMySQLSyntax && quote == 34) ? .string : .identifier
             tokens.append(SQLToken(range: range, kind: kind))
             hasCode = true
             if !closed { diagnostics.append(SQLDiagnostic(range: range, message: "Unterminated quoted value or identifier.")) }
@@ -406,7 +406,7 @@ enum SQLScriptParser {
             if engine == .postgresql, names.first == "COPY", names.contains("STDIN") || names.contains("STDOUT") {
                 diagnostics.append(SQLDiagnostic(range: range, message: "Streaming COPY is not supported in SQL documents."))
             }
-            if engine == .mysql, names.starts(with: ["LOAD", "DATA"]), names.prefix(5).contains("LOCAL") {
+            if engine.usesMySQLSyntax, names.starts(with: ["LOAD", "DATA"]), names.prefix(5).contains("LOCAL") {
                 diagnostics.append(SQLDiagnostic(range: range, message: "LOAD DATA LOCAL is not supported in SQL documents."))
             }
         }

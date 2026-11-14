@@ -109,6 +109,28 @@ private func nextAgentEvent(_ stream: AsyncStream<String>) async throws -> Strin
 }
 
 struct AgentSocketBrokerTests {
+    @Test func nativeCommandFramesRetainOrderedBytesAndRecursiveReplies() async throws {
+        let fixture = try AgentSocketFixture()
+        defer { fixture.remove() }
+        let broker = AgentSocketBroker(path: fixture.path, onRequest: { _, request in
+            guard request.method == "command", let command = request.nativeCommand else { return AgentResponse(id: request.id, ok: false) }
+            let value = NativeValue(kind: "tuple", items: command.arguments.map { NativeValue(kind: $0.kind, value: $0.value) })
+            return AgentResponse(id: request.id, ok: true, results: [.init(columns: [.init(name: "reply", type: "native")],
+                rows: [["display"]], commandTag: "NATIVE", rowCount: 1, truncated: false, nativeValues: [[value]])], queryId: request.queryId)
+        }, onDisconnect: { _ in })
+        try broker.start()
+        defer { broker.stop() }
+        let command = NativeCommand(name: "ECHO", arguments: [.init(kind: "text", value: ""), .init(kind: "binary", value: "AP8="),
+            .init(kind: "text", value: "é e\u{0301} two words\0")])
+        let response = try await Task.detached {
+            let peer = try AgentSocketTestPeer(path: fixture.path)
+            try peer.send(AgentRequest(id: "native", method: "command", profileId: "profile", queryId: "operation", nativeCommand: command))
+            return try peer.response()
+        }.value
+        #expect(response.ok && response.queryId == "operation")
+        #expect(response.results?.first?.nativeValues?.first?.first?.items == command.arguments.map { NativeValue(kind: $0.kind, value: $0.value) })
+    }
+
     @Test func privateSocketExchangesOnlyTypedResponsesAndHoldsExclusiveLease() async throws {
         let fixture = try AgentSocketFixture()
         defer { fixture.remove() }

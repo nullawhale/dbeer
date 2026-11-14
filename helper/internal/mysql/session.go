@@ -262,6 +262,7 @@ func (session *Session) executeWith(ctx context.Context, command protocol.Comman
 		session.Close()
 		failure := protocol.ErrorResponse(command, "connection", "SQL completed, but the connection closed while releasing its prepared statement. Do not rerun the SQL to reconnect.")
 		failure.SQLCompleted, failure.Connected, failure.TransactionStatus = true, false, "unknown"
+		failure.AcknowledgedTransactionStatus = completed.TransactionStatus
 		failure.ResultSets = completed.ResultSets
 		if len(failure.ResultSets) == 0 {
 			failure.ResultSets = []protocol.ResultSet{{Columns: completed.Columns, Rows: completed.Rows, CommandTag: completed.CommandTag, RowCount: completed.RowCount, DisplayedRowCount: completed.DisplayedRowCount, Truncated: completed.Truncated, DisplayNotice: completed.DisplayNotice}}

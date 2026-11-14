@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
 	"dbeer/helper/internal/safety"
 )
 
@@ -17,14 +19,20 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	if err == nil && len(rows) == 1 {
 		version = cellText(rows[0][0])
 	}
-	return protocol.ExplainSupport{Engine: "sqlite", ServerVersion: version, Format: "queryPlan", Modes: []string{"plan"}}
+	return protocol.ExplainSupport{Engine: "sqlite", ServerVersion: version, Format: "queryPlan", Modes: []string{"plan"}, DML: &protocol.ExplainDMLSupport{Estimated: true, Analyze: []string{}, AnalyzeTargetExecution: "unavailable"}}
 }
 func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExplain, error) {
 	p := adapter.PreparedExplain{Request: r, Prefix: "EXPLAIN QUERY PLAN\n"}
-	if r.Mode != "plan" || !r.Valid() || !safety.VisualExplainTarget("sqlite", r.SQL) {
-		return p, errors.New("SQLite Explain requires one SELECT or read CTE; Analyze is unavailable.")
+	bound, err := queryparams.Bind("sqlite", r.SQL, r.Parameters)
+	target, targetOK := safety.ClassifyExplainTarget("sqlite", bound.AssessmentSQL)
+	if r.Mode != "plan" || r.PlanKind != "" || r.Options != nil || !r.Valid() || err != nil || !targetOK {
+		return p, errors.New("SQLite Explain requires one SELECT, INSERT, UPDATE, DELETE or read CTE; Analyze and data-changing CTE bodies are unavailable.")
 	}
-	p.Preview = protocol.ExplainPreview{SQL: p.Prefix + r.SQL, Mode: r.Mode, Support: s.ExplainSupport()}
+	if target.DML() {
+		p.Preview.DML = &protocol.ExplainDMLTarget{Statement: target.Statement}
+	}
+	p.Bound = bound
+	p.Preview = protocol.ExplainPreview{DML: p.Preview.DML, SQL: p.Prefix + bound.SQL, Mode: r.Mode, Support: s.ExplainSupport()}
 	return p, nil
 }
 func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protocol.Response {
@@ -38,7 +46,21 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 	if p.Preview.SQL != c.PreparedExplainSQL {
 		return s.fail(c, ctx, errors.New("Explain requires the exact prepared SQL."))
 	}
-	rows, _, err := s.query(ctx, p.Preview.SQL)
+	args := make([]any, len(p.Bound.Parameters))
+	for i, parameter := range p.Bound.Parameters {
+		if parameter.Value == nil {
+			continue
+		}
+		switch parameter.Type {
+		case "integer":
+			args[i], _ = strconv.ParseInt(*parameter.Value, 10, 64)
+		case "boolean":
+			args[i] = *parameter.Value == "true"
+		default:
+			args[i] = *parameter.Value
+		}
+	}
+	rows, _, err := s.query(ctx, p.Preview.SQL, args...)
 	if err != nil {
 		return s.fail(c, ctx, err)
 	}
@@ -55,7 +77,7 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		detail := cellText(row[3])
 		ids[id] = len(nodes)
 		parents[id] = parent
-		nodes = append(nodes, protocol.ExplainNode{ID: id, Children: []string{}, Operation: detail, Execution: "estimated", Details: map[string]string{}, Metrics: map[string]protocol.ExplainMetric{}})
+		nodes = append(nodes, protocol.ExplainNode{ID: id, Children: []string{}, Operation: detail, Execution: "estimated", Details: sqlitePlanDetails(id, parent, row[2].Value, detail), Metrics: sqliteUnavailableMetrics()})
 		rawRows = append(rawRows, []any{cellInt(row[0]), cellInt(row[1]), cellInt(row[2]), detail})
 	}
 	for i := range nodes {
@@ -66,7 +88,7 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		}
 	}
 	raw, _ := json.MarshalIndent(rawRows, "", "  ")
-	result := protocol.ExplainResult{Support: p.Preview.Support, Mode: "plan", Status: "tree", Raw: string(raw), Complete: true, Roots: roots, Nodes: nodes, Metrics: map[string]protocol.ExplainMetric{}}
+	result := protocol.ExplainResult{DML: adapter.ExplainDMLOutcome(p, protocol.Response{}), Support: p.Preview.Support, Mode: "plan", Status: "tree", Raw: string(raw), Complete: true, Roots: roots, Nodes: nodes, Metrics: sqliteUnavailableMetrics()}
 	if len(nodes) == 0 {
 		result.Status = "rawOnly"
 		result.Diagnostic = "SQLite returned no plan operations."
@@ -83,4 +105,22 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		return s.fail(c, ctx, errors.New("The SQLite query plan could not be represented safely ("+strconv.Itoa(len(nodes))+" operations)."))
 	}
 	return protocol.Response{Type: "explain.result", RequestID: c.RequestID, SessionID: c.SessionID, QueryID: c.QueryID, Explain: &result, Connected: true, TransactionStatus: s.TransactionStatus(), SQLCompleted: true}
+}
+
+func sqliteUnavailableMetrics() map[string]protocol.ExplainMetric {
+	return map[string]protocol.ExplainMetric{
+		"actualRows": adapter.ExplainMetric(nil, "rows", "total", "unsupported"),
+		"totalTime":  adapter.ExplainMetric(nil, "ms", "inclusive", "unsupported"),
+		"totalCost":  adapter.ExplainMetric(nil, "cost", "inclusive", "unsupported"),
+	}
+}
+func sqlitePlanDetails(id, parent, auxiliary, detail string) map[string]string {
+	details := map[string]string{"Node ID": id, "Parent ID": parent, "Auxiliary (unused by SQLite)": auxiliary, "Metric availability": "EQP reports strategy only; this adapter exposes no actual scan statistics, costs, row counts or execution timing."}
+	for _, prefix := range []string{"SEARCH ", "SCAN ", "USE TEMP B-TREE FOR ", "MULTI-INDEX OR", "CORRELATED SCALAR SUBQUERY", "SCALAR SUBQUERY", "CO-ROUTINE ", "MATERIALIZE ", "COMPOUND QUERY"} {
+		if strings.HasPrefix(detail, prefix) {
+			details["Reported strategy"] = strings.TrimSpace(prefix)
+			break
+		}
+	}
+	return details
 }

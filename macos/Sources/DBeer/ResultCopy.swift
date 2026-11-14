@@ -6,7 +6,7 @@ struct ResultClipboardValue: Codable, Equatable, Sendable {
     let value: String?
 }
 
-/// Version 1 is shared by every copy command, independently of its text format.
+/// Every copy format shares the same typed payload; version 2 retains native evidence.
 struct ResultClipboardPayload: Codable, Equatable, Sendable {
     let version: Int
     let columns: [ResultColumn]
@@ -14,6 +14,7 @@ struct ResultClipboardPayload: Codable, Equatable, Sendable {
     let sourceColumnIndices: [Int]
     let values: [[ResultClipboardValue]]
     var sqliteValues: [[SQLiteValue]]? = nil
+    var nativeValues: [[NativeValue]]? = nil
 }
 
 enum ResultCopyFormat: String, CaseIterable, Codable, Identifiable, Sendable {
@@ -38,12 +39,13 @@ struct ResultCopyOptions: Codable, Equatable, Sendable {
 }
 
 enum ResultCopyError: LocalizedError {
-    case malformed, sqlInsertTargetRequired
+    case malformed, sqlInsertTargetRequired, nativeBindingUnavailable
 
     var errorDescription: String? {
         switch self {
         case .malformed: "The selected result is invalid and could not be copied."
         case .sqlInsertTargetRequired: "Choose a target table and dialect to generate SQL INSERT."
+        case .nativeBindingUnavailable: "The selected native value has no lossless SQL binding. Copy JSON to retain its captured type and bytes."
         }
     }
 }
@@ -54,7 +56,7 @@ enum ResultCopy {
     static let defaultMarker = "<DEFAULT>"
     private static let binaryPrefix = "<BINARY:"
 
-    static func selection(columns: [ResultColumn], rows: [[String?]], valueKinds: [[String]]? = nil, sqliteValues: [[SQLiteValue]]? = nil,
+    static func selection(columns: [ResultColumn], rows: [[String?]], valueKinds: [[String]]? = nil, sqliteValues: [[SQLiteValue]]? = nil, nativeValues: [[NativeValue]]? = nil,
                           rowIndices: [Int], columnIndices: [Int]) throws -> ResultClipboardPayload {
         guard !rowIndices.isEmpty, !columnIndices.isEmpty,
               Set(rowIndices).count == rowIndices.count, Set(columnIndices).count == columnIndices.count,
@@ -72,9 +74,12 @@ enum ResultCopy {
         }
         let isSQLite = columns.contains(where: { $0.engine == .sqlite })
         guard !isSQLite || sqliteValues != nil,
-              SQLiteValue.validMatrix(sqliteValues, rows: rows.count, columns: columns.count) else { throw ResultCopyError.malformed }
+              SQLiteValue.validMatrix(sqliteValues, rows: rows.count, columns: columns.count),
+              NativeValue.validMatrix(nativeValues, rows: rows.count, columns: columns.count),
+              (!isSQLite || NativeValue.matchesSQLite(nativeValues, storage: sqliteValues)) else { throw ResultCopyError.malformed }
         let values = try rowIndices.map { row in
             try columnIndices.map { column in
+                if let native = nativeValues?[row][column] { return nativeClipboardValue(native) }
                 if let typed = sqliteValues?[row][column] {
                     return ResultClipboardValue(kind: typed.type == "null" ? .null : typed.type == "blob" ? .binary : .text,
                         value: typed.displayText)
@@ -82,9 +87,10 @@ enum ResultCopy {
                 return try clipboardValue(rows[row][column], kind: valueKinds?[row][column], column: columns[column])
             }
         }
-        let payload = ResultClipboardPayload(version: 1, columns: selectedColumns, sourceRows: rowIndices,
+        let payload = ResultClipboardPayload(version: nativeValues == nil ? 1 : 2, columns: selectedColumns, sourceRows: rowIndices,
             sourceColumnIndices: columnIndices, values: values,
-            sqliteValues: sqliteValues.map { matrix in rowIndices.map { row in columnIndices.map { matrix[row][$0] } } })
+            sqliteValues: sqliteValues.map { matrix in rowIndices.map { row in columnIndices.map { matrix[row][$0] } } },
+            nativeValues: nativeValues.map { matrix in rowIndices.map { row in columnIndices.map { matrix[row][$0] } } })
         try validate(payload)
         return payload
     }
@@ -128,7 +134,7 @@ enum ResultCopy {
     }
 
     static func validate(_ payload: ResultClipboardPayload) throws {
-        guard payload.version == 1, !payload.columns.isEmpty, !payload.values.isEmpty,
+        guard (payload.version == 1 && payload.nativeValues == nil || payload.version == 2 && payload.nativeValues != nil), !payload.columns.isEmpty, !payload.values.isEmpty,
               payload.columns.count == payload.sourceColumnIndices.count,
               payload.values.count == payload.sourceRows.count,
               payload.sourceRows.allSatisfy({ $0 >= 0 }), payload.sourceColumnIndices.allSatisfy({ $0 >= 0 }),
@@ -138,9 +144,17 @@ enum ResultCopy {
               payload.columns.allSatisfy({ $0.index >= 0 && ($0.encoding == nil || $0.encoding == "base64") }),
               payload.values.allSatisfy({ $0.count == payload.columns.count }) else { throw ResultCopyError.malformed }
         guard !payload.columns.contains(where: { $0.engine == .sqlite }) || payload.sqliteValues != nil,
-              SQLiteValue.validMatrix(payload.sqliteValues, rows: payload.values.count, columns: payload.columns.count) else { throw ResultCopyError.malformed }
+              SQLiteValue.validMatrix(payload.sqliteValues, rows: payload.values.count, columns: payload.columns.count),
+              NativeValue.validMatrix(payload.nativeValues, rows: payload.values.count, columns: payload.columns.count),
+              (!payload.columns.contains(where: { $0.engine == .sqlite }) || NativeValue.matchesSQLite(payload.nativeValues, storage: payload.sqliteValues)) else { throw ResultCopyError.malformed }
         for (rowIndex, row) in payload.values.enumerated() {
             for (index, value) in row.enumerated() {
+                if let native = payload.nativeValues?[rowIndex][index] {
+                    let expected = nativeClipboardValue(native)
+                    guard value.kind == expected.kind,
+                          value.value.map({ Data($0.utf8) }) == expected.value.map({ Data($0.utf8) }) else { throw ResultCopyError.malformed }
+                    continue
+                }
                 if let typed = payload.sqliteValues?[rowIndex][index] {
                     let expected: ResultClipboardValue.Kind = typed.type == "null" ? .null : typed.type == "blob" ? .binary : .text
                     guard value.kind == expected, value.value == typed.displayText else { throw ResultCopyError.malformed }
@@ -158,6 +172,11 @@ enum ResultCopy {
                 }
             }
         }
+    }
+
+    private static func nativeClipboardValue(_ value: NativeValue) -> ResultClipboardValue {
+        ResultClipboardValue(kind: value.kind == "null" ? .null : value.kind == "binary" ? .binary : .text,
+            value: NativeValuePresentation.text(value))
     }
 
     private static func clipboardValue(_ string: String?, kind: String?, column: ResultColumn) throws -> ResultClipboardValue {

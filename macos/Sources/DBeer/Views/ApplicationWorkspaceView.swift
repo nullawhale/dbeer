@@ -24,7 +24,7 @@ struct ApplicationWorkspaceView: View {
         self.appearance = workspace.appearance
     }
 
-    var body: some View {
+    private var workspaceContent: some View {
         HStack(spacing: 0) {
             WorkspaceSidebarRail(workspace: workspace)
             Divider()
@@ -81,7 +81,16 @@ struct ApplicationWorkspaceView: View {
             .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.structureEditor) { model in
-            TableStructureEditorView(model: model) { Task { await workspace.closeTableStructure() } }
+            TableStructureEditorView(model: model, close: { Task { await workspace.closeTableStructure() } },
+                saveEvidence: { workspace.saveStructureEvidence(model) }, evidenceModel: workspace.savedEvidence)
+                .applicationTheme(appearance: appearance)
+        }
+        .sheet(item: $workspace.physicalStructure) { model in
+            PhysicalStructureView(model: model, close: { Task { await workspace.closePhysicalStructure() } })
+                .applicationTheme(appearance: appearance)
+        }
+        .sheet(item: $workspace.migrationComposer) { model in
+            MigrationComposerView(model: model, initialTarget: model.initialTarget, close: { Task { await workspace.closeMigration() } })
                 .applicationTheme(appearance: appearance)
         }
         .sheet(item: $workspace.tableImporter) { model in
@@ -121,6 +130,20 @@ struct ApplicationWorkspaceView: View {
             SchemaComparisonView(model: model, close: { workspace.dismissSchemaComparison() })
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: Binding(get: { workspace.schemaBundle }, set: { if $0 == nil { workspace.dismissSchemaBundle() } })) { model in
+            SchemaBundleView(model: model, close: { workspace.dismissSchemaBundle() }).applicationTheme(appearance: appearance)
+        }
+        .sheet(isPresented: $workspace.isSavedEvidencePresented) {
+            SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence).applicationTheme(appearance: appearance)
+        }
+        .sheet(isPresented: $workspace.isPlansPresented) {
+            PlanArtifactsView(workspace: workspace, model: workspace.planArtifacts)
+                .applicationTheme(appearance: appearance)
+        }
+        .sheet(isPresented: $workspace.isLogicalRelationshipsPresented) {
+            LogicalRelationshipsView(workspace: workspace)
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(isPresented: $workspace.isSnapshotsPresented) {
             ResultSnapshotsView(model: workspace.resultSnapshots) { snapshot in
                 if workspace.openResultSnapshot(id: snapshot.id, title: snapshot.title) != nil {
@@ -132,6 +155,24 @@ struct ApplicationWorkspaceView: View {
         .sheet(item: $workspace.insertCopySelection) { selection in
             InsertCopyView(workspace: workspace, selection: selection)
                 .applicationTheme(appearance: appearance)
+        }
+        .sheet(item: $workspace.explainSelection, onDismiss: { workspace.explainSelectionDismissed() }) { draft in
+            ExplainSelectionView(draft: draft) { selected, targetID, planKind in
+                workspace.submitExplainSelection(draft, selected: selected, targetID: targetID, planKind: planKind)
+            }.applicationTheme(appearance: appearance)
+        }
+    }
+
+    var body: some View {
+        workspaceContent
+        .sheet(item: Binding(get: { workspace.explainOptionsPrompt }, set: { value in
+            if value == nil, let prompt = workspace.explainOptionsPrompt {
+                workspace.submitExplainOptions(id: prompt.id, decision: nil)
+            }
+        }), onDismiss: { workspace.explainOptionsPromptDismissed() }) { prompt in
+            ExplainOptionsView(configuration: prompt.configuration) { decision in
+                workspace.submitExplainOptions(id: prompt.id, decision: decision)
+            }.applicationTheme(appearance: appearance)
         }
         .sheet(item: Binding(get: { workspace.queryParameterPrompt }, set: { value in
             if value == nil, let prompt = workspace.queryParameterPrompt {
@@ -669,14 +710,20 @@ struct SQLDocumentPane: View {
                         .frame(minHeight: 160, idealHeight: 240)
                     VStack(spacing: 0) {
                         executionBar
-                        if document.explainPlan != nil {
+                        if document.explainPlan != nil || !document.explainExecutions.isEmpty {
                             Picker("Result presentation", selection: $document.showsExecutionPlan) {
                                 Text("Query Results").tag(false)
                                 Text("Execution Plan").tag(true)
                             }.pickerStyle(.segmented).padding(6)
                         }
-                        if document.showsExecutionPlan, let plan = document.explainPlan {
-                            ExplainPlanView(plan: plan, stale: plan.isStale(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID })).id(plan.id)
+                        if document.showsExecutionPlan, !document.explainExecutions.isEmpty {
+                            ExplainBatchResultsView(document: document, workspace: workspace)
+                        } else if document.showsExecutionPlan, let plan = document.explainPlan {
+                            ExplainPlanView(plan: plan, stale: plan.isStaleSource(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID }),
+                                planLibrary: workspace.planArtifacts, saveTitle: document.title,
+                                canSave: { workspace.canManageWorkspace }, openLibrary: { workspace.isPlansPresented = true },
+                                makeTuning: { workspace.makeTuningPanel(document, plan: plan) },
+                                tuningUnavailableReason: workspace.tuningUnavailableReason(document, plan: plan)).id(plan.id)
                         } else { result }
                     }.frame(minHeight: 180, maxHeight: .infinity)
                 }
@@ -774,8 +821,8 @@ struct SQLDocumentPane: View {
                             Button("Run Statement") { perform(.runCurrent) }.disabled(!canPerform(.runCurrent))
                         } else {
                             Button("Run Script") { perform(.runScript) }.disabled(!canPerform(.runScript))
-                            Button("Explain") { perform(.explain) }.disabled(!canPerform(.explain))
-                            Button("Explain Analyze…") { perform(.explainAnalyze) }.disabled(!canPerform(.explainAnalyze))
+                            Button(commands.title(for: .explain, engine: document.profileID.flatMap { id in workspace.library.savedConnections.first { $0.id == id }?.engine })) { perform(.explain) }.disabled(!canPerform(.explain))
+                            Button(commands.title(for: .explainAnalyze, engine: document.profileID.flatMap { id in workspace.library.savedConnections.first { $0.id == id }?.engine })) { perform(.explainAnalyze) }.disabled(!canPerform(.explainAnalyze))
                         }
                         Menu("Run to File") {
                             Button("JSON…") { perform(.runToJSON) }.disabled(!canPerform(.runToJSON))
@@ -927,10 +974,29 @@ struct SQLDocumentPane: View {
                         Text("\(document.page + 1)").monospacedDigit()
                     }
                 }.font(.callout)
+                if let scope = document.tableRelationshipScope {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Saved relationship restriction").font(.headline)
+                        Text("Related rows from \(scope.parent.schema).\(scope.parent.name) · \(scope.name)")
+                            .font(.callout).textSelection(.enabled)
+                        Text(scope.parentKeyDescription).font(.caption).textSelection(.enabled)
+                        Button("Remove Relationship Restriction") { document.removeUnloadedRelationshipScope() }
+                            .controlHover().disabled(!workspace.canStartOperation(document) || document.isNavigatingTable || document.isApplyingBrowse)
+                            .accessibilityIdentifier("removeUnloadedRelationshipRestriction")
+                        Text("Removing this restriction changes saved settings. Load Data separately to read rows.")
+                            .font(.caption).appSecondaryText()
+                    }
+                }
                 if let expression = document.tableFilterExpression {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Saved filters").font(.headline)
                         Text(expression.displayText).font(.callout).textSelection(.enabled)
+                        if expression.hasNativeOperands {
+                            Button("Remove Typed Key Conditions") { document.removeUnloadedNativeKeyConditions() }
+                                .controlHover().disabled(!workspace.canStartOperation(document) || document.isNavigatingTable || document.isApplyingBrowse)
+                                .accessibilityIdentifier("removeUnloadedNativeKeyConditions")
+                            Text("This changes saved settings only. Load Data separately to read rows.").font(.caption).appSecondaryText()
+                        }
                     }
                 }
                 if !document.tableSort.isEmpty {
@@ -1106,7 +1172,7 @@ struct SQLDocumentPane: View {
                     if let grid = document.grid {
                         DataGridView(document: document, workspace: workspace, grid: grid, result: result).id(ObjectIdentifier(grid))
                     } else {
-                        InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues,
+                        InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues, nativeValues: result.nativeValues,
                             copySettings: workspace.copySettings,
                             onSQLInsertCopy: { payload, pasteboard in
                                 workspace.beginInsertCopy(payload, document: document, pasteboard: pasteboard)
@@ -1114,7 +1180,8 @@ struct SQLDocumentPane: View {
                             onCopyError: { workspace.reportCopyError($0) },
                             copyAllowed: !document.isRunning && !workspace.isClosing,
                             commandHandler: { commands.handleKeyEvent($0, documentID: document.id) },
-                            documentID: document.id))
+                            documentID: document.id), profileTitle: "Loaded SQL result · " + document.title, investigations: workspace.investigations,
+                            mayAttach: { workspace.canManageWorkspace && !workspace.isClosing })
                     }
                 } else { Text("Command completed").frame(maxWidth: .infinity, maxHeight: .infinity) }
             }

@@ -5,6 +5,7 @@ import (
 	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 	"encoding/json"
+	"sort"
 	"strings"
 )
 
@@ -36,16 +37,29 @@ func (s *Session) readStructureFacts(t tableedit.Target, engine, collation, opti
 	if r.table(ref, row) != nil || len(sink.Capture.Tables) != 1 {
 		return nil, tableedit.ErrUnsupported
 	}
-	f := &tableedit.Facts{EngineContext: []sc.Option{{Name: "sqlMode", Value: mode}}, Table: sink.Capture.Tables[0], Types: sink.Capture.Types, Dependents: map[string][]string{}}
+	f := &tableedit.Facts{IndexAttributes: r.indexAttributes, EngineContext: []sc.Option{{Name: "sqlMode", Value: mode}}, Table: sink.Capture.Tables[0], Types: sink.Capture.Types, Dependents: map[string][]string{}}
+	keywords, keywordErr := r.rows(`SELECT WORD FROM information_schema.KEYWORDS WHERE RESERVED=1`)
+	if keywordErr != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	f.ExpressionKeywords = []string{}
+	for _, keyword := range keywords {
+		f.ExpressionKeywords = append(f.ExpressionKeywords, myText(keyword, 0))
+	}
+	sort.Strings(f.ExpressionKeywords)
+	triggerProof := false
 	if user, host, ok := strings.Cut(principal, "@"); ok && strings.Count(principal, "@") == 1 && role == "NONE" && partial == 0 {
 		grantee := "'" + strings.ReplaceAll(user, "'", "''") + "'@'" + strings.ReplaceAll(host, "'", "''") + "'"
-		grants, e := r.rows("SELECT PRIVILEGE_TYPE FROM information_schema.USER_PRIVILEGES WHERE GRANTEE=? AND PRIVILEGE_TYPE='SELECT'", grantee)
+		grants, e := r.rows("SELECT PRIVILEGE_TYPE FROM information_schema.USER_PRIVILEGES WHERE GRANTEE=? AND PRIVILEGE_TYPE IN ('SELECT','TRIGGER')", grantee)
 		if e != nil {
 			return nil, tableedit.ErrUnsupported
 		}
-		f.Proof = len(grants) > 0
+		for _, grant := range grants {
+			f.Proof = f.Proof || myText(grant, 0) == "SELECT"
+			triggerProof = triggerProof || myText(grant, 0) == "TRIGGER"
+		}
 	}
-	incoming, e := r.rows(`SELECT TABLE_SCHEMA,TABLE_NAME,CONSTRAINT_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_SCHEMA=? AND REFERENCED_TABLE_NAME=? ORDER BY TABLE_SCHEMA,TABLE_NAME,CONSTRAINT_NAME,ORDINAL_POSITION`, t.Schema, t.Table)
+	incoming, e := r.rows(`SELECT TABLE_SCHEMA,TABLE_NAME,CONSTRAINT_NAME,REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE BINARY REFERENCED_TABLE_SCHEMA=BINARY ? AND BINARY REFERENCED_TABLE_NAME=BINARY ? ORDER BY BINARY TABLE_SCHEMA,BINARY TABLE_NAME,BINARY CONSTRAINT_NAME,ORDINAL_POSITION`, t.Schema, t.Table)
 	if e != nil {
 		return nil, tableedit.ErrUnsupported
 	}
@@ -58,21 +72,34 @@ func (s *Session) readStructureFacts(t tableedit.Target, engine, collation, opti
 		}
 		f.Incoming[i].Columns = append(f.Incoming[i].Columns, myText(row, 3))
 	}
-	for _, query := range []string{`SELECT VIEW_SCHEMA,VIEW_NAME FROM information_schema.VIEW_TABLE_USAGE WHERE TABLE_SCHEMA=? AND TABLE_NAME=?`, `SELECT TRIGGER_SCHEMA,TRIGGER_NAME FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA=? AND EVENT_OBJECT_TABLE=?`} {
-		rows, e := r.rows(query, t.Schema, t.Table)
-		if e != nil {
-			return nil, tableedit.ErrUnsupported
-		}
-		for _, v := range rows {
+	views, e := r.rows(`SELECT VIEW_SCHEMA,VIEW_NAME FROM information_schema.VIEW_TABLE_USAGE WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ? ORDER BY BINARY VIEW_SCHEMA,BINARY VIEW_NAME`, t.Schema, t.Table)
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	for _, v := range views {
+		f.Dependents[""] = append(f.Dependents[""], myText(v, 0)+"."+myText(v, 1))
+	}
+	f.Proof = f.Proof && triggerProof
+	if !triggerProof {
+		f.Dependents[""] = append(f.Dependents[""], "Trigger dependency visibility is incomplete; global TRIGGER metadata access is required for rename/type dependency proof.")
+	}
+	triggers, e := r.rows(`SELECT TRIGGER_SCHEMA,TRIGGER_NAME,EVENT_OBJECT_SCHEMA,EVENT_OBJECT_TABLE,ACTION_STATEMENT,SQL_MODE FROM information_schema.TRIGGERS WHERE (BINARY EVENT_OBJECT_SCHEMA=BINARY ? AND BINARY EVENT_OBJECT_TABLE=BINARY ?) OR (BINARY TRIGGER_SCHEMA=BINARY ? AND (LOCATE(LOWER(?),LOWER(ACTION_STATEMENT))>0 OR LOCATE(LOWER(?),LOWER(ACTION_STATEMENT))>0)) OR LOCATE(LOWER(?),LOWER(ACTION_STATEMENT))>0 OR LOCATE(LOWER(?),LOWER(ACTION_STATEMENT))>0 ORDER BY BINARY TRIGGER_SCHEMA,BINARY TRIGGER_NAME`, t.Schema, t.Table, t.Schema, t.Table, QuoteIdentifier(t.Table), t.Schema, QuoteIdentifier(t.Schema))
+	if e != nil {
+		return nil, tableedit.ErrUnsupported
+	}
+	for _, v := range triggers {
+		if myText(v, 2) == t.Schema && myText(v, 3) == t.Table || mysqlMayReferenceTable(myText(v, 4), myText(v, 0), t, myText(v, 5)) {
 			f.Dependents[""] = append(f.Dependents[""], myText(v, 0)+"."+myText(v, 1))
 		}
 	}
-	routines, e := r.rows("SELECT ROUTINE_SCHEMA,ROUTINE_NAME FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=?", t.Schema)
+	routines, e := r.rows(`SELECT ROUTINE_SCHEMA,ROUTINE_NAME,CASE WHEN BINARY ROUTINE_SCHEMA=BINARY ? THEN NULL ELSE ROUTINE_DEFINITION END,SQL_MODE FROM information_schema.ROUTINES WHERE BINARY ROUTINE_SCHEMA=BINARY ? OR ROUTINE_DEFINITION IS NULL OR LOCATE(LOWER(?),LOWER(ROUTINE_DEFINITION))>0 OR LOCATE(LOWER(?),LOWER(ROUTINE_DEFINITION))>0 ORDER BY BINARY ROUTINE_SCHEMA,BINARY ROUTINE_NAME`, t.Schema, t.Schema, t.Schema, QuoteIdentifier(t.Schema))
 	if e != nil {
 		return nil, tableedit.ErrUnsupported
 	}
 	for _, v := range routines {
-		f.Dependents[""] = append(f.Dependents[""], myText(v, 0)+"."+myText(v, 1))
+		if myText(v, 0) == t.Schema || len(v) < 3 || v[2] == nil || mysqlMayReferenceTable(myText(v, 2), myText(v, 0), t, myText(v, 3)) {
+			f.Dependents[""] = append(f.Dependents[""], myText(v, 0)+"."+myText(v, 1))
+		}
 	}
 	b, _ := json.Marshal(f)
 	if len(b) > 2<<20 || len(f.Incoming) > 256 {

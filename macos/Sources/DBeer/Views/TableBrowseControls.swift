@@ -55,6 +55,16 @@ struct TableBrowseControls: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Filter and Sort").font(.headline)
+                if let scope = configuration.relationshipScope {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Related rows from \(scope.parent.schema).\(scope.parent.name)").fontWeight(.medium)
+                        Text(scope.parentKeyDescription)
+                            .font(.caption).textSelection(.enabled)
+                        Button("Remove Relationship Restriction") { change { $0.relationshipScope = nil } }.controlHover()
+                    }
+                    Divider()
+                }
+
                 if let expression = configuration.filterExpression {
                     expressionEditor(expression, path: [])
                     if expression.kind == "condition" {
@@ -63,14 +73,14 @@ struct TableBrowseControls: View {
                             .accessibilityIdentifier("tableFilterAddCondition-root")
                     }
                 } else {
-                    Text("No filters").appSecondaryText()
+                    Text(configuration.relationshipScope == nil ? "No filters" : "No additional filters").appSecondaryText()
                     Button("Add Condition") { addCondition(path: []) }
                         .controlHover().disabled(filterColumns.isEmpty)
                         .accessibilityIdentifier("tableAddFilter")
                 }
                 HStack {
-                    Button("Clear Filters") { change { $0.filterExpression = nil } }
-                        .controlHover().disabled(configuration.filterExpression == nil)
+                    Button("Clear Filters") { change { $0.filterExpression = nil; $0.relationshipScope = nil } }
+                        .controlHover().disabled(configuration.filterExpression == nil && configuration.relationshipScope == nil)
                         .accessibilityIdentifier("tableBrowseClearFilters")
                     Spacer()
                     Text("Changes apply together.").font(.caption).appSecondaryText()
@@ -228,17 +238,30 @@ struct TableBrowseControls: View {
                         if !operators(for: condition.column).contains(where: { $0.1 == condition.operator }) {
                             Text("Unavailable: \(condition.operator)").tag(condition.operator)
                         }
-                        ForEach(operators(for: condition.column), id: \.1) { Text($0.0).tag($0.1) }
+                        ForEach(operators(for: condition.column).filter { condition.sqliteValue == nil && condition.nativeValue == nil || ["eq", "ne", "isNull", "isNotNull"].contains($0.1) }, id: \.1) { Text($0.0).tag($0.1) }
                     }.labelsHidden().controlHover().frame(width: 115).accessibilityLabel("Filter operator")
                         .accessibilityIdentifier("tableFilterOperator-\(pathID(path))")
                     ControlIconButton(systemName: "xmark") { removeNode(path) }.accessibilityLabel("Remove condition")
                         .accessibilityIdentifier("tableFilterRemove-\(pathID(path))")
                 }
                 if !["isNull", "isNotNull"].contains(condition.operator) {
+                    if let native = condition.nativeValue {
+                        HStack {
+                            Text(native.displayText).font(.caption).textSelection(.enabled)
+                            Button("Replace with Text") { valueBinding(path).wrappedValue = "" }.controlHover()
+                        }.help("Captured typed key. The target adapter resolves its actual column type; SQLite uses the explicit stored parameter policy. Removing or replacing this condition changes the draft only.")
+                    } else if let storage = condition.sqliteValue {
+                        HStack {
+                            Text("SQLite \(storage.type): \(condition.operandDisplayText ?? "")")
+                                .font(.caption).textSelection(.enabled)
+                            Button("Edit as Text") { valueBinding(path).wrappedValue = "" }.controlHover()
+                        }
+                    } else {
                     TextField(engine == .mongodb ? "JSON or Extended JSON value" : "Value", text: valueBinding(path))
                         .textFieldStyle(.roundedBorder).accessibilityLabel("Filter value")
                         .accessibilityIdentifier("tableFilterValue-\(pathID(path))")
                         .help(engine == .mongodb ? "Quote string values, for example \"hello\"." : "Binary column values use Base64.")
+                    }
                 }
             }.padding(8).background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6)))
         }
@@ -350,16 +373,19 @@ struct TableBrowseControls: View {
                 condition[keyPath: field] = value
                 if field == \.operator {
                     condition.value = ["isNull", "isNotNull"].contains(value) ? nil : (condition.value ?? "")
+                    if ["isNull", "isNotNull"].contains(value) { condition.sqliteValue = nil; condition.nativeValue = nil }
+                    else if condition.sqliteValue != nil || condition.nativeValue != nil { condition.value = nil }
                 } else if field == \.column, !operators(for: value).contains(where: { $0.1 == condition.operator }) {
                     condition.operator = "eq"; condition.value = condition.value ?? ""
                 }
+                if field == \.column, condition.sqliteValue != nil { condition.sqliteValue = nil; condition.value = "" }
                 $0.condition = condition
             }
         })
     }
 
     private func valueBinding(_ path: [Int]) -> Binding<String> {
-        Binding(get: { node(at: path)?.condition?.value ?? "" }, set: { value in editNode(path) { $0.condition?.value = value } })
+        Binding(get: { node(at: path)?.condition?.value ?? "" }, set: { value in editNode(path) { $0.condition?.sqliteValue = nil; $0.condition?.nativeValue = nil; $0.condition?.value = value } })
     }
     private func groupBinding(_ path: [Int]) -> Binding<String> {
         Binding(get: { node(at: path)?.kind ?? "and" }, set: { value in editNode(path) { $0.kind = value } })
@@ -461,7 +487,22 @@ enum TableBrowseNavigation {
         guard configuration.isValid else {
             return "Choose valid conditions and unique sort columns. Use at most 32 conditions, 4 levels and 32 sort columns."
         }
-        let required = (configuration.filterExpression?.columns ?? []).union(configuration.sort.map(\.column))
+        if let scope = configuration.relationshipScope {
+            guard document.runtime?.engine == .sqlite, document.runtime?.capabilities.contains(SQLiteRelationshipScope.capability) == true,
+                  let table = document.table, scope.matches(table) else {
+                return "Connect the original SQLite table with a helper that supports relationship restrictions, or remove this restriction."
+            }
+        }
+        if configuration.filterExpression?.hasSQLiteOperands == true {
+            guard document.runtime?.engine == .sqlite,
+                  document.runtime?.capabilities.contains(TableCellFilters.sqliteCapability) == true else {
+                return "Connect with a helper that supports typed SQLite cell filters before applying this view."
+            }
+        }
+        if configuration.filterExpression?.hasNativeOperands == true, document.runtime?.capabilities.contains(NativeCellFilterValue.capability) != true {
+            return "Connect with a helper that supports typed native key conditions, or remove those conditions explicitly."
+        }
+        let required = (configuration.filterExpression?.columns ?? []).union(configuration.sort.map(\.column)).union(configuration.relationshipScope?.columns.map(\.source) ?? [])
         if !document.tableColumns.isEmpty {
             let missing = required.subtracting(document.tableColumns.compactMap { $0["name"] })
             if !missing.isEmpty {
@@ -483,6 +524,7 @@ enum TableBrowseNavigation {
             document.tableNavigationError = error
             return nil
         }
+        document.tableRelationshipScope = configuration.relationshipScope
         document.tableFilterExpression = configuration.filterExpression
         document.tableSort = configuration.sort
         document.tableBrowseDraft = nil

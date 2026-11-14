@@ -37,6 +37,9 @@ struct TableBrowseUIIntegrationTests {
             return ConnectionSettings(host: try #require(url.host), port: url.port ?? 5432,
                 database: String(url.path.dropFirst()), user: try #require(url.user), password: url.password ?? "",
                 sslMode: url.queryItems?.first { $0.name == "sslmode" }?.value ?? "disable")
+        case .mariadb:
+            throw CocoaError(.featureUnsupported, userInfo: [
+                NSLocalizedDescriptionKey: "MariaDB has no disposable table-browse UI fixture."])
         case .mysql:
             return ConnectionSettings(host: env["DBEER_TEST_MYSQL_HOST"] ?? "localhost",
                 port: try #require(Int(env["DBEER_TEST_MYSQL_PORT"] ?? "")), database: env["DBEER_TEST_MYSQL_DATABASE"] ?? "dbeer",

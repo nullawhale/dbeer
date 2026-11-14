@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ResultSnapshotsView: View {
     @ObservedObject var model: ResultSnapshotsModel
@@ -14,6 +16,8 @@ struct ResultSnapshotsView: View {
                 Text("Result Snapshots").font(.title2.weight(.semibold))
                 Spacer()
                 if model.isBusy { ProgressView().controlSize(.small) }
+                Button("Import Result JSON…") { importResult() }.controlHover().disabled(model.isBusy)
+                    .accessibilityIdentifier("importResultJSON")
                 Button("Compare Snapshots…") {
                     comparison.wrappedValue = ResultComparisonModel(store: model.store, snapshots: model.snapshots)
                 }.controlHover().disabled(model.isBusy || model.snapshots.filter(\.isAvailable).isEmpty)
@@ -127,6 +131,15 @@ struct ResultSnapshotsView: View {
         }
     }
 
+    private func importResult() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.message = "Import a DBeer result JSON as offline snapshots (up to 64 MiB per file and 4 MiB of native evidence per result). Import time is recorded; original SQL and execution outcome are unknown. No connection is opened."
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        Task { _ = await model.importResultJSON(file) }
+    }
+
     private var quotaBytes: Int64? { ResultSnapshotsModel.quotaBytes(fromMiB: quotaMiB.wrappedValue) }
 
     private func refresh() async {
@@ -145,6 +158,8 @@ struct ResultSnapshotDocumentView: View {
     @ObservedObject var model: ResultSnapshotDocumentModel
     @ObservedObject var workspace: ApplicationWorkspace
     @ObservedObject private var snapshots: ResultSnapshotsModel
+    private var plansPresented = SwiftUI.State(initialValue: false)
+    private var evidencePresented = SwiftUI.State(initialValue: false)
 
     init(document: SQLDocument, model: ResultSnapshotDocumentModel, workspace: ApplicationWorkspace) {
         self.document = document
@@ -205,7 +220,7 @@ struct ResultSnapshotDocumentView: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("snapshotUnavailable")
             } else if let result = model.result, let columns = result.columns {
-                InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues,
+                InspectedResultTableView(table: ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues, nativeValues: result.nativeValues,
                     copySettings: workspace.copySettings,
                     onCopyError: { workspace.reportCopyError($0) },
                     copyAllowed: model.isAvailable && !workspace.isClosing,
@@ -215,7 +230,8 @@ struct ResultSnapshotDocumentView: View {
                             workspace.commandDocument(for: document.id) === document
                     },
                     commandHandler: { workspace.commands.handleKeyEvent($0, documentID: document.id) },
-                    documentID: document.id))
+                    documentID: document.id), profileTitle: "Snapshot loaded page · " + document.title, investigations: workspace.investigations,
+                    mayAttach: { workspace.canManageWorkspace && !workspace.isClosing })
                 Divider()
                 HStack(spacing: 8) {
                     Text("\((result.rows ?? []).isEmpty ? 0 : model.pageOffset + 1)–\(model.pageOffset + (result.rows?.count ?? 0)) of \(model.manifest?.rowCount ?? 0) saved rows")
@@ -240,6 +256,12 @@ struct ResultSnapshotDocumentView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("offlineSnapshotDocument")
+        .sheet(isPresented: evidencePresented.projectedValue) {
+            SavedEvidenceView(workspace: workspace, model: workspace.savedEvidence, snapshotID: model.snapshotID)
+        }
+        .sheet(isPresented: plansPresented.projectedValue) {
+            PlanArtifactsView(workspace: workspace, model: workspace.planArtifacts, snapshotID: model.snapshotID)
+        }
         .task {
             snapshots.trackDocument(model)
             await model.revalidateCurrentPage()
@@ -254,6 +276,12 @@ struct ResultSnapshotDocumentView: View {
                 Label("Offline Snapshot", systemImage: "pin.fill").font(.headline)
             }
             Spacer(minLength: 0)
+            Button("Evidence…") { evidencePresented.wrappedValue = true }.controlHover()
+                .disabled(!model.isAvailable || workspace.isClosing).accessibilityIdentifier("snapshotOperationEvidence")
+            Button("Plans…") { plansPresented.wrappedValue = true }.controlHover()
+                .disabled(!model.isAvailable || !workspace.canManageWorkspace)
+                .help("Open or attach saved execution plans for this snapshot")
+                .accessibilityIdentifier("snapshotExecutionPlans")
             ControlIconButton(systemName: "arrow.clockwise") { Task { await model.revalidateCurrentPage() } }
                 .disabled(model.isLoading).help("Reload saved snapshot from local storage")
                 .accessibilityLabel("Reload Local Snapshot").accessibilityIdentifier("reloadLocalSnapshot")

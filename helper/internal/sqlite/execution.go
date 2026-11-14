@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -250,6 +251,13 @@ func (s *Session) executeBound(ctx context.Context, c protocol.Command, sql stri
 		}
 	}
 	bytes := 0
+	nativeRequested := c.ResultValues == protocol.NativeResultValuesFormat
+	var nativeBudget protocol.NativeMatrixBudget
+	if nativeRequested {
+		r.NativeValues = [][]protocol.NativeValue{}
+		header, _ := json.Marshal(r)
+		bytes = len(header) + 2048
+	}
 	var sinkError error
 	for {
 		has, e := stmt.Step()
@@ -271,19 +279,37 @@ func (s *Session) executeBound(ctx context.Context, c protocol.Command, sql stri
 				size += len(*row[i])
 			}
 		}
+		var native []protocol.NativeValue
+		if nativeRequested {
+			native = nativeSQLiteRow(typed)
+			encoded, err := json.Marshal(native)
+			if err != nil {
+				size = 8 << 20
+			} else {
+				display, _ := json.Marshal(row)
+				storage, _ := json.Marshal(typed)
+				size = len(display) + len(storage) + len(encoded) + 3
+			}
+		}
 		if sink != nil && sinkError == nil {
 			if typedSink, ok := sink.(interface {
 				SQLiteRow(int, []protocol.SQLiteValue) error
 			}); ok {
 				sinkError = typedSink.SQLiteRow(0, typed)
 			}
+			if sinkError == nil && nativeRequested {
+				sinkError = adapter.DeliverNativeRow(sink, 0, native)
+			}
 			if sinkError == nil {
 				sinkError = sink.Row(0, row)
 			}
 		}
-		if len(r.Rows) < 1000 && bytes+size <= 8<<20 {
+		if len(r.Rows) < 1000 && bytes+size <= 8<<20 && (!nativeRequested || nativeBudget.Append(native, len(r.Columns))) {
 			r.Rows = append(r.Rows, row)
 			r.SQLiteValues = append(r.SQLiteValues, typed)
+			if nativeRequested {
+				r.NativeValues = append(r.NativeValues, native)
+			}
 			bytes += size
 		} else {
 			r.Truncated = true
@@ -307,7 +333,7 @@ func (s *Session) executeBound(ctx context.Context, c protocol.Command, sql stri
 		r.DisplayNotice = "The displayed result reached the 1,000-row or 8 MiB limit."
 	}
 	if sink != nil && sinkError == nil {
-		sinkError = sink.End(0, protocol.ResultSet{Columns: r.Columns, Rows: r.Rows, SQLiteValues: r.SQLiteValues, CommandTag: r.CommandTag, RowCount: r.RowCount, DisplayedRowCount: r.DisplayedRowCount, Truncated: r.Truncated, DisplayNotice: r.DisplayNotice})
+		sinkError = sink.End(0, protocol.ResultSet{Columns: r.Columns, Rows: r.Rows, SQLiteValues: r.SQLiteValues, NativeValues: r.NativeValues, CommandTag: r.CommandTag, RowCount: r.RowCount, DisplayedRowCount: r.DisplayedRowCount, Truncated: r.Truncated, DisplayNotice: r.DisplayNotice})
 	}
 	if sinkError != nil {
 		failure := s.fail(c, ctx, sinkError)

@@ -18,13 +18,18 @@ struct ERDiagramView: View {
         VStack(spacing: 0) {
             toolbar.padding(8)
             Divider()
+            if let observationNotice = model.schemaObservation?.notice {
+                Text(observationNotice).font(.caption).appSecondaryText().frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.vertical, 6)
+            }
             HSplitView {
                 if tablesPanel.wrappedValue {
                     ERDiagramAreaPanel(model: model, workspace: workspace, document: document, focus: focus)
                         .frame(minWidth: 210, idealWidth: 230, maxWidth: 290)
                 }
                 GeometryReader { proxy in
-                    ERDiagramCanvas(model: model)
+                    ERDiagramCanvas(model: model, structureReason: { workspace.erStructureUnavailableReason(document, action: $0) }, openStructure: { action in
+                        Task { await workspace.openERStructure(document, action: action) }
+                    })
                         .onAppear { canvasSize = proxy.size }
                         .onChange(of: proxy.size) { _, size in canvasSize = size }
                         .overlay {
@@ -49,10 +54,10 @@ struct ERDiagramView: View {
             }
             Divider()
             HStack(spacing: 12) {
-                Text(model.notice ?? "Metadata is not loaded.")
-                    .lineLimit(2).textSelection(.enabled).help(model.notice ?? "Metadata is not loaded.")
+                Text(model.displayNotice ?? "Metadata is not loaded.")
+                    .lineLimit(2).textSelection(.enabled).help(model.displayNotice ?? "Metadata is not loaded.")
                 Spacer(minLength: 8)
-                Label("FK → referenced key", systemImage: "arrow.right").fixedSize()
+                Label("FK → key · dashed: local mapping", systemImage: "arrow.right").fixedSize()
             }.font(.caption).appSecondaryText().padding(.horizontal, 12).padding(.vertical, 8)
         }
         .background(AppPalette.panel).foregroundStyle(AppPalette.text).tint(AppPalette.accent)
@@ -61,27 +66,44 @@ struct ERDiagramView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(workspace.library.savedConnections.first(where: { $0.id == model.stored.profileID })?.name ?? "Missing connection")
+                Text(model.ownerName(model.activeSourceID))
                     .font(.headline).lineLimit(1)
                 Text("\(model.stored.tables.count) tables · \(model.relationships.count) relationships")
                     .font(.caption).appSecondaryText().lineLimit(1)
-                    .help("Diagrams support up to 100 tables. Only loaded, declared relationships are shown.")
+                    .help("Diagrams support up to 100 tables. Declared foreign keys and confirmed local mappings are shown separately.")
             }
             Divider().frame(height: 24)
-            if model.isLoading {
+            if model.activeSourceIsLoading {
                 ProgressView().controlSize(.small)
-                Text("\(model.progress)/\(model.stored.tables.count)").font(.caption).monospacedDigit()
-                Button("Stop") { workspace.stopERDiagram(model) }.controlHover()
+                Text("\(model.progress)/\(model.stored.tables.filter { $0.profileID == model.activeSourceID }.count)").font(.caption).monospacedDigit()
+                Button("Stop Source") { workspace.stopERDiagramSource(model, profileID: model.activeSourceID) }.controlHover()
             } else {
                 Button {
                     Task { await workspace.buildERDiagram(document, connect: !connected) }
                 } label: {
-                    Label(connected ? (model.metadata.isEmpty ? "Build Diagram" : "Update Diagram") : "Connect and Build", systemImage: "arrow.clockwise")
+                    Label(connected ? (model.metadata.keys.contains(where: { $0.profileID == model.activeSourceID }) ? "Update Source" : "Build Source") : "Connect and Build", systemImage: "arrow.clockwise")
                 }.controlHover()
-                .disabled(model.stored.tables.isEmpty || model.request?.finished == false || model.isSearching)
+                .disabled(!model.stored.tables.contains(where: { $0.profileID == model.activeSourceID }) || model.request?.finished == false || model.isSearching || model.source(model.activeSourceID) == nil)
                 .accessibilityIdentifier("erBuild")
             }
             Spacer(minLength: 4)
+            if [.postgresql, .mysql, .mariadb].contains(model.activeEngine) {
+                Menu {
+                    Button(model.schemaObservation?.enabled == true ? "Stop Schema Observation" : "Observe Schema Changes") {
+                        Task { await workspace.toggleERSchemaObservation(document) }
+                    }.disabled(model.schemaObservation?.enabled != true && (!connected || model.activeSourceIsLoading || model.schemaObservation?.isBusy == true || model.stored.tables.isEmpty))
+                    if model.activeEngine == .postgresql {
+                        Button("Review Notification Installation SQL…") { Task { await workspace.reviewERSchemaObservationSQL(document, remove: false) } }
+                            .disabled(!connected || model.schemaObservation?.isBusy == true)
+                        Button("Review Notification Removal SQL…") { Task { await workspace.reviewERSchemaObservationSQL(document, remove: true) } }
+                            .disabled(!connected || model.schemaObservation?.isBusy == true)
+                    }
+                } label: { Image(systemName: model.schemaObservation?.enabled == true ? "bell.badge" : "bell") }
+                    .menuStyle(.borderlessButton).fixedSize().controlHover().help("Observe schema changes without rebuilding automatically")
+                    .accessibilityLabel("Schema observation")
+            }
+            ERDiagramExportControls(document: document, graph: model, workspace: workspace)
+            if model.isLayingOut { ProgressView().controlSize(.small).accessibilityLabel("Arranging diagram") }
             HStack(spacing: 2) {
                 ControlIconButton(systemName: "minus.magnifyingglass") { zoom(1 / 1.2) }.help("Zoom out").accessibilityLabel("Zoom out")
                 Button("\(Int(model.stored.viewport.zoom * 100))%") {
@@ -93,8 +115,8 @@ struct ERDiagramView: View {
             }
             Divider().frame(height: 22)
             Menu {
-                Button("Auto Layout (Keep Manual Positions)") { model.autoLayout(); fit() }
-                Button("Reset Layout") { model.autoLayout(reset: true); fit() }
+                Button("Auto Layout (Keep Manual Positions)") { Task { await model.autoLayout(); fit() } }
+                Button("Reset Layout") { Task { await model.autoLayout(reset: true); fit() } }
             } label: { Image(systemName: "rectangle.3.group") }
                 .menuStyle(.borderlessButton).fixedSize().controlHover().help("Arrange tables").accessibilityLabel("Diagram layout")
             ControlIconButton(systemName: "sidebar.left") { tablesPanel.wrappedValue.toggle() }
@@ -123,12 +145,18 @@ struct ERDiagramView: View {
 
 private struct ERDiagramCanvas: NSViewRepresentable {
     @ObservedObject var model: ERDiagramModel
+    let structureReason: (ERStructureAction) -> String?
+    let openStructure: (ERStructureAction) -> Void
     func makeNSView(context: Context) -> ERCanvasView { ERCanvasView() }
-    func updateNSView(_ view: ERCanvasView, context: Context) { view.model = model; view.needsDisplay = true }
+    func updateNSView(_ view: ERCanvasView, context: Context) {
+        view.model = model; view.structureReason = structureReason; view.openStructure = openStructure; view.needsDisplay = true
+    }
 }
 
 private final class ERCanvasView: NSView {
     weak var model: ERDiagramModel?
+    var structureReason: ((ERStructureAction) -> String?)?
+    var openStructure: ((ERStructureAction) -> Void)?
     private var dragged: ERTableID?
     private var previous = NSPoint.zero
     override var isFlipped: Bool { true }
@@ -174,7 +202,19 @@ private final class ERCanvasView: NSView {
             guard path.bounds.insetBy(dx: -20, dy: -20).intersects(visible) else { continue }
             let style = connectionStyle(edge, selectedRelationshipID: selectedRelationship?.id, selectedTable: model.stored.selected)
             style.color.setStroke()
-            path.lineWidth = style.width / viewport.zoom; path.lineJoinStyle = .round; path.stroke()
+            path.lineWidth = style.width / viewport.zoom; path.lineJoinStyle = .round
+            if edge.kind == .logical { path.setLineDash([6 / viewport.zoom, 4 / viewport.zoom], count: 2, phase: 0) }
+            path.stroke()
+            if edge.kind == .logical {
+                if !model.stored.tables.contains(edge.source), let endpoint = route.points.first {
+                    text((edge.sourceProfileName ?? edge.source.profileID.uuidString) + " · " + edge.source.label,
+                         at: .init(x: endpoint.x - 20, y: endpoint.y - 22), width: 260, size: 11, color: style.color)
+                }
+                if !model.stored.tables.contains(edge.target), let endpoint = route.points.last {
+                    text((edge.targetProfileName ?? edge.target.profileID.uuidString) + " · " + edge.target.label,
+                         at: .init(x: endpoint.x - 80, y: endpoint.y + 8), width: 260, size: 11, color: style.color)
+                }
+            }
         }
         for table in model.stored.tables {
             guard let point = positions[table] else { continue }
@@ -241,7 +281,7 @@ private final class ERCanvasView: NSView {
             NSRect(x: rect.minX, y: rect.minY, width: rect.width, height: ERDiagramLayout.header - 4).fill()
         }
         text(table.name, at: NSPoint(x: point.x + 14, y: point.y + 12), width: 312, size: 14, color: AppPalette.textNS, bold: true)
-        text(table.schema, at: NSPoint(x: point.x + 14, y: point.y + 35), width: 312, size: 10.5, color: AppPalette.secondaryTextNS)
+        text(model.ownerName(table.profileID) + " · " + table.schema, at: NSPoint(x: point.x + 14, y: point.y + 35), width: 312, size: 10.5, color: AppPalette.secondaryTextNS)
         AppPalette.borderNS.setFill()
         NSRect(x: rect.minX, y: point.y + ERDiagramLayout.header - 4, width: rect.width, height: 1 / zoom).fill()
         let columns = ERDiagramLayout.columns(facts, collapsed: collapsed)
@@ -307,6 +347,29 @@ private final class ERCanvasView: NSView {
         (string as NSString).draw(in: NSRect(x: point.x, y: point.y, width: width, height: size + 6), withAttributes: [
             .font: monospaced ? NSFont.monospacedSystemFont(ofSize: size, weight: weight) : NSFont.systemFont(ofSize: size, weight: weight),
             .foregroundColor: color, .paragraphStyle: paragraph])
+    }
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard let model else { return nil }
+        let point = world(event)
+        guard let table = model.stored.placements.reversed().first(where: { placement in
+            NSRect(x: placement.point.x, y: placement.point.y, width: ERDiagramLayout.width,
+                height: ERDiagramLayout.height(model.metadata[placement.table], collapsed: model.stored.collapsed.contains(placement.table)))
+                .contains(NSPoint(x: point.x, y: point.y))
+        })?.table else { return nil }
+        model.select(table)
+        let menu = NSMenu(); menu.autoenablesItems = false
+        for (title, action) in [("Edit Structure…", ERStructureAction.edit(table)), ("Add Foreign Key…", .addForeignKey(table))] {
+            let item = NSMenuItem(title: title, action: #selector(openStructureAction(_:)), keyEquivalent: "")
+            item.target = self; item.representedObject = action
+            let reason = structureReason?(action)
+            item.isEnabled = openStructure != nil && reason == nil; item.toolTip = reason
+            menu.addItem(item)
+        }
+        return menu
+    }
+    @objc private func openStructureAction(_ item: NSMenuItem) {
+        guard let action = item.representedObject as? ERStructureAction else { return }
+        openStructure?(action)
     }
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self); previous = convert(event.locationInWindow, from: nil)

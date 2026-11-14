@@ -181,7 +181,7 @@ private final class AgentSocketPeer: @unchecked Sendable {
             while let end = buffer.firstIndex(of: 10) {
                 let frame = buffer[..<end]
                 guard frame.count <= AgentSocketBroker.maximumRequestBytes,
-                      let decoded = try? JSONDecoder().decode(AgentRequest.self, from: Data(frame)),
+                      let decoded = try? AgentRequest.decode(Data(frame)),
                       BackendMessage.validID(decoded.id), !identifiers.contains(decoded.id),
                       identifiers.count < 4_096 else { return }
                 buffer.removeSubrange(...end)

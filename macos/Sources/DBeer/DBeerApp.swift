@@ -124,6 +124,12 @@ private struct WorkspaceCommands: Commands {
             commandItem(.showSQLHistory)
             Button("Result Snapshots…") { workspace.isSnapshotsPresented = true }
                 .disabled(!workspace.canManageWorkspace)
+            Button("Saved Execution Plans…") { workspace.isPlansPresented = true }
+            Button("Saved Operation Evidence…") { workspace.isSavedEvidencePresented = true }
+                .disabled(!workspace.canManageWorkspace)
+            Button("Local Relationships…") { workspace.presentLogicalRelationships() }
+                .disabled(!workspace.canManageWorkspace)
+                .disabled(!workspace.canManageWorkspace)
         }
         CommandMenu("Connections") {
             Button("Compare Table Data…") { workspace.showDataComparison() }
@@ -149,8 +155,7 @@ private struct WorkspaceCommands: Commands {
 
     private func commandItem(_ command: AppCommandID) -> some View {
         let shortcut = commands.shortcuts.shortcut(for: command)
-        let descriptor = commands.shortcuts.descriptors.first { $0.id == command }
-        return Button(descriptor?.title ?? command.rawValue) { commands.perform(command) }
+        return Button(commands.title(for: command)) { commands.perform(command) }
             .keyboardShortcut(shortcut.map { KeyboardShortcut($0.keyEquivalent, modifiers: $0.eventModifiers) })
             .disabled(!commands.canPerform(command))
     }

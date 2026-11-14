@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "valid": [
+    {"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"available"},{"operation":"gridEditing","state":"requiresMetadata","reason":"Load the target metadata."},{"operation":"explain.plan","state":"available"}]},
+    {"version":1,"engine":"sqlite","scope":"session","operations":[{"operation":"explain.plan","state":"available"},{"operation":"explain.analyze","state":"unavailable","reason":"This server does not support the selected Explain mode."}]},
+    {"version":1,"engine":"mysql","scope":"structure","operations":[{"operation":"structure.preview","state":"available"},{"operation":"structure.apply","state":"unavailable","reason":"This connection is readonly."}]},
+    {"version":1,"engine":"postgresql","scope":"result","operations":[{"operation":"resultSource.open","state":"available"},{"operation":"resultSource.edit","state":"unavailable","reason":"A projected result is readonly."}]}
+  ],
+  "invalid": [
+    {"id":"unknown-version","value":{"version":2,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"available"}]}},
+    {"id":"empty-operations","value":{"version":1,"engine":"postgresql","scope":"session","operations":[]}},
+    {"id":"duplicate-operation","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"available"},{"operation":"execute","state":"unavailable","reason":"Denied."}]}},
+    {"id":"missing-reason","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"unavailable"}]}},
+    {"id":"available-reason","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"available","reason":""}]}},
+    {"id":"null-reason","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"unavailable","reason":null}]}},
+    {"id":"unknown-state","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"unknown","reason":"Unknown."}]}},
+    {"id":"unknown-field","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"available"}],"grant":"forged"}},
+    {"id":"unknown-operation-field","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute","state":"available","grant":"forged"}]}},
+    {"id":"invalid-operation-name","value":{"version":1,"engine":"postgresql","scope":"session","operations":[{"operation":"execute\n","state":"available"}]}},
+    {"id":"unknown-engine","value":{"version":1,"engine":"unknown","scope":"session","operations":[{"operation":"execute","state":"available"}]}},
+    {"id":"unknown-scope","value":{"version":1,"engine":"postgresql","scope":"saved","operations":[{"operation":"execute","state":"available"}]}}
+  ]
+}

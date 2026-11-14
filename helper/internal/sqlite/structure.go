@@ -5,13 +5,14 @@ import (
 	"errors"
 	"regexp"
 	"strings"
+	"time"
 
 	"dbeer/helper/internal/tableedit"
 )
 
 func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tableedit.Baseline, error) {
 	b := tableedit.Baseline{Target: t, Engine: "sqlite", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Changes run in one dedicated transaction. Unsupported definitions or dependencies block reconstruction."}, Attributes: map[string]map[string]any{}}
-	if !t.Valid() || t.Schema != "main" {
+	if s.closed || s.structureUncertain || !t.Valid() || t.Schema != "main" {
 		return b, tableedit.ErrUnsupported
 	}
 	rows, _, err := s.query(ctx, `SELECT type,name,tbl_name,sql FROM main.sqlite_schema ORDER BY type,name`)
@@ -39,7 +40,11 @@ func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tablee
 	}
 	b.Target.Reconcile = false
 	b.Scope = tableedit.Fingerprint(s.path)
-	b.Fingerprint = tableedit.Fingerprint([]any{s.path, t.Table, rows})
+	tempSchema, tempErr := s.structureSchema(ctx, true)
+	if tempErr != nil {
+		return b, tempErr
+	}
+	b.Fingerprint = tableedit.Fingerprint([]any{s.path, t.Table, rows, tempSchema})
 	b.Identity = tableedit.Fingerprint([]any{s.path, raw})
 	b.Attributes["sqlite"] = map[string]any{"sql": raw}
 	if !found {
@@ -101,11 +106,21 @@ func sqliteEditableType(typ string) (tableedit.DataType, bool) {
 var sqliteNumericLiteral = regexp.MustCompile(`^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$`)
 
 func structureColumn(c tableedit.Column) (string, error) {
+	if c.Type.Reference != nil {
+		return "", tableedit.ErrUnsupported
+	}
 	typ := map[string]string{"integer": "INTEGER", "bigint": "INTEGER", "boolean": "INTEGER", "real": "REAL", "text": "TEXT", "blob": "BLOB", "any": "ANY", "sqliteNumeric": "NUMERIC"}[c.Type.Kind]
 	if !c.Valid() || typ == "" {
 		return "", tableedit.ErrUnsupported
 	}
 	out := quote(c.Name) + " " + typ
+	if c.Generated != nil && c.Generated.Storage != "none" {
+		expr, err := tableedit.ExpressionSlot("sqlite", c.Generated.Expression)
+		if err != nil {
+			return "", err
+		}
+		out += " GENERATED ALWAYS AS " + expr + " " + strings.ToUpper(c.Generated.Storage)
+	}
 	if !c.Nullable {
 		out += " NOT NULL"
 	}
@@ -128,8 +143,20 @@ func structureColumn(c tableedit.Column) (string, error) {
 		} else {
 			return "", tableedit.ErrInvalid
 		}
+	case "expression":
+		expr, err := tableedit.ExpressionSlot("sqlite", *c.Default.Value)
+		if err != nil {
+			return "", err
+		}
+		out += " DEFAULT " + expr
 	default:
 		return "", tableedit.ErrUnsupported
+	}
+	if c.Identity != nil && c.Identity.Kind != "none" {
+		if c.Identity.Kind != "autoIncrement" || c.PrimaryKeyName == "" || (c.Type.Kind != "integer" && c.Type.Kind != "bigint") {
+			return "", tableedit.ErrUnsupported
+		}
+		out += " CONSTRAINT " + quote(c.PrimaryKeyName) + " PRIMARY KEY AUTOINCREMENT"
 	}
 	return out, nil
 }
@@ -167,9 +194,38 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 	return p.SQL, p.Risks, e
 }
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
+	if d.NeedsAuthoringV5() {
+		if _, err := tableedit.ReconstructionOrder(b, d); err != nil {
+			return tableedit.Prepared{}, err
+		}
+		p := tableedit.Prepared{Risks: []string{"SQLite reconstruction runs all displayed statements in one BEGIN IMMEDIATE transaction on the dedicated session. It copies native values, preserves rowids and AUTOINCREMENT counters, recreates retained indexes/triggers, compares retained definitions and typed values and runs foreign_key_check before COMMIT. Preview reads schema only; expressions run during Apply. Extra disk space and the database write lock are required.", "PRAGMA foreign_keys=OFF runs only on this dedicated physical structure session outside the transaction; PRAGMA foreign_keys=ON restores and verifies its known captured setting. Copying does not fire retained INSERT/UPDATE triggers; constraints and generated/backfill expressions run during the copy. Unknown COMMIT, rollback or setting-restoration outcomes retire the connection; no replay is authorized."}}
+		p.Consequences, p.ValidationChecks = tableedit.ReconstructionReview(b, d)
+		return s.preparePreservedRebuild(ctx, b, d, p)
+	}
+	if d.NeedsAuthoringV3() {
+		return tableedit.Prepared{}, errors.New("Advanced index definitions are currently available for PostgreSQL/MySQL only; SQLite index intent is never ignored. Use an explicit reviewed SQLite migration for expressions or partial indexes.")
+	}
+	if d.NeedsAuthoringV4() {
+		return s.prepareStructureDestructive(ctx, b, d)
+	}
 	p := tableedit.Prepared{Risks: []string{"Apply uses BEGIN IMMEDIATE and rechecks the captured schema. Table reconstruction copies all rows and validates foreign keys before COMMIT."}}
 	if !d.Valid() || b.Engine != "sqlite" || b.Target.Schema != "main" {
 		return p, tableedit.ErrInvalid
+	}
+	if d.HasAuthoredExpressions() {
+		p.Risks = append(p.Risks, "Authored expressions and generated values run only during Apply or later writes. Preview validates expression boundaries without evaluating authored code. SQLite may reject expressions at Apply; semantic validity is not proven by Preview.")
+	}
+	renaming := d.RenameTable != nil
+	for _, c := range d.Changes {
+		renaming = renaming || c.RenameTo != nil
+	}
+	if renaming {
+		return s.prepareStructureRenames(ctx, b, d, p)
+	}
+	for _, c := range d.Changes {
+		if c.Generated != nil || c.Identity != nil || c.Type != nil && c.Type.Reference != nil {
+			return p, errors.New("Changing generated or identity columns requires a separately reviewed SQLite reconstruction.")
+		}
 	}
 	target := "main." + quote(b.Target.Table)
 	indexEdits := func() error {
@@ -219,7 +275,22 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			return p, tableedit.ErrInvalid
 		}
 		parts := []string{}
+		inlinePrimary := ""
 		for _, c := range d.Columns {
+			if c.Identity != nil && c.Identity.Kind != "none" {
+				if inlinePrimary != "" {
+					return p, tableedit.ErrInvalid
+				}
+				for _, k := range d.Keys {
+					if k.Action == "add" && k.Kind == "primary" && len(k.Columns) == 1 && k.Columns[0] == c.Name {
+						c.PrimaryKeyName = k.Name
+						inlinePrimary = k.Name
+					}
+				}
+				if c.PrimaryKeyName == "" {
+					return p, errors.New("SQLite AUTOINCREMENT requires an explicit single-column INTEGER primary key.")
+				}
+			}
 			x, e := structureColumn(c)
 			if e != nil {
 				return p, e
@@ -227,6 +298,9 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			parts = append(parts, x)
 		}
 		for _, k := range d.Keys {
+			if k.Kind == "primary" && k.Name == inlinePrimary {
+				continue
+			}
 			if k.Action != "add" {
 				return p, tableedit.ErrInvalid
 			}
@@ -241,6 +315,15 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 	}
 	if len(d.Changes) == 0 && len(d.Keys) == 0 {
 		for _, c := range d.Columns {
+			if c.Default.Kind == "expression" {
+				return p, errors.New("SQLite cannot ADD a column with an expression default; use an explicit reviewed reconstruction.")
+			}
+			if c.Generated != nil && c.Generated.Storage == "stored" {
+				return p, errors.New("SQLite cannot ADD a stored generated column; use an explicit reviewed reconstruction.")
+			}
+			if c.Identity != nil && c.Identity.Kind != "none" {
+				return p, errors.New("Adding SQLite AUTOINCREMENT to an existing table requires explicit reconstruction.")
+			}
 			x, e := structureColumn(c)
 			if e != nil {
 				return p, e
@@ -491,14 +574,46 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	if err := s.checkIdentity(); err != nil {
 		return fail("notStarted", "The database file changed.")
 	}
-	if err := s.exec(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
-		return fail("notStarted", "Cannot prepare foreign-key verification.")
+	nativeDrop := p.DroppedTarget || len(structureDroppedColumns(p)) > 0
+	if !nativeDrop {
+		settings, _, e := s.query(ctx, "PRAGMA foreign_keys")
+		if e != nil || len(settings) != 1 || cellInt(settings[0][0]) != 1 {
+			return fail("notStarted", "Reconstruction requires known foreign_keys=ON on this dedicated session.")
+		}
+		if err := s.exec(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+			return fail("notStarted", "Cannot prepare foreign-key verification.")
+		}
+		defer func() {
+			if s.closed {
+				return
+			}
+			cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			err := s.exec(cleanup, "PRAGMA foreign_keys=ON")
+			rows, _, verify := s.query(cleanup, "PRAGMA foreign_keys")
+			if err != nil || verify != nil || len(rows) != 1 || cellInt(rows[0][0]) != 1 {
+				s.structureUncertain = true
+				s.Close()
+			}
+		}()
+		settings, _, e = s.query(ctx, "PRAGMA foreign_keys")
+		if e != nil || len(settings) != 1 || cellInt(settings[0][0]) != 0 {
+			return fail("notStarted", "Foreign-key suspension could not be verified.")
+		}
 	}
-	defer func() { _ = s.exec(context.Background(), "PRAGMA foreign_keys=ON") }()
 	if err := s.exec(ctx, "BEGIN IMMEDIATE"); err != nil {
 		return fail("notStarted", "Cannot acquire the database write lock.")
 	}
-	defer func() { _ = s.exec(context.Background(), "ROLLBACK") }()
+	defer func() {
+		if !s.closed && !s.conn.AutocommitEnabled() {
+			cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if s.exec(cleanup, "ROLLBACK") != nil || !s.conn.AutocommitEnabled() {
+				s.structureUncertain = true
+				s.Close()
+			}
+		}
+	}()
 	current, err := s.StructureLoad(ctx, b.Target)
 	if err != nil || current.Fingerprint != b.Fingerprint {
 		return fail("notStarted", "The captured schema changed; prepare a new preview.")
@@ -506,8 +621,21 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 	// Compare sorted typed row hashes without retaining the source rows in memory.
 	var original string
 	var originalCount int64
-	if !b.Target.Create {
-		original, originalCount, err = s.structureValueDigest(ctx, b.Target.Table, b.Columns)
+	retainedColumns := append([]tableedit.ObservedColumn(nil), b.Columns...)
+	if p.Reconstruction != nil && p.Reconstruction.RowID != "" {
+		retainedColumns = append([]tableedit.ObservedColumn{{Name: p.Reconstruction.RowID}}, retainedColumns...)
+	}
+	if nativeDrop {
+		dropped := structureDroppedColumns(p)
+		retainedColumns = nil
+		for _, c := range b.Columns {
+			if !dropped[c.Name] {
+				retainedColumns = append(retainedColumns, c)
+			}
+		}
+	}
+	if !b.Target.Create && !p.DroppedTarget {
+		original, originalCount, err = s.structureValueDigest(ctx, b.Target.Table, retainedColumns)
 		if err != nil {
 			if errors.Is(err, ErrStructureDigestQuota) {
 				return fail("notStarted", "Exact-value verification exceeds the temporary storage limit; no changes were started.")
@@ -515,23 +643,102 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 			return fail("notStarted", "Cannot capture exact original values.")
 		}
 	}
-	for _, sql := range p.SQL {
+	var schemaBefore []structureSchemaRow
+	var sequenceBefore string
+	if p.Reconstruction != nil {
+		schemaBefore, err = s.structureSchema(ctx, false)
+		if err != nil {
+			return fail("notStarted", "Cannot capture retained schema definitions.")
+		}
+		if parsed, e := parseDDLTable(p.Reconstruction.ExpectedDefinition); e == nil && parsed.autoincrement {
+			rows, _, e := s.query(ctx, "SELECT seq,typeof(seq) FROM main.sqlite_sequence WHERE name=?", b.Target.Table)
+			if e != nil || len(rows) > 1 || len(rows) == 1 && cellText(rows[0][1]) != "integer" {
+				return fail("notStarted", "Cannot capture a known integer sequence counter.")
+			}
+			if len(rows) == 1 {
+				sequenceBefore = cellText(rows[0][0])
+			}
+		}
+	}
+	rollback := func(message string) []tableedit.Execution {
+		cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if s.exec(cleanup, "ROLLBACK") != nil || !s.conn.AutocommitEnabled() {
+			s.structureUncertain = true
+			s.Close()
+			return fail("unknown", "Rollback could not be confirmed. Reconcile explicitly; no replay is authorized.")
+		}
+		for i := range out {
+			if out[i].State == "applied" {
+				out[i] = tableedit.Execution{State: "rolledBack", Message: message}
+			}
+		}
+		return out
+	}
+	for i, sql := range p.SQL {
+		if ctx.Err() != nil {
+			return rollback("Cancelled and rolled back before the next statement.")
+		}
 		if err = s.exec(ctx, sql); err != nil {
-			return fail("rolledBack", "The structure transaction failed and was rolled back.")
+			out[i] = tableedit.Execution{State: "rolledBack", Message: "The statement failed inside the reconstruction transaction."}
+			return rollback("The structure transaction failed and was rolled back.")
+		}
+		out[i].State = "applied"
+		if s.structureAfterStep != nil {
+			s.structureAfterStep(i)
 		}
 	}
-	if !b.Target.Create {
-		after, afterCount, e := s.structureValueDigest(ctx, b.Target.Table, b.Columns)
+	if p.Reconstruction != nil && !s.verifyReconstructionSchema(ctx, b, p, schemaBefore, sequenceBefore) {
+		return rollback("Retained definitions, dependent objects, order or sequence counter could not be verified; no changes were committed.")
+	}
+
+	if !b.Target.Create && !p.DroppedTarget {
+		observedTable := b.Target.Table
+		if p.ResultTarget != nil {
+			observedTable = p.ResultTarget.Table
+		}
+		copiedColumns := append([]tableedit.ObservedColumn(nil), retainedColumns...)
+		for i := range copiedColumns {
+			if name, ok := p.RenamedColumns[copiedColumns[i].Name]; ok {
+				copiedColumns[i].Name = name
+			}
+		}
+		after, afterCount, e := s.structureValueDigest(ctx, observedTable, copiedColumns)
 		if e != nil || original != after || originalCount != afterCount {
-			return fail("rolledBack", "The change would alter stored values or storage classes; no changes were committed.")
+			return rollback("The change would alter stored values or storage classes; no changes were committed.")
 		}
 	}
-	violations, _, err := s.query(ctx, "PRAGMA main.foreign_key_check")
-	if err != nil || len(violations) > 0 {
-		return fail("rolledBack", "Foreign-key validation failed; no changes were committed.")
+	if p.DroppedTarget {
+		absent, e := s.StructureLoad(ctx, tableedit.Target{Schema: b.Target.Schema, Table: b.Target.Table, Create: true})
+		if e != nil || !absent.Target.Create {
+			return rollback("The table removal could not be verified; no changes were committed.")
+		}
 	}
-	if err = s.exec(ctx, "COMMIT"); err != nil {
+	foreignCheck := "PRAGMA main.foreign_key_check"
+	if nativeDrop {
+		foreignCheck = "PRAGMA main.foreign_key_check(" + quote(b.Target.Table) + ")"
+		if p.DroppedTarget {
+			foreignCheck = "SELECT 1 WHERE 0"
+		}
+	}
+	violations, _, err := s.query(ctx, foreignCheck)
+	if err != nil || len(violations) > 0 {
+		return rollback("Foreign-key validation failed; no changes were committed.")
+	}
+	commit := func() error { return s.exec(ctx, "COMMIT") }
+	if s.structureCommitOverride != nil {
+		err = s.structureCommitOverride(commit)
+	} else {
+		err = commit()
+	}
+	if err != nil {
+		s.structureUncertain = true
+		s.Close()
 		return fail("unknown", "The structure COMMIT outcome is unknown. Inspect the schema before preparing another change.")
 	}
 	return fail("applied", "")
+}
+
+func (s *Session) StructurePrepareMigration(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, _ func(tableedit.Target) (tableedit.Baseline, error)) (tableedit.Prepared, error) {
+	return s.StructurePrepare(ctx, b, d)
 }

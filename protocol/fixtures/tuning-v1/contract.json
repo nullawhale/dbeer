@@ -1,0 +1,469 @@
+{
+  "version": 1,
+  "capability": "tuningV1",
+  "inspectRequest": {
+    "version": 1,
+    "source": {
+      "sql": "SELECT id FROM public.items WHERE id = :first OR id = :second",
+      "mode": "plan",
+      "parameters": [
+        {
+          "name": "first",
+          "type": "integer",
+          "value": "9007199254740993"
+        },
+        {
+          "name": "second",
+          "type": "integer",
+          "value": null
+        }
+      ],
+      "context": {
+        "documentId": "source",
+        "targetDocumentId": "source",
+        "rangeLocation": 0,
+        "rangeLength": 61,
+        "profileId": "profile",
+        "sessionId": "owner",
+        "transactionStatus": "idle"
+      }
+    },
+    "capture": {
+      "support": {
+        "engine": "postgresql",
+        "serverVersion": "17.10",
+        "format": "json",
+        "modes": [
+          "plan",
+          "analyze"
+        ]
+      },
+      "mode": "plan",
+      "status": "tree",
+      "raw": "Synthetic complete fixture; not server execution authority.",
+      "complete": true,
+      "roots": [
+        "0"
+      ],
+      "nodes": [
+        {
+          "id": "0",
+          "children": [],
+          "operation": "Seq Scan",
+          "details": {
+            "Schema": "public",
+            "Relation Name": "items"
+          },
+          "execution": "estimated",
+          "metrics": {}
+        }
+      ],
+      "metrics": {}
+    },
+    "target": {
+      "schema": "public",
+      "table": "items",
+      "create": false
+    }
+  },
+  "validationRequest": {
+    "version": 1,
+    "original": {
+      "sql": "SELECT id FROM public.items WHERE id = :first OR id = :second",
+      "mode": "plan",
+      "parameters": [
+        {
+          "name": "first",
+          "type": "integer",
+          "value": "9007199254740993"
+        },
+        {
+          "name": "second",
+          "type": "integer",
+          "value": null
+        }
+      ],
+      "context": {
+        "documentId": "source",
+        "targetDocumentId": "source",
+        "rangeLocation": 0,
+        "rangeLength": 61,
+        "profileId": "profile",
+        "sessionId": "owner",
+        "transactionStatus": "idle"
+      }
+    },
+    "variant": {
+      "sql": "SELECT id FROM public.items WHERE id IN (:first, :second)",
+      "mode": "plan",
+      "parameters": [
+        {
+          "name": "first",
+          "type": "integer",
+          "value": "9007199254740993"
+        },
+        {
+          "name": "second",
+          "type": "integer",
+          "value": null
+        }
+      ],
+      "context": {
+        "documentId": "source",
+        "targetDocumentId": "source",
+        "rangeLocation": 0,
+        "rangeLength": 57,
+        "profileId": "profile",
+        "sessionId": "owner",
+        "transactionStatus": "idle"
+      }
+    },
+    "target": {
+      "schema": "public",
+      "table": "items",
+      "create": false
+    },
+    "metadataFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "maxRows": 1000,
+    "maxBytes": 1048576,
+    "timeoutMs": 5000,
+    "comparison": "multiset"
+  },
+  "settingRequest": {
+    "version": 1,
+    "context": {
+      "documentId": "source",
+      "targetDocumentId": "source",
+      "rangeLocation": 0,
+      "rangeLength": 1,
+      "profileId": "profile",
+      "sessionId": "owner",
+      "transactionStatus": "transaction"
+    },
+    "name": "work_mem",
+    "expectedValueKiB": 4096,
+    "valueKiB": 8192
+  },
+  "inspection": {
+    "version": 1,
+    "engine": "postgresql",
+    "serverVersion": "17.10",
+    "evidenceOrigin": "suppliedCapture",
+    "metadataFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "target": {
+      "schema": "public",
+      "table": "items",
+      "create": false
+    },
+    "indexes": [
+      {
+        "id": "numeric-equality-index",
+        "nodeId": "0",
+        "explanation": "A full-table scan has a numeric equality predicate without a known leading index.",
+        "evidence": [
+          "Synthetic node 0 and complete current catalog."
+        ],
+        "limitations": [
+          "No speedup is predicted; a dedicated fresh E2 preview is required."
+        ],
+        "edit": {
+          "action": "add",
+          "name": "dbeer_id_idx",
+          "definition": {
+            "method": "btree",
+            "terms": [
+              {
+                "column": "id"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "variants": [
+      {
+        "id": "or-to-in",
+        "kind": "sameColumnOrToIn",
+        "explanation": "Propose an IN list with the same numeric bindings; optimizer behavior may be unchanged.",
+        "validation": "unvalidated",
+        "request": {
+          "sql": "SELECT id FROM public.items WHERE id IN (:first, :second)",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "first",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "second",
+              "type": "integer",
+              "value": null
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "source",
+            "rangeLocation": 0,
+            "rangeLength": 57,
+            "profileId": "profile",
+            "sessionId": "owner",
+            "transactionStatus": "idle"
+          }
+        }
+      }
+    ],
+    "limitations": [
+      "Supplied capture is analysis evidence, never execution authority."
+    ],
+    "workMemKiB": 4096
+  },
+  "validation": {
+    "version": 1,
+    "state": "observedEqual",
+    "comparison": "multiset",
+    "originalRows": 2,
+    "variantRows": 2,
+    "comparedBytes": 132,
+    "complete": true,
+    "scope": "sequentialCurrentSession",
+    "limitations": [
+      "Equality of these observations does not prove equivalence or a shared snapshot."
+    ]
+  },
+  "settingPreview": {
+    "sql": "SET LOCAL work_mem = '8192kB'",
+    "restoreSQL": "SET LOCAL work_mem = '4096kB'",
+    "scope": "currentTransaction",
+    "risks": [
+      "work_mem is per operation and worker, not a query memory cap."
+    ]
+  },
+  "settingResult": {
+    "version": 1,
+    "state": "applied",
+    "beforeKiB": 4096,
+    "requestedKiB": 8192,
+    "restore": {
+      "version": 1,
+      "context": {
+        "documentId": "source",
+        "targetDocumentId": "source",
+        "rangeLocation": 0,
+        "rangeLength": 1,
+        "profileId": "profile",
+        "sessionId": "owner",
+        "transactionStatus": "transaction"
+      },
+      "name": "work_mem",
+      "expectedValueKiB": 8192,
+      "valueKiB": 4096
+    },
+    "limitations": [
+      "Restore requires separate fresh review; transaction completion or earlier savepoint rollback can end the local value."
+    ]
+  },
+  "commands": [
+    {
+      "type": "tuning.inspect",
+      "requestId": "inspect",
+      "sessionId": "owner",
+      "queryId": "inspect",
+      "tuningInspect": {
+        "version": 1,
+        "source": {
+          "sql": "SELECT id FROM public.items WHERE id = :first OR id = :second",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "first",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "second",
+              "type": "integer",
+              "value": null
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "source",
+            "rangeLocation": 0,
+            "rangeLength": 61,
+            "profileId": "profile",
+            "sessionId": "owner",
+            "transactionStatus": "idle"
+          }
+        },
+        "capture": {
+          "support": {
+            "engine": "postgresql",
+            "serverVersion": "17.10",
+            "format": "json",
+            "modes": [
+              "plan",
+              "analyze"
+            ]
+          },
+          "mode": "plan",
+          "status": "tree",
+          "raw": "Synthetic complete fixture; not server execution authority.",
+          "complete": true,
+          "roots": [
+            "0"
+          ],
+          "nodes": [
+            {
+              "id": "0",
+              "children": [],
+              "operation": "Seq Scan",
+              "details": {
+                "Schema": "public",
+                "Relation Name": "items"
+              },
+              "execution": "estimated",
+              "metrics": {}
+            }
+          ],
+          "metrics": {}
+        },
+        "target": {
+          "schema": "public",
+          "table": "items",
+          "create": false
+        }
+      }
+    },
+    {
+      "type": "tuning.validate",
+      "requestId": "validate",
+      "sessionId": "owner",
+      "queryId": "validate",
+      "authorization": "grant",
+      "tuningValidation": {
+        "version": 1,
+        "original": {
+          "sql": "SELECT id FROM public.items WHERE id = :first OR id = :second",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "first",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "second",
+              "type": "integer",
+              "value": null
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "source",
+            "rangeLocation": 0,
+            "rangeLength": 61,
+            "profileId": "profile",
+            "sessionId": "owner",
+            "transactionStatus": "idle"
+          }
+        },
+        "variant": {
+          "sql": "SELECT id FROM public.items WHERE id IN (:first, :second)",
+          "mode": "plan",
+          "parameters": [
+            {
+              "name": "first",
+              "type": "integer",
+              "value": "9007199254740993"
+            },
+            {
+              "name": "second",
+              "type": "integer",
+              "value": null
+            }
+          ],
+          "context": {
+            "documentId": "source",
+            "targetDocumentId": "source",
+            "rangeLocation": 0,
+            "rangeLength": 57,
+            "profileId": "profile",
+            "sessionId": "owner",
+            "transactionStatus": "idle"
+          }
+        },
+        "target": {
+          "schema": "public",
+          "table": "items",
+          "create": false
+        },
+        "metadataFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "maxRows": 1000,
+        "maxBytes": 1048576,
+        "timeoutMs": 5000,
+        "comparison": "multiset"
+      }
+    },
+    {
+      "type": "tuning.setting",
+      "requestId": "setting",
+      "sessionId": "owner",
+      "queryId": "setting",
+      "authorization": "grant",
+      "tuningSetting": {
+        "version": 1,
+        "context": {
+          "documentId": "source",
+          "targetDocumentId": "source",
+          "rangeLocation": 0,
+          "rangeLength": 1,
+          "profileId": "profile",
+          "sessionId": "owner",
+          "transactionStatus": "transaction"
+        },
+        "name": "work_mem",
+        "expectedValueKiB": 4096,
+        "valueKiB": 8192
+      }
+    },
+    {
+      "type": "tuning.setting.observe",
+      "requestId": "observe",
+      "sessionId": "owner",
+      "queryId": "observe",
+      "tuningSettingObservation": {
+        "version": 1,
+        "context": {
+          "documentId": "source",
+          "targetDocumentId": "source",
+          "rangeLocation": 0,
+          "rangeLength": 1,
+          "profileId": "profile",
+          "sessionId": "owner",
+          "transactionStatus": "transaction"
+        },
+        "name": "work_mem"
+      }
+    }
+  ],
+  "settingObservationRequest": {
+    "version": 1,
+    "context": {
+      "documentId": "source",
+      "targetDocumentId": "source",
+      "rangeLocation": 0,
+      "rangeLength": 1,
+      "profileId": "profile",
+      "sessionId": "owner",
+      "transactionStatus": "transaction"
+    },
+    "name": "work_mem"
+  },
+  "settingObservation": {
+    "version": 1,
+    "name": "work_mem",
+    "workMemKiB": 4096,
+    "scope": "currentTransaction"
+  }
+}

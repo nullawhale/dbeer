@@ -14,6 +14,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         didSet {
             if !SQLFileDocument.sameBytes(text, oldValue) {
                 clearExecutionSuccess()
+                explainCollector?.stop("Stopped — source text changed")
                 if !isSynchronizingFile, let fileDocument, !SQLFileDocument.sameBytes(fileDocument.text, text) {
                     fileDocument.text = text
                 }
@@ -23,8 +24,11 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var profileID: UUID? {
         didSet {
             if profileID != oldValue {
+                explainCollector?.stop("Stopped — profile changed")
                 invalidateSQLiteCompletion()
                 clearExecutionSuccess()
+                incomingRelationships?.stop()
+                incomingRelationships = nil
                 tableForeignKeys = []
                 foreignKeysError = nil
                 tableResult = nil
@@ -47,6 +51,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var runtime: WorkspaceModel? {
         didSet {
             if runtime !== oldValue {
+                explainCollector?.stop("Stopped — SQL owner changed")
                 sqliteSessionObservation = nil
                 invalidateSQLiteCompletion()
             }
@@ -68,6 +73,9 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var selection = NSRange(location: 0, length: 0)
     @Published var executions: [SQLExecution] = []
     @Published var explainPlan: ExplainPlanModel?
+    @Published var explainExecutions: [ExplainBatchExecution] = []
+    @Published var selectedExplainExecution = 0
+    var explainTargetDocumentID: UUID?
     @Published var showsExecutionPlan = false
     @Published var selectedExecution = 0
     private(set) var queryResultSelection: SQLResultSelection?
@@ -129,7 +137,11 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published private(set) var fileDocument: SQLFileDocument?
     @Published var sqlLibraryEntryID: UUID?
     /// Standalone history drafts retain definitions only; entered values are never restored.
-    @Published var queryParameters: [SQLParameterDefinition] = []
+    @Published var queryParameters: [SQLParameterDefinition] = [] {
+        didSet { if queryParameters != oldValue { explainCollector?.stop("Stopped — typed parameter definitions changed") } }
+    }
+    @Published var explainCollectorConfiguration: ExplainCollectorConfiguration?
+    @Published var explainCollector: ExplainCollector?
     private var restoredFileDocumentID: UUID?
     private var fileObservations: [AnyCancellable] = []
     private var isSynchronizingFile = false
@@ -154,11 +166,12 @@ final class SQLDocument: ObservableObject, Identifiable {
         get { tableFilterExpression?.flattenedConjunction ?? [] }
         set { tableFilterExpression = .conjunction(newValue) }
     }
+    @Published var tableRelationshipScope: SQLiteRelationshipScope? { didSet { if tableRelationshipScope != oldValue { resetTablePaging() } } }
     @Published var tableBrowseDraft: TableBrowseConfiguration?
     @Published var isApplyingBrowse = false
     @Published var tableLoadedConfiguration: TableBrowseConfiguration?
     var browseConfiguration: TableBrowseConfiguration {
-        TableBrowseConfiguration(filterExpression: tableFilterExpression, sort: tableSort)
+        TableBrowseConfiguration(filterExpression: tableFilterExpression, sort: tableSort, relationshipScope: tableRelationshipScope)
     }
     var browseDraftConfiguration: TableBrowseConfiguration {
         get { tableBrowseDraft ?? browseConfiguration }
@@ -169,11 +182,13 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var tableResult: BackendMessage?
     @Published var tableSnapshotSource: ResultSnapshotSource?
     @Published var tableFailure: WorkspaceModel.QueryFailure?
+    @Published var incomingRelationships: IncomingRelationshipDiscoveryModel?
     @Published var tableForeignKeys: [TableForeignKey] = []
     @Published var foreignKeysError: String?
     @Published var tableNavigationError: String?
     @Published var isLoadingForeignKeys = false
     @Published var isNavigatingTable = false
+    @Published var logicalRelationshipRead: LogicalRelationshipRead?
     @Published var tableBackHistory: [TableViewLocation] = []
     @Published var tableForwardHistory: [TableViewLocation] = []
     var foreignKeysRequestID = UUID()
@@ -238,6 +253,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         if let savedTable = stored.table, stored.kind == .table {
             table = savedTable.reference
             tableFilterExpression = savedTable.filterExpression
+            tableRelationshipScope = savedTable.relationshipScope
             tableSort = savedTable.sort
             page = savedTable.page
             tableNeedsExplicitLoad = true
@@ -248,6 +264,7 @@ final class SQLDocument: ObservableObject, Identifiable {
             fileRecoveryURL = stored.fileRecoveryURL
             sqlLibraryEntryID = stored.sqlLibraryEntryID
             queryParameters = stored.queryParameters ?? []
+            explainCollectorConfiguration = stored.explainCollectorConfiguration
             restoredFileBinding = stored.fileURL != nil
         }
     }
@@ -266,13 +283,14 @@ final class SQLDocument: ObservableObject, Identifiable {
         }
         return StoredSQLDocument(id: id, title: title, text: text, profileID: profileID,
             kind: table == nil ? .sql : .table,
-            table: table.map { StoredTableDocument(reference: $0, page: page, filterExpression: tableFilterExpression, sort: tableSort) },
+            table: table.map { StoredTableDocument(reference: $0, page: page, filterExpression: tableFilterExpression, sort: tableSort, relationshipScope: tableRelationshipScope) },
             fileURL: table == nil ? fileURL : nil,
             fileContentSHA256: table == nil && fileURL != nil ? fileContentSHA256 : nil,
             fileDocumentID: table == nil ? (fileDocument?.id ?? restoredFileDocumentID) : nil,
             fileRecoveryURL: table == nil ? fileRecoveryURL : nil,
             sqlLibraryEntryID: table == nil ? sqlLibraryEntryID : nil,
-            queryParameters: table == nil && !queryParameters.isEmpty ? queryParameters : nil)
+            queryParameters: table == nil && !queryParameters.isEmpty ? queryParameters : nil,
+            explainCollectorConfiguration: table == nil ? explainCollectorConfiguration : nil)
     }
 
     func attachFileDocument(_ file: SQLFileDocument) {
@@ -312,6 +330,23 @@ final class SQLDocument: ObservableObject, Identifiable {
     func detachFileDocument() {
         fileObservations = []
         fileDocument = nil
+    }
+
+    /// An unloaded or failed view can change its saved restriction locally.
+    /// Loading data remains a separate, explicit action.
+    @discardableResult
+    func removeUnloadedRelationshipScope() -> Bool {
+        guard table != nil, grid == nil, tableRelationshipScope != nil,
+              !isRunning, !isNavigatingTable, !isApplyingBrowse else { return false }
+        tableRelationshipScope = nil
+        if var draft = tableBrowseDraft {
+            draft.relationshipScope = nil
+            tableBrowseDraft = draft == browseConfiguration ? nil : draft
+        }
+        tableLoadedConfiguration = nil
+        tableNeedsExplicitLoad = true
+        tableNavigationError = nil
+        return true
     }
 
     func resetTablePaging() {
@@ -440,6 +475,10 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private var completionCatalog = SQLCompletionCatalog()
     @Published var inspection: CatalogInspection?
     @Published var structureEditor: TableStructureEditorModel?
+    @Published var physicalStructure: PhysicalStructureModel?
+    @Published private(set) var physicalStructureReports: [PhysicalStructureOutcomeRecord] = []
+    @Published var migrationComposer: MigrationComposerModel?
+    @Published private(set) var migrationOutcomeReports: [MigrationOutcomeRecord] = []
     @Published var tableImporter: TableImportModel?
     @Published private(set) var structureOutcomeReports: [TableStructureOutcomeRecord] = []
     @Published var clusterInspection: CassandraClusterInspection?
@@ -463,17 +502,36 @@ final class ApplicationWorkspace: ObservableObject {
     @Published var historyEnabled = true { didSet { scheduleSave() } }
     @Published var isHistoryPresented = false
     @Published var schemaComparison: SchemaComparisonModel?
+    @Published var schemaBundle: SchemaBundleModel?
+    @Published var isLogicalRelationshipsPresented = false
+    @Published var logicalRelationshipEditor: LogicalRelationshipEditorModel? {
+        didSet { if oldValue?.id != logicalRelationshipEditor?.id { oldValue?.close() } }
+    }
     @Published var dataComparison: DataComparisonModel?
     @Published var dataTransfer: DataTransferModel?
     @Published var databaseTools: DatabaseToolsModel?
     private var sessionMonitorWindow: SessionMonitorWindowController?
     private var sessionMonitorProfileObservation: AnyCancellable?
     private var sessionMonitorPresentation = SessionMonitorPresentationIntent()
+    var databaseSearchWindow: DatabaseValueSearchWindowController?
+    var databaseSearchModel: DatabaseValueSearchModel?
+    var gridProfileServers: [UUID: GridProfileServerOwner] = [:]
+    var erDiagramExports: [UUID: ERDiagramExportOwner] = [:]
+    var databaseSearchProfileObservation: AnyCancellable?
+    var databaseSearchPresentation = SessionMonitorPresentationIntent()
+    var databaseSearchRequestedProfileID: UUID?
     @Published var isSnapshotsPresented = false
+    @Published var isSavedEvidencePresented = false
+    @Published var isPlansPresented = false
     @Published private(set) var isClosing = false
+    private var activeProfileCloseReview: UUID?
     @Published var importPreview: [ImportedProfile]?
     @Published var importError: String?
     @Published var insertCopySelection: InsertCopySelection?
+    @Published var explainSelection: ExplainBatchDraft?
+    private var pendingExplainSelection: (draft: ExplainBatchDraft, selected: Set<Int>, targetID: String, planKind: ExplainPlanKind?)?
+    @Published private(set) var explainOptionsPrompt: ExplainOptionsPrompt?
+    private var pendingExplainOptionsPrompt: ExplainOptionsPrompt?
     @Published private(set) var queryParameterPrompt: QueryParameterPrompt?
     private var pendingQueryParameterPrompt: QueryParameterPrompt?
     @Published private(set) var isImportingProfiles = false
@@ -485,16 +543,22 @@ final class ApplicationWorkspace: ObservableObject {
     let sqlFolders: SQLFolderLibrary
     let sqlLibrary: SQLLibrary
     let tableBrowsePresets: TableBrowsePresetStore
+    let tableImportMappingPresets: TransferMappingPresetStore?
+    let logicalRelationships: LogicalRelationshipStore
     let resultSnapshots: ResultSnapshotsModel
+    let planArtifacts: PlanArtifactsModel
+    let savedEvidence: SavedEvidenceModel
     let investigations: InvestigationLibraryModel
     lazy var commands = AppCommandRegistry(workspace: self, shortcuts: commandShortcuts)
 
     private let connectionStore: any ConnectionLibraryStore
     private let credentialStore: any ConnectionCredentialStore
     private let helperFactory: () -> BackendClient
+    let explainCollectorFactory: @MainActor (UUID) -> ExplainCollector
     private let documentStore: any SQLDocumentStore
     private let closeDecision: @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision
     let executionDecision: @MainActor (OperationConfirmation) async -> Bool
+    private let explainOptionsDecision: (@MainActor (ExplainOptionsConfiguration) async -> ExplainOptionsDecision?)?
     private let queryParameterDecision: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)?
     private var autosave: Task<Void, Never>?
     private var documentSaveTask: Task<Bool, Never>?
@@ -517,6 +581,8 @@ final class ApplicationWorkspace: ObservableObject {
     private var catalogRequests: [UUID: (id: UUID, task: Task<BackendMessage, Error>)] = [:]
     private var completionLoads: [UUID: (id: UUID, task: Task<Void, Never>)] = [:]
     private var shutdownTask: Task<Void, Never>?
+    private var shutdownLifecycleTask: Task<Void, Never>?
+    private var hasBegunShutdown = false
     private var started = false
     private var observations: [UUID: AnyCancellable] = [:]
     var typeProfileRevisions: [UUID: UUID] = [:]
@@ -530,8 +596,12 @@ final class ApplicationWorkspace: ObservableObject {
     private var folderSaveObservation: AnyCancellable?
     private var sqlLibraryObservation: AnyCancellable?
     private var sqlLibrarySaveObservation: AnyCancellable?
+    private var planArtifactsObservation: AnyCancellable?
+    private var savedEvidenceObservation: AnyCancellable?
     private var resultSnapshotsObservation: AnyCancellable?
     private var investigationsObservation: AnyCancellable?
+    private var logicalRelationshipsObservation: AnyCancellable?
+    var logicalProfileRevision: UInt64 = 0
     private var investigationSnapshotDocuments: [UUID: [UUID: SQLDocument]] = [:]
     private var fileDocuments: [UUID: SQLFileDocument] = [:]
     private let automaticallyWatchFiles: Bool
@@ -548,24 +618,38 @@ final class ApplicationWorkspace: ObservableObject {
          sqlFolders: SQLFolderLibrary? = nil,
          sqlLibrary: SQLLibrary? = nil,
          tableBrowsePresets: TableBrowsePresetStore? = nil,
+         tableImportMappingPresets: TransferMappingPresetStore? = nil,
+         logicalRelationships: LogicalRelationshipStore? = nil,
          resultSnapshots: ResultSnapshotsModel? = nil,
+         planArtifacts: PlanArtifactsModel? = nil,
          investigations: InvestigationLibraryModel? = nil,
          automaticallyWatchFiles: Bool = true,
          closeDecision: @escaping @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision = WorkspaceCloseConfirmation.present,
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
          queryParameterDecision: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)? = nil,
-         helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
+         explainOptionsDecision: (@MainActor (ExplainOptionsConfiguration) async -> ExplainOptionsDecision?)? = nil,
+         helperFactory: @escaping () -> BackendClient = { BackendClient() },
+         explainCollectorFactory: @escaping @MainActor (UUID) -> ExplainCollector = { documentID in
+             let root = PlanArtifactStore.defaultRootURL.deletingLastPathComponent()
+                 .appendingPathComponent("CollectedPlans", isDirectory: true).appendingPathComponent(documentID.uuidString, isDirectory: true)
+             return ExplainCollector(store: PlanArtifactStore(rootURL: root))
+         }) {
         self.connectionStore = connectionStore
         self.credentialStore = credentialStore
         self.helperFactory = helperFactory
+        self.explainCollectorFactory = explainCollectorFactory
         self.documentStore = documentStore
         self.commandShortcuts = commandShortcuts ?? AppShortcutStore()
         self.copySettings = copySettings ?? .shared
         self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
         self.sqlLibrary = sqlLibrary ?? SQLLibrary()
         self.tableBrowsePresets = tableBrowsePresets ?? TableBrowsePresetStore()
+        self.tableImportMappingPresets = tableImportMappingPresets
+        self.logicalRelationships = logicalRelationships ?? LogicalRelationshipStore()
         let snapshots = resultSnapshots ?? ResultSnapshotsModel()
         self.resultSnapshots = snapshots
+        self.planArtifacts = planArtifacts ?? PlanArtifactsModel()
+        savedEvidence = SavedEvidenceModel(store: self.planArtifacts.store)
         self.investigations = investigations ?? InvestigationLibraryModel(snapshotStore: snapshots.store)
         self.automaticallyWatchFiles = automaticallyWatchFiles
         let themes = editorThemes ?? appearance?.editorThemes ?? EditorThemeStore()
@@ -574,9 +658,11 @@ final class ApplicationWorkspace: ObservableObject {
         self.closeDecision = closeDecision
         self.executionDecision = executionDecision
         self.queryParameterDecision = queryParameterDecision
+        self.explainOptionsDecision = explainOptionsDecision
         library = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
         libraryObservation = library.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         typeProfilesObservation = library.$savedConnections.sink { [weak self] profiles in
+            self?.logicalProfileRevision &+= 1
             self?.updatePostgresTypeProfileRevisions(profiles)
         }
         libraryErrorObservation = library.$connectionsError.sink { [weak self] error in
@@ -587,11 +673,26 @@ final class ApplicationWorkspace: ObservableObject {
         folderObservation = self.sqlFolders.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         folderSaveObservation = self.sqlFolders.$attachments.dropFirst().sink { [weak self] _ in self?.scheduleSave() }
         sqlLibraryObservation = self.sqlLibrary.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        planArtifactsObservation = self.planArtifacts.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        savedEvidenceObservation = savedEvidence.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         resultSnapshotsObservation = self.resultSnapshots.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         investigationsObservation = self.investigations.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        logicalRelationshipsObservation = self.logicalRelationships.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         self.resultSnapshots.investigationReferences = { [weak self] id in
             guard let self else { throw InvestigationReferenceError() }
             return try self.investigations.referencingInvestigations(snapshotID: id)
+        }
+        self.planArtifacts.investigationReferences = { [weak self] id in
+            guard let self else { throw InvestigationReferenceError() }
+            return try await self.investigations.referencingInvestigations(planID: id)
+        }
+        savedEvidence.investigationReferences = { [weak self] id in
+            guard let self else { throw InvestigationReferenceError() }
+            return try await self.investigations.referencingInvestigations(evidenceID: id)
+        }
+        snapshots.didDelete = { [weak self] id in
+            await self?.planArtifacts.snapshotDeleted(id)
+            await self?.savedEvidence.snapshotDeleted(id)
         }
         sqlLibrarySaveObservation = self.sqlLibrary.$snapshot.dropFirst().sink { [weak self] snapshot in
             self?.bindIndexedSQLViews(snapshot)
@@ -869,11 +970,29 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     var canManageWorkspace: Bool {
-        shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
+        !hasBegunShutdown && shutdownTask == nil && !isStarting && documentRestoreTask == nil &&
             !isClosing && !isClearingDocuments && closingDocuments.isEmpty && disconnectingProfiles.isEmpty
     }
 
     var canReopenClosedTab: Bool { canManageWorkspace && !closedTabs.isEmpty }
+
+    func databaseSearchBindingIsCurrent(_ binding: SessionMonitorProfileBinding) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
+    }
+
+    func gridProfileBindingIsCurrent(_ binding: SessionMonitorProfileBinding) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
+    }
+
+    func schemaBundleBindingIsCurrent(_ binding: SessionMonitorProfileBinding) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && binding.matches(in: library.savedConnections)
+    }
+
+    func schemaComparisonBindingsAreCurrent(_ profiles: [SavedConnection]) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && profiles.allSatisfy {
+            SessionMonitorProfileBinding($0)?.matches(in: library.savedConnections) == true
+        }
+    }
 
     @discardableResult
     func reopenClosedTab() -> SQLDocument? {
@@ -924,7 +1043,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func showDataTransfer(_ profile: SavedConnection, mode: String = "csv", schema: String? = nil, table: String? = nil) {
         guard canManageWorkspace, dataTransfer == nil, databaseTools == nil, tableImporter == nil,
-              structureEditor == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql, .mariadb].contains(profile.engine) else { return }
         let store = credentialStore
         let model = DataTransferModel(profiles: library.savedConnections, resolve: { profile, attempt in
             try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt)
@@ -943,11 +1062,11 @@ final class ApplicationWorkspace: ObservableObject {
             if self.services[target.id]?.connectionState == .connected { Task { await self.loadSchemas(target.id, refresh: true) } }
         })
         model.targetID = profile.id
-        model.targetSchema = profile.engine == .mysql ? profile.database : "public"
+        model.targetSchema = profile.engine.usesMySQLSyntax ? profile.database : "public"
         model.mode = mode
         if mode == "table" {
             model.sourceID = profile.id
-            model.sourceSchema = schema ?? (profile.engine == .mysql ? profile.database : "public")
+            model.sourceSchema = schema ?? (profile.engine.usesMySQLSyntax ? profile.database : "public")
             model.sourceTable = table ?? ""
             model.targetTable = table.map { $0 + "_copy" } ?? ""
         }
@@ -961,7 +1080,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func showDatabaseTools(_ profile: SavedConnection, restore: Bool = false) {
         guard canManageWorkspace, databaseTools == nil, dataTransfer == nil, tableImporter == nil,
-              structureEditor == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql, .mariadb].contains(profile.engine) else { return }
         let store = credentialStore
         let model = DatabaseToolsModel(profiles: library.savedConnections, initialProfileID: profile.id,
             resolve: { profile, attempt in try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt) },
@@ -990,7 +1109,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func canShowSessionMonitor(_ profile: SavedConnection) -> Bool {
-        canManageWorkspace && [.postgresql, .mysql].contains(profile.engine)
+        canManageWorkspace && [.postgresql, .mysql, .mariadb].contains(profile.engine)
     }
 
     func showSessionMonitor(_ profile: SavedConnection) {
@@ -1048,7 +1167,10 @@ final class ApplicationWorkspace: ObservableObject {
             SSHConnectionReview.cancel(profileId: reviewID)
             SSHConnectionReview.cancel(profileId: DataComparisonCredentials.promptID(profile.id, attempt))
         })
-        let controller = SessionMonitorWindowController(model: model, appearance: appearance, requestClose: { [weak self] in
+        let controller = SessionMonitorWindowController(model: model, appearance: appearance, evidenceModel: savedEvidence, saveEvidence: { [weak self, weak model] in
+            guard let self, let model, self.canManageWorkspace else { return }
+            self.saveDiagnosticEvidence(model)
+        }, requestClose: { [weak self] in
             Task { await self?.closeSessionMonitor(expectedID: model.id) }
         })
         sessionMonitorWindow = controller
@@ -1073,6 +1195,10 @@ final class ApplicationWorkspace: ObservableObject {
             sessionMonitorWindow = nil
             sessionMonitorProfileObservation = nil
         }
+    }
+
+    func readonlyOperationSettings(_ profile: SavedConnection, attempt: UUID) async throws -> ConnectionSettings {
+        try await DataComparisonCredentials.settings(profile, store: credentialStore, attempt: attempt)
     }
 
     func agentConnectionSettings(_ profile: SavedConnection) async throws -> ConnectionSettings? {
@@ -1100,14 +1226,18 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func showSchemaComparison() {
-        guard schemaComparison == nil else { return }
-        let store = credentialStore
-        schemaComparison = SchemaComparisonModel(profiles: library.savedConnections, resolve: { profile in
-            try await SchemaComparisonCredentials.settings(profile, store: store)
+        guard canManageWorkspace, schemaComparison == nil else { return }
+        schemaComparison = SchemaComparisonModel(profiles: library.savedConnections, resolve: { _ in
+            throw CancellationError()
         }, openPlan: { [weak self] sql, target in
             guard let self, self.openSynchronizationPlan(sql, target: target) else { return false }
             self.dismissSchemaComparison(); return true
-        }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true })
+        }, validatePlanTarget: { [weak self] target in self?.synchronizationTargetMatches(target) == true },
+        resolveOwned: { [weak self] profile, attempt in
+            guard let self, self.schemaComparisonBindingsAreCurrent([profile]) else { throw CancellationError() }
+            return try await self.readonlyOperationSettings(profile, attempt: attempt)
+        }, current: { [weak self] profiles in self?.schemaComparisonBindingsAreCurrent(profiles) == true },
+        startAllowed: { [weak self] in self?.canManageWorkspace == true })
     }
 
     func dismissSchemaComparison() {
@@ -1122,7 +1252,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     @discardableResult
     func openSynchronizationPlan(_ sql: String, target: SavedConnection) -> Bool {
-        guard shutdownTask == nil, !isClosing, [.postgresql, .mysql, .sqlite].contains(target.engine),
+        guard shutdownTask == nil, !isClosing, [.postgresql, .mysql, .mariadb, .sqlite].contains(target.engine),
               !sql.isEmpty, sql.utf8.count <= SynchronizationSQLPlan.maximumBytes + 1_048_576,
               synchronizationTargetMatches(target) else { return false }
         let document = newDocument(profileID: target.id, text: sql)
@@ -1133,6 +1263,7 @@ final class ApplicationWorkspace: ObservableObject {
     func start(startupConnection: Result<ConnectionSettings, StartupConnection.InputError>? = nil) async {
         guard !started else { return }
         started = true
+        await logicalRelationships.load()
         await restoreSavedWorkspace()
         isStarting = true
         defer { isStarting = false }
@@ -1390,8 +1521,6 @@ final class ApplicationWorkspace: ObservableObject {
         }),
               disconnectingProfiles.insert(id).inserted else { return false }
         let affected = allOwnedRuntimeDocuments.filter { $0.profileID == id }
-        invalidateERDiagrams(profileID: id, reason: "The profile is disconnecting. Connect and Build explicitly to reload metadata.")
-        invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
         guard commitNativeEditors(in: affected) else { disconnectingProfiles.remove(id); return false }
         let grids = affected.compactMap(\.grid)
         for grid in grids { grid.isClosing = true }
@@ -1400,6 +1529,16 @@ final class ApplicationWorkspace: ObservableObject {
             for grid in grids { grid.isClosing = false }
         }
         guard await prepareToClose(.profile(id)) else { return false }
+        retireERDiagramSourceOwners(profileID: id)
+        invalidateERDiagrams(profileID: id, includePreparing: true, reason: "The profile is disconnecting. Connect and Build explicitly to reload metadata.")
+        invalidatePostgresTypeInspection(profileID: id, reason: "The connection is disconnecting. Reopen this type after connecting again.")
+        if schemaBundle?.profile.id == id { let model = schemaBundle; schemaBundle = nil; await model?.close() }
+        if schemaComparison?.boundProfileIDs.contains(id) == true {
+            let model = schemaComparison; schemaComparison = nil; await model?.close()
+        }
+        await closeDatabaseValueSearch(profileID: id)
+        await closeGridProfileServers(profileID: id)
+        await closeERDiagramExports(profileID: id)
         if let connecting = profileConnections[id] {
             services[id]?.cancelConnection()
             connecting.cancel()
@@ -1448,6 +1587,7 @@ final class ApplicationWorkspace: ObservableObject {
         if parent.investigationModel?.isAvailable == true {
             guard await saveInvestigationContent(parent) else { return }
         }
+        await closeGridProfileServers(documentIDs: ids)
         guard await disconnectRuntimeDocuments(affected) else { return }
         await closeDocumentImmediately(parent, remember: true)
     }
@@ -1455,13 +1595,16 @@ final class ApplicationWorkspace: ObservableObject {
     func canStartOperation(_ document: SQLDocument, forClosing: Bool = false, forNavigating: Bool = false) -> Bool {
         guard shutdownTask == nil, let owner = ownedSQLContext(for: document) else { return false }
         if forClosing { return true }
+        guard !hasBegunShutdown else { return false }
         if document === owner.tab, let model = owner.tab.investigationModel,
            model.allSQLDocuments.contains(where: {
                closingDocuments.contains($0.id) || $0.profileID.map { disconnectingProfiles.contains($0) } == true
            }) { return false }
-        return !isClosing && (!document.isNavigatingTable || forNavigating) &&
+        let hasUnblockedERSource = activeProfileCloseReview != nil &&
+            document.erDiagramModel?.sourceProfileIDs.contains(where: { canStartERSource($0) }) == true
+        return (!isClosing || hasUnblockedERSource) && (!document.isNavigatingTable || forNavigating) &&
             !closingDocuments.contains(owner.tab.id) && !closingDocuments.contains(document.id) &&
-            document.profileID.map { !disconnectingProfiles.contains($0) } != false
+            (document.isERDiagram || document.profileID.map { !disconnectingProfiles.contains($0) } != false)
     }
 
     private func disconnectRuntimeDocuments(_ affected: [SQLDocument]) async -> Bool {
@@ -1527,9 +1670,14 @@ final class ApplicationWorkspace: ObservableObject {
 
     @discardableResult
     private func closeDocumentImmediately(_ document: SQLDocument, remember: Bool = false) async -> Bool {
+        document.explainCollector?.stop("Stopped — document closed")
         if let model = document.erDiagramModel { stopERDiagram(model, reason: "This diagram was closed.") }
+        document.incomingRelationships?.stop()
         let runtimeDocuments = runtimeDocuments(in: document)
+        await closeGridProfileServers(documentIDs: Set(([document] + runtimeDocuments).map(\.id)))
+        await closeERDiagramExports(documentIDs: [document.id])
         for child in runtimeDocuments {
+            child.explainCollector?.stop("Stopped — document closed")
             await child.runtime?.shutdown()
             child.runtime = nil
             child.attachGrid(nil)
@@ -1655,7 +1803,34 @@ final class ApplicationWorkspace: ObservableObject {
         prompt.continuation.resume(returning: prompt.result)
     }
 
+    private func requestExplainOptions(_ configuration: ExplainOptionsConfiguration, documentID: UUID) async -> ExplainOptionsDecision? {
+        if let explainOptionsDecision { return await explainOptionsDecision(configuration) }
+        guard pendingExplainOptionsPrompt == nil, pendingQueryParameterPrompt == nil, presentationWindow != nil else { return nil }
+        return await withCheckedContinuation { continuation in
+            let prompt = ExplainOptionsPrompt(documentID: documentID, configuration: configuration, continuation: continuation)
+            pendingExplainOptionsPrompt = prompt
+            explainOptionsPrompt = prompt
+        }
+    }
+
+    func submitExplainOptions(id: UUID, decision: ExplainOptionsDecision?) {
+        guard let prompt = explainOptionsPrompt, prompt.id == id else { return }
+        prompt.result = decision
+        explainOptionsPrompt = nil
+    }
+
+    func explainOptionsPromptDismissed() {
+        guard explainOptionsPrompt == nil, let prompt = pendingExplainOptionsPrompt else { return }
+        pendingExplainOptionsPrompt = nil
+        prompt.continuation.resume(returning: prompt.result)
+    }
+
     private func cancelQueryParameterPrompt(documentID: UUID? = nil) {
+        if let prompt = pendingExplainOptionsPrompt, documentID == nil || documentID == prompt.documentID || documentID == prompt.configuration.targetDocumentID {
+            pendingExplainOptionsPrompt = nil
+            explainOptionsPrompt = nil
+            prompt.continuation.resume(returning: nil)
+        }
         guard let prompt = pendingQueryParameterPrompt,
               documentID == nil || documentID == prompt.documentID else { return }
         pendingQueryParameterPrompt = nil
@@ -1666,7 +1841,7 @@ final class ApplicationWorkspace: ObservableObject {
     private func execute(_ document: SQLDocument, statements: [SQLStatement], export: ExportRequest? = nil,
                          isScript: Bool = false, sourceSQL: String? = nil, forNavigating: Bool = false) async {
         guard canStartOperation(document, forNavigating: forNavigating), !document.isRunning else { return }
-        guard pendingQueryParameterPrompt == nil else {
+        guard pendingQueryParameterPrompt == nil, pendingExplainOptionsPrompt == nil else {
             document.localError = "Finish or cancel the current parameter entry before running another query."
             return
         }
@@ -1676,6 +1851,10 @@ final class ApplicationWorkspace: ObservableObject {
         guard document.table != nil || !statements.isEmpty else { return }
         document.showsExecutionPlan = false
         guard let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
+        if document.table != nil, document.tableRelationshipScope != nil, profile.engine != .sqlite {
+            document.localError = "The saved relationship restriction requires SQLite. Remove it explicitly before loading this table with another database engine."
+            return
+        }
         let libraryBinding = sqlLibraryExecutionBinding(document)
         let boundText = document.text
         if document.table == nil {
@@ -1717,8 +1896,8 @@ final class ApplicationWorkspace: ObservableObject {
             let definitions = libraryBinding?.parameters ?? []
             let parameters: [QueryParameterBinding]?
             if !definitions.isEmpty {
-                guard [.postgresql, .mysql, .sqlite].contains(profile.engine) else {
-                    throw ExecutionPolicyError(message: "Saved query parameters support PostgreSQL, MySQL and SQLite connections.")
+                guard [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine) else {
+                    throw ExecutionPolicyError(message: "Saved query parameters support PostgreSQL, MySQL, MariaDB and SQLite connections.")
                 }
                 guard let values = await requestQueryParameters(definitions, document: document, profile: profile) else { return }
                 try QueryParameterBinding.validate(values)
@@ -1804,6 +1983,15 @@ final class ApplicationWorkspace: ObservableObject {
                 guard canStartOperation(document, forNavigating: forNavigating), !document.stopRequested else { return }
                 let historyProfile = SQLHistoryProfile(profile, currentKeyspace: runtime.currentKeyspace)
                 let configuration = document.browseConfiguration
+                if let scope = configuration.relationshipScope,
+                   runtime.engine != .sqlite || !runtime.capabilities.contains(SQLiteRelationshipScope.capability) || !scope.matches(table) {
+                    document.localError = "This helper cannot apply the saved relationship restriction. Update the helper or remove the restriction explicitly."
+                    return
+                }
+                if configuration.filterExpression?.hasNativeOperands == true, !runtime.capabilities.contains(NativeCellFilterValue.capability) {
+                    document.localError = "This helper cannot apply the saved typed key conditions. Update the helper or remove those conditions explicitly."
+                    return
+                }
                 let supportsTree = runtime.capabilities.contains("browseFilterTreeV1")
                 if !supportsTree, let expression = configuration.filterExpression, expression.flattenedConjunction == nil {
                     document.localError = "This helper does not support grouped filters. Update the application and helper together."
@@ -1813,7 +2001,7 @@ final class ApplicationWorkspace: ObservableObject {
                     object: table.name, objectKind: table.kind, page: runtime.usesCursorPagination ? 0 : document.page,
                     cursor: runtime.usesCursorPagination ? document.tableCursor : nil, sort: configuration.sort,
                     filters: supportsTree ? nil : configuration.filterExpression?.flattenedConjunction,
-                    filterExpression: supportsTree ? configuration.filterExpression : nil))
+                    filterExpression: supportsTree ? configuration.filterExpression : nil, relationshipScope: configuration.relationshipScope))
                 if runtime.queryFailure == nil, let result = runtime.result {
                     document.tableFailure = nil
                     document.tableResult = result
@@ -1917,98 +2105,390 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
+    func beginExplainSelection(_ document: SQLDocument, mode: ExplainMode, selections: [NSRange],
+                               profileBinding: ExplainProfileBinding? = nil) {
+        guard canStartOperation(document), !document.isRunning, document.isSQLDocument,
+              !document.queryResultSelectionLocked, let profileID = document.profileID,
+              let profile = library.savedConnections.first(where: { $0.id == profileID }),
+              let binding = profileBinding ?? ExplainProfileBinding(profile), binding.matches(profile) else { return }
+        do {
+            let statements = try ExplainBatchStatement.candidates(text: document.text, selections: selections, engine: profile.engine)
+            let targets = allOwnedSQLDocuments.compactMap { target -> ExplainBatchTarget? in
+                guard target.isSQLDocument, !target.isRunning, !target.queryResultSelectionLocked,
+                      let targetProfile = library.savedConnections.first(where: { $0.id == target.profileID }),
+                      targetProfile.engine.supportsExplain(mode),
+                      let targetBinding = ExplainProfileBinding(targetProfile) else { return nil }
+                let state = target.runtime?.connectionState == .connected ? "connected session" : "disconnected; connect explicitly"
+                return ExplainBatchTarget(id: target.id.uuidString, documentID: target.id, profile: targetProfile,
+                    binding: targetBinding, sessionID: target.runtime?.sessionId,
+                    transactionStatus: target.runtime?.transactionStatus,
+                    title: "\(targetProfile.name) · \(target.title) · \(state)")
+            } + library.savedConnections.compactMap { profile -> ExplainBatchTarget? in
+                guard profile.engine.supportsExplain(mode), let binding = ExplainProfileBinding(profile) else { return nil }
+                return ExplainBatchTarget(id: "new:" + profile.id.uuidString, documentID: nil, profile: profile,
+                    binding: binding, sessionID: nil, transactionStatus: nil,
+                    title: "\(profile.name) · new SQL tab and session")
+            }
+            explainSelection = ExplainBatchDraft(sourceDocumentID: document.id, sourceText: document.text,
+                sourceProfileID: profileID, sourceProfileBinding: binding,
+                definitions: sqlLibraryExecutionBinding(document)?.parameters ?? [], mode: mode,
+                statements: statements, targets: targets, defaultTargetID: document.id.uuidString)
+        } catch { document.localError = error.localizedDescription }
+    }
+
+    func submitExplainSelection(_ draft: ExplainBatchDraft, selected: Set<Int>, targetID: String, planKind: ExplainPlanKind?) {
+        guard explainSelection?.id == draft.id else { return }
+        pendingExplainSelection = (draft, selected, targetID, planKind)
+        explainSelection = nil
+    }
+
+    func explainSelectionDismissed() {
+        guard let selection = pendingExplainSelection else { return }
+        pendingExplainSelection = nil
+        Task { await runExplainSelection(selection.draft, selected: selection.selected,
+            targetID: selection.targetID, planKind: selection.planKind) }
+    }
+
+    func runExplainSelection(_ draft: ExplainBatchDraft, selected: Set<Int>, targetID: String, planKind: ExplainPlanKind?) async {
+        guard let source = allOwnedSQLDocuments.first(where: { $0.id == draft.sourceDocumentID }),
+              let target = draft.targets.first(where: { $0.id == targetID }) else { return }
+        do {
+            let statements = try draft.selected(selected)
+            try await executeExplainBatch(source, draft: draft, statements: statements, target: target, planKind: planKind)
+        } catch { source.localError = error.localizedDescription }
+    }
+
+    // Existing callers keep the single-statement entry point; menu commands use
+    // the explicit chooser so changing the target is always a visible choice.
     func explainResolved(_ document: SQLDocument, fragment: SQLExecutionFragment, mode: ExplainMode,
                          profileBinding capturedProfileBinding: ExplainProfileBinding? = nil) async {
         guard canStartOperation(document), document.isSQLDocument, !document.isRunning,
               !document.isSnapshot, !document.isInvestigation, !document.queryResultSelectionLocked,
-              !editorState.hasMultipleSelections(for: document.id),
               let profileID = document.profileID,
               let profile = library.savedConnections.first(where: { $0.id == profileID }) else { return }
-        guard [.postgresql, .mysql, .sqlite].contains(profile.engine) else {
-            document.localError = "Visual Explain supports PostgreSQL, Oracle MySQL and SQLite SQL tabs."; return
-        }
-        let request: ExplainRequest
-        do { request = try ExplainPlanModel.request(fragment: fragment, mode: mode, engine: profile.engine) }
-        catch { document.localError = error.localizedDescription; return }
-        if let notice = sqlLibraryExecutionNotice(for: document) { document.localError = notice; return }
-        guard let profileBinding = capturedProfileBinding ?? ExplainProfileBinding(profile), profileBinding.matches(profile) else {
-            document.localError = "The exact connection context could not be captured. SQL was not executed."; return
-        }
-        let text = document.text
-        let binding = sqlLibraryExecutionBinding(document)
-        func contextValid() -> Bool {
-            canStartOperation(document) && !document.stopRequested && document.profileID == profileID &&
-            SQLFileDocument.sameBytes(document.text, text) && hasSQLLibraryExecutionBinding(document, binding) &&
-            profileBinding.matches(library.savedConnections.first(where: { $0.id == profileID })) && !document.queryResultSelectionLocked &&
-            (document.runtime?.connectionState != .connected || document.runtime.map { profileBinding.matchesRuntime($0) } == true)
-        }
-        document.isRunning = true
-        document.stopRequested = false
-        document.localError = nil
-        document.errorPosition = nil
-        document.showsExecutionPlan = true
-        document.explainPlan = ExplainPlanModel(request: request, sourceText: text,
-            sourceRange: fragment.statements[0].range, profileID: profileID, profile: profile, profileBinding: profileBinding)
-        defer { document.isRunning = false }
         do {
+            _ = try ExplainPlanModel.request(fragment: fragment, mode: mode, engine: profile.engine)
+            guard let binding = capturedProfileBinding ?? ExplainProfileBinding(profile), binding.matches(profile) else {
+                throw ExecutionPolicyError(message: "The exact connection context could not be captured. SQL was not executed.")
+            }
+            let statement = fragment.statements[0]
+            let item = ExplainBatchStatement(sql: statement.sql, range: statement.range, action: .plan,
+                line: fragment.firstLine, selectedByDefault: true)
+            let target = ExplainBatchTarget(id: document.id.uuidString, documentID: document.id, profile: profile,
+                binding: binding, sessionID: document.runtime?.sessionId, transactionStatus: document.runtime?.transactionStatus,
+                title: profile.name + " · " + document.title)
+            let draft = ExplainBatchDraft(sourceDocumentID: document.id, sourceText: document.text,
+                sourceProfileID: profileID, sourceProfileBinding: binding,
+                definitions: sqlLibraryExecutionBinding(document)?.parameters ?? [], mode: mode,
+                statements: [item], targets: [target], defaultTargetID: target.id)
+            try await executeExplainBatch(document, draft: draft, statements: [item], target: target, planKind: nil)
+        } catch { document.localError = error.localizedDescription }
+    }
+
+    private func executeExplainBatch(_ source: SQLDocument, draft: ExplainBatchDraft, statements: [ExplainBatchStatement],
+                                     target choice: ExplainBatchTarget, planKind: ExplainPlanKind?) async throws {
+        guard canStartOperation(source), !source.isRunning, !source.queryResultSelectionLocked,
+              choice.profile.engine.supportsExplain(draft.mode),
+              pendingQueryParameterPrompt == nil, pendingExplainOptionsPrompt == nil else { return }
+        if choice.profile.engine.hasEngineDiagnostics {
+            guard draft.definitions.isEmpty, planKind == nil, statements.allSatisfy({ $0.action == .plan }) else {
+                throw ExecutionPolicyError(message: "Engine diagnostics accept the original read query without parameters or setup commands.")
+            }
+            for statement in statements {
+                let fragment = SQLExecutionFragment(kind: .statement, sourceSQL: statement.sql, range: statement.range,
+                    statements: [.init(sql: statement.sql, range: statement.range)], diagnostic: nil, firstLine: statement.line, lastLine: statement.line)
+                _ = try ExplainPlanModel.request(fragment: fragment, mode: draft.mode, engine: choice.profile.engine)
+            }
+        }
+        let sourceBinding = sqlLibraryExecutionBinding(source)
+        func sourceValid() -> Bool {
+            canStartOperation(source) && !source.stopRequested && source.profileID == draft.sourceProfileID &&
+                SQLFileDocument.sameBytes(source.text, draft.sourceText) &&
+                draft.sourceProfileBinding.matches(library.savedConnections.first { $0.id == source.profileID }) &&
+                hasSQLLibraryExecutionBinding(source, sourceBinding) && (sourceBinding?.parameters ?? []) == draft.definitions &&
+                !source.queryResultSelectionLocked && choice.binding.matches(library.savedConnections.first { $0.id == choice.profile.id })
+        }
+        source.stopRequested = false
+        guard sourceValid(), statements.allSatisfy({ $0.matches(draft.sourceText) }) else {
+            throw ExecutionPolicyError(message: "The SQL, connection or parameters changed. Review the selection again.")
+        }
+        let target: SQLDocument
+        if let id = choice.documentID {
+            guard let existing = allOwnedSQLDocuments.first(where: { $0.id == id }), !existing.isRunning,
+                  canStartOperation(existing), existing.profileID == choice.profile.id,
+                  existing.runtime?.sessionId == choice.sessionID,
+                  existing.runtime?.transactionStatus == choice.transactionStatus,
+                  !existing.queryResultSelectionLocked else {
+                throw ExecutionPolicyError(message: "The chosen SQL tab or its session changed. Choose the target again.")
+            }
+            target = existing
+        } else {
+            target = newDocument(profileID: choice.profile.id, text: "")
+        }
+        var expectedRuntime = target.runtime
+        var expectedSessionID = target.runtime?.sessionId
+        var expectedTransaction = target.runtime?.transactionStatus
+        source.isRunning = true
+        target.isRunning = true
+        target.stopRequested = false
+        source.explainTargetDocumentID = target.id
+        source.localError = nil
+        source.errorPosition = nil
+        source.showsExecutionPlan = true
+        source.explainExecutions = statements.map { ExplainBatchExecution(statement: $0) }
+        source.selectedExplainExecution = 0
+        defer {
+            source.isRunning = false
+            target.isRunning = false
+            source.explainTargetDocumentID = nil
+            for index in source.explainExecutions.indices where source.explainExecutions[index].status == "Pending" {
+                source.explainExecutions[index].status = "Not executed"
+            }
+        }
+        func targetValid() -> Bool {
+            sourceValid() && canStartOperation(target) && !target.stopRequested && target.profileID == choice.profile.id &&
+                target.runtime === expectedRuntime && target.runtime?.sessionId == expectedSessionID &&
+                target.runtime?.transactionStatus == expectedTransaction && !target.queryResultSelectionLocked && (target.runtime?.connectionState != .connected ||
+                    target.runtime.map { choice.binding.matchesRuntime($0) } == true)
+        }
+        do {
+            let parameters: [QueryParameterBinding]?
+            if !draft.definitions.isEmpty {
+                guard let values = await requestQueryParameters(draft.definitions, document: source, profile: choice.profile) else { return }
+                try QueryParameterBinding.validate(values)
+                guard values.map({ SQLParameterDefinition(name: $0.name, type: $0.type) }) == draft.definitions else {
+                    throw ExecutionPolicyError(message: "The query parameter definitions changed. Review them and run again.")
+                }
+                parameters = values
+            } else { parameters = nil }
+            guard targetValid() else { throw CancellationError() }
             let client = try await ensureHelper()
-            guard contextValid() else { throw CancellationError() }
-            if services[profileID]?.connectionState != .connected { await connectProfile(profileID) }
-            guard contextValid(), services[profileID]?.connectionState == .connected else { throw CancellationError() }
-            if document.runtime?.connectionState != .connected {
+            guard targetValid() else { throw CancellationError() }
+            if services[choice.profile.id]?.connectionState != .connected { await connectProfile(choice.profile.id) }
+            guard targetValid(), services[choice.profile.id]?.connectionState == .connected else { throw CancellationError() }
+            if target.runtime?.connectionState != .connected {
                 let runtime = WorkspaceModel(connectionStore: connectionStore, credentialStore: credentialStore)
-                document.attach(runtime)
+                expectedRuntime = runtime
+                expectedSessionID = nil
+                expectedTransaction = nil
+                target.attach(runtime)
                 await runtime.start(sharedHelper: client)
-                guard contextValid() else { throw CancellationError() }
-                await runtime.connectSavedConnection(profileID, sshSnapshot: services[profileID]?.ssh)
+                guard targetValid() else { throw CancellationError() }
+                await runtime.connectSavedConnection(choice.profile.id, sshSnapshot: services[choice.profile.id]?.ssh)
+                expectedSessionID = runtime.sessionId
+                expectedTransaction = runtime.transactionStatus
             }
-            guard contextValid(), let runtime = document.runtime, runtime.connectionState == .connected,
-                  runtime.activeConnectionId == profileID, profileBinding.matchesRuntime(runtime) else {
-                throw ExecutionPolicyError(message: "The SQL or connection context changed. Review it and reconnect before Explain.")
+            guard targetValid(), let runtime = target.runtime, runtime.connectionState == .connected,
+                  runtime.activeConnectionId == choice.profile.id, choice.binding.matchesRuntime(runtime),
+                  let sessionID = runtime.sessionId else { throw CancellationError() }
+            let helperSupportsExplainParameters = await client.supportsExplainParameters()
+            let helperSupportsEngineDiagnostics = await client.supportsEngineDiagnostics()
+            let diagnosticOwner = ExplainDiagnosticAdmission.validOwner(support: runtime.explainSupport,
+                capabilities: Set(runtime.capabilities), helperSupports: helperSupportsEngineDiagnostics,
+                transaction: runtime.transactionStatus, parameters: parameters, planKind: planKind)
+            if choice.profile.engine.hasEngineDiagnostics {
+                guard diagnosticOwner, runtime.explainSupport?.engine == choice.profile.engine,
+                      statements.allSatisfy({ $0.action == .plan }), draft.definitions.isEmpty else {
+                    throw ExecutionPolicyError(message: "Engine diagnostics are unavailable for this connected session. Parameters and setup commands are unsupported.")
+                }
             }
-            guard runtime.capabilities.contains("visualExplainV1"),
-                  let support = runtime.explainSupport, support.modes.contains(mode) else {
-                throw ExecutionPolicyError(message: runtime.explainSupport?.unavailableReason ?? "This helper does not support Visual Explain. Update the app and helper together.")
+            let extended = diagnosticOwner || runtime.capabilities.contains("explainParametersV1") && helperSupportsExplainParameters
+            guard parameters == nil && planKind == nil || extended else {
+                throw ExecutionPolicyError(message: "This helper does not support parameterized Explain. Update the app and helper together.")
             }
-            guard let sessionID = runtime.sessionId else { throw CancellationError() }
-            document.explainPlan?.sessionID = sessionID
-            let operation = OperationRequest(type: "explain.run", explain: request)
-            guard let authorization = try await authorizeOperations([operation], sessionID: sessionID,
-                profile: profile, client: client, sourceSQL: request.sql) else {
-                document.explainPlan?.status = "Not executed — review cancelled"; return
+            guard !extended || diagnosticOwner || runtime.transactionStatus.map({ [.idle, .transaction, .failedTransaction].contains($0) }) == true else {
+                throw ExecutionPolicyError(message: "The exact session transaction context is unavailable. SQL was not executed.")
             }
-            guard contextValid(), document.runtime === runtime, runtime.sessionId == sessionID,
-                  runtime.policy == profile.policy else {
-                _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
-                throw CancellationError()
+            let helperSupportsParameters = await client.supportsQueryParameters()
+            if parameters != nil && statements.contains(where: { $0.action == .execute }) &&
+               (!runtime.capabilities.contains("queryParametersV1") || !helperSupportsParameters) {
+                throw BackendRequestError.unsupportedQueryParameters
             }
-            document.explainPlan?.status = "Running"
-            let started = ContinuousClock.now
-            let completion = await runtime.run(authorization: authorization, explain: request)
-            let elapsed = started.duration(to: .now).components
-            guard ownedSQLContext(for: document) != nil else { return }
-            document.explainPlan?.result = completion?.reply?.explain
-            document.explainPlan?.clientDurationMs = max(0, Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
-            document.explainPlan?.failure = completion?.failure ?? runtime.queryFailure
-            if let failure = document.explainPlan?.failure {
-                document.explainPlan?.status = failure.outcomeUnknown ? "Unknown SQL outcome — not repeated" : failure.title
-            } else { document.explainPlan?.status = completion?.reply?.explain == nil ? "Not executed" : "Completed" }
-            if SQLFileDocument.sameBytes(document.text, text), document.profileID == profileID,
-               let position = runtime.queryErrorPosition {
-                let scalars = request.sql.unicodeScalars
-                let end = scalars.index(scalars.startIndex, offsetBy: max(0, position - 1), limitedBy: scalars.endIndex) ?? scalars.endIndex
-                document.errorPosition = fragment.statements[0].range.location + String(scalars[..<end]).utf16.count
+            if statements.contains(where: { $0.action == .plan }) {
+                guard runtime.permitsOperation("explain." + draft.mode.rawValue, legacyAllowed: runtime.capabilities.contains("visualExplainV1")),
+                      let support = runtime.explainSupport, support.modes.contains(draft.mode) else {
+                    throw ExecutionPolicyError(message: (draft.mode == .analyze ? runtime.explainSupport?.analyzeUnavailableReason : nil) ?? runtime.explainSupport?.unavailableReason ?? "This server does not support the chosen Explain mode.")
+                }
+                if let planKind, !(support.planKinds ?? []).contains(planKind) {
+                    throw ExecutionPolicyError(message: "The chosen plan kind is unavailable on this server. Generic plans require PostgreSQL 16 or later.")
+                }
+                guard planKind != .generic || draft.mode == .plan else {
+                    throw ExecutionPolicyError(message: "A generic plan cannot use Explain Analyze.")
+                }
+            }
+            for (index, statement) in statements.enumerated() {
+                source.selectedExplainExecution = index
+                guard targetValid(), target.runtime === runtime, runtime.sessionId == sessionID,
+                      runtime.transactionStatus == expectedTransaction else { throw CancellationError() }
+                source.explainExecutions[index].status = "Reviewing"
+                let transaction = runtime.transactionStatus
+                source.explainExecutions[index].targetProfile = choice.profile
+                if let transaction {
+                    source.explainExecutions[index].context = ExplainContext(documentId: source.id.uuidString,
+                        targetDocumentId: target.id.uuidString, rangeLocation: statement.range.location,
+                        rangeLength: statement.range.length, profileId: choice.profile.id.uuidString,
+                        sessionId: sessionID, transactionStatus: transaction.rawValue)
+                }
+                var request = ExplainRequest(sql: statement.sql, mode: draft.mode, parameters: parameters, planKind: planKind)
+                if statement.action == .plan {
+                    let helperSupportsOptions = await client.supportsExplainOptions()
+                    guard targetValid() else { throw CancellationError() }
+                    if ExplainOptionsAdmission.validOwner(support: runtime.explainSupport, engine: choice.profile.engine,
+                        capabilities: Set(runtime.capabilities), helperSupports: helperSupportsOptions), let support = runtime.explainSupport {
+                        let configuration = ExplainOptionsConfiguration(support: support, mode: draft.mode,
+                            profile: choice.profile, sessionID: sessionID, targetDocumentID: target.id, transactionStatus: runtime.transactionStatus,
+                            sql: statement.sql, range: statement.range)
+                        guard let decision = await requestExplainOptions(configuration, documentID: source.id) else { throw CancellationError() }
+                        guard targetValid(), runtime.explainSupport == support,
+                              ExplainOptionsAdmission.validOwner(support: runtime.explainSupport, engine: choice.profile.engine,
+                                capabilities: Set(runtime.capabilities), helperSupports: await client.supportsExplainOptions()),
+                              configuration.accepts(decision.options) else {
+                            throw ExecutionPolicyError(message: "The selected Explain options or connected session changed. Review the statement again.")
+                        }
+                        request.options = decision.options
+                    }
+                    if extended { request.context = source.explainExecutions[index].context }
+                    if ExplainDMLAdmission.possibleDML(statement.sql, engine: choice.profile.engine) {
+                        let helperSupportsDML = await client.supportsExplainDML()
+                        guard targetValid(), let support = runtime.explainSupport,
+                              ExplainDMLAdmission.validOwner(support: support, engine: choice.profile.engine,
+                                capabilities: Set(runtime.capabilities), helperSupports: helperSupportsDML) else {
+                            throw ExecutionPolicyError(message: "DML Explain is unavailable for this physical SQL session. Update the app and helper together.")
+                        }
+                        if draft.mode == .analyze {
+                            guard !runtime.policy.readOnly, let transaction = runtime.transactionStatus,
+                                  [.idle, .transaction].contains(transaction), request.context != nil else {
+                                throw ExecutionPolicyError(message: "DML Analyze requires a writable session with a known idle or active transaction context.")
+                            }
+                            // Classification prepares estimated SQL only. Its grant is
+                            // discarded; no SQL is executed before the final review.
+                            var classification = request
+                            classification.mode = .plan
+                            classification.options = nil
+                            let classified = try await client.request(.assess(sessionId: sessionID,
+                                operations: [.init(type: "explain.run", explain: classification)]))
+                            // Revoke the preparation grant even when the source or
+                            // physical owner changed while assessment was pending.
+                            if let queryID = classified.queryId {
+                                _ = try await client.request(.cancel(sessionId: sessionID, queryId: queryID))
+                            }
+                            let stillSupportsDML = await client.supportsExplainDML()
+                            guard targetValid(), runtime.explainSupport == support, runtime.transactionStatus == transaction,
+                                  let assessment = classified.assessment, assessment.policy == choice.profile.policy,
+                                  assessment.operations.count == 1, let preview = assessment.operations[0].explain,
+                                  preview.mode == .plan, preview.support == support, preview.valid, let dml = preview.dml,
+                                  ExplainDMLAdmission.accepts(dml, support: support, mode: .analyze),
+                                  ExplainDMLAdmission.validOwner(support: runtime.explainSupport, engine: choice.profile.engine,
+                                    capabilities: Set(runtime.capabilities), helperSupports: stillSupportsDML) else {
+                                throw ExecutionPolicyError(message: "The helper cannot Analyze this DML form in the chosen session. SQL was not executed.")
+                            }
+                            request.writeIntent = ExplainWriteIntent(expectedTransactionStatus: transaction.rawValue)
+                        }
+                    }
+                    guard request.valid else { throw ExecutionPolicyError(message: "The captured Explain request is invalid.") }
+                    var plan = ExplainPlanModel(request: request, sourceText: draft.sourceText, sourceRange: statement.range,
+                        profileID: choice.profile.id, profile: choice.profile, profileBinding: choice.binding, sessionID: sessionID)
+                    plan.sourceDocumentID = source.id
+                    plan.targetDocumentID = target.id
+                    plan.sourceProfileID = draft.sourceProfileID
+                    plan.sourceProfileBinding = draft.sourceProfileBinding
+                    plan.transactionStatus = transaction
+                    plan.sourceEvidence = ExplainSourceEvidence(rangeLocation: statement.range.location,
+                        rangeLength: statement.range.length, transactionStatus: transaction?.rawValue)
+                    source.explainPlan = plan
+                    source.explainExecutions[index].plan = plan
+                }
+                let operation = statement.action == .plan ? OperationRequest(type: "explain.run", explain: request) :
+                    OperationRequest(type: "execute", sql: statement.sql, parameters: parameters)
+                guard let authorization = try await authorizeOperations([operation], sessionID: sessionID,
+                    profile: choice.profile, client: client, sourceSQL: statement.sql,
+                    forceConfirmation: request.writeIntent != nil) else {
+                    source.explainExecutions[index].status = "Not executed — review cancelled"
+                    if statement.action == .plan {
+                        source.explainPlan?.status = "Not executed — review cancelled"
+                        source.explainExecutions[index].plan = source.explainPlan
+                    }
+                    return
+                }
+                guard targetValid(), target.runtime === runtime, runtime.sessionId == sessionID,
+                      runtime.transactionStatus == transaction, runtime.policy == choice.profile.policy else {
+                    _ = try? await client.request(.cancel(sessionId: sessionID, queryId: UUID().uuidString))
+                    throw CancellationError()
+                }
+                source.explainExecutions[index].status = "Running"
+                if statement.action == .plan {
+                    source.explainPlan?.status = "Running"
+                    source.explainExecutions[index].plan = source.explainPlan
+                }
+                let started = ContinuousClock.now
+                let completion = statement.action == .plan ? await runtime.run(authorization: authorization, explain: request) :
+                    await runtime.run(sql: statement.sql, authorization: authorization, parameters: parameters)
+                let elapsed = started.duration(to: .now).components
+                guard ownedSQLContext(for: source) != nil else { return }
+                let failure = completion?.failure ?? runtime.queryFailure
+                let suppressedUnknown = completion?.reply?.explainDML?.targetExecution == "suppressed" && failure?.outcomeUnknown == true
+                let status = suppressedUnknown ? "Diagnostic completed — session effects unknown" :
+                    failure.map { $0.outcomeUnknown ? ($0.sqlCompleted ? "SQL completed — persistence unknown" : "Unknown SQL outcome — not repeated") : $0.title } ??
+                    (completion == nil ? "Not executed" : "Completed")
+                source.explainExecutions[index].status = status
+                source.explainExecutions[index].failure = failure
+                source.explainExecutions[index].clientDurationMs = max(0, Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
+                if statement.action == .execute { source.explainExecutions[index].result = completion?.reply }
+                if SQLFileDocument.sameBytes(source.text, draft.sourceText), source.profileID == draft.sourceProfileID,
+                   let position = runtime.queryErrorPosition {
+                    let scalars = statement.sql.unicodeScalars
+                    let end = scalars.index(scalars.startIndex, offsetBy: max(0, position - 1), limitedBy: scalars.endIndex) ?? scalars.endIndex
+                    source.errorPosition = statement.range.location + String(scalars[..<end]).utf16.count
+                }
+                if statement.action == .plan {
+                    source.explainPlan?.result = completion?.reply?.explain
+                    source.explainPlan?.dmlOutcome = completion?.reply?.explain?.dml ?? completion?.reply?.explainDML
+                    if let outcome = source.explainPlan?.dmlOutcome,
+                       outcome.execution != "estimated" && outcome.execution != "notExecuted" {
+                        for document in allOwnedSQLDocuments where document.profileID == choice.profile.id {
+                            document.markQueryResultStale()
+                        }
+                    }
+                    source.explainPlan?.failure = failure
+                    source.explainPlan?.status = status
+                    source.explainPlan?.clientDurationMs = max(0, Double(elapsed.seconds) * 1_000 + Double(elapsed.attoseconds) / 1e15)
+                    source.explainExecutions[index].plan = source.explainPlan
+                }
+                // Continue only after a definite acknowledgement. A stopped or
+                // uncertain setup operation never starts the next statement.
+                guard let reply = completion?.reply, failure == nil, reply.outcomeUnknown != true,
+                      reply.type == (statement.action == .plan ? "explain.result" : "query.result"),
+                      !source.stopRequested, !target.stopRequested else { return }
+                expectedTransaction = runtime.transactionStatus
             }
         } catch is CancellationError {
-            document.explainPlan?.status = "Not executed — context changed or stopped"
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution) {
+                source.explainExecutions[source.selectedExplainExecution].status = "Not executed — context changed or stopped"
+            }
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution),
+               var plan = source.explainExecutions[source.selectedExplainExecution].plan {
+                plan.status = "Not executed — context changed or stopped"
+                source.explainExecutions[source.selectedExplainExecution].plan = plan
+                source.explainPlan = plan
+            }
         } catch {
-            document.localError = error.localizedDescription
-            document.explainPlan?.status = "Not executed"
+            source.localError = error.localizedDescription
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution) {
+                source.explainExecutions[source.selectedExplainExecution].status = "Not executed"
+            }
+            if source.explainExecutions.indices.contains(source.selectedExplainExecution),
+               var plan = source.explainExecutions[source.selectedExplainExecution].plan {
+                plan.status = "Not executed"
+                source.explainExecutions[source.selectedExplainExecution].plan = plan
+                source.explainPlan = plan
+            }
         }
     }
 
     func stop(_ document: SQLDocument) async {
+        document.explainCollector?.stop("Stopped explicitly")
         guard ownedSQLContext(for: document) != nil else { return }
+        if let read = document.logicalRelationshipRead { await read.stop(); return }
         if let model = document.erDiagramModel { stopERDiagram(model); return }
         if document.grid?.isApplying == true { await stopGridApply(document); return }
         document.stopRequested = true
@@ -2018,7 +2498,12 @@ final class ApplicationWorkspace: ObservableObject {
            let client = try? await ensureHelper() {
             _ = try? await client.request(.cancel(sessionId: sessionID, queryId: queryID))
         }
-        await document.runtime?.stop()
+        if let targetID = document.explainTargetDocumentID, targetID != document.id,
+           let target = allOwnedSQLDocuments.first(where: { $0.id == targetID }) {
+            target.stopRequested = true
+            if target.runtime?.isConnecting == true { target.runtime?.cancelConnection() }
+            await target.runtime?.stop()
+        } else { await document.runtime?.stop() }
     }
 
     func flushDocuments() async {
@@ -2145,11 +2630,15 @@ final class ApplicationWorkspace: ObservableObject {
             guard closingDocuments.isEmpty || isClearingDocuments else { return false }
             affected = allOwnedRuntimeDocuments
         }
-        guard await prepareToClose(affected), await prepareStructureToClose(scope), await prepareTableImportToClose(scope) else { return false }
+        let profileReviewID: UUID?
+        if case .profile(let id) = scope { profileReviewID = id } else { profileReviewID = nil }
+        guard await prepareToClose(affected, profileReviewID: profileReviewID), await preparePhysicalStructureToClose(scope), await prepareMigrationToClose(scope), await prepareStructureToClose(scope), await prepareTableImportToClose(scope) else { return false }
         if case .application = scope {
             isClosing = true
             defer { isClosing = false }
             guard commitNativeEditors(in: documents + affected) else { return false }
+            await planArtifacts.waitForPendingWork()
+            await savedEvidence.waitForPendingWork()
             if investigations.isLoaded, !(await investigations.flush()) {
                 reportError(investigations.error ?? "The investigations could not be saved. Their drafts remain open.")
                 return false
@@ -2191,6 +2680,59 @@ final class ApplicationWorkspace: ObservableObject {
         return true
     }
 
+    private func preparePhysicalStructureToClose(_ scope: WorkspaceCloseScope) async -> Bool {
+        guard let model = physicalStructure else { return true }
+        switch scope {
+        case .document: return true
+        case .profile(let id): if model.profile.id != id { return true }
+        case .application: break
+        }
+        guard model.beginClosing() else { return false }
+        defer { if physicalStructure === model { model.cancelClosing() } }
+        let title = "Physical operation: " + model.target.schema + "." + model.target.table
+        if model.isBusy || model.checkingStatus {
+            guard await closeDecision(.runningQuery(title)) == .stop else { return false }
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while (model.isBusy || model.checkingStatus), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            guard !model.isBusy, !model.checkingStatus else { return false }
+        }
+        if model.outcomeUnknown {
+            guard await closeDecision(.unknownStructure(title)) == .discard else { return false }
+        } else if model.hasIntent {
+            guard await closeDecision(.structureDraft(title)) == .discard else { return false }
+        }
+        guard physicalStructure === model, await model.close() else { return false }
+        physicalStructure = nil
+        return true
+    }
+
+    private func prepareMigrationToClose(_ scope: WorkspaceCloseScope) async -> Bool {
+        guard let model = migrationComposer else { return true }
+        switch scope {
+        case .document: return true
+        case .profile(let id): if model.profile.id != id { return true }
+        case .application: break
+        }
+        guard model.beginClosing() else { return false }
+        defer { if migrationComposer === model { model.cancelClosing() } }
+        if model.isBusy {
+            guard await closeDecision(.runningQuery("Multi-object Migration")) == .stop else { return false }
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while model.isBusy, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            guard !model.isBusy else { return false }
+        }
+        if model.report?.outcome.state == "outcomeUnknown" || model.report?.outcome.state == "partiallyApplied" {
+            guard await closeDecision(.unknownStructure("Multi-object Migration")) == .discard else { return false }
+        } else if model.hasIntent {
+            guard await closeDecision(.structureDraft("Multi-object Migration")) == .discard else { return false }
+        }
+        guard migrationComposer === model, await model.close() else { return false }
+        migrationComposer = nil
+        return true
+    }
+
     private func prepareStructureToClose(_ scope: WorkspaceCloseScope) async -> Bool {
         let matching: Bool
         let application: Bool
@@ -2229,12 +2771,13 @@ final class ApplicationWorkspace: ObservableObject {
         return true
     }
 
-    private func prepareToClose(_ affected: [SQLDocument]) async -> Bool {
+    private func prepareToClose(_ affected: [SQLDocument], profileReviewID: UUID? = nil) async -> Bool {
         guard !isClosing else { return false }
         guard !affected.contains(where: \.isNavigatingTable) else { return false }
         guard commitNativeEditors(in: affected) else { return false }
+        activeProfileCloseReview = profileReviewID
         isClosing = true
-        defer { isClosing = false }
+        defer { isClosing = false; activeProfileCloseReview = nil }
         let gridLocks = affected.compactMap(\.grid).map { ($0, $0.isClosing) }
         for (grid, _) in gridLocks { grid.isClosing = true }
         defer { for (grid, wasClosing) in gridLocks { grid.isClosing = wasClosing } }
@@ -2421,6 +2964,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     private func observeDocument(_ document: SQLDocument) {
         document.erDiagramModel?.changed = { [weak self] in self?.scheduleSave() }
+        if let model = document.erDiagramModel { bindLogicalRelationships(to: model) }
         document.fileDidMove = { [weak self, weak document] oldURL, newURL in
             guard let self, let document, self.documents.contains(where: { $0 === document }),
                   let id = document.sqlLibraryEntryID, let entry = self.sqlLibrary.entry(id: id),
@@ -2440,10 +2984,12 @@ final class ApplicationWorkspace: ObservableObject {
             document.$table.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$page.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$tableFilterExpression.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$tableRelationshipScope.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$tableSort.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$sqlLibraryEntryID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$queryParameters.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$explainCollectorConfiguration.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileContentSHA256.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileRecoveryURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -2509,6 +3055,29 @@ final class ApplicationWorkspace: ObservableObject {
         else { group = nil }
         return SQLLibraryExecutionBinding(entryID: entry.id, fileURL: entry.fileURL, scope: entry.scope, group: group,
             parameters: entry.parameters)
+    }
+
+    func tuningLibrarySnapshotFence(_ document: SQLDocument) -> @MainActor (SQLLibrarySnapshot) -> Bool {
+        let expected = sqlLibraryExecutionBinding(document)
+        let fileURL = document.fileURL
+        let definitions = document.queryParameters
+        return { snapshot in
+            let entry = snapshot.entries.first { $0.id == expected?.entryID || fileURL != nil && $0.fileURL == fileURL }
+            guard let entry else { return expected?.entryID == nil }
+            let group: SQLProfileGroup?
+            if case .group(let id) = entry.scope { group = snapshot.groups.first { $0.id == id } } else { group = nil }
+            let candidate = SQLLibraryExecutionBinding(entryID: entry.id, fileURL: entry.fileURL, scope: entry.scope,
+                group: group, parameters: entry.parameters)
+            return candidate == expected && definitions == document.queryParameters
+        }
+    }
+
+    func tuningSourceFence(_ document: SQLDocument) -> @MainActor () -> Bool {
+        let captured = sqlLibraryExecutionBinding(document)
+        return { [weak self, weak document] in
+            guard let self, let document else { return false }
+            return self.hasSQLLibraryExecutionBinding(document, captured)
+        }
     }
 
     private func hasSQLLibraryExecutionBinding(_ document: SQLDocument, _ expected: SQLLibraryExecutionBinding?) -> Bool {
@@ -2778,8 +3347,10 @@ final class ApplicationWorkspace: ObservableObject {
             : "This exports the loaded result without running SQL again."
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         do {
+            let parent = try SQLFileBinding.parentIdentity(of: destination)
+            let reviewed = try SQLFileBinding.reviewedVersion(at: destination, maximumBytes: ResultExport.maximumImportBytes)
             let data = format == "csv" ? try ResultExport.csv(result, nullMarker: marker!) : try ResultExport.json([result])
-            try ResultExport.write(data, to: destination)
+            try ResultExport.write(data, to: destination, expectedVersion: reviewed, expectedParent: parent)
         } catch { reportError(error.localizedDescription) }
     }
 
@@ -2994,7 +3565,8 @@ final class ApplicationWorkspace: ObservableObject {
         var context = completionCatalog.context(profileID: profileID)
         let profile = library.savedConnections.first { $0.id == profileID }
         context.keyspace = keyspace ?? (profile?.engine == .cassandra ? profile?.database : nil)
-        return context
+        let service = profileID.flatMap { services[$0] }
+        return logicalCompletionContext(context, profile: profile, capabilities: service?.capabilities ?? [], connected: service?.connectionState == .connected)
     }
 
     func completionContext(document: SQLDocument) -> SQLCompletionContext {
@@ -3006,7 +3578,7 @@ final class ApplicationWorkspace: ObservableObject {
         if let snapshot = document.sqliteCompletion,
            document.runtime?.connectionState == .connected,
            snapshot.matches(profile: profile, sessionID: document.runtime?.sessionId) {
-            return snapshot.context
+            return logicalCompletionContext(snapshot.context, profile: profile, capabilities: document.runtime?.capabilities ?? [], connected: snapshot.notice == nil)
         }
         // A connected tab can have uncommitted DDL or TEMP objects that differ
         // from the profile service; never substitute its potentially stale names.
@@ -3058,6 +3630,27 @@ final class ApplicationWorkspace: ObservableObject {
         shutdownTask == nil && !isClosing && !disconnectingProfiles.contains(profileID)
     }
 
+    func canStartERSource(_ profileID: UUID) -> Bool {
+        shutdownTask == nil && !hasBegunShutdown && !disconnectingProfiles.contains(profileID) &&
+            (!isClosing || activeProfileCloseReview != nil)
+    }
+
+    func recordPhysicalStructureOutcome(_ profileID: UUID, report: PhysicalStructureReport) {
+        if let index = physicalStructureReports.firstIndex(where: { $0.report.id == report.id }) { physicalStructureReports[index].report = report }
+        else { physicalStructureReports.append(.init(profileID: profileID, report: report)) }
+        for document in allOwnedRuntimeDocuments where document.profileID == profileID { document.markQueryResultStale() }
+        schemaComparison?.dismissPlan(); dataComparison?.dismissPlan()
+        invalidateStructureMetadata(profileID)
+    }
+
+    func recordMigrationOutcome(_ profileID: UUID, report: MigrationExecutionDocument) {
+        if let index = migrationOutcomeReports.firstIndex(where: { $0.report.id == report.id }) { migrationOutcomeReports[index].report = report }
+        else { migrationOutcomeReports.append(.init(profileID: profileID, report: report)) }
+        for document in documents where document.profileID == profileID { document.markQueryResultStale() }
+        schemaComparison?.dismissPlan(); dataComparison?.dismissPlan()
+        invalidateStructureMetadata(profileID)
+    }
+
     func recordStructureOutcome(_ profileID: UUID, schema: String, table: String, review: TableStructureExecutionReview) {
         if let index = structureOutcomeReports.firstIndex(where: { $0.outcome.executionId == review.outcome.executionId }) {
             structureOutcomeReports[index].review = review
@@ -3096,7 +3689,10 @@ final class ApplicationWorkspace: ObservableObject {
                     try Task.checkCancellation()
                     let reply = try await self.catalog(CatalogRequest(kind: "completion", page: page),
                         profileID: profileID, connectedSessionID: sessionID)
-                    guard reply.truncated != true else { return }
+                    guard reply.truncated != true, (reply.displayNotice ?? "").isEmpty else {
+                        self.completionCatalog.remove(profileID: profileID)
+                        return
+                    }
                     let batch = reply.catalogRecords
                     records += batch
                     if batch.count < 200 { break }
@@ -3134,6 +3730,8 @@ final class ApplicationWorkspace: ObservableObject {
         guard refresh || catalogRoots[profileID] == nil else { return }
         if refresh {
             structureEditor?.invalidate()
+            migrationComposer?.invalidate()
+            if physicalStructure?.profile.id == profileID { physicalStructure?.invalidate() }
             if tableImporter?.profile.id == profileID { tableImporter?.invalidate() }
             invalidatePostgresTypeInspection(profileID: profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.")
         }
@@ -3197,6 +3795,8 @@ final class ApplicationWorkspace: ObservableObject {
         guard !node.isLoading, refresh || node.children == nil else { return }
         if refresh {
             structureEditor?.invalidate()
+            migrationComposer?.invalidate()
+            if physicalStructure?.profile.id == node.profileID { physicalStructure?.invalidate() }
             if tableImporter?.profile.id == node.profileID { tableImporter?.invalidate() }
             invalidatePostgresTypeInspection(profileID: node.profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.")
         }
@@ -3208,6 +3808,7 @@ final class ApplicationWorkspace: ObservableObject {
             var groups = engine == .cassandra ? [("Tables", "table"), ("Materialized Views", "view"), ("User-defined Types", "type")] :
                 [("Tables", "table"), ("Views", "view"), ("Functions", "function"), ("Procedures", "procedure"), ("Triggers", "trigger")]
             if engine == .mongodb { groups = [("Collections", "table"), ("Views", "view")] }
+            if engine == .mariadb { groups += [("Sequences", "sequence")] }
             if engine == .postgresql { groups += [("Enums", "enum"), ("User-defined Types", "type")] }
             node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .group, schema: node.schema, objectKind: kind, engine: engine)
@@ -3490,7 +4091,7 @@ final class ApplicationWorkspace: ObservableObject {
         document.tableNavigationError = nil
         do {
             let columns = try await navigationColumns(target.reference, profileID: target.profileID,
-                required: (target.filterExpression?.columns ?? []).union(target.sort.map(\.column)))
+                required: (target.filterExpression?.columns ?? []).union(target.sort.map(\.column)).union(target.relationshipScope?.columns.map(\.source) ?? []))
             guard navigationIsCurrent(document, source: source),
                   try await prepareNavigationDraft(document, grid: grid) else { return }
             if await moveTable(document, from: source, to: target, columns: columns) {
@@ -3505,9 +4106,9 @@ final class ApplicationWorkspace: ObservableObject {
         } catch { if navigationIsCurrent(document, source: source) { document.tableNavigationError = error.localizedDescription } }
     }
 
-    private func navigationColumns(_ reference: TableReference, profileID: UUID, required: Set<String>) async throws -> [[String: String]] {
+    func navigationColumns(_ reference: TableReference, profileID: UUID, required: Set<String>, connectedSessionID: String? = nil) async throws -> [[String: String]] {
         let response = try await catalog(CatalogRequest(kind: "columns", schema: reference.schema,
-            object: reference.name, objectKind: reference.kind), profileID: profileID)
+            object: reference.name, objectKind: reference.kind), profileID: profileID, connectedSessionID: connectedSessionID)
         let columns = response.catalogRecords
         guard response.truncated != true, !columns.isEmpty,
               required.isSubset(of: Set(columns.compactMap { $0["name"] })) else {
@@ -3516,7 +4117,7 @@ final class ApplicationWorkspace: ObservableObject {
         return columns
     }
 
-    private func navigationIsCurrent(_ document: SQLDocument, source: TableViewLocation) -> Bool {
+    func navigationIsCurrent(_ document: SQLDocument, source: TableViewLocation) -> Bool {
         canStartOperation(document, forNavigating: true) && TableViewLocation(document) == source
     }
 
@@ -3550,7 +4151,7 @@ final class ApplicationWorkspace: ObservableObject {
         }
     }
 
-    private func navigationFiltersAfterReview(_ document: SQLDocument, grid: GridDraft,
+    func navigationFiltersAfterReview(_ document: SQLDocument, grid: GridDraft,
                                         key: TableForeignKey, row: GridRow) async throws -> [CatalogFilter]? {
         let pending = grid.pendingCount > 0 || grid.outcomeUnknown
         let before = grid.rows.map { ($0.id, $0.values) }
@@ -3569,9 +4170,12 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     private func installTableLocation(_ location: TableViewLocation, in document: SQLDocument) {
+        document.incomingRelationships?.stop()
+        document.incomingRelationships = nil
         document.table = location.reference
         document.profileID = location.profileID
         document.title = location.title
+        document.tableRelationshipScope = location.relationshipScope
         document.tableFilterExpression = location.filterExpression
         document.tableSort = location.sort
         document.tableBrowseDraft = nil
@@ -3584,7 +4188,7 @@ final class ApplicationWorkspace: ObservableObject {
         document.isLoadingForeignKeys = false
     }
 
-    private func moveTable(_ document: SQLDocument, from source: TableViewLocation, to target: TableViewLocation,
+    func moveTable(_ document: SQLDocument, from source: TableViewLocation, to target: TableViewLocation,
                            columns: [[String: String]]) async -> Bool {
         guard navigationIsCurrent(document, source: source) else { return false }
         let oldGrid = document.grid
@@ -3640,9 +4244,10 @@ final class ApplicationWorkspace: ObservableObject {
         return true
     }
 
-    private func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument,
-                                  context: PaneSelectionContext) async {
-        guard canStartOperation(source, forNavigating: true) else { return }
+    func openRelatedTable(_ location: TableViewLocation, columns: [[String: String]], source: SQLDocument,
+                                  context: PaneSelectionContext, isCurrent: (@MainActor () -> Bool)? = nil,
+                                  onCreated: (@MainActor (SQLDocument) -> Void)? = nil) async {
+        guard canStartOperation(source, forNavigating: true), isCurrent?() ?? true else { return }
         let document = SQLDocument(title: "SQL \(documents.count + 1)", text: "Table data", profileID: location.profileID)
         document.isProvisionalTableView = true
         document.provisionalPreviousSelection = context.selectedDocumentID ?? source.id
@@ -3655,9 +4260,17 @@ final class ApplicationWorkspace: ObservableObject {
         installTableLocation(location, in: document)
         document.tableColumns = columns
         document.tableNeedsExplicitLoad = true
+        onCreated?(document)
         await run(document)
         guard documents.contains(where: { $0 === document }) else { return }
-        if document.grid == nil || document.localError != nil || document.runtime?.queryFailure != nil {
+        let contextChanged = !(isCurrent?() ?? true)
+        if contextChanged || document.grid == nil || document.localError != nil || document.runtime?.queryFailure != nil {
+            // A provisional owned read normally has no edits. Preserve any
+            // unexpected local draft rather than closing it without a decision.
+            if document.grid?.pendingCount ?? 0 > 0 || document.grid?.hasInlineDraft == true {
+                document.tableNavigationError = "The source relationship changed or stopped. This independent tab and its local draft were kept."
+                return
+            }
             let message = document.localError ?? document.runtime?.queryFailure?.message ?? document.runtime?.errorMessage ?? "The related rows could not be loaded."
             guard closingDocuments.insert(document.id).inserted else { return }
             defer { closingDocuments.remove(document.id) }
@@ -3715,10 +4328,10 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func catalog(_ request: CatalogRequest, profileID: UUID, connectedSessionID: String? = nil,
-                 metadataRequest: CatalogMetadataRequest? = nil) async throws -> BackendMessage {
+                 metadataRequest: CatalogMetadataRequest? = nil, onMetadataPage: CatalogMetadataPageHandler? = nil) async throws -> BackendMessage {
         let client: BackendClient
         if let connectedSessionID {
-            guard shutdownTask == nil, !helperFailed, !disconnectingProfiles.contains(profileID),
+            guard shutdownTask == nil, !helperFailed,
                   services[profileID]?.sessionId == connectedSessionID,
                   services[profileID]?.connectionState == .connected, let helper else {
                 throw CatalogFailure(message: "The profile was disconnected while loading metadata.")
@@ -3741,6 +4354,11 @@ final class ApplicationWorkspace: ObservableObject {
                   metadataRequest?.cancelled != true else {
                 throw CatalogFailure(message: "The profile was disconnected while loading metadata.")
             }
+            if request.supportsMetadataPaging, self.services[profileID]?.capabilities.contains("catalogMetadataV1") == true {
+                return try await CatalogMetadataLoader.load(request, sessionID: sessionID, request: metadataRequest,
+                    isCurrent: { self.services[profileID]?.sessionId == sessionID && self.services[profileID]?.connectionState == .connected },
+                    onPage: onMetadataPage, send: { try await client.request($0) })
+            }
             metadataRequest?.submitted = true
             return try await client.request(.catalog(sessionId: sessionID,
                 queryId: metadataRequest?.queryID ?? UUID().uuidString, request: request))
@@ -3758,10 +4376,24 @@ final class ApplicationWorkspace: ObservableObject {
         guard services[profileID]?.sessionId == sessionID else {
             throw CatalogFailure(message: "The profile was disconnected while loading this branch.")
         }
-        if request.kind != "completion" {
+        if request.kind == "columns", reply.truncated == true || !(reply.displayNotice ?? "").isEmpty {
+            completionCatalog.remove(profileID: profileID)
+        } else if request.kind != "completion" {
             completionCatalog.record(reply.catalogRecords, request: request, profileID: profileID)
         }
         return reply
+    }
+
+    var relationshipServiceContextIsAvailable: Bool { !hasBegunShutdown && shutdownTask == nil && !helperFailed }
+
+    func relationshipDocumentIsCurrent(_ document: SQLDocument) -> Bool {
+        relationshipServiceContextIsAvailable && documents.contains(where: { $0 === document })
+    }
+
+    /// Local export ownership does not depend on a live helper or connection.
+    func erExportDocumentIsCurrent(_ document: SQLDocument, model: ERDiagramModel) -> Bool {
+        !hasBegunShutdown && shutdownTask == nil && documents.contains(where: { $0 === document }) &&
+            document.erDiagramModel === model && document.profileID == model.stored.profileID
     }
 
     var canInspectPostgresTypes: Bool { shutdownTask == nil && !isClosing && !helperFailed }
@@ -3777,7 +4409,34 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func shutdown() async {
+        if let shutdownLifecycleTask { await shutdownLifecycleTask.value; return }
+        // This is permanent teardown, separate from cancellable close decisions.
+        // Fence new owners before any cleanup operation can suspend.
+        hasBegunShutdown = true
+        for document in allOwnedRuntimeDocuments { document.explainCollector?.stop("Stopped — workspace shutdown") }
+        let task = Task { @MainActor [self] in await finishShutdown() }
+        shutdownLifecycleTask = task
+        await task.value
+    }
+
+    private func finishShutdown() async {
+        await planArtifacts.waitForPendingWork()
+        await savedEvidence.waitForPendingWork()
         cancelQueryParameterPrompt()
+        if let model = physicalStructure {
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while (model.isBusy || model.checkingStatus), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            _ = await model.close()
+            physicalStructure = nil
+        }
+        if let model = migrationComposer {
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while model.isBusy, ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            _ = await model.close()
+            migrationComposer = nil
+        }
         if let model = tableImporter {
             await model.stop()
             let deadline = ContinuousClock.now.advanced(by: .seconds(6))
@@ -3787,11 +4446,16 @@ final class ApplicationWorkspace: ObservableObject {
         }
         invalidateERDiagrams(reason: "The workspace is shutting down.")
         await closeSessionMonitor()
+        await closeDatabaseValueSearch()
+        await closeGridProfileServers()
+        await closeERDiagramExports()
+        await stopLogicalRelationshipNavigations()
         await dataTransfer?.close(); dataTransfer = nil
         await databaseTools?.close(); databaseTools = nil
         commands.shutdown()
         await dataComparison?.close(); dataComparison = nil
         await schemaComparison?.close(); schemaComparison = nil
+        await schemaBundle?.close(); schemaBundle = nil
         if let shutdownTask { await shutdownTask.value; return }
         dismissPostgresTypeInspection()
         for file in fileDocuments.values { file.stopWatching() }
@@ -3830,6 +4494,7 @@ final class ApplicationWorkspace: ObservableObject {
                 guard let self, self.shutdownTask == nil, self.helperGeneration == generation else { return }
                 self.helperFailed = true
                 self.sessionMonitorWindow?.model.helperDidFail()
+                self.databaseSearchModel?.helperDidFail()
                 self.invalidateERDiagrams(reason: "The helper connection ended. Connect and Build explicitly to reload metadata.")
                 self.clusterInspection = nil
                 self.invalidatePostgresTypeInspection(reason: "The helper connection ended. Reopen this type after connecting again.")
@@ -3847,4 +4512,23 @@ final class ApplicationWorkspace: ObservableObject {
 
 private struct InvestigationReferenceError: LocalizedError {
     var errorDescription: String? { "The investigation library is unavailable. Snapshot references could not be checked." }
+}
+
+
+extension ApplicationWorkspace {
+    func saveDiagnosticEvidence(_ model: SessionMonitorModel) {
+        guard canManageWorkspace else { return }
+        do {
+            let value = try SavedEvidenceArtifact.capture(model, title: model.profile.name + " · session diagnostic")
+            Task { _ = await savedEvidence.save(value) }
+        } catch { savedEvidence.captureFailed() }
+    }
+
+    func saveStructureEvidence(_ model: TableStructureEditorModel) {
+        guard canManageWorkspace else { return }
+        do {
+            let value = try SavedEvidenceArtifact.capture(model, title: model.profile.name + " · " + model.schema + "." + model.table)
+            Task { _ = await savedEvidence.save(value) }
+        } catch { savedEvidence.captureFailed() }
+    }
 }

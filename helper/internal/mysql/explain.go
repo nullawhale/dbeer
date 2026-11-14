@@ -17,6 +17,10 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	support := adapter.ExplainSupport("mysql", s.work.client.GetServerVersion())
 	if !strings.HasPrefix(s.explainVendor, "MySQL Community Server") && !strings.HasPrefix(s.explainVendor, "MySQL Enterprise Server") {
 		support.Modes = []string{}
+		support.Options = nil
+		support.DML = nil
+		support.Notices = nil
+		support.AnalyzeUnavailableReason = ""
 		support.UnavailableReason = "Visual Explain requires a recognized Oracle MySQL server; this server vendor could not be verified."
 	}
 	return support
@@ -34,14 +38,62 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		r.SQLNotExecuted = true
 		r.Connected = !s.closed.Load()
 		r.TransactionStatus = s.TransactionStatus()
+		r.ExplainDML = adapter.ExplainDMLOutcome(p, r)
+		if p.Preview.DML != nil && r.TransactionStatus == "unknown" {
+			r.TransactionStatus = ""
+		}
 		return r
 	}
 	capture := &adapter.ExplainCapture{}
+	actualStarted := false
 	response := s.executeWith(ctx, c, func(collector *collector, result *wire.Result) error {
+		if p.Request.Mode == "analyze" && p.Preview.Format == "json" {
+			// Read only: JSON v2 must already be selected in this physical session.
+			// The probe shares cancellation/recovery with the single execution below.
+			probe, err := s.work.client.Execute("SELECT @@SESSION.explain_json_format_version")
+			if err != nil {
+				return err
+			}
+			version, readErr := probe.GetInt(0, 0)
+			valid := probe.RowNumber() == 1 && readErr == nil && version == 2
+			probe.Close()
+			if !valid {
+				return &adapter.ConnectionError{Category: "validation", Message: "JSON Explain Analyze requires this session's explain_json_format_version to be 2. The analyzed SQL was not executed; choose TREE or explicitly configure the session first."}
+			}
+		}
+		s.updateTransaction()
+		if !adapter.ExplainWriteContextMatches(c.Explain, s.TransactionStatus()) {
+			return &adapter.ConnectionError{Category: "conflict", Message: "The DML Analyze transaction context changed before dispatch. Review it again."}
+		}
+		if ctx.Err() != nil {
+			return &adapter.ConnectionError{Category: "cancelled", Message: "Explain was cancelled before the analyzed SQL was sent."}
+		}
+		actualStarted = true
+		if len(p.Bound.Parameters) > 0 {
+			bound := p.Bound
+			bound.SQL = p.Preview.SQL
+			return s.executeBoundResults(bound, collector, result)
+		}
 		return s.executeResults(p.Preview.SQL, collector, result)
 	}, capture)
-	// MySQL does not report source positions for TREE execution errors.
-	return adapter.FinishExplain(ctx, c, response, p, capture, parseExplainTree)
+	if !actualStarted && response.Type == "error" {
+		response.SQLNotExecuted = true
+		response.OutcomeUnknown = false
+	}
+	// Decode only this captured response. Unknown formats never trigger execution.
+	selected := p.Preview.Format
+	if selected == "json" {
+		p.Preview.Format = mysqlPlanFormat(capture.Raw)
+	}
+	parser := parseExplainTree
+	if selected == "json" {
+		parser = parseExplainJSON
+	}
+	if response.Type != "error" {
+		response.Connected = !s.closed.Load()
+	}
+	finished := adapter.FinishExplain(ctx, c, response, p, capture, parser)
+	return finished
 }
 
 const treeDecimal = `(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?`
@@ -164,6 +216,15 @@ func parseExplainTree(ctx context.Context, raw, mode string) ([]protocol.Explain
 				return fail()
 			}
 			text = strings.TrimSuffix(text, m[0])
+			if adapter.ExplainNumberIsZero(m[4]) {
+				node.Execution = "notExecuted"
+				for _, key := range []string{"actualRows", "startupTime", "totalTime"} {
+					metric := node.Metrics[key]
+					metric.Value = nil
+					metric.UnavailableReason = "notExecuted"
+					node.Metrics[key] = metric
+				}
+			}
 		}
 		if m := treeCost.FindStringSubmatch(text); m != nil {
 			total := m[1]
@@ -214,5 +275,6 @@ func parseExplainTree(ctx context.Context, raw, mode string) ([]protocol.Explain
 	if len(nodes) == 0 {
 		return fail()
 	}
+	decorateMySQLMetrics(nodes, mode, false)
 	return nodes, roots, map[string]protocol.ExplainMetric{}, nil
 }

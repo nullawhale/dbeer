@@ -17,6 +17,10 @@ func (s *Session) ExplainSupport() protocol.ExplainSupport {
 	lower := strings.ToLower(s.explainIdentity)
 	if !strings.HasPrefix(s.explainIdentity, "PostgreSQL ") || strings.Contains(lower, "yugabyte") || strings.Contains(lower, "cockroach") || strings.Contains(lower, "aurora") || strings.Contains(lower, "redshift") || strings.Contains(lower, "greenplum") {
 		support.Modes = []string{}
+		support.Options = nil
+		support.DML = nil
+		support.AnalyzeUnavailableReason = ""
+		support.PlanKinds = nil
 		support.UnavailableReason = "Visual Explain requires a recognized PostgreSQL server; this server vendor could not be verified."
 	}
 	return support
@@ -26,6 +30,9 @@ func (s *Session) PrepareExplain(r protocol.ExplainRequest) (adapter.PreparedExp
 }
 func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protocol.Response {
 	p, err := s.PrepareExplain(*c.Explain)
+	if err == nil && !adapter.ExplainWriteContextMatches(c.Explain, s.TransactionStatus()) {
+		err = errors.New("The DML Analyze transaction context changed. Review the exact operation again.")
+	}
 	if err == nil && p.Preview.SQL != c.PreparedExplainSQL {
 		err = errors.New("Explain requires fresh authorization of the exact prepared SQL.")
 	}
@@ -34,13 +41,38 @@ func (s *Session) ExecuteExplain(ctx context.Context, c protocol.Command) protoc
 		r.SQLNotExecuted = true
 		r.Connected = !s.conn.IsClosed()
 		r.TransactionStatus = s.TransactionStatus()
+		r.ExplainDML = adapter.ExplainDMLOutcome(p, r)
+		if p.Preview.DML != nil && r.TransactionStatus == "unknown" {
+			r.TransactionStatus = ""
+		}
 		return r
 	}
 	capture := &adapter.ExplainCapture{}
-	response := executeParamsSink(ctx, s.conn, c, p.Preview.SQL, nil, capture)
-	return adapter.FinishExplain(ctx, c, response, p, capture, parseExplainJSON)
+	var values [][]byte
+	var oids []uint32
+	if p.Request.PlanKind != "generic" {
+		for _, parameter := range p.Bound.Parameters {
+			var value []byte
+			if parameter.Value != nil {
+				value = []byte(*parameter.Value)
+			}
+			values = append(values, value)
+			oids = append(oids, map[string]uint32{"text": 25, "integer": 20, "decimal": 1700, "boolean": 16, "date": 1082, "timestamp": 1114}[parameter.Type])
+		}
+	}
+	response := executeParamsSinkWithStorageOIDs(ctx, s.conn, c, p.Preview.SQL, values, capture, false, oids)
+	if response.Type != "error" {
+		response.Connected = !s.conn.IsClosed()
+	}
+	return adapter.FinishExplain(ctx, c, response, p, capture, func(ctx context.Context, raw, mode string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
+		return parseExplainJSONWithOptions(ctx, raw, mode, p.Request.Options)
+	})
 }
 func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
+	return parseExplainJSONWithOptions(ctx, raw, mode, nil)
+}
+func parseExplainJSONWithOptions(ctx context.Context, raw, mode string, options *protocol.ExplainOptions) ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
+	timingDisabled := options != nil && options.PostgreSQL != nil && options.PostgreSQL.Timing != nil && !*options.PostgreSQL.Timing
 	fail := func() ([]protocol.ExplainNode, []string, map[string]protocol.ExplainMetric, error) {
 		return nil, nil, nil, errors.New("unsupported plan")
 	}
@@ -55,6 +87,7 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 		return fail()
 	}
 	nodes := []protocol.ExplainNode{}
+	objects := []map[string]any{}
 	metrics := map[string]protocol.ExplainMetric{}
 	metric := func(v any, unit, basis, reason string) (protocol.ExplainMetric, error) {
 		var text *string
@@ -81,7 +114,7 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 		node := protocol.ExplainNode{ID: id, Operation: label, Children: []string{}, Details: map[string]string{}, Metrics: map[string]protocol.ExplainMetric{}, Execution: "estimated"}
 		if mode == "analyze" {
 			node.Execution = "executed"
-			if loops, ok := plan["Actual Loops"].(json.Number); ok && string(loops) == "0" {
+			if loops, ok := plan["Actual Loops"].(json.Number); ok && adapter.ExplainNumberIsZero(string(loops)) {
 				node.Execution = "notExecuted"
 			}
 		}
@@ -100,6 +133,10 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 			value := plan[f.native]
 			if f.actual && (mode == "plan" || f.key != "loops" && node.Execution == "notExecuted") {
 				value = nil
+			}
+			if timingDisabled && (f.key == "startupTime" || f.key == "totalTime") && node.Execution != "notExecuted" {
+				value = nil
+				reason = "disabled"
 			}
 			m, err := metric(value, f.unit, f.basis, reason)
 			if err != nil {
@@ -129,6 +166,7 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 		}
 		index := len(nodes)
 		nodes = append(nodes, node)
+		objects = append(objects, plan)
 		if children, exists := plan["Plans"]; exists {
 			array, ok := children.([]any)
 			if !ok {
@@ -156,6 +194,14 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 	if err != nil {
 		return fail()
 	}
+	for _, key := range []string{"Settings", "Planning", "Planning Memory", "Serialization", "JIT", "Triggers"} {
+		if value, exists := roots[0][key]; exists {
+			data, err := json.Marshal(value)
+			if err == nil && len(data) <= 65536 {
+				nodes[0].Details[key] = string(data)
+			}
+		}
+	}
 	for _, pair := range []struct{ native, key string }{{"Planning Time", "planningTime"}, {"Execution Time", "executionTime"}} {
 		reason := "notReported"
 		if mode == "plan" && pair.key == "executionTime" {
@@ -166,6 +212,9 @@ func parseExplainJSON(ctx context.Context, raw, mode string) ([]protocol.Explain
 			return fail()
 		}
 		metrics[pair.key] = m
+	}
+	if err := decoratePostgresMetrics(nodes, objects, mode, timingDisabled, roots[0]); err != nil {
+		return fail()
 	}
 	return nodes, []string{id}, metrics, nil
 }

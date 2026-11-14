@@ -1,0 +1,239 @@
+{
+  "valid": [
+    {
+      "id": "advanced-baseline",
+      "target": {
+        "schema": "app",
+        "table": "secured",
+        "create": false
+      },
+      "engine": "postgresql",
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "columns": [],
+      "limitations": [],
+      "keys": [],
+      "indexes": [],
+      "dependencyProof": true,
+      "advanced": {
+        "kinds": [
+          "rowSecurity"
+        ],
+        "scope": "only",
+        "familyCount": 1,
+        "nontransactional": false,
+        "operations": [
+          {
+            "kind": "renameTable",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "renameColumn",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "addColumn",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "dropColumn",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "default",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "nullable",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "type",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "index",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "key",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "foreignKey",
+            "available": true,
+            "reason": "Available with complete source/reference native RI and hierarchy proof."
+          },
+          {
+            "kind": "generation",
+            "available": false,
+            "reason": "This advanced authoring path is not implemented."
+          },
+          {
+            "kind": "reconstruction",
+            "available": false,
+            "reason": "This advanced authoring path is not implemented."
+          },
+          {
+            "kind": "hierarchy",
+            "available": false,
+            "reason": "This advanced authoring path is not implemented."
+          }
+        ],
+        "relations": [
+          {
+            "target": {
+              "schema": "app",
+              "table": "secured",
+              "create": false
+            },
+            "kind": "table",
+            "persistence": "permanent",
+            "partitionMember": false,
+            "parents": [],
+            "rowSecurity": true,
+            "forceRowSecurity": true,
+            "policies": [
+              {
+                "name": "read_policy",
+                "command": "select",
+                "permissive": true,
+                "roles": [
+                  "PUBLIC"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "advanced-baseline",
+      "target": {
+        "schema": "app",
+        "table": "unlogged",
+        "create": false
+      },
+      "engine": "postgresql",
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "columns": [],
+      "limitations": [],
+      "keys": [],
+      "indexes": [],
+      "dependencyProof": true,
+      "advanced": {
+        "kinds": [
+          "unlogged"
+        ],
+        "scope": "only",
+        "familyCount": 1,
+        "nontransactional": false,
+        "operations": [
+          {
+            "kind": "renameTable",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "renameColumn",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "addColumn",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "dropColumn",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "default",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "nullable",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "type",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "index",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "key",
+            "available": true,
+            "reason": "Available after concrete property checks."
+          },
+          {
+            "kind": "foreignKey",
+            "available": true,
+            "reason": "Available with complete source/reference native RI and hierarchy proof."
+          },
+          {
+            "kind": "generation",
+            "available": false,
+            "reason": "This advanced authoring path is not implemented."
+          },
+          {
+            "kind": "reconstruction",
+            "available": false,
+            "reason": "This advanced authoring path is not implemented."
+          },
+          {
+            "kind": "hierarchy",
+            "available": false,
+            "reason": "This advanced authoring path is not implemented."
+          }
+        ],
+        "relations": [
+          {
+            "target": {
+              "schema": "app",
+              "table": "unlogged",
+              "create": false
+            },
+            "kind": "table",
+            "persistence": "unlogged",
+            "partitionMember": false,
+            "parents": [],
+            "rowSecurity": false,
+            "forceRowSecurity": false,
+            "policies": []
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":null}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}]}],\"proof\":{}}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"ordinary\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}]}]}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\",\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}]}]}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"recursive\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}]}]}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":65,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}]}]}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}]}]}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":null}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}],\"authority\":\"grant\"}]}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"mysql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":[{\"name\":\"read_policy\",\"command\":\"select\",\"permissive\":true,\"roles\":[\"PUBLIC\"]}]}]}}",
+    "{\"id\":\"advanced-baseline\",\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"engine\":\"postgresql\",\"fingerprint\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"columns\":[],\"limitations\":[],\"keys\":[],\"indexes\":[],\"dependencyProof\":true,\"advanced\":{\"kinds\":[\"rowSecurity\"],\"scope\":\"only\",\"familyCount\":1,\"nontransactional\":false,\"operations\":[{\"kind\":\"renameTable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"renameColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"addColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"dropColumn\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"default\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"nullable\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"type\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"index\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"key\",\"available\":true,\"reason\":\"Available after concrete property checks.\"},{\"kind\":\"foreignKey\",\"available\":true,\"reason\":\"Available with complete source/reference native RI and hierarchy proof.\"},{\"kind\":\"generation\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"reconstruction\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"},{\"kind\":\"hierarchy\",\"available\":false,\"reason\":\"This advanced authoring path is not implemented.\"}],\"relations\":[{\"target\":{\"schema\":\"app\",\"table\":\"secured\",\"create\":false},\"kind\":\"table\",\"persistence\":\"permanent\",\"partitionMember\":false,\"parents\":[],\"rowSecurity\":true,\"forceRowSecurity\":true,\"policies\":null}]}}"
+  ],
+  "capability": "tableStructureAdvancedKindsV1"
+}

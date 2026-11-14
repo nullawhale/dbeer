@@ -10,11 +10,12 @@ type binding struct {
 	columns []string
 }
 type source struct {
-	name       token
-	schema     token
-	entries    []Relation
-	columns    []string
-	start, end int
+	logicalIdentityProven bool
+	name                  token
+	schema                token
+	entries               []Relation
+	columns               []string
+	start, end            int
 }
 type scope struct {
 	lo, hi, body     int
@@ -316,8 +317,18 @@ func (a *analysis) resolve(candidate *source, ctes []*binding) {
 			candidate.entries = append(candidate.entries, entry)
 			candidate.columns = append(candidate.columns, entry.Columns...)
 			if a.context.Engine == "sqlite" {
+				candidate.logicalIdentityProven = true
 				return
 			}
+		}
+	}
+	// Remote active namespace/search_path is not supplied to this offline
+	// service. Only qualified, unambiguous names prove a logical endpoint.
+	if len(candidate.entries) == 1 && candidate.schema.value != "" {
+		entry := candidate.entries[0]
+		candidate.logicalIdentityProven = true
+		if mysqlLexicalEngine(a.context.Engine) {
+			candidate.logicalIdentityProven = candidate.name.value == entry.Name && candidate.schema.value == entry.Schema
 		}
 	}
 }

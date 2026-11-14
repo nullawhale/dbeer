@@ -2,6 +2,7 @@ package resultartifact
 
 import (
 	"bytes"
+	"dbeer/helper/internal/nativevalue"
 	"dbeer/helper/internal/sqlitevalue"
 	"encoding/base64"
 	"encoding/json"
@@ -17,7 +18,7 @@ func decodeManifest(data []byte, id string) (Metadata, error) {
 		return Metadata{}, err
 	}
 	var m Metadata
-	if !decodeRequired(object, "version", &m.Version) || (m.Version != 1 && m.Version != 2) ||
+	if !decodeRequired(object, "version", &m.Version) || (m.Version < 1 || m.Version > 3) ||
 		!decodeRequired(object, "id", &m.ID) || strings.ToLower(m.ID) != id ||
 		!decodeRequired(object, "title", &m.Title) || strings.TrimSpace(m.Title) == "" || len(m.Title) > 4096 ||
 		!decodeRequired(object, "capturedAt", &m.CapturedAt) || math.IsInf(m.CapturedAt, 0) || math.IsNaN(m.CapturedAt) ||
@@ -37,12 +38,26 @@ func decodeManifest(data []byte, id string) (Metadata, error) {
 		m.ProfileName != nil && len(*m.ProfileName) > 4096 {
 		return Metadata{}, ErrCorrupt
 	}
+	if raw, present := object["nativeValuesFormat"]; present {
+		if m.Version != 3 || json.Unmarshal(raw, &m.NativeValuesFormat) != nil || m.NativeValuesFormat != nativevalue.NativeResultValuesFormat {
+			return Metadata{}, ErrCorrupt
+		}
+	}
 	m.ID = id
 	if m.Columns, err = decodeColumns(object["columns"]); err != nil {
 		return Metadata{}, err
 	}
+	if m.NativeValuesFormat != "" {
+		for i := range m.Columns {
+			m.Columns[i].Encoding = "nativeValue"
+			if m.Engine == "sqlite" && m.Columns[i].TypeIdentity == "" {
+				m.Columns[i].TypeIdentity = "sqlite-value-v1:" + m.Columns[i].NativeType
+			}
+		}
+		return m, nil
+	}
 	if m.Engine == "sqlite" {
-		if m.Version != 2 {
+		if m.Version < 2 {
 			return Metadata{}, ErrCorrupt
 		}
 		for i := range m.Columns {
@@ -337,4 +352,86 @@ func hexCode(data []byte) uint16 {
 		}
 	}
 	return code
+}
+
+// Native rows retain presentation separately from captured typed evidence.
+func decodeArtifactRow(data []byte, columns []Column, format, engine string) ([]*string, []nativevalue.NativeValue, error) {
+	if format == "" {
+		row, err := decodeRow(data, columns)
+		return row, nil, err
+	}
+	if format != nativevalue.NativeResultValuesFormat || len(data) > MaximumRowBytes {
+		return nil, nil, ErrCorrupt
+	}
+	object, err := decodeObject(data)
+	if err != nil || len(object) < 2 || len(object) > 3 || object["values"] == nil || object["nativeValues"] == nil {
+		return nil, nil, ErrCorrupt
+	}
+	for key := range object {
+		if key != "values" && key != "nativeValues" && key != "sqliteValues" {
+			return nil, nil, ErrCorrupt
+		}
+	}
+	if rowWidth(bytes.TrimSpace(object["values"])) != len(columns) {
+		return nil, nil, ErrCorrupt
+	}
+	var display []*string
+	if json.Unmarshal(object["values"], &display) != nil || len(display) != len(columns) {
+		return nil, nil, ErrCorrupt
+	}
+	var cells []sqlitevalue.Value
+	if engine == "sqlite" {
+		if len(object["sqliteValues"]) == 0 || json.Unmarshal(object["sqliteValues"], &cells) != nil || len(cells) != len(columns) {
+			return nil, nil, ErrCorrupt
+		}
+		for _, cell := range cells {
+			if !cell.Valid() {
+				return nil, nil, ErrCorrupt
+			}
+		}
+	} else if _, present := object["sqliteValues"]; present {
+		return nil, nil, ErrCorrupt
+	}
+	raw := object["nativeValues"]
+	if len(raw) > nativevalue.MaxNativeValueBytes || len(columns) > 4096 {
+		return nil, nil, ErrCorrupt
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	token, err := decoder.Token()
+	if err != nil || token != json.Delim('[') {
+		return nil, nil, ErrCorrupt
+	}
+	values := make([]nativevalue.NativeValue, 0, len(columns))
+	for decoder.More() {
+		if len(values) >= len(columns) {
+			return nil, nil, ErrCorrupt
+		}
+		var value nativevalue.NativeValue
+		if decoder.Decode(&value) != nil {
+			return nil, nil, ErrCorrupt
+		}
+		values = append(values, value)
+	}
+	if token, err := decoder.Token(); err != nil || token != json.Delim(']') || !nativevalue.NativeMatrixValid([][]nativevalue.NativeValue{values}, 1, len(columns)) {
+		return nil, nil, ErrCorrupt
+	}
+	row := make([]*string, len(values))
+	for i, value := range values {
+		if engine == "sqlite" && !nativeMatchesSQLite(value, cells[i]) {
+			return nil, nil, ErrCorrupt
+		}
+		if value.Kind != "null" {
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return nil, nil, ErrCorrupt
+			}
+			text := string(encoded)
+			row[i] = &text
+		}
+	}
+	return row, values, nil
+}
+
+func nativeMatchesSQLite(native nativevalue.NativeValue, cell sqlitevalue.Value) bool {
+	return nativevalue.MatchesSQLite(native, cell)
 }

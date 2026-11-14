@@ -65,7 +65,7 @@ struct ExplainPlanModelTests {
         let one = try #require(SQLExecutionFragment.resolve(text: source, selection: NSRange(location: 0, length: 0), engine: .postgresql))
         let request = try ExplainPlanModel.request(fragment: one, mode: .analyze)
         #expect(request.sql == "SELECT '🍺'")
-        for sql in ["DELETE FROM sample", "EXPLAIN SELECT 1", "(SELECT 1)"] {
+        for sql in ["EXPLAIN SELECT 1", "(SELECT 1)"] {
             let fragment = try #require(SQLExecutionFragment.resolve(text: sql, selection: NSRange(location: 0, length: 0), engine: .postgresql))
             #expect(throws: ExecutionPolicyError.self) { try ExplainPlanModel.request(fragment: fragment, mode: .plan) }
         }

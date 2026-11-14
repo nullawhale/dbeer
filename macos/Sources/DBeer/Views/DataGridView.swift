@@ -8,6 +8,7 @@ struct DataGridView: View {
     let result: BackendMessage?
     private var editing = SwiftUI.State<GridCellEdit?>(initialValue: nil)
     private var showingColumns = SwiftUI.State(initialValue: false)
+    private var showingIncoming = SwiftUI.State(initialValue: false)
     private var showingRowDetails = SwiftUI.State(initialValue: false)
 
     init(document: SQLDocument, workspace: ApplicationWorkspace, grid: GridDraft, result: BackendMessage? = nil) {
@@ -22,7 +23,8 @@ struct DataGridView: View {
         workspace.canStartOperation(document) && !workspace.isClosing && document.canNavigateTable
     }
     private var supportsForeignKeys: Bool {
-        grid.columns.first?.engine == .postgresql || grid.columns.first?.engine == .mysql
+        guard let engine = grid.columns.first?.engine else { return false }
+        return [.postgresql, .mysql, .mariadb, .sqlite].contains(engine)
     }
     private var selectedRelationshipRowID: UUID? {
         guard grid.selectedRows.count == 1, let row = grid.selectedRows.first,
@@ -55,6 +57,21 @@ struct DataGridView: View {
                     Button("Reset") { TableBrowseNavigation.resetDraft(document: document) }
                         .controlHover().disabled(!canNavigate)
                 }.font(.caption).padding(8)
+            }
+            if let scope = document.tableRelationshipScope {
+                HStack {
+                    Text("Related rows from \(scope.parent.schema).\(scope.parent.name) · \(scope.name)").textSelection(.enabled)
+                    Spacer()
+                    Button("Remove Relationship Restriction") {
+                        var configuration = document.browseDraftConfiguration
+                        configuration.relationshipScope = nil
+                        document.browseDraftConfiguration = configuration
+                    }.controlHover().disabled(!canNavigate)
+                }.font(.caption).padding(8)
+                    .help("Only child rows related to the selected parent key are shown. Remove this restriction and Apply View to update the rows.")
+            }
+            if let read = document.logicalRelationshipRead {
+                LogicalRelationshipReadStatus(read: read)
             }
             if let reason = grid.readOnlyReason {
                 Text("Read only: \(reason)").font(.caption).appSecondaryText().padding(8)
@@ -90,13 +107,18 @@ struct DataGridView: View {
         }
         .onDisappear { grid.commitEditing?() }
         .sheet(item: editing.projectedValue) { edit in
-            GridCellEditor(edit: edit) { value in
+            GridCellEditor(edit: edit, relatedKeys: relatedKeys(for: edit.cell), loadRelatedKeys: pickerKeyLoader(edit), makeRelatedPicker: { key in
+                try workspace.makeForeignKeyPicker(document, grid: grid, rowID: edit.rowID, key: key)
+            }, relatedChosen: { editing.wrappedValue = nil }) { value in
                 // Resolve the stable row identity: inserted/deleted rows may change ordinals.
                 if let row = grid.rows.firstIndex(where: { $0.id == edit.rowID }) {
                     grid.set(value, row: row, column: edit.cell.column)
                 }
                 editing.wrappedValue = nil
             } cancel: { editing.wrappedValue = nil }
+        }
+        .sheet(isPresented: showingIncoming.projectedValue) {
+            IncomingRelationsSheet(document: document, workspace: workspace, grid: grid)
         }
         .sheet(isPresented: Binding(get: { grid.preview != nil }, set: { if !$0 { grid.preview = nil } })) {
             GridSQLPreviewView(result: grid.preview, editingNotice: grid.editingNotice) { grid.preview = nil }
@@ -107,10 +129,12 @@ struct DataGridView: View {
         let presentation = grid.presentation
         var view = ResultTableView(columns: grid.columns, rows: presentation.rows)
         view.editableColumns = canEdit ? grid.editableColumns : []
+        view.uneditableRows = grid.uneditableRows
         view.modifiedCells = presentation.modifiedCells
         view.deletedRows = presentation.deletedRows
         view.valueKinds = presentation.valueKinds
         view.sqliteValues = grid.sqliteValues
+        view.nativeValues = grid.nativeValues
         view.selectedRows = grid.selectedRows
         view.onInlineDraftChanged = { grid.hasInlineDraft = $0 }
         view.dataIdentity = presentation
@@ -120,6 +144,11 @@ struct DataGridView: View {
         }
         if canEdit {
             view.onEditCell = openEditor
+            if document.table != nil || grid.querySource?.isEditable == true {
+                view.onChooseRelatedCell = { openEditor($0, choosingRelated: true) }
+                view.relatedKeyColumns = needsPickerKeyLookup ? grid.editableColumns :
+                    IndexSet(grid.columns.indices.filter { !relatedKeys(for: .init(row: 0, column: $0)).isEmpty })
+            }
             if grid.columns.first?.engine != .sqlite { view.onCommitCell = { cell, text in
                 grid.set(ChangeValue(kind: "text", value: text), row: cell.row, column: cell.column)
             } }
@@ -141,7 +170,22 @@ struct DataGridView: View {
                 TableBrowseNavigation.sort(column: grid.columns[index].name, document: document, workspace: workspace)
             }
         }
+        if document.table != nil {
+            view.onCellFilter = { request in
+                TableBrowseNavigation.addCellFilter(request, document: document, workspace: workspace, grid: grid)
+            }
+            view.cellFilterUnavailableReason = { request in
+                do {
+                    _ = try TableBrowseNavigation.cellFilter(request, document: document, workspace: workspace, grid: grid)
+                    return nil
+                } catch { return error.localizedDescription }
+            }
+        }
         view.documentID = document.id
+        view.profileContext = "Loaded values · " + document.title
+        view.profileSelectionAllowed = grid.pendingCount == 0 && !grid.hasInlineDraft && !grid.outcomeUnknown &&
+            !grid.resultIsStale && !document.hasPendingBrowseChanges
+        view.profileSelectionNotice = "Apply or discard pending edits and reload stale or uncertain results before profiling their captured values."
         view.copySettings = workspace.copySettings
         view.copyAllowed = !document.isRunning && !document.isNavigatingTable && !workspace.isClosing && !grid.isApplying && !grid.isReloading && !grid.isClosing
         view.onCopyError = { workspace.reportCopyError($0) }
@@ -151,7 +195,11 @@ struct DataGridView: View {
         view.commandHandler = { workspace.commands.handleKeyEvent($0, documentID: document.id) }
         return InspectedResultTableView(table: view, rowDetails: showingRowDetails.wrappedValue
             ? GridRowDetailsView(grid: grid, canEdit: canEdit, edit: openEditor,
-                close: { showingRowDetails.wrappedValue = false }) : nil)
+                close: { showingRowDetails.wrappedValue = false }) : nil,
+            serverProfile: document.table == nil ? nil : { column in
+                try workspace.makeGridProfileServer(document: document, grid: grid, column: column)
+            }, investigations: workspace.investigations,
+            mayAttach: { workspace.canManageWorkspace && !workspace.isClosing })
     }
 
     private var sourceToolbar: some View {
@@ -164,6 +212,7 @@ struct DataGridView: View {
                     grid.isApplying || grid.outcomeUnknown || grid.resultIsStale || workspace.isClosing)
                 .help("Open the selected row in a new table tab using its original primary key")
                 .accessibilityIdentifier("openSQLSourceRow")
+            localRelationshipsMenu
             Spacer()
             Text("Source: \(grid.reference.schema).\(grid.reference.name)").font(.caption).appSecondaryText()
         }.controlSize(.small).padding(.horizontal, 10).padding(.vertical, 7)
@@ -175,12 +224,12 @@ struct DataGridView: View {
                 Button("Insert Row") { finishEditing(); grid.insert() }.controlHover().disabled(!canEdit)
                     .accessibilityIdentifier("gridInsertRow")
                 Button("Delete Selected") { finishEditing(); grid.deleteSelected() }.controlHover()
-                    .disabled(!canEdit || grid.selectedRows.isEmpty).accessibilityIdentifier("gridDeleteRows")
+                    .disabled(!canEdit || !grid.canDeleteSelectedRows).accessibilityIdentifier("gridDeleteRows")
             }
             Button("Columns…") { showingColumns.wrappedValue = true }.controlHover()
                 .accessibilityIdentifier("gridColumns")
                 .popover(isPresented: showingColumns.projectedValue) { columnDetails }
-            if supportsForeignKeys { relatedRowsMenu }
+            if supportsForeignKeys { relatedRowsMenu; localRelationshipsMenu }
             Spacer(minLength: 4)
             if !usesCursors {
                 ControlIconButton(systemName: "chevron.left") {
@@ -224,6 +273,14 @@ struct DataGridView: View {
                 Text("Select one row to follow a foreign key")
             }
             Divider()
+            Button("Find Incoming Relations…") {
+                showingIncoming.wrappedValue = true
+                Task { await workspace.discoverIncomingRows(document) }
+            }.disabled(!workspace.supportsRelationshipDiscovery(profileID: document.profileID) || document.incomingRelationships?.isBusy == true)
+            if document.incomingRelationships != nil {
+                Button("Show Incoming Relations…") { showingIncoming.wrappedValue = true }
+            }
+            Divider()
             Button(document.foreignKeysError == nil ? "Refresh Foreign Keys" : "Retry Foreign Keys") {
                 Task { await workspace.loadForeignKeys(document) }
             }.disabled(document.isLoadingForeignKeys)
@@ -232,6 +289,25 @@ struct DataGridView: View {
         .disabled(!canFollowRelationship)
         .help("Follow a selected row's foreign key in this view or an independent tab")
         .accessibilityIdentifier("gridRelatedRows")
+    }
+
+    private var localRelationshipsMenu: some View {
+        Menu("Local Links") {
+            let directions = workspace.logicalRelationshipDirections(document, grid: grid)
+            if directions.isEmpty { Text("No confirmed local mappings for this object") }
+            ForEach(directions) { direction in
+                Button(workspace.logicalRelationshipTargetLabel(direction)) {
+                    guard let rowID = selectedRelationshipRowID else { return }
+                    Task { await workspace.followLogicalRelationship(direction, rowID: rowID, in: document) }
+                }.disabled(selectedRelationshipRowID == nil || !workspace.logicalRelationshipProfilesMatch(direction.relationship))
+            }
+            Divider()
+            Button("Manage Local Relationships…") { workspace.presentLogicalRelationships() }
+        }.fixedSize().controlHover()
+            .disabled(!workspace.canStartOperation(document) || document.isRunning || document.isNavigatingTable ||
+                grid.isApplying || grid.isPreviewing || grid.isReloading || grid.isClosing || grid.resultIsStale || grid.outcomeUnknown || document.hasPendingBrowseChanges)
+            .help("User-confirmed local mappings open related rows in an independent tab after current metadata validation")
+            .accessibilityIdentifier("gridLocalRelationships")
     }
 
     private var changesToolbar: some View {
@@ -294,11 +370,38 @@ struct DataGridView: View {
 
     private func finishEditing() { grid.commitEditing?() }
 
-    private func openEditor(_ cell: ResultGridCell) {
-        guard canEdit, grid.rows.indices.contains(cell.row), grid.columns.indices.contains(cell.column),
+    private func openEditor(_ cell: ResultGridCell) { openEditor(cell, choosingRelated: false) }
+
+    private var needsPickerKeyLookup: Bool {
+        grid.querySource?.isEditable == true && workspace.cachedForeignKeyPickerKeys(document, grid: grid) == nil
+    }
+
+    private func relatedKeys(for cell: ResultGridCell) -> [TableForeignKey] {
+        filterRelatedKeys(workspace.cachedForeignKeyPickerKeys(document, grid: grid) ?? [], for: cell)
+    }
+
+    private func filterRelatedKeys(_ keys: [TableForeignKey], for cell: ResultGridCell) -> [TableForeignKey] {
+        guard let columns = try? ForeignKeyPickerValues.canonicalColumns(grid), columns.indices.contains(cell.column) else { return [] }
+        let name = Data(columns[cell.column].name.utf8)
+        return keys.filter { key in
+            key.columns.contains { Data($0.source.utf8) == name } &&
+                (try? ForeignKeyPickerValues.sourceIndices(key: key, columns: columns))?.allSatisfy { grid.editableColumns.contains($0) } == true
+        }
+    }
+
+    private func pickerKeyLoader(_ edit: GridCellEdit) -> (@MainActor () async throws -> [TableForeignKey])? {
+        guard needsPickerKeyLookup else { return nil }
+        return {
+            let keys = try await workspace.loadForeignKeyPickerKeys(document, grid: grid, rowID: edit.rowID)
+            return filterRelatedKeys(keys, for: edit.cell)
+        }
+    }
+
+    private func openEditor(_ cell: ResultGridCell, choosingRelated: Bool) {
+        guard canEdit, grid.canEditRow(cell.row), grid.columns.indices.contains(cell.column),
               let value = grid.value(row: cell.row, column: cell.column) else { return }
         editing.wrappedValue = GridCellEdit(cell: cell, rowID: grid.rows[cell.row].id,
-            value: value, column: grid.columns[cell.column], metadata: grid.metadata[cell.column])
+            value: value, column: grid.columns[cell.column], metadata: grid.metadata[cell.column], choosingRelated: choosingRelated)
     }
 
     private var columnDetails: some View {
@@ -343,20 +446,35 @@ private struct GridCellEdit: Identifiable {
     let value: ChangeValue
     let column: ResultColumn
     let metadata: [String: String]
+    let choosingRelated: Bool
 }
 
 private struct GridCellEditor: View {
     let edit: GridCellEdit
+    let loadRelatedKeys: (@MainActor () async throws -> [TableForeignKey])?
+    private var relatedKeyState: SwiftUI.State<[TableForeignKey]>
+    private var relatedKeys: [TableForeignKey] { relatedKeyState.wrappedValue }
+    let makeRelatedPicker: (TableForeignKey) throws -> ForeignKeyPickerModel
+    let relatedChosen: () -> Void
     let save: (ChangeValue) -> Void
     let cancel: () -> Void
     private var kind: SwiftUI.State<String>
     private var text: SwiftUI.State<String>
     private var sqliteType: SwiftUI.State<String>
     private var error = SwiftUI.State<String?>(initialValue: nil)
+    private var relatedPicker = SwiftUI.State<ForeignKeyPickerModel?>(initialValue: nil)
+    private var loadingRelatedKeys = SwiftUI.State(initialValue: false)
+    private var relatedLookup = SwiftUI.State<Task<Void, Never>?>(initialValue: nil)
     @FocusState private var isTextFocused: Bool
 
-    init(edit: GridCellEdit, save: @escaping (ChangeValue) -> Void, cancel: @escaping () -> Void) {
+    init(edit: GridCellEdit, relatedKeys: [TableForeignKey],
+         loadRelatedKeys: (@MainActor () async throws -> [TableForeignKey])?, makeRelatedPicker: @escaping (TableForeignKey) throws -> ForeignKeyPickerModel,
+         relatedChosen: @escaping () -> Void, save: @escaping (ChangeValue) -> Void, cancel: @escaping () -> Void) {
         self.edit = edit
+        self.relatedKeyState = SwiftUI.State(initialValue: relatedKeys)
+        self.loadRelatedKeys = loadRelatedKeys
+        self.makeRelatedPicker = makeRelatedPicker
+        self.relatedChosen = relatedChosen
         self.save = save
         self.cancel = cancel
         kind = SwiftUI.State(initialValue: ["null", "default"].contains(edit.value.kind) ? edit.value.kind : "value")
@@ -373,9 +491,59 @@ private struct GridCellEditor: View {
     }
 
     var body: some View {
+        Group {
+            if let model = relatedPicker.wrappedValue {
+                ForeignKeyPickerView(model: model, chosen: relatedChosen,
+                    back: { relatedPicker.wrappedValue = nil })
+            } else { editor }
+        }.task {
+            if edit.choosingRelated {
+                if relatedKeys.count == 1, let key = relatedKeys.first { beginRelatedPicker(key) }
+                else if relatedKeys.isEmpty { beginRelatedLookup() }
+            }
+        }.onDisappear { relatedLookup.wrappedValue?.cancel() }
+    }
+
+    private func beginRelatedLookup() {
+        guard let loadRelatedKeys, !loadingRelatedKeys.wrappedValue else { return }
+        loadingRelatedKeys.wrappedValue = true
+        relatedLookup.wrappedValue = Task { @MainActor in
+            defer { loadingRelatedKeys.wrappedValue = false; relatedLookup.wrappedValue = nil }
+            do {
+                let keys = try await loadRelatedKeys()
+                try Task.checkCancellation()
+                relatedKeyState.wrappedValue = keys
+                if keys.count == 1, let key = keys.first { beginRelatedPicker(key) }
+                else if keys.isEmpty { error.wrappedValue = "No editable declared foreign key uses this source column." }
+            } catch { self.error.wrappedValue = error.localizedDescription }
+        }
+    }
+
+    private func beginRelatedPicker(_ key: TableForeignKey) {
+        do { relatedPicker.wrappedValue = try makeRelatedPicker(key) }
+        catch { self.error.wrappedValue = error.localizedDescription }
+    }
+
+    private var editor: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Edit \(edit.column.name)").font(.title2)
             Text("Row \(edit.cell.row + 1) · \(policy.nativeType)").font(.caption).appSecondaryText()
+            if relatedKeys.isEmpty, loadRelatedKeys != nil {
+                HStack {
+                    Button("Choose Related Record…", action: beginRelatedLookup).controlHover()
+                        .disabled(loadingRelatedKeys.wrappedValue).accessibilityIdentifier("chooseRelatedRecord")
+                    if loadingRelatedKeys.wrappedValue { ProgressView().controlSize(.small) }
+                }
+            } else if let key = relatedKeys.first, relatedKeys.count == 1 {
+                Button("Choose Related Record…") { beginRelatedPicker(key) }.controlHover()
+                    .help(key.displayLabel).accessibilityIdentifier("chooseRelatedRecord")
+            } else if !relatedKeys.isEmpty {
+                Menu("Choose Related Record…") {
+                    ForEach(relatedKeys) { key in
+                        Button(key.displayLabel) { beginRelatedPicker(key) }.controlHover()
+                    }
+                }.accessibilityIdentifier("chooseRelatedRecord")
+            }
             ControlSegmentPicker("Value", selection: kind.projectedValue, choices: choices)
             if kind.wrappedValue == "value" {
                 if edit.column.engine == .sqlite {
@@ -483,5 +651,17 @@ private struct GridSQLPreviewView: View {
             }
         }.padding(20).frame(width: 820, height: 560)
             .tint(AppPalette.accent).focusEffectDisabled()
+    }
+}
+
+private struct LogicalRelationshipReadStatus: View {
+    @ObservedObject var read: LogicalRelationshipRead
+    var body: some View {
+        HStack {
+            ProgressView().controlSize(.small)
+            Text(read.phase).font(.caption).textSelection(.enabled)
+            Spacer()
+            Button("Stop") { Task { await read.stop() } }.controlHover().disabled(read.cancelled)
+        }.padding(8).accessibilityIdentifier("logicalRelationshipRead")
     }
 }

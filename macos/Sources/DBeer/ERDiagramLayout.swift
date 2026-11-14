@@ -18,7 +18,9 @@ enum ERDiagramLayout {
         header + Double(max(1, columns(facts, collapsed: collapsed).count)) * row + footer
     }
     static func positions(tables: [ERTableID], relationships: [ERRelationship], metadata: [ERTableID: ERTableMetadata],
-                          preserving: [ERPlacement], collapsed: Set<ERTableID>) -> [ERPlacement] {
+                          preserving: [ERPlacement], collapsed: Set<ERTableID>,
+                          isCancelled: () -> Bool = { Task.isCancelled }) -> [ERPlacement] {
+        guard !isCancelled() else { return [] }
         let ordered = tables.sorted { $0.id < $1.id }
         let selected = Set(ordered)
         var edges: [ERTableID: [ERTableID]] = [:]
@@ -29,10 +31,16 @@ enum ERDiagramLayout {
         var next = 0, index: [ERTableID: Int] = [:], low: [ERTableID: Int] = [:]
         var stack: [ERTableID] = [], active = Set<ERTableID>(), components: [[ERTableID]] = []
         func visit(_ node: ERTableID) {
+            guard !isCancelled() else { return }
             index[node] = next; low[node] = next; next += 1; stack.append(node); active.insert(node)
             for target in (edges[node] ?? []).sorted(by: { $0.id < $1.id }) {
-                if index[target] == nil { visit(target); low[node] = min(low[node]!, low[target]!) }
-                else if active.contains(target) { low[node] = min(low[node]!, index[target]!) }
+                if index[target] == nil {
+                    visit(target)
+                    guard !isCancelled(), let childLow = low[target], let nodeLow = low[node] else { return }
+                    low[node] = min(nodeLow, childLow)
+                } else if active.contains(target), let targetIndex = index[target], let nodeLow = low[node] {
+                    low[node] = min(nodeLow, targetIndex)
+                }
             }
             if low[node] == index[node] {
                 var group: [ERTableID] = []
@@ -44,6 +52,7 @@ enum ERDiagramLayout {
             }
         }
         for node in ordered where index[node] == nil { visit(node) }
+        guard !isCancelled() else { return [] }
         var owner: [ERTableID: Int] = [:]
         for (i, group) in components.enumerated() { for node in group { owner[node] = i } }
         var links: [Int: Set<Int>] = [:], indegree: [Int: Int] = [:], rank: [Int: Int] = [:]
@@ -53,6 +62,7 @@ enum ERDiagramLayout {
         }
         var queue = components.indices.filter { indegree[$0, default: 0] == 0 }.sorted()
         while !queue.isEmpty {
+            guard !isCancelled() else { return [] }
             let node = queue.removeFirst()
             for target in (links[node] ?? []).sorted() {
                 rank[target] = max(rank[target, default: 0], rank[node, default: 0] + 1)
@@ -68,7 +78,7 @@ enum ERDiagramLayout {
         }
         var levels: [Int: Double] = [:]
         for node in ordered where !result.contains(where: { $0.table == node }) {
-            if Task.isCancelled { break }
+            guard !isCancelled() else { return [] }
             let level = rank[owner[node]!, default: 0]
             let x = Double(level) * (width + horizontalGap) + 40
             var y = levels[level, default: 40]
@@ -78,6 +88,7 @@ enum ERDiagramLayout {
             while let obstacle = occupied.first(where: {
                 $0.minX < padded.maxX && $0.maxX > padded.minX && $0.minY < padded.maxY && $0.maxY > padded.minY
             }) {
+                guard !isCancelled() else { return [] }
                 y = obstacle.maxY + verticalGap / 2; rect.origin.y = y
                 padded = rect.insetBy(dx: -horizontalGap / 2, dy: -verticalGap / 2)
             }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 
 	wire "github.com/go-mysql-org/go-mysql/mysql"
 )
@@ -20,7 +21,15 @@ func (session *Session) executeResults(sql string, parent *collector, target *wi
 			err = wire.ErrMalformPacket
 		}
 	}()
-	err = session.work.client.ExecuteSelectStreaming(sql, target, parent.row, parent.columns)
+	if parent.nativeRequested {
+		// The packet reader retains EOF flags; reuse the existing COM_PING status recovery.
+		parent.needsStatusProbe = true
+		if err = session.sendTextQuery(sql); err == nil {
+			err = session.readNextResult(parent, target, false)
+		}
+	} else {
+		err = session.work.client.ExecuteSelectStreaming(sql, target, parent.row, parent.columns)
+	}
 	if err != nil {
 		return err
 	}
@@ -76,7 +85,7 @@ func (session *Session) drainResults(parent *collector, target *wire.Result, bin
 	remainingRows, remainingBytes := MaxResultRows, MaxResultBytes
 	capture := func(current *collector, result *wire.Result) {
 		response := current.finishSingle(result, 0, "")
-		set := protocol.ResultSet{Columns: response.Columns, Rows: response.Rows, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice, StorageTokens: response.StorageTokens, Source: response.Source}
+		set := protocol.ResultSet{Columns: response.Columns, Rows: response.Rows, NativeValues: response.NativeValues, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice, StorageTokens: response.StorageTokens, Source: response.Source}
 		if set.Columns == nil {
 			set.Columns = []protocol.Column{}
 		}
@@ -96,7 +105,11 @@ func (session *Session) drainResults(parent *collector, target *wire.Result, bin
 	status := target.Status
 	index := 1
 	for status&wire.SERVER_MORE_RESULTS_EXISTS != 0 {
-		current := newCollector(protocol.Command{RequestID: parent.response.RequestID, SessionID: parent.response.SessionID, QueryID: parent.response.QueryID})
+		command := protocol.Command{RequestID: parent.response.RequestID, SessionID: parent.response.SessionID, QueryID: parent.response.QueryID}
+		if parent.nativeRequested {
+			command.ResultValues = protocol.NativeResultValuesFormat
+		}
+		current := newCollector(command)
 		current.maxRows, current.maxBytes = remainingRows, remainingBytes
 		current.delivery, current.resultIndex = parent.delivery, index
 		index++
@@ -143,6 +156,8 @@ func (session *Session) readNextResult(collector *collector, target *wire.Result
 			return wire.ErrMalformPacket
 		}
 		target.Status, target.AffectedRows, target.InsertId, target.Warnings = loaded.Status, loaded.AffectedRows, loaded.InsertId, loaded.Warnings
+		status := target.Status
+		collector.actualTerminalStatus = &status
 		loaded.Close()
 		return nil
 	case wire.ERR_HEADER:
@@ -204,6 +219,8 @@ func (session *Session) readNextResult(collector *collector, target *wire.Result
 		if data[0] == wire.EOF_HEADER && len(data) == 5 {
 			target.Warnings = binary.LittleEndian.Uint16(data[1:3])
 			target.Status = binary.LittleEndian.Uint16(data[3:5])
+			status := target.Status
+			collector.actualTerminalStatus = &status
 			return nil
 		}
 		if data[0] == wire.ERR_HEADER {
@@ -216,7 +233,14 @@ func (session *Session) readNextResult(collector *collector, target *wire.Result
 		if err != nil {
 			return err
 		}
-		if err := collector.row(values); err != nil {
+		var rawText [][]byte
+		if collector.nativeRequested && !binaryRows {
+			rawText, err = nativeTextFields(data, len(fields))
+			if err != nil {
+				return err
+			}
+		}
+		if err := collector.rowWithRawText(values, rawText); err != nil {
 			return err
 		}
 	}
@@ -254,4 +278,36 @@ func validOKPacket(data []byte) bool {
 	}
 	_, second, ok := lengthEncoded(data[1+first:])
 	return ok && len(data) >= 1+first+second+4
+}
+
+// The existing owner sends one COM_QUERY and drains its original response.
+func (session *Session) sendTextQuery(sql string) error {
+	session.work.client.ResetSequence()
+	payload := []byte{wire.COM_QUERY}
+	if strings.Contains("|"+session.work.client.CapabilityString()+"|", "|CLIENT_QUERY_ATTRIBUTES|") {
+		payload = append(payload, 0, 1)
+	}
+	payload = append(payload, []byte(sql)...)
+	packet := make([]byte, 4+len(payload))
+	copy(packet[4:], payload)
+	return session.work.client.WritePacket(packet)
+}
+
+func nativeTextFields(data []byte, count int) ([][]byte, error) {
+	values := make([][]byte, count)
+	for index := range values {
+		if len(data) == 0 {
+			return nil, wire.ErrMalformPacket
+		}
+		value, _, used, err := wire.LengthEncodedString(data)
+		if err != nil || used <= 0 || used > len(data) {
+			return nil, wire.ErrMalformPacket
+		}
+		values[index] = value
+		data = data[used:]
+	}
+	if len(data) != 0 {
+		return nil, wire.ErrMalformPacket
+	}
+	return values, nil
 }

@@ -11,10 +11,10 @@ func keyTarget(key ForeignKey, relation Relation) bool {
 }
 
 func joinPredicate(key ForeignKey, from, to string, engine string) string {
-	return renderJoinPredicate(key, from, to, func(value string) string { return quoteIdentifier(value, engine) })
+	return renderJoinPredicate(key, from, to, engine, func(value string) string { return quoteIdentifier(value, engine) })
 }
 
-func renderJoinPredicate(key ForeignKey, from, to string, quote func(string) string) string {
+func renderJoinPredicate(key ForeignKey, from, to, engine string, quote func(string) string) string {
 	parts := []string{}
 	if len(key.Columns) == 0 || len(key.Columns) > 32 {
 		return ""
@@ -23,7 +23,11 @@ func renderJoinPredicate(key ForeignKey, from, to string, quote func(string) str
 		if pair.Source == "" || pair.Target == "" {
 			return ""
 		}
-		parts = append(parts, quote(from)+"."+quote(pair.Source)+" = "+quote(to)+"."+quote(pair.Target))
+		if key.Origin == "logical" && engine == "sqlite" {
+			parts = append(parts, quote(to)+"."+quote(pair.Target)+" = +"+quote(from)+"."+quote(pair.Source))
+		} else {
+			parts = append(parts, quote(from)+"."+quote(pair.Source)+" = "+quote(to)+"."+quote(pair.Target))
+		}
 	}
 	return strings.Join(parts, " AND ")
 }
@@ -67,18 +71,24 @@ func aliasFor(name string, sources []source) string {
 
 // joinEdges enumerates both referencing and referenced directions. Foreign-key
 // names are descriptive only: they never enter executable SQL.
-func joinEdges(left, right Relation, leftAlias, rightAlias, engine string, add func(string, string, string)) {
+func joinEdges(left, right Relation, leftAlias, rightAlias, engine string, logicalIdentityProven bool, add func(string, string, string)) {
 	for _, key := range left.ForeignKeys {
+		if key.Origin == "logical" && !logicalIdentityProven {
+			continue
+		}
 		if keyTarget(key, right) {
 			if predicate := joinPredicate(key, leftAlias, rightAlias, engine); predicate != "" {
-				add(predicate, renderJoinPredicate(key, leftAlias, rightAlias, func(value string) string { return value }), key.Name)
+				add(predicate, renderJoinPredicate(key, leftAlias, rightAlias, engine, func(value string) string { return value }), keyDetail(key))
 			}
 		}
 	}
 	for _, key := range right.ForeignKeys {
+		if key.Origin == "logical" && !logicalIdentityProven {
+			continue
+		}
 		if keyTarget(key, left) {
 			if predicate := joinPredicate(key, rightAlias, leftAlias, engine); predicate != "" {
-				add(predicate, renderJoinPredicate(key, rightAlias, leftAlias, func(value string) string { return value }), key.Name)
+				add(predicate, renderJoinPredicate(key, rightAlias, leftAlias, engine, func(value string) string { return value }), keyDetail(key))
 			}
 		}
 	}
@@ -129,7 +139,8 @@ func (r *request) joinTables(schema *token) {
 		alias := aliasFor(entry.Name, r.scope.visible(r.context.Engine))
 		for _, src := range sources {
 			for _, left := range src.entries {
-				joinEdges(left, entry, identifierName(src.name, r.context.Engine), alias, r.context.Engine, func(predicate, label, key string) {
+				logicalIdentity := src.logicalIdentityProven && (schema == nil || r.context.Engine != "mysql" || schema.value == entry.Schema)
+				joinEdges(left, entry, identifierName(src.name, r.context.Engine), alias, r.context.Engine, logicalIdentity, func(predicate, label, key string) {
 					name := qualifiedName(entry, r.context.Engine)
 					if schema != nil {
 						name = quoteIdentifier(entry.Name, r.context.Engine)
@@ -158,11 +169,18 @@ func (r *request) joinConditions() {
 	for _, left := range sources[:len(sources)-1] {
 		for _, a := range left.entries {
 			for _, b := range right.entries {
-				joinEdges(a, b, identifierName(left.name, r.context.Engine), identifierName(right.name, r.context.Engine), r.context.Engine, func(predicate, label, key string) {
+				joinEdges(a, b, identifierName(left.name, r.context.Engine), identifierName(right.name, r.context.Engine), r.context.Engine, left.logicalIdentityProven && right.logicalIdentityProven, func(predicate, label, key string) {
 					// The label is readable SQL; replacement remains fully quoted.
-					r.add(label, predicate, "Foreign key · "+key, 15, -1)
+					r.add(label, predicate, key, 15, -1)
 				})
 			}
 		}
 	}
+}
+
+func keyDetail(key ForeignKey) string {
+	if key.Origin == "logical" {
+		return "Local confirmed relationship · " + key.Name
+	}
+	return "Foreign key · " + key.Name
 }

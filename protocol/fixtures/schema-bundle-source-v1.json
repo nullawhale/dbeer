@@ -1,0 +1,222 @@
+{
+  "version": 6,
+  "capability": "schemaBundleSourceV1",
+  "commands": [
+    {
+      "type": "schema.import.start",
+      "requestId": "import-start",
+      "schemaComparison": {
+        "bundle": {
+          "path": "/synthetic/schema-bundle",
+          "allowSQLChanges": false
+        }
+      }
+    },
+    {
+      "type": "schema.import.status",
+      "requestId": "import-status",
+      "schemaComparison": {
+        "jobId": "import-job"
+      }
+    },
+    {
+      "type": "schema.import.cancel",
+      "requestId": "import-cancel",
+      "schemaComparison": {
+        "jobId": "import-job"
+      }
+    },
+    {
+      "type": "schema.import.close",
+      "requestId": "import-close",
+      "schemaComparison": {
+        "jobId": "import-job"
+      }
+    },
+    {
+      "type": "schema.start",
+      "requestId": "offline-start",
+      "schemaComparison": {
+        "source": {
+          "bundle": {
+            "path": "/synthetic/schema-bundle",
+            "allowSQLChanges": false,
+            "engine": "postgresql",
+            "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        },
+        "target": {
+          "bundle": {
+            "path": "/synthetic/schema-bundle",
+            "allowSQLChanges": false,
+            "engine": "postgresql",
+            "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        },
+        "mappings": {
+          "schemas": [
+            {
+              "source": "source_schema",
+              "target": "target_schema"
+            }
+          ],
+          "tables": [],
+          "types": []
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "type": "schema.import.start.result",
+      "requestId": "import-start",
+      "schemaComparison": {
+        "jobId": "import-job",
+        "state": "pending"
+      }
+    },
+    {
+      "type": "schema.import.status.result",
+      "requestId": "import-status",
+      "schemaComparison": {
+        "jobId": "import-job",
+        "state": "completed",
+        "importSummary": {
+          "source": {
+            "path": "/synthetic/schema-bundle",
+            "allowSQLChanges": false,
+            "engine": "postgresql",
+            "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          },
+          "label": "Historical é",
+          "schemas": [
+            "public"
+          ],
+          "modifiedSQL": 0,
+          "manualObjects": 0,
+          "complete": true
+        }
+      }
+    },
+    {
+      "type": "schema.import.cancel.result",
+      "requestId": "import-cancel",
+      "schemaComparison": {
+        "jobId": "import-job",
+        "state": "cancelled"
+      }
+    },
+    {
+      "type": "schema.import.close.result",
+      "requestId": "import-close",
+      "schemaComparison": {
+        "jobId": "import-job",
+        "state": "closed"
+      }
+    },
+    {
+      "type": "schema.status.result",
+      "requestId": "status",
+      "schemaComparison": {
+        "jobId": "schema-job",
+        "state": "completed",
+        "summary": {
+          "formatVersion": 1,
+          "engine": "postgresql",
+          "source": {
+            "engine": "postgresql",
+            "version": "",
+            "database": "",
+            "startedAt": "",
+            "finishedAt": "",
+            "consistency": "repeatableRead",
+            "visibility": "complete",
+            "engineContext": {
+              "state": "known",
+              "value": []
+            },
+            "origin": {
+              "kind": "bundle",
+              "label": "Historical é",
+              "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "modifiedSQL": 0,
+              "manualObjects": 0
+            }
+          },
+          "target": {
+            "engine": "postgresql",
+            "version": "",
+            "database": "",
+            "startedAt": "",
+            "finishedAt": "",
+            "consistency": "repeatableRead",
+            "visibility": "complete",
+            "engineContext": {
+              "state": "known",
+              "value": []
+            },
+            "origin": {
+              "kind": "bundle",
+              "label": "Historical é",
+              "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "contentSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "modifiedSQL": 0,
+              "manualObjects": 0
+            }
+          },
+          "mappings": {
+            "schemas": [
+              {
+                "source": "source_schema",
+                "target": "target_schema"
+              }
+            ],
+            "tables": [],
+            "types": []
+          },
+          "scope": {
+            "kind": "mappedTableStructure",
+            "excludedObjectKinds": [
+              "views",
+              "routines",
+              "triggers",
+              "privileges",
+              "statistics",
+              "physicalContents",
+              "sequenceCounters",
+              "autoIncrementCounters"
+            ]
+          },
+          "equalObjects": 0,
+          "sourceOnlyObjects": 0,
+          "targetOnlyObjects": 0,
+          "changedObjects": 1,
+          "indeterminateObjects": 0,
+          "differenceCount": 1,
+          "issueCount": 0,
+          "complete": true,
+          "fullEquality": false,
+          "modelDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    }
+  ],
+  "validCommandJSON": [
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/\\ud83d\\ude00\",\"allowSQLChanges\":false}}}",
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/\\ufffd\",\"allowSQLChanges\":false}}}",
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/é\",\"allowSQLChanges\":false}}}",
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/e\\u0301\",\"allowSQLChanges\":false}}}",
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/\\\\ud800\",\"allowSQLChanges\":false}}}"
+  ],
+  "invalidCommandJSON": [
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/\\ud800\",\"allowSQLChanges\":false}}}",
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/\\udc00\",\"allowSQLChanges\":false}}}",
+    "{\"type\":\"schema.import.start\",\"requestId\":\"inspect\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/\\ud800x\",\"allowSQLChanges\":false}}}",
+    "{\"type\":\"schema.import.start\",\"requestId\":\"\\ud800\",\"schemaComparison\":{\"bundle\":{\"path\":\"/synthetic/\\ud83d\\ude00\",\"allowSQLChanges\":false}}}",
+    "{\"type\": \"schema.start\", \"requestId\": \"offline-start\", \"schemaComparison\": {\"source\": {\"bundle\": {\"path\": \"/synthetic/schema-bundle\", \"allowSQLChanges\": false, \"engine\": \"postgresql\", \"manifestSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"contentSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}}, \"target\": {\"bundle\": {\"path\": \"/synthetic/schema-bundle\", \"allowSQLChanges\": false, \"engine\": \"postgresql\", \"manifestSha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"contentSha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}}, \"mappings\": {\"schemas\": [{\"source\": \"\\ud800\", \"target\": \"target_schema\"}], \"tables\": [], \"types\": []}}}"
+  ]
+}

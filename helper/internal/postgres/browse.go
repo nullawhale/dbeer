@@ -9,15 +9,18 @@ import (
 	"strconv"
 	"strings"
 
+	"dbeer/helper/internal/browsevalue"
 	"dbeer/helper/internal/protocol"
 	"github.com/jackc/pgx/v5"
 )
 
 type browseColumn struct {
-	name    string
-	primary int
-	binary  bool
-	numeric bool
+	name           string
+	primary        int
+	binary         bool
+	numeric        bool
+	baseOID        uint32
+	encodingUnsafe bool
 }
 
 type browsePlan struct {
@@ -28,12 +31,19 @@ type browsePlan struct {
 	storageProjection bool
 }
 
+// Domains inherit their base type's comparison category. This metadata comes
+// from pg_catalog, never from the operand's sourceType.
+const browseBaseOIDSQL = `(WITH RECURSIVE base AS (
+ SELECT t.oid,t.typbasetype FROM pg_catalog.pg_type t WHERE t.oid=a.atttypid
+ UNION ALL SELECT t.oid,t.typbasetype FROM pg_catalog.pg_type t JOIN base b ON t.oid=b.typbasetype WHERE b.typbasetype<>0
+) SELECT oid FROM base WHERE typbasetype=0 LIMIT 1)`
+
 var errBrowse = errors.New("invalid PostgreSQL table browse request")
 
 func browseSQL(ctx context.Context, conn *pgx.Conn, command protocol.Command) (browsePlan, *protocol.Response) {
 	request := command.Catalog
 	storageProjection := false
-	rows, err := conn.Query(ctx, `SELECT a.attname::text,COALESCE((SELECT key.ordinality FROM pg_catalog.pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality) WHERE i.indrelid=c.oid AND i.indisprimary AND key.attnum=a.attnum),0),`+postgresBinaryTypeSQL+`,a.atttypid IN (20,21,23,700,701,1700),c.relkind IN ('r','p')
+	rows, err := conn.Query(ctx, `SELECT a.attname::text,COALESCE((SELECT key.ordinality FROM pg_catalog.pg_index i CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY key(attnum,ordinality) WHERE i.indrelid=c.oid AND i.indisprimary AND key.attnum=a.attnum),0),`+postgresBinaryTypeSQL+`,`+browseBaseOIDSQL+` IN (20,21,23,700,701,1700),`+browseBaseOIDSQL+`,c.relkind IN ('r','p')
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 WHERE n.nspname::text=$1::text AND c.relname::text=$2::text ORDER BY a.attnum`, request.Schema, request.Object)
 	if err != nil {
@@ -45,12 +55,13 @@ WHERE n.nspname::text=$1::text AND c.relname::text=$2::text ORDER BY a.attnum`, 
 	var columns []browseColumn
 	for rows.Next() {
 		var column browseColumn
-		if rows.Scan(&column.name, &column.primary, &column.binary, &column.numeric, &storageProjection) != nil {
+		if rows.Scan(&column.name, &column.primary, &column.binary, &column.numeric, &column.baseOID, &storageProjection) != nil {
 			rows.Close()
 			response := protocol.ErrorResponse(command, "result", "Table metadata could not be decoded.")
 			response.Connected, response.TransactionStatus = true, transactionStatus(conn)
 			return browsePlan{}, &response
 		}
+		column.encodingUnsafe = conn.PgConn().ParameterStatus("client_encoding") != "UTF8" || conn.PgConn().ParameterStatus("server_encoding") != "UTF8"
 		columns = append(columns, column)
 	}
 	rows.Close()
@@ -63,6 +74,9 @@ WHERE n.nspname::text=$1::text AND c.relname::text=$2::text ORDER BY a.attnum`, 
 	plan, err := buildBrowsePlan(*request, columns)
 	if err != nil {
 		response := protocol.ErrorResponse(command, "protocol", "A requested table column or filter is unavailable.")
+		if errors.Is(err, browsevalue.ErrConversion) {
+			response.Message = browsevalue.ErrConversion.Error()
+		}
 		response.Connected, response.TransactionStatus = true, transactionStatus(conn)
 		return browsePlan{}, &response
 	}
@@ -101,9 +115,28 @@ func buildBrowsePlan(request protocol.CatalogRequest, metadata []browseColumn) (
 	}
 	var values [][]byte
 	compileCondition := func(filter protocol.CatalogFilter) (string, string, error) {
+		if filter.SQLiteValue != nil {
+			return "", "", errBrowse
+		}
 		column, ok := columns[filter.Column]
 		if !ok {
 			return "", "", errBrowse
+		}
+		if filter.NativeValue != nil {
+			if column.encodingUnsafe {
+				return "", "", browsevalue.ErrConversion
+			}
+			bits := 0
+			if column.baseOID == 700 {
+				bits = 32
+			} else if column.baseOID == 701 {
+				bits = 64
+			}
+			cell, err := browsevalue.Server(*filter.NativeValue, browsevalue.Target{Binary: column.binary, Numeric: column.numeric, FloatBits: bits, RejectNUL: true})
+			if err != nil {
+				return "", "", err
+			}
+			filter.Value = cell.Value
 		}
 		quoted := pgx.Identifier{filter.Column}.Sanitize()
 		if filter.Operator == "isNull" || filter.Operator == "isNotNull" {

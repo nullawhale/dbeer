@@ -22,6 +22,19 @@ func catalogWithSink(ctx context.Context, conn *pgx.Conn, command protocol.Comma
 		return response
 	}
 	request := *command.Catalog
+	expression, valid := request.EffectiveFilterExpression()
+	if !valid {
+		response := protocol.ErrorResponse(command, "protocol", "Invalid catalog request.")
+		response.Connected, response.TransactionStatus = true, transactionStatus(conn)
+		return response
+	}
+	// Identifiers and result metadata are encoded too, even for bytea operands.
+	// Reject before privilege checks resolve any caller-supplied object name.
+	if (request.Kind == "columns" || request.Kind == "completion" || expression != nil && expression.HasNativeValue()) && !nativePostgresEncodingSafe(conn.PgConn().ParameterStatus("client_encoding"), conn.PgConn().ParameterStatus("server_encoding")) {
+		response := protocol.ErrorResponse(command, "validation", nativePostgresEncodingMessage)
+		response.Connected, response.TransactionStatus = true, transactionStatus(conn)
+		return response
+	}
 	if request.Kind == "typeDetails" || request.Kind == "enumValues" || request.Kind == "typeDependencies" || request.Kind == "typeDDL" ||
 		(request.ObjectKind == "enum" || request.ObjectKind == "type") && request.Kind != "objects" {
 		return typeCatalog(ctx, conn, command, sink)
@@ -152,7 +165,10 @@ COALESCE((SELECT json_agg(overloads.signature ORDER BY overloads.oid) FROM (
  AND has_schema_privilege(n.oid,'USAGE') AND has_function_privilege(p.oid,'EXECUTE')
  ORDER BY p.oid LIMIT 32) overloads),'[]'::json)::text AS signatures,
 COALESCE((SELECT json_object_agg(a.attname::text,pg_catalog.format_type(a.atttypid,a.atttypmod))
- FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'{}'::json)::text AS "columnTypes"
+ FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'{}'::json)::text AS "columnTypes",
+COALESCE((SELECT json_agg(json_build_object('name',a.attname::text,'nativeType',pg_catalog.format_type(a.atttypid,a.atttypmod),
+'comparison',` + catalogColumnComparisonSQL + `) ORDER BY a.attnum)
+ FROM pg_catalog.pg_attribute a WHERE a.attrelid=page.relation AND a.attnum>0 AND NOT a.attisdropped),'[]'::json)::text AS "columnTypeEntries"
 FROM page ORDER BY schema,name,kind`, params(request.Schema, fmt.Sprint(request.Page)), ""
 	case "schemas":
 		return `SELECT nspname::text AS name, 'schema'::text AS kind FROM pg_catalog.pg_namespace
@@ -205,11 +221,21 @@ CASE WHEN c.relkind IN ('r','p') AND a.attgenerated='' AND a.attidentity<>'a' AN
 CASE WHEN c.relkind NOT IN ('r','p') THEN 'Only base tables support data editing.'
  WHEN NOT EXISTS(SELECT 1 FROM pg_catalog.pg_index i WHERE i.indrelid=c.oid AND i.indisprimary) THEN 'The table has no primary key.'
  WHEN a.attgenerated<>'' OR a.attidentity='a' THEN 'The server generates this value.'
- WHEN NOT has_column_privilege(c.oid,a.attnum,'UPDATE') THEN 'UPDATE privilege is unavailable.' ELSE '' END AS "editReason"
+ WHEN NOT has_column_privilege(c.oid,a.attnum,'UPDATE') THEN 'UPDATE privilege is unavailable.' ELSE '' END AS "editReason",
+(` + catalogColumnComparisonSQL + `)::text AS comparison,
+a.atttypid::text AS "typeOid", (` + browseBaseOIDSQL + `)::text AS "baseTypeOid"
 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
 JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
 LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
 WHERE n.nspname::text=$1::text AND c.relname::text=$2::text AND c.relkind IN ('r','p','f','v','m') AND ` + relationAccess + ` ORDER BY a.attnum`, objectParams, ""
+	case "referencingTables":
+		return `SELECT DISTINCT n.nspname::text COLLATE pg_catalog."C" AS schema,
+c.relname::text COLLATE pg_catalog."C" AS name,'table'::text AS kind
+FROM pg_catalog.pg_constraint k
+JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+JOIN pg_catalog.pg_class tc ON tc.oid=k.confrelid JOIN pg_catalog.pg_namespace tn ON tn.oid=tc.relnamespace
+WHERE k.contype='f' AND tn.nspname::text=$1::text AND tc.relname::text=$2::text
+AND ` + relationAccess + ` ORDER BY schema,name`, objectParams, ""
 	case "foreignKeys":
 		return `SELECT k.conname::text AS name, tn.nspname::text AS "targetSchema", tc.relname::text AS "targetTable",
 sa.attname::text AS "sourceColumn", ta.attname::text AS "targetColumn", pair.ordinality::text AS position
@@ -308,3 +334,9 @@ WHERE NOT t.tgisinternal AND ` + relationAccess + `
 UNION ALL
 SELECT t.typname::text,CASE WHEN t.typtype='e' THEN 'enum' ELSE 'type' END::text,n.nspname::text,t.oid::text,` + typeKindSQL + `
 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE ` + visibleTypeSQL
+
+const nativePostgresEncodingMessage = "Native cell filters require UTF-8 client and server encodings. Restore the connection's UTF-8 encoding and retry."
+
+func nativePostgresEncodingSafe(client, server string) bool {
+	return client == "UTF8" && server == "UTF8"
+}

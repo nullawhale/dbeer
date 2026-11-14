@@ -11,7 +11,7 @@ import (
 )
 
 var ErrInvalid = errors.New("Invalid query parameters or ambiguous parameter syntax.")
-var ErrUnsupported = errors.New("Query parameters are available only for PostgreSQL, MySQL and SQLite.")
+var ErrUnsupported = errors.New("Query parameters are available only for PostgreSQL, MySQL, MariaDB and SQLite.")
 
 type Bound struct {
 	SQL string
@@ -23,13 +23,23 @@ type Bound struct {
 }
 
 func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, error) {
+	return bind(engine, sql, parameters, false)
+}
+
+// BindGeneric supplies fixed built-in type casts without sending values to the
+// PostgreSQL GENERIC_PLAN statement. Values never become SQL text.
+func BindGeneric(sql string, parameters []protocol.QueryParameter) (Bound, error) {
+	return bind("postgresql", sql, parameters, true)
+}
+
+func bind(engine, sql string, parameters []protocol.QueryParameter, generic bool) (Bound, error) {
 	if !protocol.QueryParametersValid(parameters) {
 		return Bound{}, ErrInvalid
 	}
 	if engine == "" {
 		engine = "postgresql"
 	}
-	if engine != "postgresql" && engine != "mysql" && engine != "sqlite" {
+	if engine != "postgresql" && engine != "mysql" && engine != "mariadb" && engine != "sqlite" {
 		if parameters != nil {
 			return Bound{}, ErrUnsupported
 		}
@@ -40,17 +50,21 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 	if len(parameters) == 0 {
 		return Bound{SQL: sql, AssessmentSQL: sql}, nil
 	}
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
+		maximumScale := 30
+		if engine == "mariadb" {
+			maximumScale = 38
+		}
 		for _, p := range parameters {
 			if p.Type == "decimal" && p.Value != nil {
 				integer, fraction, _ := strings.Cut(strings.TrimLeft(*p.Value, "+-"), ".")
-				if len(integer)+len(fraction) > 65 || len(fraction) > 30 {
+				if len(integer)+len(fraction) > 65 || len(fraction) > maximumScale {
 					return Bound{}, ErrInvalid
 				}
 			}
 		}
 	}
-	bound, err := scan(engine, sql, parameters, false)
+	bound, err := scan(engine, sql, parameters, false, generic)
 	if err != nil {
 		return Bound{}, err
 	}
@@ -58,7 +72,7 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 	// interpretations locate identical placeholders; explicit PG E strings
 	// always retain their defined escape rules.
 	if engine != "sqlite" && len(parameters) > 0 && strings.Contains(sql, "\\") {
-		alternate, err := scan(engine, sql, parameters, true)
+		alternate, err := scan(engine, sql, parameters, true, generic)
 		if err != nil || alternate.SQL != bound.SQL {
 			return Bound{}, ErrInvalid
 		}
@@ -66,7 +80,7 @@ func Bind(engine, sql string, parameters []protocol.QueryParameter) (Bound, erro
 	return bound, nil
 }
 
-func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool) (Bound, error) {
+func scan(engine, sql string, parameters []protocol.QueryParameter, escapes, generic bool) (Bound, error) {
 	definitions := map[string]protocol.QueryParameter{}
 	for _, p := range parameters {
 		definitions[p.Name] = p
@@ -85,7 +99,7 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 			i += end + 2
 			continue
 		}
-		if c == '\'' || c == '"' || c == '`' && (engine == "mysql" || engine == "sqlite") {
+		if c == '\'' || c == '"' || c == '`' && (engine == "mysql" || engine == "mariadb" || engine == "sqlite") {
 			quote, escape := c, escapes && c != '`'
 			if engine == "postgresql" && c == '\'' && i > 0 && (sql[i-1] == 'e' || sql[i-1] == 'E') && (i == 1 || !identifier(sql[i-2])) {
 				escape = true
@@ -113,14 +127,14 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 			}
 			continue
 		}
-		if strings.HasPrefix(sql[i:], "--") && (engine == "postgresql" || engine == "sqlite" || i+2 == len(sql) || sql[i+2] <= ' ') || c == '#' && engine == "mysql" {
+		if strings.HasPrefix(sql[i:], "--") && (engine == "postgresql" || engine == "sqlite" || i+2 == len(sql) || sql[i+2] <= ' ') || c == '#' && (engine == "mysql" || engine == "mariadb") {
 			for i < len(sql) && sql[i] != '\n' && sql[i] != '\r' {
 				i++
 			}
 			continue
 		}
 		if strings.HasPrefix(sql[i:], "/*") {
-			if engine == "mysql" && len(parameters) > 0 && (strings.HasPrefix(sql[i:], "/*!") || strings.HasPrefix(sql[i:], "/*M!")) {
+			if (engine == "mysql" || engine == "mariadb") && len(parameters) > 0 && (strings.HasPrefix(sql[i:], "/*!") || strings.HasPrefix(sql[i:], "/*M!")) {
 				return Bound{}, ErrInvalid
 			}
 			depth := 1
@@ -163,7 +177,7 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 				continue
 			}
 		}
-		if c == '?' && (engine == "mysql" || engine == "sqlite") && len(parameters) > 0 {
+		if c == '?' && (engine == "mysql" || engine == "mariadb" || engine == "sqlite") && len(parameters) > 0 {
 			return Bound{}, ErrInvalid
 		}
 		// SQLite also accepts $name and @name variables. They must not be
@@ -199,8 +213,14 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes bool
 						index = len(bound.Parameters)
 						used[name] = index
 					}
+					if generic {
+						output.WriteByte('(')
+					}
 					output.WriteByte('$')
 					output.WriteString(strconv.Itoa(index))
+					if generic {
+						output.WriteString("::pg_catalog." + map[string]string{"text": "text", "integer": "int8", "decimal": "numeric", "boolean": "bool", "date": "date", "timestamp": "timestamp"}[p.Type] + ")")
+					}
 				} else {
 					bound.Parameters = append(bound.Parameters, p)
 					if p.Value != nil {

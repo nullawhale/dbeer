@@ -86,7 +86,7 @@ func analyzeJSONEditor(text string, offset int, context Context, result EditorAn
 				for _, column := range relation.Columns {
 					if column == candidate {
 						columnType := "Type unavailable"
-						if value := relation.ColumnTypes[column]; value != "" {
+						if value := relation.nativeType(column); value != "" {
 							columnType = value
 						}
 						detail = "Sampled field " + column + " · " + columnType + " · Samples are not a schema"

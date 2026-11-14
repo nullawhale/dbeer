@@ -18,7 +18,7 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
     static func parse(_ result: BackendMessage) throws -> [Self] {
         let records = result.catalogRecords
         guard result.truncated != true, (result.rowCount ?? Int64(records.count)) <= Int64(records.count),
-              records.count <= 2_048 else {
+              records.count <= 32_000 else {
             throw TableNavigationFailure("Foreign-key metadata is incomplete. Reload the metadata before following related rows.")
         }
         if !records.isEmpty {
@@ -48,13 +48,21 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
                 keys[Data(name.utf8)] = Self(name: name, target: reference, columns: existing.columns + [pair])
             } else { keys[Data(name.utf8)] = Self(name: name, target: reference, columns: [pair]) }
         }
-        guard keys.count <= 64 else { throw TableNavigationFailure("Too many foreign keys were returned. Narrow the metadata request and retry.") }
+        guard keys.count <= 1_000 else { throw TableNavigationFailure("Too many foreign keys were returned. Narrow the metadata request and retry.") }
         return try keys.values.sorted { Data($0.name.utf8).lexicographicallyPrecedes(Data($1.name.utf8)) }.map { key in
             let ordered = key.columns.sorted { $0.position < $1.position }
             let result = Self(name: key.name, target: key.target, columns: ordered)
             guard result.isValid else { throw TableNavigationFailure("A foreign key has incomplete or duplicate column mappings.") }
             return result
         }
+    }
+
+    func sameMapping(as other: Self) -> Bool {
+        Data(name.utf8) == Data(other.name.utf8) && Data(target.schema.utf8) == Data(other.target.schema.utf8) &&
+            Data(target.name.utf8) == Data(other.target.name.utf8) && target.kind == other.target.kind &&
+            columns.count == other.columns.count && zip(columns, other.columns).allSatisfy { pair in
+                pair.0.position == pair.1.position && Data(pair.0.source.utf8) == Data(pair.1.source.utf8) && Data(pair.0.target.utf8) == Data(pair.1.target.utf8)
+            }
     }
 
     var isValid: Bool {
@@ -75,6 +83,12 @@ struct TableForeignKey: Identifiable, Equatable, Sendable {
                 throw TableNavigationFailure("The source row does not contain an unambiguous value for every foreign-key column. Reload the table.")
             }
             let value = values[index]
+            if let storage = value.sqliteValue {
+                guard storage.type != "null" else { throw TableNavigationFailure("This row has a NULL key value and does not identify related rows.") }
+                let filter = CatalogFilter(column: pair.target, operator: "eq", sqliteValue: storage)
+                guard filter.isValid else { throw TableNavigationFailure("This SQLite key value cannot be represented by the table filter.") }
+                return filter
+            }
             switch value.kind {
             case "null": throw TableNavigationFailure("This row has a NULL foreign-key value and does not identify a related row.")
             case "default": throw TableNavigationFailure("A DEFAULT foreign-key value is not known yet. Apply the changes and reload the row before following it.")
@@ -99,6 +113,7 @@ struct TableViewLocation: Equatable, Sendable {
     let profileID: UUID
     let title: String
     let page: Int
+    let relationshipScope: SQLiteRelationshipScope?
     let filterExpression: CatalogFilterExpression?
     var filters: [CatalogFilter] { filterExpression?.flattenedConjunction ?? [] }
     let sort: [CatalogSort]
@@ -109,16 +124,18 @@ struct TableViewLocation: Equatable, Sendable {
         self.profileID = profileID
         title = document.title
         page = document.page
+        relationshipScope = document.tableRelationshipScope
         filterExpression = document.tableFilterExpression
         sort = document.tableSort
     }
 
     init(reference: TableReference, profileID: UUID, title: String? = nil,
-         page: Int = 0, filters: [CatalogFilter] = [], sort: [CatalogSort] = []) {
+         page: Int = 0, filters: [CatalogFilter] = [], sort: [CatalogSort] = [], relationshipScope: SQLiteRelationshipScope? = nil) {
         self.reference = reference
         self.profileID = profileID
         self.title = title ?? reference.name
         self.page = page
+        self.relationshipScope = relationshipScope
         self.filterExpression = .conjunction(filters)
         self.sort = sort
     }

@@ -56,7 +56,7 @@ func DigestValid(s string) bool {
 
 func (p Plan) Validate() error {
 	if p.FormatVersion != 1 || (p.Kind != "schema" && p.Kind != "data") ||
-		(p.Engine != "postgresql" && p.Engine != "mysql" && p.Engine != "sqlite") || !DigestValid(p.ModelDigest) ||
+		(p.Engine != "postgresql" && p.Engine != "mysql" && p.Engine != "mariadb" && p.Engine != "sqlite") || !DigestValid(p.ModelDigest) ||
 		p.Steps == nil || p.Warnings == nil || len(p.Steps) > MaxSteps || len(p.Warnings) > 64 {
 		return ErrInvalid
 	}

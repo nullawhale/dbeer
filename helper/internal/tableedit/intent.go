@@ -11,23 +11,33 @@ import (
 )
 
 type ColumnChange struct {
-	Name     string    `json:"name"`
-	Nullable *bool     `json:"nullable,omitempty"`
-	Default  *Default  `json:"default,omitempty"`
-	Type     *DataType `json:"type,omitempty"`
+	Drop            bool           `json:"drop,omitempty"`
+	UsingExpression *string        `json:"usingExpression,omitempty"`
+	Unsigned        *bool          `json:"unsigned,omitempty"`
+	Charset         *string        `json:"charset,omitempty"`
+	Collation       *TypeReference `json:"collation,omitempty"`
+	Name            string         `json:"name"`
+	RenameTo        *string        `json:"renameTo,omitempty"`
+	Generated       *Generation    `json:"generated,omitempty"`
+	Identity        *Identity      `json:"identity,omitempty"`
+	Nullable        *bool          `json:"nullable,omitempty"`
+	Default         *Default       `json:"default,omitempty"`
+	Type            *DataType      `json:"type,omitempty"`
 }
 type Index struct {
-	Name      string   `json:"name"`
-	Columns   []string `json:"columns"`
-	Unique    bool     `json:"unique"`
-	Supported bool     `json:"supported"`
-	Owner     string   `json:"owner,omitempty"`
+	Definition *IndexDefinition `json:"definition,omitempty"`
+	Name       string           `json:"name"`
+	Columns    []string         `json:"columns"`
+	Unique     bool             `json:"unique"`
+	Supported  bool             `json:"supported"`
+	Owner      string           `json:"owner,omitempty"`
 }
 type IndexEdit struct {
-	Action  string   `json:"action"`
-	Name    string   `json:"name"`
-	Columns []string `json:"columns,omitempty"`
-	Unique  bool     `json:"unique,omitempty"`
+	Definition *IndexDefinition `json:"definition,omitempty"`
+	Action     string           `json:"action"`
+	Name       string           `json:"name"`
+	Columns    []string         `json:"columns,omitempty"`
+	Unique     bool             `json:"unique,omitempty"`
 }
 type Key struct {
 	Kind             string   `json:"kind"`
@@ -56,6 +66,15 @@ type Incoming struct {
 	Columns []string
 }
 type Facts struct {
+	IndexAttributes            map[string]map[string]string
+	IndexBuiltinFunctions      map[string][]string
+	IndexDefaultCollations     map[string][]bool
+	IndexCatalogGuards         map[string][]IndexGuard
+	IndexDefaultOpclasses      map[string][]bool
+	RawExpressions             map[string]string
+	ExpressionKeywords         []string
+	ServerVersion              int
+	Sequences                  []sc.Sequence
 	EngineContext              []sc.Option
 	DefaultCollationProperties *sc.Collection[sc.Option]
 	TypeStorage                map[string]string
@@ -66,10 +85,18 @@ type Facts struct {
 	Proof                      bool
 }
 type Prepared struct {
-	Conditions []Condition
-	SQL        []string
-	Risks      []string
-	References []Baseline
+	AdvancedProof    *AdvancedEvidence
+	Reconstruction   *Reconstruction
+	DroppedTarget    bool
+	Consequences     []Consequence
+	ValidationChecks []ValidationCheck
+	IndexGuards      []IndexGuard
+	Conditions       []Condition
+	SQL              []string
+	Risks            []string
+	References       []Baseline
+	ResultTarget     *Target
+	Types            []TypeGuard
 }
 type AdvancedAdapter interface {
 	StructurePrepare(context.Context, Baseline, Draft) (Prepared, error)
@@ -91,6 +118,9 @@ func columnsValid(names []string) bool {
 }
 func Action(a string) bool { return a == "add" || a == "drop" || a == "replace" }
 func (d Draft) Destructive() bool {
+	if d.NeedsAuthoringV4() || d.NeedsAuthoringV5() {
+		return true
+	}
 	for _, x := range d.Indexes {
 		if x.Action != "add" {
 			return true
@@ -104,7 +134,16 @@ func (d Draft) Destructive() bool {
 	return false
 }
 func (d Draft) Validate() error {
-	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 {
+	if d.AuthoringVersion != 0 && d.AuthoringVersion != 2 && d.AuthoringVersion != 3 && d.AuthoringVersion != 4 && d.AuthoringVersion != 5 || d.NeedsAuthoringV2() && d.AuthoringVersion < 2 || d.NeedsAuthoringV3() && d.AuthoringVersion < 3 || d.NeedsAuthoringV4() && d.AuthoringVersion < 4 {
+		return ErrInvalid
+	}
+	if err := d.validateReconstruction(); err != nil {
+		return err
+	}
+	if len(d.Columns) > MaxColumns || len(d.Changes)+len(d.Indexes)+len(d.Keys) > 64 || len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) == 0 && d.RenameTable == nil && !d.DropTable && !d.NeedsAuthoringV5() || d.RenameTable != nil && !Identifier(*d.RenameTable) {
+		return ErrInvalid
+	}
+	if d.DropTable && (len(d.Columns)+len(d.Changes)+len(d.Indexes)+len(d.Keys) != 0 || d.RenameTable != nil) {
 		return ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -115,14 +154,14 @@ func (d Draft) Validate() error {
 		seen[c.Name] = true
 	}
 	for _, c := range d.Changes {
-		if !Identifier(c.Name) || seen[c.Name] || c.Nullable == nil && c.Default == nil && c.Type == nil || c.Default != nil && !c.Default.Valid() || c.Type != nil && !c.Type.Valid() {
+		if !Identifier(c.Name) || seen[c.Name] || c.Nullable == nil && c.Default == nil && c.Type == nil && c.RenameTo == nil && c.Generated == nil && c.Identity == nil && !c.Drop && c.Unsigned == nil && c.Charset == nil && c.Collation == nil || !changeDestructiveValid(c) || c.Default != nil && !c.Default.Valid() || c.Type != nil && !c.Type.Valid() || !changeAuthoredValid(c) {
 			return ErrInvalid
 		}
 		seen[c.Name] = true
 	}
 	seen = map[string]bool{}
 	for _, x := range d.Indexes {
-		if !Action(x.Action) || !Identifier(x.Name) || seen[x.Name] || x.Action != "drop" && !columnsValid(x.Columns) || x.Action == "drop" && (len(x.Columns) > 0 || x.Unique) {
+		if !Action(x.Action) || !Identifier(x.Name) || seen[x.Name] || x.Action != "drop" && (x.Definition == nil && !columnsValid(x.Columns) || x.Definition != nil && (x.Columns != nil || !x.Definition.Valid())) || x.Action == "drop" && (len(x.Columns) > 0 || x.Unique || x.Definition != nil) {
 			return ErrInvalid
 		}
 		seen[x.Name] = true
@@ -151,14 +190,14 @@ func (d Draft) Validate() error {
 		}
 	}
 	if d.Destructive() && !d.AllowDestructive {
-		return errors.New("Select explicit removal permission before previewing index or key removal/replacement.")
+		return errors.New("Select explicit destructive permission before previewing removal or a value-changing conversion.")
 	}
 	return nil
 }
 func ReferentialAction(s string) bool {
 	return s == "NO ACTION" || s == "RESTRICT" || s == "CASCADE" || s == "SET NULL"
 }
-func ColumnType(c sc.Column) (DataType, bool) {
+func ColumnType(c sc.Column, engines ...string) (DataType, bool) {
 	if c.Type.Value == nil || c.Type.Value.Kind != "builtin" || c.Type.Value.Modifiers.Value == nil {
 		return DataType{}, false
 	}
@@ -182,7 +221,11 @@ func ColumnType(c sc.Column) (DataType, bool) {
 		d.Precision = int(*m.Precision)
 		d.Scale = int(*m.Scale)
 	}
-	return d, d.Valid()
+	engine := ""
+	if len(engines) == 1 {
+		engine = engines[0]
+	}
+	return d, d.ValidForEngine(engine)
 }
 func FindColumn(b Baseline, name string) (sc.Column, bool) {
 	if b.Facts != nil {
@@ -247,14 +290,43 @@ func Summarize(b *Baseline) {
 	b.DependencyProof = f.Proof
 	for i := range b.Columns {
 		if c, ok := FindColumn(*b, b.Columns[i].Name); ok {
-			if t, valid := ColumnType(c); valid {
+			if t, valid := ColumnType(c, b.Engine); valid {
 				b.Columns[i].EditableType = &t
 			}
-			b.Columns[i].CanModify = c.Generated.Value != nil && c.Generated.Value.Kind == "none" && c.Identity.Value != nil && c.Identity.Value.Kind == "none"
+			if c.Type.Value != nil && c.Type.Value.Modifiers.Value != nil && (b.Engine == "mysql" || b.Engine == "mariadb") {
+				unsigned := c.Type.Value.Modifiers.Value.Unsigned
+				b.Columns[i].Unsigned = &unsigned
+			}
+			if c.Charset.Value != nil {
+				v := *c.Charset.Value
+				b.Columns[i].Charset = &v
+			}
+			if c.Collation.Value != nil {
+				b.Columns[i].Collation = &TypeReference{Schema: c.Collation.Value.Schema, Name: c.Collation.Value.Name}
+			}
+			b.Columns[i].CanModify = c.Generated.Value != nil && c.Generated.Value.Kind == "none" && c.Identity.Value != nil && c.Identity.Value.Kind == "none" && !unavailableColumnExpression(c)
+		}
+	}
+	if len(f.IndexAttributes) > 0 {
+		const limitation = "Indexes with unexposed comments, tablespaces, cluster/replica identity, statistics or parser/engine attributes are read-only. Preview explains the selected index's prerequisite; use an explicit reviewed migration."
+		present := false
+		for _, value := range b.Limitations {
+			present = present || strings.Contains(value, limitation)
+		}
+		if !present {
+			if len(b.Limitations) < 64 {
+				b.Limitations = append(b.Limitations, limitation)
+			} else if len(b.Limitations[63])+len(limitation)+1 <= 4096 {
+				b.Limitations[63] += "\n" + limitation
+			}
 		}
 	}
 	for _, x := range f.Table.Indexes.Items {
 		item := Index{Name: x.Ref.Name, Columns: []string{}, Supported: IndexSupported(x)}
+		if definition, ok := ObservedIndexDefinition(b.Engine, x); ok {
+			item.Definition = definition
+			item.Supported = true
+		}
 		if x.Unique.Value != nil {
 			item.Unique = *x.Unique.Value
 		}
@@ -311,12 +383,33 @@ func NormalizeAction(p *string) string {
 	}
 }
 func CheckChange(b Baseline, c ColumnChange) error {
+	if c.Drop {
+		return ErrInvalid
+	}
+	if c.UsingExpression != nil || c.Unsigned != nil || c.Charset != nil || c.Collation != nil || c.Type != nil && b.Engine != "sqlite" && !CanWidenColumn(b, c) {
+		return CheckConversion(b, c)
+	}
+	if c.Type != nil && c.Type.Reference != nil {
+		return ErrUnsupported
+	}
 	old, ok := FindColumn(b, c.Name)
-	if !ok || old.Generated.Value == nil || old.Generated.Value.Kind != "none" || old.Identity.Value == nil || old.Identity.Value.Kind != "none" {
+	if !ok || old.Generated.Value == nil || old.Identity.Value == nil {
+		return ErrUnsupported
+	}
+	if unavailableColumnExpression(old) {
+		return errors.New("This column's expression metadata requires custom type support code and is unavailable for attribute changes; its raw catalog proof is retained. Use an explicit reviewed migration.")
+	}
+	if c.Generated != nil || c.Identity != nil {
+		if c.Type != nil || c.Nullable != nil || c.Default != nil || c.Generated != nil && c.Identity != nil {
+			return errors.New("Review generation and identity changes separately from other column attributes.")
+		}
+		return nil
+	}
+	if c.Type != nil && (old.Generated.Value.Kind != "none" || old.Identity.Value.Kind != "none") {
 		return ErrUnsupported
 	}
 	if c.Type != nil {
-		if old.Default.Value == nil || old.Default.Value.Kind != "none" && !(b.Engine == "mysql" && old.Default.Value.Kind == "sqlNull") {
+		if old.Default.Value == nil || old.Default.Value.Kind != "none" && !((b.Engine == "mysql" || b.Engine == "mariadb") && old.Default.Value.Kind == "sqlNull") {
 			return errors.New("Type widening requires a column without a default expression.")
 		}
 		if !CanWiden(old, *c.Type) {
@@ -360,6 +453,18 @@ func CheckRemoval(b Baseline, d Draft, name string, key bool) error {
 	if b.Facts == nil || sensitive && !b.Facts.Proof {
 		return errors.New("Removal requires complete incoming-dependency visibility.")
 	}
+	attributeName := name
+	if key {
+		for _, index := range b.Indexes {
+			if index.Owner == name {
+				attributeName = index.Name
+				break
+			}
+		}
+	}
+	if attributes := b.Facts.IndexAttributes[attributeName]; len(attributes) > 0 {
+		return fmt.Errorf("Index %s has unexposed %s; removal/replacement requires an explicit reviewed migration so those properties cannot be silently lost.", attributeName, attributes["reason"])
+	}
 	for _, incoming := range b.Facts.Incoming {
 		if !sensitive {
 			continue
@@ -390,7 +495,7 @@ func CheckRemoval(b Baseline, d Draft, name string, key bool) error {
 			}
 		}
 	}
-	return errors.New("Unsupported keys or constraint-owned/advanced indexes cannot be removed independently.")
+	return errors.New("Unsupported keys or constraint-owned indexes cannot be removed independently.")
 }
 func ValidateForeign(source Baseline, k KeyEdit, target Baseline) error {
 	if target.Facts == nil || !target.Facts.Table.Columns.Complete || !target.Facts.Table.Constraints.Complete {
@@ -463,7 +568,11 @@ func PlanningSource(b Baseline, d Draft, engine string) Baseline {
 				col.Collation = f.Table.Collation
 			}
 		}
-		col.Type = sc.Known(ExpectedNewType(engine, c.Type))
+		col.Type = sc.Known(ExpectedColumnType(engine, c))
+		if c.Resolved != nil {
+			col.Collation = c.Resolved.Collation
+			col.CollationProperties = c.Resolved.CollationProperties
+		}
 		f.Table.Columns.Items = append(f.Table.Columns.Items, col)
 	}
 	for _, change := range d.Changes {
@@ -472,8 +581,14 @@ func PlanningSource(b Baseline, d Draft, engine string) Baseline {
 			if col.Ref.Name != change.Name {
 				continue
 			}
-			if change.Type != nil && col.Type.Value != nil {
-				col.Type = sc.Known(ExpectedWidenType(engine, *col.Type.Value, *change.Type))
+			if (change.Type != nil || change.Unsigned != nil) && col.Type.Value != nil {
+				col.Type = sc.Known(ExpectedChangedType(engine, *col.Type.Value, change))
+			}
+			if change.Charset != nil {
+				col.Charset = sc.Known(*change.Charset)
+			}
+			if change.Collation != nil {
+				col.Collation = sc.Known(sc.Ref{Kind: "collation", Schema: change.Collation.Schema, Name: change.Collation.Name})
 			}
 			if change.Nullable != nil {
 				col.Nullable = sc.Known(*change.Nullable)
@@ -532,6 +647,13 @@ func ExpectedNewType(engine string, want DataType) sc.TypeUse {
 			}
 			m.Precision = &p
 			m.Scale = &s
+			if engine == "mariadb" {
+				width := int64(11)
+				if want.Kind == "bigint" {
+					width = 20
+				}
+				m.Length = &width
+			}
 		}
 	}
 	if want.Kind == "varchar" {
@@ -544,4 +666,8 @@ func ExpectedNewType(engine string, want DataType) sc.TypeUse {
 		m.Scale = &s
 	}
 	return sc.TypeUse{Ref: sc.Ref{Kind: "type", Schema: schema, Name: name}, Kind: "builtin", Modifiers: sc.Known(m), Labels: sc.Complete[string](nil)}
+}
+
+func unavailableColumnExpression(c sc.Column) bool {
+	return c.Default.Value != nil && c.Default.Value.Expression != nil && c.Default.Value.Expression.Dependencies.Code == "customTypeSupport" || c.Generated.Value != nil && c.Generated.Value.Expression != nil && c.Generated.Value.Expression.Dependencies.Code == "customTypeSupport"
 }

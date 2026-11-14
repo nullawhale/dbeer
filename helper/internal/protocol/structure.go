@@ -4,123 +4,46 @@ import (
 	"bytes"
 	"dbeer/helper/internal/tableedit"
 	"encoding/json"
+	"strings"
 )
+
+const StructureAdvancedKindsCapability = tableedit.AdvancedKindsCapability
+
+const StructureAuthoringCapability = tableedit.AuthoringCapability
+const StructureIndexAuthoringCapability = tableedit.IndexAuthoringCapability
+const StructureDestructiveCapability = tableedit.DestructiveCapability
+const StructureReconstructionCapability = tableedit.ReconstructionCapability
 
 func parseStructure(raw json.RawMessage, command string) (tableedit.Request, bool) {
 	var r tableedit.Request
-	if !structureNoNull(raw) {
+	if strings.HasPrefix(command, "structure.physical.") {
+		return parsePhysicalStructure(raw, command)
+	}
+	if strings.HasPrefix(command, "structure.migration.") {
+		return parseMigrationStructure(raw, command)
+	}
+	if !JSONUnicodeValid(raw) || !structureNoNull(raw) {
 		return r, false
 	}
-	fields, ok := changesObject(raw, "target|baselineId|draft|apply")
+	fields, ok := changesObject(raw, "target|baselineId|draft|apply|validation")
 	if !ok {
 		return r, false
 	}
 	switch command {
 	case "structure.load":
-		f, ok := changesObject(fields["target"], "schema|table|create|reconcile", "schema", "table", "create")
-		if !ok || len(fields) != 1 {
-			return r, false
-		}
-		if raw, present := f["reconcile"]; present {
-			var v bool
-			if json.Unmarshal(raw, &v) != nil || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-				return r, false
-			}
-		}
-		var v bool
-		if json.Unmarshal(f["create"], &v) != nil || bytes.Equal(f["create"], []byte("null")) {
+		if _, ok := changesObject(fields["target"], "schema|table|create|reconcile", "schema", "table", "create"); !ok || len(fields) != 1 {
 			return r, false
 		}
 	case "structure.preview":
-		if len(fields) != 2 {
+		if len(fields) != 2 || !structureDraftShape(fields["draft"]) {
 			return r, false
 		}
-		f, ok := changesObject(fields["draft"], "columns|changes|indexes|keys|allowDestructive", "columns")
-		if !ok {
-			return r, false
+	case "structure.apply", "structure.validate":
+		field := "apply"
+		if command == "structure.validate" {
+			field = "validation"
 		}
-		if raw, present := f["allowDestructive"]; present {
-			var v bool
-			if json.Unmarshal(raw, &v) != nil || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
-				return r, false
-			}
-		}
-		if raw, present := f["changes"]; present {
-			var items []json.RawMessage
-			if len(raw) == 0 || bytes.TrimSpace(raw)[0] != '[' || json.Unmarshal(raw, &items) != nil {
-				return r, false
-			}
-			for _, raw := range items {
-				fields, ok := changesObject(raw, "name|nullable|default|type", "name")
-				if !ok {
-					return r, false
-				}
-				if v, exists := fields["nullable"]; exists {
-					var b bool
-					if json.Unmarshal(v, &b) != nil || bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
-						return r, false
-					}
-				}
-				for _, key := range []string{"default", "type"} {
-					if v, exists := fields[key]; exists {
-						allowed := "kind|value"
-						if key == "type" {
-							allowed = "kind|length|precision|scale"
-						}
-						if _, ok := changesObject(v, allowed, "kind"); !ok {
-							return r, false
-						}
-					}
-				}
-			}
-		}
-		for _, key := range []string{"indexes", "keys"} {
-			if raw, present := f[key]; present {
-				var items []json.RawMessage
-				if len(raw) == 0 || bytes.TrimSpace(raw)[0] != '[' || json.Unmarshal(raw, &items) != nil {
-					return r, false
-				}
-				for _, raw := range items {
-					allowed := "action|name|columns|unique"
-					required := []string{"action", "name"}
-					if key == "keys" {
-						allowed = "action|name|kind|columns|reference|referenceColumns|onUpdate|onDelete"
-						required = append(required, "kind")
-					}
-					fields, ok := changesObject(raw, allowed, required...)
-					if !ok {
-						return r, false
-					}
-					if v, present := fields["reference"]; present {
-						if _, ok := changesObject(v, "schema|table|create", "schema", "table", "create"); !ok {
-							return r, false
-						}
-					}
-				}
-			}
-		}
-		var columns []json.RawMessage
-		if len(f["columns"]) == 0 || bytes.TrimSpace(f["columns"])[0] != '[' || json.Unmarshal(f["columns"], &columns) != nil {
-			return r, false
-		}
-		for _, c := range columns {
-			f, ok := changesObject(c, "name|type|nullable|default", "name", "type", "nullable", "default")
-			if !ok {
-				return r, false
-			}
-			var nullable bool
-			if json.Unmarshal(f["nullable"], &nullable) != nil || bytes.Equal(f["nullable"], []byte("null")) {
-				return r, false
-			}
-			if _, ok = changesObject(f["type"], "kind|length|precision|scale", "kind"); !ok {
-				return r, false
-			}
-			if _, ok = changesObject(f["default"], "kind|value", "kind"); !ok {
-				return r, false
-			}
-		}
-	case "structure.apply":
-		if _, ok := changesObject(fields["apply"], "planId|digest|executionId", "planId", "digest", "executionId"); !ok || len(fields) != 1 {
+		if _, ok := changesObject(fields[field], "planId|digest|executionId", "planId", "digest", "executionId"); !ok || len(fields) != 1 {
 			return r, false
 		}
 	case "structure.status", "structure.close":
@@ -136,6 +59,132 @@ func parseStructure(raw json.RawMessage, command string) (tableedit.Request, boo
 		return r, false
 	}
 	return r, true
+}
+
+func structureTypeShape(raw json.RawMessage) bool {
+	f, ok := changesObject(raw, "kind|length|precision|scale|reference", "kind")
+	if !ok {
+		return false
+	}
+	if v, present := f["reference"]; present {
+		_, ok = changesObject(v, "schema|name", "schema", "name")
+	}
+	return ok
+}
+func structureAuthoredShape(fields map[string]json.RawMessage) bool {
+	for _, key := range []string{"default", "type", "generated", "identity"} {
+		v, present := fields[key]
+		if !present {
+			continue
+		}
+		if key == "type" {
+			if !structureTypeShape(v) {
+				return false
+			}
+			continue
+		}
+		allowed, required := "kind|value", "kind"
+		if key == "generated" {
+			allowed, required = "storage|expression", "storage"
+		}
+		if key == "identity" {
+			allowed = "kind|start|increment|minimum|maximum|cache|cycle"
+		}
+		if _, ok := changesObject(v, allowed, required); !ok {
+			return false
+		}
+	}
+	return true
+}
+func structureDraftShape(raw json.RawMessage) bool {
+	f, ok := changesObject(raw, "columns|changes|indexes|keys|allowDestructive|renameTable|authoringVersion|dropTable|backfills|columnOrder|reconstruct", "columns")
+	if !ok {
+		return false
+	}
+	value := 0
+	if version, present := f["authoringVersion"]; present {
+		if json.Unmarshal(version, &value) != nil || value != 2 && value != 3 && value != 4 && value != 5 {
+			return false
+		}
+	}
+	if _, present := f["dropTable"]; present && value < 4 {
+		return false
+	}
+	for _, key := range []string{"backfills", "columnOrder", "reconstruct"} {
+		if _, present := f[key]; present && value != 5 {
+			return false
+		}
+	}
+	if raw, present := f["backfills"]; present {
+		var items []json.RawMessage
+		if len(raw) == 0 || bytes.TrimSpace(raw)[0] != '[' || json.Unmarshal(raw, &items) != nil {
+			return false
+		}
+		for _, item := range items {
+			if _, ok := changesObject(item, "column|expression", "column", "expression"); !ok {
+				return false
+			}
+		}
+	}
+	for _, key := range []string{"columns", "changes", "indexes", "keys"} {
+		raw, present := f[key]
+		if !present {
+			continue
+		}
+		var items []json.RawMessage
+		if len(raw) == 0 || bytes.TrimSpace(raw)[0] != '[' || json.Unmarshal(raw, &items) != nil {
+			return false
+		}
+		for _, item := range items {
+			allowed := "name|type|nullable|default|generated|identity"
+			required := []string{"name", "type", "nullable", "default"}
+			switch key {
+			case "changes":
+				allowed = "name|renameTo|nullable|default|type|generated|identity|drop|usingExpression|unsigned|charset|collation"
+				required = []string{"name"}
+			case "indexes":
+				allowed = "action|name|columns|unique|definition"
+				required = []string{"action", "name"}
+			case "keys":
+				allowed = "action|name|kind|columns|reference|referenceColumns|onUpdate|onDelete"
+				required = []string{"action", "name", "kind"}
+			}
+			fields, ok := changesObject(item, allowed, required...)
+			if !ok {
+				return false
+			}
+			if key == "changes" && value < 4 {
+				for _, field := range []string{"drop", "usingExpression", "unsigned", "charset", "collation"} {
+					if _, present := fields[field]; present {
+						return false
+					}
+				}
+			}
+			if key == "columns" || key == "changes" {
+				if v, present := fields["collation"]; present {
+					if _, ok := changesObject(v, "schema|name", "schema", "name"); !ok {
+						return false
+					}
+				}
+				if !structureAuthoredShape(fields) {
+					return false
+				}
+			}
+			if key == "indexes" {
+				if v, present := fields["definition"]; present && !structureIndexDefinitionShape(v) {
+					return false
+				}
+			}
+			if key == "keys" {
+				if v, present := fields["reference"]; present {
+					if _, ok := changesObject(v, "schema|table|create", "schema", "table", "create"); !ok {
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
 }
 
 func structureNoNull(raw json.RawMessage) bool {
@@ -164,4 +213,44 @@ func structureNoNull(raw json.RawMessage) bool {
 		return true
 	}
 	return valid(value)
+}
+
+func structureIndexDefinitionShape(raw json.RawMessage) bool {
+	f, ok := changesObject(raw, "method|terms|includes|predicate|nullsDistinct|visible|options", "method", "terms")
+	if !ok || !structureIndexOptionsShape(f["options"]) {
+		return false
+	}
+	var terms []json.RawMessage
+	if len(f["terms"]) == 0 || bytes.TrimSpace(f["terms"])[0] != '[' || json.Unmarshal(f["terms"], &terms) != nil {
+		return false
+	}
+	for _, term := range terms {
+		t, ok := changesObject(term, "column|expression|descending|nullsFirst|prefixLength|collation|opclass|options")
+		if !ok || !structureIndexOptionsShape(t["options"]) {
+			return false
+		}
+		for _, key := range []string{"collation", "opclass"} {
+			if v, present := t[key]; present {
+				if _, ok := changesObject(v, "schema|name", "schema", "name"); !ok {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+func structureIndexOptionsShape(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return true
+	}
+	var options []json.RawMessage
+	if bytes.TrimSpace(raw)[0] != '[' || json.Unmarshal(raw, &options) != nil {
+		return false
+	}
+	for _, option := range options {
+		if _, ok := changesObject(option, "name|value", "name", "value"); !ok {
+			return false
+		}
+	}
+	return true
 }

@@ -18,6 +18,10 @@ final class SQLEditorState {
         editors[documentID]?.selectedRange() ?? fallback
     }
 
+    func selections(for documentID: UUID, fallback: NSRange) -> [NSRange] {
+        editors[documentID]?.editorSelections ?? [fallback]
+    }
+
     func hasMultipleSelections(for documentID: UUID) -> Bool {
         editors[documentID]?.hasMultipleEditorSelections == true
     }
@@ -670,7 +674,7 @@ struct SQLEditorView: NSViewRepresentable {
             let input = completionInput(text: snapshot.text, offset: offset)
             guard explicit || offset > 0 else { return }
             let fallback = localCompletions(prefix: input.prefix, quoted: input.quoted).map { label in
-                let quote = engine == .mysql ? "`" : "\""
+                let quote = engine.usesMySQLSyntax ? "`" : "\""
                 let quoted = label.hasPrefix(quote)
                 let prefix = quoted ? input.prefix.replacingOccurrences(of: quote, with: quote + quote) : input.prefix
                 let source = label as NSString
@@ -808,9 +812,9 @@ struct SQLEditorView: NSViewRepresentable {
                         (offset > 0 && ((48...57).contains(unit) || (engine != .cassandra && unit == 36)))
                 }
                 let needsQuotes = quoted || !safe || reserved.contains(name.uppercased()) ||
-                    (engine != .mysql && name != name.lowercased())
+                    (!engine.usesMySQLSyntax && name != name.lowercased())
                 guard needsQuotes else { return name }
-                let quote = engine == .mysql ? "`" : "\""
+                let quote = engine.usesMySQLSyntax ? "`" : "\""
                 return quote + name.replacingOccurrences(of: quote, with: quote + quote) + quote
             }
             return Array(Set(keywords + identifiers))
@@ -1234,7 +1238,7 @@ final class SQLTextView: NSTextView, AppCommandFocusResponder {
                 return
             }
             if let close = pairs[value], !(editorEngine == .mongodb && (value == "'" || value == "`")),
-               !(value == "`" && editorEngine != .mysql), ranges.allSatisfy({ !insideProtectedText(at: $0.location) }) {
+               !(value == "`" && !editorEngine.usesMySQLSyntax), ranges.allSatisfy({ !insideProtectedText(at: $0.location) }) {
                 let source = string as NSString
                 let edits = ranges.map { SQLTextEdit(range: $0, text: value + source.substring(with: $0) + close) }
                 let sorted = edits.sorted { $0.range.location < $1.range.location }

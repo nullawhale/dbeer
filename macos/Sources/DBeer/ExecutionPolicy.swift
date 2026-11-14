@@ -46,6 +46,10 @@ struct OperationRequest: Codable, Equatable, Sendable {
     var structure: StructureApply?
     var parameters: [QueryParameterBinding]?
     var tableImport: TableImportRequest?
+    var nativeCommand: NativeCommand? = nil
+    var queryId: String? = nil
+    @OptionalTransportPayload var tuningValidation: TuningValidationRequest? = nil
+    @OptionalTransportPayload var tuningSetting: TuningSettingRequest? = nil
 }
 
 struct StatementAssessment: Codable, Equatable, Sendable {
@@ -59,6 +63,7 @@ struct AssessedOperation: Codable, Equatable, Sendable {
     var kind: String
     var statements: [StatementAssessment]
     var explain: ExplainPreview?
+    var tuningSetting: TuningSettingPreview? = nil
 }
 
 struct OperationAssessment: Codable, Equatable, Sendable {
@@ -73,6 +78,7 @@ struct OperationAssessment: Codable, Equatable, Sendable {
             operations.allSatisfy { operation in
                 ["read", "write", "destructive", "unknown"].contains(operation.kind) &&
                 (operation.explain == nil || operation.explain?.valid == true) &&
+                (operation.tuningSetting == nil || operation.tuningSetting?.valid == true) &&
                 operation.statements.allSatisfy { $0.start >= 0 && $0.end >= $0.start &&
                     ["read", "write", "destructive", "unknown"].contains($0.kind) }
             } && (decision == "deny" ? authorization == nil : authorization.map(BackendMessage.validID) == true)
@@ -124,12 +130,31 @@ enum ExecutionConfirmation {
         let alert = NSAlert()
         alert.alertStyle = confirmation.assessment.decision == "confirm" ? .warning : .informational
         let isAnalyze = confirmation.operations.contains { $0.explain?.mode == .analyze }
-        alert.messageText = isAnalyze ? "Run Explain Analyze?" : confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
+        let isDMLAnalyze = confirmation.operations.contains { $0.explain?.writeIntent != nil }
+        let suppressesTarget = confirmation.assessment.operations.contains { $0.explain?.support.dml?.analyzeTargetExecution == "suppresses" }
         let profile = confirmation.profile
+        alert.messageText = isAnalyze ? "Run " + ExplainMode.analyze.title(engine: profile.engine) + "?" : confirmation.isScript ? "Review Entire SQL Script" : "Confirm Database Operation"
         alert.informativeText = "\(profile.name) · \(profile.engine.displayName) · \(profile.endpointDescription)\n\(profile.policy.label)\nDestructive and unknown commands require confirmation. Production confirms every evaluated write. Functions and database objects can hide side effects; use restricted database privileges for strict protection."
         if let files = confirmation.assessment.sqliteFiles { alert.informativeText += "\nSQLite files in this session:\n" + files.joined(separator: "\n") }
-        if isAnalyze { alert.informativeText += "\nExplain Analyze executes this query, consumes server resources, and may have side effects. It is not automatically rolled back." }
-        alert.addButton(withTitle: "Execute")
+        if isAnalyze {
+            alert.informativeText += "\n" + ExplainMode.analyze.title(engine: profile.engine) + " executes this query, consumes server resources, and may have side effects. It is not automatically rolled back."
+            if profile.engine == .cassandra {
+                alert.informativeText += "\nOnly the first server page (200 rows) is requested. Trace metadata is collected at consistency ONE; your selected read retains the saved consistency. Trace events are eventual and the bounded observation is incomplete."
+            }
+        }
+        if isDMLAnalyze {
+            let transactions = confirmation.operations.compactMap { $0.explain?.writeIntent?.expectedTransactionStatus }
+            if suppressesTarget {
+                alert.informativeText += "\n" + ExplainDMLResult.suppressedEffectsCaveat +
+                    " The diagnostic uses the chosen SQL tab's current physical session and transaction context. Session state after execution is reported separately."
+            } else {
+                alert.informativeText += "\nDML Analyze performs real database writes in the chosen SQL tab's current physical session. " +
+                    (transactions.contains("transaction") ? "Changes join the existing transaction and remain uncommitted until you commit it. " :
+                        "The server's current transaction/autocommit settings decide whether changes commit or remain pending. ") +
+                    ExplainDMLResult.effectsCaveat
+            }
+        }
+        alert.addButton(withTitle: isDMLAnalyze ? (suppressesTarget ? "Run DML Diagnostic" : "Execute DML Analyze") : "Execute")
         alert.addButton(withTitle: "Cancel")
         // Cancel is the default key action; Return must not accidentally approve.
         alert.buttons[0].keyEquivalent = ""
@@ -153,7 +178,7 @@ enum ExecutionConfirmation {
         content.append(NSAttributedString(string: profile.policy.label + "\n\n",
             attributes: [.font: NSFont.boldSystemFont(ofSize: 14), .foregroundColor: profile.policy.environment.nativeColor]))
         if let source = confirmation.sourceSQL {
-            content.append(NSAttributedString(string: (confirmation.isScript ? "Entire script source\n" : "Original SQL source\n") + source + "\n\nCommands sent to the server follow below.\n",
+            content.append(NSAttributedString(string: (confirmation.isScript ? "Entire script source\n" : profile.engine.hasEngineDiagnostics ? "Original query source\n" : "Original SQL source\n") + source + "\n\nCommands sent to the server follow below.\n",
                 attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))
         }
         if let preview = confirmation.generatedPreview {
@@ -166,7 +191,7 @@ enum ExecutionConfirmation {
                 attributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: assessed.kind == "read" ? NSColor.secondaryLabelColor : NSColor.systemRed]))
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let payload = operation.tableImport.flatMap { try? encoder.encode($0) } ?? operation.changes.flatMap { try? encoder.encode($0) }
+            let payload = operation.nativeCommand.flatMap { try? encoder.encode($0) } ?? operation.tableImport.flatMap { try? encoder.encode($0) } ?? operation.changes.flatMap { try? encoder.encode($0) }
             let sql = assessed.explain?.sql ?? operation.sql ?? (payload.flatMap { String(data: $0, encoding: .utf8) } ?? "")
             let displayed = NSMutableAttributedString(string: sql, attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor])
             if operation.sql != nil {
@@ -180,8 +205,17 @@ enum ExecutionConfirmation {
                 }
             }
             content.append(displayed)
+            if let setting = assessed.tuningSetting {
+                content.append(NSAttributedString(string: "\n" + setting.sql + "\nSeparate restore candidate: " + setting.restoreSQL + "\n" + setting.risks.joined(separator: "\n") + "\n",
+                    attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))
+            }
             content.append(NSAttributedString(string: "\n"))
-            if let parameters = operation.parameters, !parameters.isEmpty,
+            if let context = operation.explain?.context, operation.explain?.writeIntent != nil {
+                content.append(NSAttributedString(string: "\nPhysical SQL tab: " + context.targetDocumentId +
+                    "\nTransaction before execution: " + context.transactionStatus + "\n",
+                    attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.systemRed]))
+            }
+            if let parameters = operation.tuningValidation?.original.parameters ?? operation.explain?.parameters ?? operation.parameters, !parameters.isEmpty,
                let data = try? encoder.encode(parameters), let preview = String(data: data, encoding: .utf8) {
                 content.append(NSAttributedString(string: "Bound parameters\n" + preview + "\n",
                     attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))

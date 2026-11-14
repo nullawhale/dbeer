@@ -337,17 +337,7 @@ func (s *Session) readDataRows(sql string, d tc.Descriptor, spec tc.Spec, sink t
 			err = &dataCaptureWireFailure{stage: stage, cause: err}
 		}
 	}()
-	s.work.client.ResetSequence()
-	payload := []byte{wire.COM_QUERY}
-	// HasCapability reports explicit options, whereas CapabilityString reports
-	// the negotiated flags, including library defaults.
-	if strings.Contains("|"+s.work.client.CapabilityString()+"|", "|CLIENT_QUERY_ATTRIBUTES|") {
-		payload = append(payload, 0, 1)
-	}
-	payload = append(payload, []byte(sql)...)
-	packet := make([]byte, 4+len(payload))
-	copy(packet[4:], payload)
-	if e := s.work.client.WritePacket(packet); e != nil {
+	if e := s.sendTextQuery(sql); e != nil {
 		return e
 	}
 	stage = "header"

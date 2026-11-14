@@ -23,7 +23,7 @@ struct SynchronizationSQLPlan: Codable, Equatable, Sendable {
     var steps: [SynchronizationSQLStep]
 
     var valid: Bool {
-        guard formatVersion == 1, ["schema", "data"].contains(kind), ["postgresql", "mysql", "sqlite"].contains(engine),
+        guard formatVersion == 1, ["schema", "data"].contains(kind), ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine),
               DataComparisonRequest.digestValid(modelDigest), steps.count <= 2_000, warnings.count <= 64,
               warnings.allSatisfy({ Self.textValid($0, limit: 4_096) }),
               let data = try? JSONEncoder().encode(self), data.count <= Self.maximumBytes else { return false }
@@ -76,25 +76,53 @@ struct SynchronizationSQLPlan: Codable, Equatable, Sendable {
     }
 }
 
+struct SynchronizationPlanEndpoint: Sendable {
+    let name: String
+    let engine: DatabaseEngine
+    let description: String
+    let profile: SavedConnection?
+
+    init(profile: SavedConnection) {
+        name = profile.name; engine = profile.engine; description = profile.endpointDescription; self.profile = profile
+    }
+    init?(bundle: SchemaImportedSource) {
+        guard bundle.valid, let engine = bundle.source.databaseEngine else { return nil }
+        name = bundle.label; self.engine = engine
+        description = "Historical schema bundle · " + (bundle.source.contentSha256 ?? "")
+        profile = nil
+    }
+}
+
 @MainActor
 final class SynchronizationPlanDraft: ObservableObject, Identifiable {
     let id = UUID()
     let plan: SynchronizationSQLPlan
-    let source: SavedConnection
-    let target: SavedConnection
+    let source: SynchronizationPlanEndpoint
+    let target: SynchronizationPlanEndpoint
     @Published var selected: Set<String> { didSet { saved = false; error = nil } }
     @Published private(set) var isValid = true
     @Published private(set) var error: String?
     @Published private(set) var saved = false
     private let open: @MainActor (String, SavedConnection) -> Bool
     private let validateTarget: @MainActor (SavedConnection) -> Bool
+    private let current: @MainActor () -> Bool
 
     init(plan: SynchronizationSQLPlan, source: SavedConnection, target: SavedConnection,
          validateTarget: @escaping @MainActor (SavedConnection) -> Bool = { _ in true },
          open: @escaping @MainActor (String, SavedConnection) -> Bool) {
-        self.plan = plan; self.source = source; self.target = target; self.open = open; self.validateTarget = validateTarget
+        self.plan = plan; self.source = .init(profile: source); self.target = .init(profile: target); self.open = open; self.validateTarget = validateTarget
+        current = { true }
         selected = Set(plan.steps.filter(\.selected).map(\.id))
     }
+
+    init(plan: SynchronizationSQLPlan, source: SynchronizationPlanEndpoint, target: SynchronizationPlanEndpoint,
+         current: @escaping @MainActor () -> Bool, validateTarget: @escaping @MainActor (SavedConnection) -> Bool,
+         open: @escaping @MainActor (String, SavedConnection) -> Bool) {
+        self.plan = plan; self.source = source; self.target = target; self.current = current
+        self.validateTarget = validateTarget; self.open = open
+        selected = Set(plan.steps.filter(\.selected).map(\.id))
+    }
+    var canOpenInEditor: Bool { sql != nil && target.profile != nil }
 
     var selectionError: String? {
         guard isValid else { return "This comparison has closed. Generate a new plan." }
@@ -105,8 +133,8 @@ final class SynchronizationPlanDraft: ObservableObject, Identifiable {
     func invalidate() { isValid = false }
 
     @discardableResult func openInEditor() -> Bool {
-        guard let sql, targetIsCurrent() else { return false }
-        guard open(sql, target) else {
+        guard let sql, targetIsCurrent(), let profile = target.profile else { return false }
+        guard open(sql, profile) else {
             error = "The target connection changed or the comparison closed. Create a new comparison before opening this plan."
             return false
         }
@@ -115,7 +143,7 @@ final class SynchronizationPlanDraft: ObservableObject, Identifiable {
     }
 
     private func targetIsCurrent() -> Bool {
-        guard validateTarget(target) else {
+        guard current(), target.profile.map(validateTarget) ?? true else {
             error = "The target connection changed or the comparison closed. Create a new comparison before using this plan."
             return false
         }
@@ -128,11 +156,9 @@ final class SynchronizationPlanDraft: ObservableObject, Identifiable {
             error = "The selected operations changed while the save dialog was open. Review the SQL and save again."
             return
         }
-        let temporary = destination.deletingLastPathComponent().appendingPathComponent(".dbeer-plan-\(UUID().uuidString).tmp")
-        defer { try? FileManager.default.removeItem(at: temporary) }
         do {
-            guard FileManager.default.createFile(atPath: temporary.path, contents: Data(sql.utf8), attributes: [.posixPermissions: 0o600]),
-                  rename(temporary.path, destination.path) == 0 else { throw CocoaError(.fileWriteUnknown) }
+            let version = try SQLFileBinding.reviewedVersion(at: destination, maximumBytes: SynchronizationSQLPlan.maximumBytes)
+            _ = try SQLFileBinding.write(sql, to: destination, expectedVersion: version, maximumBytes: SynchronizationSQLPlan.maximumBytes)
             saved = true; error = nil
         } catch { self.error = "The SQL plan could not be saved. The destination was left unchanged." }
     }

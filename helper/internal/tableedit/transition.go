@@ -7,8 +7,11 @@ import (
 )
 
 type Condition struct {
-	Operation Operation
-	Columns   []Column
+	AdvancedDataTypes []uint32
+	AdvancedDataProof string
+	Operation         Operation
+	ColumnOrder       []string
+	Columns           []Column
 }
 
 func cloneFacts(f *Facts) *Facts {
@@ -34,18 +37,27 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		return false
 	}
 	op := c.Operation
+	if op.Kind == "backfill" {
+		return before.Fingerprint == after.Fingerprint
+	}
+	if op.Kind == "reorder" {
+		return VerifyColumnOrder(before, after, c.ColumnOrder, false)
+	}
+	if op.Kind == "renameColumn" || op.Kind == "renameTable" {
+		return verifyRename(before, after, c)
+	}
 	checkNew := func(column Column) bool {
 		actual, ok := FindColumn(after, column.Name)
 		if !ok || actual.Nullable.Value == nil || *actual.Nullable.Value != column.Nullable {
 			return false
 		}
-		typ, ok := ColumnType(actual)
+		typ, ok := ColumnType(actual, after.Engine)
 		expected := PlanningSource(before, Draft{Columns: []Column{column}}, after.Engine)
 		wanted, exists := FindColumn(expected, column.Name)
-		if !exists || !ok || typ != column.Type || actual.Type.Value == nil || !reflect.DeepEqual(*actual.Type.Value, ExpectedNewType(after.Engine, column.Type)) || !defaultMatches(actual, column.Default) {
+		if !exists || column.Type.Kind != "reference" && (!ok || !SameDataType(typ, column.Type)) || actual.Type.Value == nil || !reflect.DeepEqual(*actual.Type.Value, ExpectedColumnType(after.Engine, column)) || !authoredDefaultMatches(after.Engine, actual, column, defaultMatches) {
 			return false
 		}
-		if actual.Generated.Value == nil || actual.Generated.Value.Kind != "none" || actual.Identity.Value == nil || actual.Identity.Value.Kind != "none" || actual.Visible.Value == nil || !*actual.Visible.Value || actual.Comment.Value == nil || *actual.Comment.Value != "" || actual.OnUpdate.Value != nil || !reflect.DeepEqual(actual.Charset, wanted.Charset) || !reflect.DeepEqual(actual.Collation, wanted.Collation) || !reflect.DeepEqual(actual.CollationProperties, wanted.CollationProperties) {
+		if !generatedMatches(after.Engine, after.Facts, actual, column.Generated) || !identityMatches(after.Engine, after.Facts, actual, column.Identity, nil) || actual.Visible.Value == nil || !*actual.Visible.Value || actual.Comment.Value == nil || *actual.Comment.Value != "" || actual.OnUpdate.Value != nil || !reflect.DeepEqual(actual.Charset, wanted.Charset) || !reflect.DeepEqual(actual.Collation, wanted.Collation) || !reflect.DeepEqual(actual.CollationProperties, wanted.CollationProperties) {
 			return false
 		}
 		if after.Engine == "postgresql" {
@@ -53,11 +65,14 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 			storage := ""
 			if before.Facts != nil {
 				storage = before.Facts.TypeStorage[column.Type.Kind]
+				if column.Resolved != nil {
+					storage = column.Resolved.Storage
+				}
 			}
 			if storage == "" {
 				return false
 			}
-			if attrs["attstorage"] != storage || attrs["attcompression"] != "" || attrs["attacl"] != nil || attrs["attoptions"] != nil || attrs["attfdwoptions"] != nil || (attrs["attstattarget"] != nil && attrs["attstattarget"] != float64(-1)) || attrs["attndims"] != float64(0) || attrs["attinhcount"] != float64(0) || attrs["attislocal"] != true {
+			if attrs["attstorage"] != storage || (attrs["attcompression"] != "" && attrs["attcompression"] != "\x00") || attrs["attacl"] != nil || !EmptyPostgresOptions(attrs["attoptions"]) || attrs["attfdwoptions"] != nil || (attrs["attstattarget"] != nil && attrs["attstattarget"] != float64(-1)) || attrs["attndims"] != float64(0) || attrs["attinhcount"] != float64(0) || attrs["attislocal"] != true {
 				return false
 			}
 		}
@@ -79,6 +94,16 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 	}
 	a, b := cloneFacts(before.Facts), cloneFacts(after.Facts)
 	attrsA, attrsB := copyAttrs(before.Attributes), copyAttrs(after.Attributes)
+	if before.Engine == "postgresql" {
+		for _, attrs := range []map[string]map[string]any{attrsA, attrsB} {
+			for _, a := range attrs {
+				if a == nil {
+					continue
+				}
+				a["attoptions"] = SemanticPostgresAttributeOptions(a["attoptions"])
+			}
+		}
+	}
 	stripColumn := func(name string, remove bool, change *ColumnChange) {
 		for _, f := range []*Facts{a, b} {
 			out := []sc.Column{}
@@ -91,14 +116,30 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 					continue
 				}
 				if change != nil {
-					if change.Type != nil {
+					if change.Type != nil || change.Unsigned != nil {
 						col.Type = sc.Fact[sc.TypeUse]{}
+					}
+					if change.Charset != nil || change.Type != nil && (before.Engine == "mysql" || before.Engine == "mariadb") && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
+						col.Charset = sc.Fact[string]{}
+					}
+					if change.Collation != nil || change.Type != nil && (before.Engine == "postgresql" || (before.Engine == "mysql" || before.Engine == "mariadb") && change.Type.Kind != "text" && change.Type.Kind != "varchar") {
+						col.Collation = sc.Fact[sc.Ref]{}
+						col.CollationProperties = nil
 					}
 					if change.Nullable != nil {
 						col.Nullable = sc.Fact[bool]{}
 						if col.Default.Value != nil && (col.Default.Value.Kind == "none" || col.Default.Value.Kind == "sqlNull") {
 							col.Default = sc.Known(sc.Default{Kind: "none"})
 						}
+					}
+					if change.Generated != nil {
+						if (before.Engine == "mysql" || before.Engine == "mariadb") && col.Default.Value != nil && (col.Default.Value.Kind == "none" || col.Default.Value.Kind == "sqlNull") {
+							col.Default = sc.Known(sc.Default{Kind: "none"})
+						}
+						col.Generated = sc.Fact[sc.Generated]{}
+					}
+					if change.Identity != nil {
+						col.Identity = sc.Fact[sc.Identity]{}
 					}
 					if change.Default != nil {
 						col.Default = sc.Fact[sc.Default]{}
@@ -114,12 +155,22 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		} else if change != nil {
 			for _, attrs := range []map[string]map[string]any{attrsA, attrsB} {
 				if change.Type != nil {
-					for _, k := range []string{"atttypid", "attlen", "atttypmod", "attbyval", "attalign"} {
+					for _, k := range []string{"atttypid", "attlen", "atttypmod", "attbyval", "attalign", "attstorage", "attcompression"} {
 						delete(attrs[name], k)
 					}
 				}
+				if change.Collation != nil || change.Type != nil {
+					delete(attrs[name], "attcollation")
+				}
 				if change.Nullable != nil {
 					delete(attrs[name], "attnotnull")
+				}
+				if change.Generated != nil {
+					delete(attrs[name], "attgenerated")
+					delete(attrs[name], "atthasdef")
+				}
+				if change.Identity != nil {
+					delete(attrs[name], "attidentity")
 				}
 				if change.Default != nil {
 					delete(attrs[name], "atthasdef")
@@ -132,6 +183,26 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 			out := []sc.Index{}
 			for _, x := range f.Table.Indexes.Items {
 				if x.Ref.Name == name || owner != "" && x.Constraint.Value != nil && x.Constraint.Value.Name == owner {
+					delete(f.IndexDefaultOpclasses, x.Ref.Name)
+					delete(f.IndexDefaultCollations, x.Ref.Name)
+					delete(f.IndexAttributes, x.Ref.Name)
+					if len(f.IndexAttributes) == 0 {
+						f.IndexAttributes = nil
+					}
+					delete(f.IndexBuiltinFunctions, x.Ref.Name)
+					if len(f.IndexBuiltinFunctions) == 0 {
+						f.IndexBuiltinFunctions = nil
+					}
+					if len(f.IndexDefaultCollations) == 0 {
+						f.IndexDefaultCollations = nil
+					}
+					delete(f.IndexCatalogGuards, x.Ref.Name)
+					if len(f.IndexCatalogGuards) == 0 {
+						f.IndexCatalogGuards = nil
+					}
+					if len(f.IndexDefaultOpclasses) == 0 {
+						f.IndexDefaultOpclasses = nil
+					}
 					continue
 				}
 				out = append(out, x)
@@ -164,20 +235,102 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		if !checkNew(*op.Column) || len(after.Facts.Table.Columns.Items) != len(before.Facts.Table.Columns.Items)+1 {
 			return false
 		}
+		if !stripResolvedTypes(a, b, *op.Column) {
+			return false
+		}
+		stripOwnedSequences(a, b, sc.Ref{Kind: "column", Schema: after.Target.Schema, Table: after.Target.Table, Name: op.Column.Name})
 		stripColumn(op.Column.Name, true, nil)
+	case "dropColumn":
+		if op.Change == nil || !op.Change.Drop {
+			return false
+		}
+		name := op.Change.Name
+		if _, ok := FindColumn(after, name); ok || len(after.Columns) != len(before.Columns)-1 {
+			return false
+		}
+		old, ok := FindColumn(before, name)
+		if !ok {
+			return false
+		}
+		stripOwnedSequences(a, b, old.Ref)
+		if before.Engine == "postgresql" {
+			number := attrsA[name]["attnum"]
+			for key, attrs := range attrsB {
+				if attrs["attisdropped"] == true && attrs["attnum"] == number {
+					delete(attrsB, key)
+				}
+			}
+		}
+		stripColumn(name, true, nil)
+		for _, f := range []*Facts{a, b} {
+			for i := range f.Table.Columns.Items {
+				f.Table.Columns.Items[i].Ordinal = sc.Known(i)
+			}
+		}
 	case "changeColumn":
 		change := op.Change
 		actual, ok := FindColumn(after, change.Name)
 		if !ok {
 			return false
 		}
-		if change.Type != nil {
-			typ, ok := ColumnType(actual)
+		if change.Generated != nil && !generatedMatches(after.Engine, after.Facts, actual, change.Generated) {
+			return false
+		}
+		if change.Identity != nil {
+			owner := actual.Ref
+			if !identityMatches(after.Engine, after.Facts, actual, change.Identity, sequenceFor(before.Facts, owner)) {
+				return false
+			}
+			stripOwnedSequences(a, b, owner)
+		}
+		if change.Type != nil || change.Unsigned != nil {
 			old, exists := FindColumn(before, change.Name)
-			if !ok || typ != *change.Type || !exists || old.Type.Value == nil || actual.Type.Value == nil || actual.Type.State != old.Type.State || !reflect.DeepEqual(*actual.Type.Value, ExpectedWidenType(before.Engine, *old.Type.Value, *change.Type)) {
+			if !exists || old.Type.Value == nil || actual.Type.Value == nil || actual.Type.State != old.Type.State || !reflect.DeepEqual(*actual.Type.Value, ExpectedChangedType(before.Engine, *old.Type.Value, *change)) {
+				return false
+			}
+			if (change.Type != nil || change.Collation != nil) && before.Engine == "postgresql" && len(after.Attributes[change.Name]) > 0 {
+				want, _ := ColumnType(actual, after.Engine)
+				if after.Attributes[change.Name]["attstorage"] != before.Facts.TypeStorage[want.Kind] || after.Attributes[change.Name]["attcompression"] != "" {
+					return false
+				}
+			}
+			if change.Type != nil {
+				typ, ok := ColumnType(actual, after.Engine)
+				if !ok || !SameDataType(typ, *change.Type) {
+					return false
+				}
+			}
+		}
+		if (before.Engine == "mysql" || before.Engine == "mariadb") && change.Type != nil && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
+			if actual.Charset.Value != nil || actual.Charset.State != "known" || actual.Collation.Value != nil || actual.Collation.State != "known" || actual.CollationProperties != nil {
 				return false
 			}
 		}
+		if change.Charset != nil && (actual.Charset.Value == nil || *actual.Charset.Value != *change.Charset) {
+			return false
+		}
+		if change.Collation != nil && (actual.Collation.Value == nil || actual.Collation.Value.Schema != change.Collation.Schema || actual.Collation.Value.Name != change.Collation.Name) {
+			return false
+		}
+		if change.Type != nil && before.Engine == "postgresql" && change.Collation == nil {
+			textual := change.Type.Kind == "varchar" || change.Type.Kind == "text"
+			old, _ := FindColumn(before, change.Name)
+			if textual {
+				expected := sc.Ref{Kind: "collation", Schema: "pg_catalog", Name: "default"}
+				if old.Collation.Value != nil {
+					expected = *old.Collation.Value
+				}
+				if actual.Collation.Value == nil || *actual.Collation.Value != expected {
+					return false
+				}
+				if old.Collation.Value != nil && !reflect.DeepEqual(old.CollationProperties, actual.CollationProperties) {
+					return false
+				}
+			} else if actual.Collation.Value != nil || actual.CollationProperties != nil {
+				return false
+			}
+		}
+
 		if change.Nullable != nil && (actual.Nullable.Value == nil || *actual.Nullable.Value != *change.Nullable) {
 			return false
 		}
@@ -188,7 +341,16 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 	case "addIndex":
 		found := false
 		for _, x := range after.Indexes {
-			if x.Name == op.Index.Name && x.Supported && x.Owner == "" && x.Unique == op.Index.Unique && reflect.DeepEqual(x.Columns, op.Index.Columns) {
+			if x.Name != op.Index.Name || !x.Supported || x.Owner != "" || x.Unique != op.Index.Unique {
+				continue
+			}
+			if op.Index.Definition != nil {
+				for _, fact := range after.Facts.Table.Indexes.Items {
+					if fact.Ref.Name == x.Name && IndexDefinitionMatches(before, after, fact, *op.Index.Definition) {
+						found = true
+					}
+				}
+			} else if reflect.DeepEqual(x.Columns, op.Index.Columns) {
 				found = true
 			}
 		}
@@ -257,6 +419,17 @@ func VerifyReference(before, after, source Baseline, c Condition) bool {
 	}
 	a, b := cloneFacts(before.Facts), cloneFacts(after.Facts)
 	op := c.Operation
+	if op.Kind == "renameTable" && op.Name != nil {
+		renameFacts(a, source.Target, "", *op.Name)
+	}
+	if op.Kind == "renameColumn" && op.Change != nil && op.Change.RenameTo != nil {
+		renameFacts(a, source.Target, op.Change.Name, *op.Change.RenameTo)
+	}
+
+	if op.Kind == "renameColumn" || op.Kind == "renameTable" {
+		sortRenameDependencies(a)
+		sortRenameDependencies(b)
+	}
 	if (op.Kind == "addKey" || op.Kind == "dropKey") && op.Key.Kind == "foreign" {
 		for _, f := range []*Facts{a, b} {
 			out := []Incoming{}

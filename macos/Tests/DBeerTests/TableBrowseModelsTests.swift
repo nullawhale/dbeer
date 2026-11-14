@@ -80,7 +80,7 @@ struct TableBrowseModelsTests {
         let bytes = try JSONSerialization.data(withJSONObject: raw, options: [.sortedKeys])
         try bytes.write(to: url)
         let migrated = try await FileSQLDocumentStore(fileURL: url).load()
-        #expect(migrated.version == 11 && migrated.documents == [document])
+        #expect(migrated.version == SQLWorkspaceSnapshot.currentVersion && migrated.documents == [document])
         #expect(try Data(contentsOf: url.appendingPathExtension("v10.backup")) == bytes)
         // New operational expressions must not masquerade as the older format.
         table.removeValue(forKey: "filters")

@@ -15,7 +15,7 @@ func isKeyword(word string) bool {
 
 func quoteIdentifier(name, engine string) string {
 	quote := "\""
-	if engine == "mysql" {
+	if mysqlLexicalEngine(engine) {
 		quote = "`"
 	}
 	return quote + strings.ReplaceAll(name, quote, quote+quote) + quote
@@ -37,6 +37,9 @@ func functions(engine string) []string {
 		return strings.Fields("COUNT SUM AVG MIN MAX COALESCE NULLIF IFNULL LOWER UPPER LENGTH SUBSTR ROUND ABS TOTAL GROUP_CONCAT HEX UNHEX TYPEOF QUOTE UNICODE CHAR INSTR REPLACE TRIM LTRIM RTRIM RANDOM RANDOMBLOB ZEROBLOB DATE TIME DATETIME JULIANDAY UNIXEPOCH STRFTIME JSON JSON_ARRAY JSON_OBJECT JSON_EXTRACT JSON_TYPE JSON_VALID")
 	}
 	names := strings.Fields("COUNT SUM AVG MIN MAX COALESCE NULLIF LOWER UPPER LENGTH SUBSTRING ROUND ABS")
+	if engine == "mariadb" {
+		return append(names, strings.Fields("IFNULL CONCAT NOW DATE_FORMAT STR_TO_DATE JSON_EXTRACT JSON_QUERY JSON_VALUE JSON_VALID GROUP_CONCAT VERSION CURRENT_USER CONNECTION_ID LAST_INSERT_ID UUID CHAR_LENGTH OCTET_LENGTH INET6_ATON INET6_NTOA")...)
+	}
 	if engine == "mysql" {
 		return append(names, strings.Fields("IFNULL CONCAT NOW DATE_FORMAT JSON_EXTRACT GROUP_CONCAT")...)
 	}
@@ -62,3 +65,7 @@ func identifier(t token) bool {
 	}
 	return true
 }
+
+// MariaDB shares these bounded quote/comment/identifier rules. This never
+// changes public engine identity or selects a connection or SQL execution path.
+func mysqlLexicalEngine(engine string) bool { return engine == "mysql" || engine == "mariadb" }

@@ -96,7 +96,7 @@ struct ERDiagramLoaderTests {
         let owned = try #require(fixture.commands().last { $0.catalog?.kind == "columns" })
         workspace.stopERDiagram(model)
         await build.value
-        try await PostgresTypeTestFixture.waitFor { model.notice?.contains("accepted") == true }
+        try await PostgresTypeTestFixture.waitFor { model.sourceState(fixture.profile.id).notice?.contains("accepted") == true }
         let cancel = try #require(fixture.commands().last { $0.type == "cancel" })
         #expect(cancel.sessionId == owned.sessionId && cancel.queryId == owned.queryId)
         #expect(model.metadata.values.allSatisfy { !$0.columnState.isAvailable })
@@ -114,6 +114,34 @@ struct ERDiagramLoaderTests {
         #expect(model.metadata.values.allSatisfy { !$0.columnState.isAvailable })
         await fixture.finish()
     }
+    @Test func labelChangeDuringConnectionPreparationDoesNotDiscardBuild() async throws {
+        let fixture = try await PostgresTypeTestFixture.make()
+        let workspace = fixture.workspace
+        let document = try #require(workspace.openERDiagram(fixture.node("er_ready", kind: "table", typeKind: "table")))
+        let model = try #require(document.erDiagramModel)
+        try fixture.holdConnection()
+        let building = Task { await workspace.buildERDiagram(document, connect: true) }
+        do {
+            try await PostgresTypeTestFixture.waitFor { fixture.connectionIsWaiting }
+            try #require(await workspace.library.saveConnection(name: "Renamed while connecting",
+                settings: fixture.profile.settings(password: ""), id: fixture.profile.id))
+            try fixture.releaseConnection()
+            await building.value
+            let columnsAvailable = model.metadata.values.first?.columnState.isAvailable == true
+            let keysAvailable = model.metadata.values.first?.relationshipState.isAvailable == true
+            let ownerLabel = model.source(fixture.profile.id)?.name
+            #expect(columnsAvailable && keysAvailable && ownerLabel == "Renamed while connecting")
+            let commands = try fixture.commands()
+            #expect(commands.filter { $0.type == "connect" }.count == 1)
+            #expect(commands.contains { $0.catalog?.kind == "columns" })
+            #expect(!commands.contains { $0.type == "execute" || $0.type == "cancel" })
+            await fixture.finish()
+        } catch {
+            try? fixture.releaseConnection(); await building.value
+            await fixture.finish(); throw error
+        }
+    }
+
     @Test func queuedCancellationDoesNotCancelAnotherCatalogConsumer() async throws {
         let fixture = try await PostgresTypeTestFixture.make()
         try await fixture.connect()

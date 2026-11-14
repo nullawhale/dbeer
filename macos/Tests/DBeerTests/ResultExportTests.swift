@@ -46,8 +46,9 @@ struct ResultExportTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let file = folder.appendingPathComponent("result.json")
         try Data("old".utf8).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         let data = try ResultExport.json([result])
-        try ResultExport.write(data, to: file)
+        try ResultExport.write(data, to: file, expectedVersion: SQLFileBinding.reviewedVersion(at: file))
         #expect(try Data(contentsOf: file) == data)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["result.json"])
         let mode = try #require(FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int)

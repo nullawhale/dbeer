@@ -117,6 +117,9 @@ func probeTool(ctx context.Context, tool *toolIdentity, engine, home string) (to
 	if engine == "mysql" {
 		pattern = mysqlVersion
 	}
+	if engine == "mariadb" {
+		pattern = mariaDBToolVersion
+	}
 	match := pattern.FindStringSubmatch(string(out.bytes))
 	if len(match) != 4 {
 		return toolVersion{}, errTool

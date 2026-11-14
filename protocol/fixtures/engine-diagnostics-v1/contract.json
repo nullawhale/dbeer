@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "capability": "engineDiagnosticsV1",
+  "fixtures": [
+    {
+      "name": "mongodbExecutionStats",
+      "request": {
+        "sql": "{\"collection\":\"items\",\"find\":{}}",
+        "mode": "analyze"
+      },
+      "result": {
+        "support": {
+          "engine": "mongodb",
+          "serverVersion": "fixture",
+          "format": "mongodbExplain",
+          "diagnosticModel": "mongodbExplain",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "diagnostic",
+        "raw": "{\"executionStats\":{\"nReturned\":{\"$numberLong\":\"9007199254740993\"}}}",
+        "complete": true,
+        "diagnostic": "Native diagnostic fixture; metric scopes are distinct.",
+        "roots": [],
+        "nodes": [],
+        "metrics": {},
+        "engineDiagnostic": {
+          "kind": "mongodbExplain",
+          "mongodb": {
+            "verbosity": "executionStats",
+            "sections": [
+              "$[0:queryPlanner]",
+              "$[1:executionStats]"
+            ],
+            "stages": [
+              {
+                "path": "$[0:queryPlanner][0:winningPlan]",
+                "operation": "IXSCAN",
+                "metrics": {}
+              },
+              {
+                "path": "$[1:executionStats][1:executionStages]",
+                "operation": "ixseek",
+                "metrics": {
+                  "executionTimeMillisEstimate": {
+                    "unit": "ms",
+                    "basis": "stageEstimate",
+                    "value": "0"
+                  }
+                }
+              }
+            ],
+            "metrics": {
+              "nReturned": {
+                "unit": "documents",
+                "basis": "total",
+                "value": "9007199254740993"
+              },
+              "totalKeysExamined": {
+                "unit": "keys",
+                "basis": "total",
+                "value": "0"
+              },
+              "totalDocsExamined": {
+                "unit": "documents",
+                "basis": "total",
+                "unavailableReason": "notReported"
+              },
+              "executionTimeMillis": {
+                "unit": "ms",
+                "basis": "total",
+                "value": "0"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "cassandraTrace",
+      "request": {
+        "sql": "SELECT * FROM fixture.items",
+        "mode": "analyze"
+      },
+      "result": {
+        "support": {
+          "engine": "cassandra",
+          "serverVersion": "fixture",
+          "format": "cassandraTrace",
+          "diagnosticModel": "cassandraTrace",
+          "modes": [
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "diagnostic",
+        "raw": "Original bounded trace observation",
+        "complete": false,
+        "diagnostic": "Native diagnostic fixture; metric scopes are distinct.",
+        "roots": [],
+        "nodes": [],
+        "metrics": {},
+        "engineDiagnostic": {
+          "kind": "cassandraTrace",
+          "cassandra": {
+            "scope": "firstServerPage",
+            "pageSize": 200,
+            "hasMorePages": true,
+            "collectionStatus": "partial",
+            "traceSessions": [
+              {
+                "id": "00000000-0000-4000-8000-000000000001",
+                "command": "QUERY",
+                "coordinator": "127.0.0.1",
+                "startedAt": "2026-01-01T00:00:00Z",
+                "duration": {
+                  "unit": "us",
+                  "basis": "coordinator",
+                  "value": "123"
+                },
+                "events": [
+                  {
+                    "id": "00000000-0000-1000-8000-000000000002",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "activity": "Reading fixture partition",
+                    "source": "127.0.0.2",
+                    "thread": "ReadStage-1",
+                    "sourceElapsed": {
+                      "unit": "us",
+                      "basis": "sourceElapsed",
+                      "unavailableReason": "notReported"
+                    }
+                  }
+                ]
+              }
+            ],
+            "collectionConsistency": "ONE"
+          }
+        }
+      }
+    }
+  ]
+}

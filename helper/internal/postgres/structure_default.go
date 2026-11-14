@@ -3,6 +3,7 @@ package postgres
 import (
 	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
+	"github.com/jackc/pgx/v5"
 	"math/big"
 	"regexp"
 	"strconv"
@@ -12,10 +13,16 @@ import (
 var structureCasts = regexp.MustCompile(`^(?:::(?:pg_catalog\.)?(?:integer|bigint|numeric|text|boolean|character varying|varchar|int4|int8|bool)(?:\([0-9, ]+\))?)*$`)
 
 func structureDefaultMatches(c sc.Column, want tableedit.Default) bool {
+	return structureDefaultMatchesFacts(c, want, nil)
+}
+func structureDefaultMatchesFacts(c sc.Column, want tableedit.Default, facts *tableedit.Facts) bool {
 	if c.Default.Value == nil {
 		return false
 	}
 	d := c.Default.Value
+	if want.Kind == "expression" {
+		return want.Value != nil && d.Kind == "expression" && d.Expression != nil && tableedit.SameCatalogExpression("postgresql", d.Expression.Text, *want.Value, facts)
+	}
 	if want.Kind == "none" {
 		return d.Kind == "none"
 	}
@@ -27,7 +34,7 @@ func structureDefaultMatches(c sc.Column, want tableedit.Default) bool {
 		expr = strings.TrimSpace(expr[1 : len(expr)-1])
 	}
 	value, tail, quoted, ok := structureScalar(expr)
-	if !ok || !structureCasts.MatchString(strings.TrimSpace(tail)) {
+	if !ok || !structureCasts.MatchString(strings.TrimSpace(tail)) && !structureReferenceCast(c, tail, facts) {
 		return false
 	}
 	switch want.Kind {
@@ -46,6 +53,13 @@ func structureDefaultMatches(c sc.Column, want tableedit.Default) bool {
 		return !quoted && want.Value != nil && value == *want.Value
 	}
 	return false
+}
+func structureReferenceCast(c sc.Column, tail string, facts *tableedit.Facts) bool {
+	if c.Type.Value == nil || c.Type.Value.Kind == "builtin" {
+		return false
+	}
+	ref := c.Type.Value.Ref
+	return tableedit.SameCatalogExpression("postgresql", tail, "::"+pgx.Identifier{ref.Schema, ref.Name}.Sanitize(), facts) || tableedit.SameCatalogExpression("postgresql", tail, "::"+pgx.Identifier{ref.Name}.Sanitize(), facts)
 }
 func structureScalar(s string) (string, string, bool, bool) {
 	escaped := false

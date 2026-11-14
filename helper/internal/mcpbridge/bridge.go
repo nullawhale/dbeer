@@ -5,6 +5,9 @@ package mcpbridge
 import (
 	"bufio"
 	"context"
+	"dbeer/helper/internal/jsoncheck"
+	"dbeer/helper/internal/nativevalue"
+	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/sqlitevalue"
 	"encoding/json"
 	"errors"
@@ -23,17 +26,18 @@ var errTransport = errors.New("The DBeer agent connection closed. Reconnect and 
 var errBusy = errors.New("Too many DBeer agent operations are pending.")
 
 type request struct {
-	ID             string `json:"id"`
-	Method         string `json:"method"`
-	ClientName     string `json:"clientName,omitempty"`
-	ProfileID      string `json:"profileId,omitempty"`
-	SQL            string `json:"sql,omitempty"`
-	QueryID        string `json:"queryId,omitempty"`
-	Kind           string `json:"kind,omitempty"`
-	Schema         string `json:"schema,omitempty"`
-	Object         string `json:"object,omitempty"`
-	MaxRows        int    `json:"maxRows,omitempty"`
-	TimeoutSeconds int    `json:"timeoutSeconds,omitempty"`
+	NativeCommand  *protocol.NativeCommand `json:"nativeCommand,omitempty"`
+	ID             string                  `json:"id"`
+	Method         string                  `json:"method"`
+	ClientName     string                  `json:"clientName,omitempty"`
+	ProfileID      string                  `json:"profileId,omitempty"`
+	SQL            string                  `json:"sql,omitempty"`
+	QueryID        string                  `json:"queryId,omitempty"`
+	Kind           string                  `json:"kind,omitempty"`
+	Schema         string                  `json:"schema,omitempty"`
+	Object         string                  `json:"object,omitempty"`
+	MaxRows        int                     `json:"maxRows,omitempty"`
+	TimeoutSeconds int                     `json:"timeoutSeconds,omitempty"`
 }
 
 type Connection struct {
@@ -52,14 +56,15 @@ type Column struct {
 }
 
 type Result struct {
-	SQLiteValues          [][]sqlitevalue.Value `json:"sqliteValues,omitempty"`
-	Columns               []Column              `json:"columns"`
-	Rows                  [][]*string           `json:"rows"`
-	CommandTag            string                `json:"commandTag"`
-	RowCount              int64                 `json:"rowCount"`
-	Truncated             bool                  `json:"truncated"`
-	DisplayNotice         string                `json:"displayNotice,omitempty"`
-	AffectedRowCountKnown *bool                 `json:"affectedRowCountKnown,omitempty"`
+	SQLiteValues          *[][]sqlitevalue.Value       `json:"sqliteValues,omitempty"`
+	NativeValues          *[][]nativevalue.NativeValue `json:"nativeValues,omitempty"`
+	Columns               []Column                     `json:"columns"`
+	Rows                  [][]*string                  `json:"rows"`
+	CommandTag            string                       `json:"commandTag"`
+	RowCount              int64                        `json:"rowCount"`
+	Truncated             bool                         `json:"truncated"`
+	DisplayNotice         string                       `json:"displayNotice,omitempty"`
+	AffectedRowCountKnown *bool                        `json:"affectedRowCountKnown,omitempty"`
 }
 
 type response struct {
@@ -151,7 +156,7 @@ func (b *bridge) call(ctx context.Context, command request) (response, error) {
 		b.mu.Lock()
 		delete(b.pending, command.ID)
 		b.mu.Unlock()
-		if command.Method == "query" || command.Method == "catalog" {
+		if command.Method == "query" || command.Method == "catalog" || command.Method == "command" {
 			go func() {
 				cancelCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
@@ -172,7 +177,7 @@ func (b *bridge) read() {
 			return
 		}
 		var reply response
-		if json.Unmarshal(line, &reply) != nil || reply.ID == "" {
+		if !jsoncheck.UnicodeValid(line) || !jsoncheck.UniqueObjectKeys(line) || json.Unmarshal(line, &reply) != nil || reply.ID == "" {
 			return
 		}
 		b.mu.Lock()

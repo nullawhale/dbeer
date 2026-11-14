@@ -73,7 +73,7 @@ func (request ChangesRequest) Valid() bool {
 	}
 	columns := map[string]bool{}
 	for _, column := range request.Columns {
-		if !changeNameValid(column.Name) || columns[column.Name] || (column.Engine != "postgresql" && column.Engine != "mysql" && column.Engine != "cassandra" && column.Engine != "sqlite") ||
+		if !changeNameValid(column.Name) || columns[column.Name] || (column.Engine != "postgresql" && column.Engine != "mysql" && column.Engine != "mariadb" && column.Engine != "cassandra" && column.Engine != "sqlite") ||
 			column.NativeType == "" || len(column.NativeType) > 65536 || !utf8.ValidString(column.NativeType) || strings.ContainsRune(column.NativeType, 0) {
 			return false
 		}

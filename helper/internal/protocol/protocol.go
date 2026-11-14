@@ -5,12 +5,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"dbeer/helper/internal/jsoncheck"
 	"dbeer/helper/internal/productidentity"
 	"dbeer/helper/internal/tableedit"
 )
@@ -49,32 +49,40 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
-	Transfer           *TransferRequest         `json:"transfer,omitempty"`
-	DatabaseTools      *DatabaseToolsRequest    `json:"databaseTools,omitempty"`
-	TableImport        *TableImportRequest      `json:"tableImport,omitempty"`
-	Structure          *tableedit.Request       `json:"structure,omitempty"`
-	PreparedExplainSQL string                   `json:"-"`
-	Explain            *ExplainRequest          `json:"explain,omitempty"`
-	DataComparison     *DataComparisonRequest   `json:"dataComparison,omitempty"`
-	SchemaComparison   *SchemaComparisonRequest `json:"schemaComparison,omitempty"`
-	Comparison         *ComparisonRequest       `json:"comparison,omitempty"`
-	SSHTrust           *SSHTrust                `json:"sshTrust,omitempty"`
-	Insert             *InsertFormatRequest     `json:"insert,omitempty"`
-	Type               string                   `json:"type"`
-	RequestID          string                   `json:"requestId"`
-	ProtocolVersion    int                      `json:"protocolVersion,omitempty"`
-	Connection         *Connection              `json:"connection,omitempty"`
-	SessionID          string                   `json:"sessionId,omitempty"`
-	QueryID            string                   `json:"queryId,omitempty"`
-	SQL                string                   `json:"sql,omitempty"`
-	Parameters         []QueryParameter         `json:"parameters,omitempty"`
-	Catalog            *CatalogRequest          `json:"catalog,omitempty"`
-	Stream             bool                     `json:"stream,omitempty"`
-	Export             *ExportRequest           `json:"export,omitempty"`
-	Sequence           int                      `json:"sequence,omitempty"`
-	Changes            *ChangesRequest          `json:"changes,omitempty"`
-	Operations         []OperationRequest       `json:"operations,omitempty"`
-	Authorization      string                   `json:"authorization,omitempty"`
+	TuningSettingObservation *TuningSettingObservationRequest `json:"tuningSettingObservation,omitempty"`
+	TuningInspect            *TuningInspectRequest            `json:"tuningInspect,omitempty"`
+	TuningValidation         *TuningValidationRequest         `json:"tuningValidation,omitempty"`
+	TuningSetting            *TuningSettingRequest            `json:"tuningSetting,omitempty"`
+	NativeCommand            *NativeCommand                   `json:"nativeCommand,omitempty"`
+	SchemaObservation        *SchemaObservationRequest        `json:"schemaObservation,omitempty"`
+	CatalogMetadata          *CatalogMetadataRequest          `json:"catalogMetadata,omitempty"`
+	Transfer                 *TransferRequest                 `json:"transfer,omitempty"`
+	DatabaseTools            *DatabaseToolsRequest            `json:"databaseTools,omitempty"`
+	TableImport              *TableImportRequest              `json:"tableImport,omitempty"`
+	Structure                *tableedit.Request               `json:"structure,omitempty"`
+	PreparedExplainSQL       string                           `json:"-"`
+	Explain                  *ExplainRequest                  `json:"explain,omitempty"`
+	DataComparison           *DataComparisonRequest           `json:"dataComparison,omitempty"`
+	SchemaComparison         *SchemaComparisonRequest         `json:"schemaComparison,omitempty"`
+	Comparison               *ComparisonRequest               `json:"comparison,omitempty"`
+	SSHTrust                 *SSHTrust                        `json:"sshTrust,omitempty"`
+	Insert                   *InsertFormatRequest             `json:"insert,omitempty"`
+	Type                     string                           `json:"type"`
+	RequestID                string                           `json:"requestId"`
+	ProtocolVersion          int                              `json:"protocolVersion,omitempty"`
+	Connection               *Connection                      `json:"connection,omitempty"`
+	SessionID                string                           `json:"sessionId,omitempty"`
+	QueryID                  string                           `json:"queryId,omitempty"`
+	SQL                      string                           `json:"sql,omitempty"`
+	Parameters               []QueryParameter                 `json:"parameters,omitempty"`
+	Catalog                  *CatalogRequest                  `json:"catalog,omitempty"`
+	Stream                   bool                             `json:"stream,omitempty"`
+	ResultValues             string                           `json:"resultValues,omitempty"`
+	Export                   *ExportRequest                   `json:"export,omitempty"`
+	Sequence                 int                              `json:"sequence,omitempty"`
+	Changes                  *ChangesRequest                  `json:"changes,omitempty"`
+	Operations               []OperationRequest               `json:"operations,omitempty"`
+	Authorization            string                           `json:"authorization,omitempty"`
 }
 
 type ExportRequest struct {
@@ -145,18 +153,19 @@ func (request ExportRequest) Valid() bool {
 }
 
 type CatalogRequest struct {
-	TypeChange       *TypeChange              `json:"typeChange,omitempty"`
-	Kind             string                   `json:"kind"`
-	Schema           string                   `json:"schema,omitempty"`
-	Object           string                   `json:"object,omitempty"`
-	ObjectKind       string                   `json:"objectKind,omitempty"`
-	Identity         string                   `json:"identity,omitempty"`
-	Search           string                   `json:"search,omitempty"`
-	Cursor           string                   `json:"cursor,omitempty"`
-	Page             int                      `json:"page,omitempty"`
-	Sort             []CatalogSort            `json:"sort,omitempty"`
-	Filters          []CatalogFilter          `json:"filters,omitempty"`
-	FilterExpression *CatalogFilterExpression `json:"filterExpression,omitempty"`
+	RelationshipScope *SQLiteRelationshipScope `json:"relationshipScope,omitempty"`
+	TypeChange        *TypeChange              `json:"typeChange,omitempty"`
+	Kind              string                   `json:"kind"`
+	Schema            string                   `json:"schema,omitempty"`
+	Object            string                   `json:"object,omitempty"`
+	ObjectKind        string                   `json:"objectKind,omitempty"`
+	Identity          string                   `json:"identity,omitempty"`
+	Search            string                   `json:"search,omitempty"`
+	Cursor            string                   `json:"cursor,omitempty"`
+	Page              int                      `json:"page,omitempty"`
+	Sort              []CatalogSort            `json:"sort,omitempty"`
+	Filters           []CatalogFilter          `json:"filters,omitempty"`
+	FilterExpression  *CatalogFilterExpression `json:"filterExpression,omitempty"`
 }
 
 // TypeChange is a preview request, never an executable catalog operation.
@@ -206,12 +215,18 @@ type CatalogSort struct {
 	Direction string `json:"direction"`
 }
 type CatalogFilter struct {
-	Column   string  `json:"column"`
-	Operator string  `json:"operator"`
-	Value    *string `json:"value,omitempty"`
+	Column      string                 `json:"column"`
+	Operator    string                 `json:"operator"`
+	Value       *string                `json:"value,omitempty"`
+	SQLiteValue *SQLiteValue           `json:"sqliteValue,omitempty"`
+	NativeValue *NativeCellFilterValue `json:"nativeValue,omitempty"`
 }
 
 func (request CatalogRequest) Valid() bool {
+	if request.RelationshipScope != nil && (request.Kind != "browse" || !request.RelationshipScope.Valid() || request.Schema != request.RelationshipScope.Child.Schema || request.Object != request.RelationshipScope.Child.Name || request.ObjectKind != "table") {
+		return false
+	}
+
 	if request.Kind == "typeDDL" {
 		if request.TypeChange == nil || !request.TypeChange.Valid() {
 			return false
@@ -225,7 +240,7 @@ func (request CatalogRequest) Valid() bool {
 	if request.Page < 0 || request.Page > 1000000 || len(request.Sort) > 32 || len(request.Filters) > 32 {
 		return false
 	}
-	if request.FilterExpression != nil && (len(request.Filters) != 0 || !request.FilterExpression.Valid()) {
+	if _, valid := request.EffectiveFilterExpression(); !valid {
 		return false
 	}
 	if request.Kind != "browse" && (len(request.Sort) != 0 || len(request.Filters) != 0 || request.FilterExpression != nil || request.Page != 0 && request.Kind != "completion") {
@@ -241,11 +256,6 @@ func (request CatalogRequest) Valid() bool {
 		}
 		seenSort[sort.Column] = true
 	}
-	for _, filter := range request.Filters {
-		if !filter.Valid() {
-			return false
-		}
-	}
 	for _, name := range []string{request.Schema, request.Object, request.ObjectKind, request.Search} {
 		if len(name) > 1024 || !utf8.ValidString(name) || strings.ContainsRune(name, 0) {
 			return false
@@ -258,7 +268,7 @@ func (request CatalogRequest) Valid() bool {
 	if request.Kind != "search" && request.Search != "" {
 		return false
 	}
-	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum"
+	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum" || objectKind == "sequence"
 	switch request.Kind {
 	case "completion":
 		return request.Object == "" && objectKind == "" && request.Identity == ""
@@ -270,6 +280,8 @@ func (request CatalogRequest) Valid() bool {
 		return request.Schema != "" && request.Object == "" && objectKindValid && request.Identity == ""
 	case "columns":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view" || objectKind == "type") && request.Identity == ""
+	case "referencingTables":
+		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table") && request.Identity == ""
 	case "keys", "foreignKeys", "indexes", "constraints", "triggers":
 		return request.Schema != "" && request.Object != "" && (objectKind == "" || objectKind == "table" || objectKind == "view") && request.Identity == ""
 	case "definition":
@@ -278,7 +290,7 @@ func (request CatalogRequest) Valid() bool {
 			(objectKind != "type" || request.Identity == "" || validTypeHandle(request))
 	case "name":
 		return request.Schema != "" && request.Object != "" && objectKindValid &&
-			(request.Identity == "" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum") &&
+			(request.Identity == "" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum" || objectKind == "sequence") &&
 			(objectKind != "enum" || validTypeHandle(request)) &&
 			(objectKind != "type" || request.Identity == "" || validTypeHandle(request))
 	case "typeDetails", "enumValues", "typeDependencies", "typeDDL":
@@ -386,7 +398,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.DataComparison = &request
-	case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.export", "schema.plan", "schema.cancel", "schema.close":
+	case "schema.import.start", "schema.import.status", "schema.import.cancel", "schema.import.close", "schema.bundle.start", "schema.bundle.status", "schema.bundle.export", "schema.bundle.cancel", "schema.bundle.close", "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.export", "schema.plan", "schema.cancel", "schema.close":
 		allowed["schemaComparison"] = true
 		request, ok := parseSchemaComparison(fields["schemaComparison"], command.Type)
 		if !ok {
@@ -407,7 +419,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "tuning.setting.observe", "tuning.inspect", "tuning.validate", "tuning.setting", "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.status", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -423,6 +435,32 @@ func ParseCommand(frame []byte) (Command, error) {
 			if !required(fields, "sequence") || json.Unmarshal(fields["sequence"], &command.Sequence) != nil || command.Sequence < 1 {
 				return command, failure
 			}
+		}
+		if strings.HasPrefix(command.Type, "tuning.") {
+			key := map[string]string{"tuning.setting.observe": "tuningSettingObservation", "tuning.inspect": "tuningInspect", "tuning.validate": "tuningValidation", "tuning.setting": "tuningSetting"}[command.Type]
+			allowed[key] = true
+			request, ok := parseTuning(fields[key], command.Type)
+			if !ok {
+				return command, failure
+			}
+			switch v := request.(type) {
+			case *TuningSettingObservationRequest:
+				command.TuningSettingObservation = v
+			case *TuningInspectRequest:
+				command.TuningInspect = v
+			case *TuningValidationRequest:
+				command.TuningValidation = v
+			case *TuningSettingRequest:
+				command.TuningSetting = v
+			}
+		}
+		if command.Type == "monitor.schema" {
+			allowed["schemaObservation"] = true
+			request, ok := parseSchemaObservation(fields["schemaObservation"])
+			if !ok {
+				return command, failure
+			}
+			command.SchemaObservation = request
 		}
 		if strings.HasPrefix(command.Type, "import.") {
 			allowed["tableImport"] = true
@@ -448,7 +486,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.Changes = &request
 		}
-		if command.Type == "execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "import.apply" {
+		if command.Type == "tuning.validate" || command.Type == "tuning.setting" || command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || command.Type == "import.apply" {
 			allowed["authorization"] = true
 			if _, exists := fields["authorization"]; exists && (!stringField(fields, "authorization", &command.Authorization) || !ValidID(command.Authorization)) {
 				return command, failure
@@ -469,6 +507,14 @@ func ParseCommand(frame []byte) (Command, error) {
 				return command, failure
 			}
 			command.Operations = operations
+		}
+		if command.Type == "command.execute" {
+			allowed["nativeCommand"], allowed["resultValues"] = true, true
+			var native NativeCommand
+			if json.Unmarshal(fields["nativeCommand"], &native) != nil || json.Unmarshal(fields["resultValues"], &command.ResultValues) != nil || command.ResultValues != NativeResultValuesFormat {
+				return command, failure
+			}
+			command.NativeCommand = &native
 		}
 		if command.Type == "execute" {
 			allowed["sql"] = true
@@ -496,9 +542,21 @@ func ParseCommand(frame []byte) (Command, error) {
 		}
 		if command.Type == "execute" || command.Type == "catalog" {
 			allowed["stream"] = true
+			allowed["resultValues"] = true
+			if raw, exists := fields["resultValues"]; exists && (json.Unmarshal(raw, &command.ResultValues) != nil || command.ResultValues != NativeResultValuesFormat) {
+				return command, failure
+			}
 			if raw, exists := fields["stream"]; exists && (bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &command.Stream) != nil) {
 				return command, failure
 			}
+		}
+		if command.Type == "catalog.page" || command.Type == "catalog.batch" || command.Type == "catalog.close" {
+			allowed["catalogMetadata"] = true
+			request, ok := parseCatalogMetadata(fields["catalogMetadata"], command.Type)
+			if !ok {
+				return command, failure
+			}
+			command.CatalogMetadata = request
 		}
 		if command.Type == "catalog" {
 			allowed["catalog"] = true
@@ -513,10 +571,17 @@ func ParseCommand(frame []byte) (Command, error) {
 		failure.Message = "Unknown protocol command."
 		return command, failure
 	}
+	if command.ResultValues != "" && command.Type == "catalog" && (command.Catalog == nil || command.Catalog.Kind != "browse") {
+		return command, failure
+	}
 	for name := range fields {
 		if !allowed[name] {
 			return command, failure
 		}
+	}
+	if (command.NativeCommand != nil || command.Operations != nil || command.ResultValues != "" || command.SchemaComparison != nil || command.Catalog != nil && command.Catalog.HasNativeValue()) && !JSONUnicodeValid(frame) {
+		failure.RequestID, failure.SessionID, failure.QueryID = "", "", ""
+		return Command{}, failure
 	}
 	return command, nil
 }
@@ -541,12 +606,12 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 			}
 		}
 	}
-	if request.Kind == "name" || request.Kind == "foreignKeys" {
+	if request.Kind == "name" || request.Kind == "foreignKeys" || request.Kind == "referencingTables" {
 		for name := range fields {
 			if name != "kind" && name != "schema" && name != "object" && name != "objectKind" && name != "identity" {
 				return request, false
 			}
-			if request.Kind == "foreignKeys" && name == "identity" {
+			if (request.Kind == "foreignKeys" || request.Kind == "referencingTables") && name == "identity" {
 				return request, false
 			}
 		}
@@ -568,6 +633,14 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 			if !required(fields, name) || json.Unmarshal(fields[name], &request.Page) != nil {
 				return request, false
 			}
+			continue
+		}
+		if name == "relationshipScope" {
+			var scope SQLiteRelationshipScope
+			if !required(fields, name) || json.Unmarshal(fields[name], &scope) != nil {
+				return request, false
+			}
+			request.RelationshipScope = &scope
 			continue
 		}
 		if name == "filterExpression" {
@@ -607,6 +680,9 @@ func parseCatalog(raw json.RawMessage) (CatalogRequest, bool) {
 		if _, exists := fields["identity"]; exists {
 			return request, false
 		}
+	}
+	if request.HasNativeValue() && (!nativeJSONUnicodeValid(raw) || !uniqueObjectKeys(raw)) {
+		return request, false
 	}
 	return request, request.Valid()
 }
@@ -668,7 +744,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 		return connection, false
 	}
 	if _, exists := fields["sessionPurpose"]; exists {
-		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" && connection.SessionPurpose != "monitor") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && (connection.DatabaseEngine() != "sqlite" || connection.SessionPurpose == "monitor")) {
+		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" && connection.SessionPurpose != "monitor") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && connection.DatabaseEngine() != "mariadb" && (connection.DatabaseEngine() != "sqlite" || connection.SessionPurpose == "monitor")) {
 			return connection, false
 		}
 	}
@@ -747,50 +823,7 @@ func stringField(fields map[string]json.RawMessage, name string, target *string)
 
 // Reject repeated object keys, including keys inside connection, rather than
 // allowing the JSON decoder to silently select the last value.
-func uniqueObjectKeys(frame []byte) bool {
-	decoder := json.NewDecoder(bytes.NewReader(frame))
-	decoder.UseNumber()
-	var value func() bool
-	value = func() bool {
-		token, err := decoder.Token()
-		if err != nil {
-			return false
-		}
-		delimiter, nested := token.(json.Delim)
-		if !nested {
-			return true
-		}
-		if delimiter == '{' {
-			keys := make(map[string]bool)
-			for decoder.More() {
-				keyToken, err := decoder.Token()
-				key, ok := keyToken.(string)
-				if err != nil || !ok || keys[key] {
-					return false
-				}
-				keys[key] = true
-				if !value() {
-					return false
-				}
-			}
-		} else if delimiter == '[' {
-			for decoder.More() {
-				if !value() {
-					return false
-				}
-			}
-		} else {
-			return false
-		}
-		_, err = decoder.Token()
-		return err == nil
-	}
-	if !value() {
-		return false
-	}
-	_, err := decoder.Token()
-	return errors.Is(err, io.EOF)
-}
+func uniqueObjectKeys(frame []byte) bool { return jsoncheck.UniqueObjectKeys(frame) }
 
 type Column struct {
 	Index        int    `json:"index"`
@@ -803,6 +836,7 @@ type Column struct {
 }
 
 type ResultSet struct {
+	NativeValues  [][]NativeValue `json:"nativeValues,omitempty"`
 	SQLiteValues  [][]SQLiteValue `json:"sqliteValues,omitempty"`
 	Source        *ResultSource   `json:"source,omitempty"`
 	StorageTokens []string        `json:"storageTokens,omitempty"`
@@ -826,68 +860,100 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 	if result.Rows == nil {
 		result.Rows = [][]*string{}
 	}
-	return json.Marshal(plain(result))
+	if result.NativeValues != nil && !NativeMatrixValid(result.NativeValues, len(result.Rows), len(result.Columns)) {
+		return nil, errors.New("invalid native result matrix")
+	}
+	var native *[][]NativeValue
+	if result.NativeValues != nil {
+		native = &result.NativeValues
+	}
+	return json.Marshal(struct {
+		plain
+		NativeValues *[][]NativeValue `json:"nativeValues,omitempty"`
+	}{plain(result), native})
 }
 
 type Response struct {
-	Transfer              *TransferReply
-	DatabaseTools         *DatabaseToolsReply
-	Monitor               *SessionMonitorSnapshot
-	SQLiteValues          [][]SQLiteValue
-	TableImport           *TableImportReply
-	Structure             *tableedit.Reply
-	Explain               *ExplainResult
-	ExplainSupport        *ExplainSupport
-	Source                *ResultSource
-	StorageTokens         []string
-	DataComparison        *DataComparisonResponse
-	SchemaComparison      *SchemaComparisonResponse
-	Comparison            *ComparisonResponse
-	SQL                   string
-	SSH                   *SSHProbe
-	AppliedChangeCount    *int
-	CurrentKeyspace       *string
-	AffectedRowCountKnown *bool
-	NextCursor            string
-	Type                  string
-	RequestID             string
-	ProtocolVersion       int
-	BuildIdentity         *productidentity.Identity
-	SessionID             string
-	QueryID               string
-	DurationMS            float64
-	Columns               []Column
-	Rows                  [][]*string
-	CommandTag            string
-	RowCount              int64
-	DisplayedRowCount     int
-	Truncated             bool
-	TransactionStatus     string
-	DisplayNotice         string
-	Status                string
-	Category              string
-	Message               string
-	SQLState              string
-	ErrorPosition         int
-	Connected             bool
-	OutcomeUnknown        bool
-	SQLCompleted          bool
-	SQLNotExecuted        bool
-	ExportPublication     string
-	Engine                string
-	Capabilities          []string
-	ResultSets            []ResultSet
-	Streamed              bool
-	Sequence              int
-	ResultIndex           int
-	ExportPath            string
-	ExportFormat          string
-	ExportRowCount        int64
-	Assessment            *OperationAssessment
+	TuningSettingObservation *TuningSettingObservation
+	TuningInspection         *TuningInspection
+	TuningValidation         *TuningValidation
+	TuningSetting            *TuningSettingResult
+	NativeValues             [][]NativeValue
+	SchemaObservation        *SchemaObservation
+	CatalogMetadata          *CatalogMetadataReply
+	MetadataStale            bool
+	MetadataTarget           *CatalogRelationTarget // Internal adapter proof; only the metadata store serializes it.
+	Transfer                 *TransferReply
+	DatabaseTools            *DatabaseToolsReply
+	Monitor                  *SessionMonitorSnapshot
+	SQLiteValues             [][]SQLiteValue
+	TableImport              *TableImportReply
+	Structure                *tableedit.Reply
+	// AcknowledgedTransactionStatus is private driver evidence, never serialized.
+	// It survives cleanup failure after the final SQL/transaction acknowledgement.
+	AcknowledgedTransactionStatus string
+	ExplainDML                    *ExplainDMLResult
+	Explain                       *ExplainResult
+	ExplainSupport                *ExplainSupport
+	OperationSupport              *OperationSupport
+	Source                        *ResultSource
+	StorageTokens                 []string
+	DataComparison                *DataComparisonResponse
+	SchemaComparison              *SchemaComparisonResponse
+	Comparison                    *ComparisonResponse
+	SQL                           string
+	SSH                           *SSHProbe
+	AppliedChangeCount            *int
+	CurrentKeyspace               *string
+	AffectedRowCountKnown         *bool
+	NextCursor                    string
+	Type                          string
+	RequestID                     string
+	ProtocolVersion               int
+	BuildIdentity                 *productidentity.Identity
+	SessionID                     string
+	QueryID                       string
+	DurationMS                    float64
+	Columns                       []Column
+	Rows                          [][]*string
+	CommandTag                    string
+	RowCount                      int64
+	DisplayedRowCount             int
+	Truncated                     bool
+	TransactionStatus             string
+	DisplayNotice                 string
+	Status                        string
+	Category                      string
+	Message                       string
+	SQLState                      string
+	ErrorPosition                 int
+	Connected                     bool
+	OutcomeUnknown                bool
+	SQLCompleted                  bool
+	SQLNotExecuted                bool
+	ExportPublication             string
+	Engine                        string
+	Capabilities                  []string
+	ResultSets                    []ResultSet
+	Streamed                      bool
+	Sequence                      int
+	ResultIndex                   int
+	ExportPath                    string
+	ExportFormat                  string
+	ExportRowCount                int64
+	Assessment                    *OperationAssessment
 }
 
 func (response Response) MarshalJSON() ([]byte, error) {
 	fields := map[string]any{"type": response.Type, "requestId": response.RequestID}
+	if response.OperationSupport != nil {
+		if !response.OperationSupport.Valid() ||
+			response.Type == "connect.result" && (response.OperationSupport.Scope != "session" || response.OperationSupport.Engine != response.Engine) ||
+			response.Type != "connect.result" && (!strings.HasPrefix(response.Type, "structure.") || response.OperationSupport.Scope != "structure") {
+			return nil, errors.New("invalid operation support response")
+		}
+		fields["operationSupport"] = response.OperationSupport
+	}
 	if response.AppliedChangeCount != nil && (response.Type == "query.result" || response.Type == "error") {
 		fields["appliedChangeCount"] = *response.AppliedChangeCount
 	}
@@ -903,7 +969,24 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	if response.SQLiteValues != nil && (response.Type == "query.result" || response.Type == "query.chunk") {
 		fields["sqliteValues"] = response.SQLiteValues
 	}
+	if response.NativeValues != nil {
+		columns := len(response.Columns)
+		if response.Type == "query.chunk" && response.Columns == nil && len(response.Rows) > 0 {
+			columns = len(response.Rows[0])
+		}
+		if (response.Type != "query.result" && response.Type != "query.chunk") || !NativeMatrixValid(response.NativeValues, len(response.Rows), columns) {
+			return nil, errors.New("invalid native response matrix")
+		}
+		fields["nativeValues"] = response.NativeValues
+	}
 	switch response.Type {
+	case "catalog.page.result", "catalog.batch.result", "catalog.close.result":
+		if response.CatalogMetadata == nil || !response.CatalogMetadata.Valid() {
+			return nil, errors.New("invalid catalog metadata response")
+		}
+		fields["catalogMetadata"] = response.CatalogMetadata
+		fields["connected"] = response.Connected
+		fields["transactionStatus"] = response.TransactionStatus
 	case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
 		if response.Transfer == nil || !response.Transfer.Valid() {
 			return nil, errors.New("invalid data transfer response")
@@ -914,6 +997,13 @@ func (response Response) MarshalJSON() ([]byte, error) {
 			return nil, errors.New("invalid database tools response")
 		}
 		fields["databaseTools"] = response.DatabaseTools
+	case "monitor.schema.result":
+		if response.SchemaObservation == nil || !response.SchemaObservation.Valid() || !response.Connected || response.TransactionStatus != "idle" {
+			return nil, errors.New("invalid schema observation response")
+		}
+		fields["schemaObservation"] = response.SchemaObservation
+		fields["connected"] = response.Connected
+		fields["transactionStatus"] = response.TransactionStatus
 	case "monitor.result":
 		if response.Monitor == nil || !response.Monitor.Valid() || !response.Connected || response.TransactionStatus != "idle" {
 			return nil, errors.New("invalid session monitor response")
@@ -925,7 +1015,7 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		fields["tableImport"] = response.TableImport
 		fields["connected"] = response.Connected
 		fields["transactionStatus"] = response.TransactionStatus
-	case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.status.result", "structure.close.result":
+	case "structure.physical.inspect.result", "structure.physical.preview.result", "structure.physical.apply.result", "structure.physical.status.result", "structure.physical.reconcile.result", "structure.physical.close.result", "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result", "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.validate.result", "structure.status.result", "structure.close.result":
 		fields["structure"] = response.Structure
 		fields["connected"] = response.Connected
 		if response.TransactionStatus != "" && response.TransactionStatus != "unknown" {
@@ -933,7 +1023,7 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		}
 	case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
 		fields["dataComparison"] = response.DataComparison
-	case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.plan.result", "schema.cancel.result", "schema.close.result":
+	case "schema.import.start.result", "schema.import.status.result", "schema.import.cancel.result", "schema.import.close.result", "schema.bundle.start.result", "schema.bundle.status.result", "schema.bundle.export.result", "schema.bundle.cancel.result", "schema.bundle.close.result", "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.export.result", "schema.plan.result", "schema.cancel.result", "schema.close.result":
 		fields["schemaComparison"] = response.SchemaComparison
 	case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
 		fields["comparison"] = response.Comparison
@@ -949,7 +1039,34 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		if response.Capabilities != nil {
 			fields["capabilities"] = response.Capabilities
 		}
+	case "tuning.setting.observe.result":
+		if response.TuningSettingObservation == nil || !response.TuningSettingObservation.Valid() {
+			return nil, errors.New("invalid tuning setting observation")
+		}
+		fields["tuningSettingObservation"] = response.TuningSettingObservation
+		fields["transactionStatus"] = response.TransactionStatus
+	case "tuning.inspect.result":
+		if response.TuningInspection == nil || !response.TuningInspection.Valid() {
+			return nil, errors.New("invalid tuning inspection")
+		}
+		fields["tuningInspection"] = response.TuningInspection
+		fields["transactionStatus"] = response.TransactionStatus
+	case "tuning.validate.result":
+		if response.TuningValidation == nil || !response.TuningValidation.Valid() {
+			return nil, errors.New("invalid tuning validation")
+		}
+		fields["tuningValidation"] = response.TuningValidation
+		fields["transactionStatus"] = response.TransactionStatus
+	case "tuning.setting.result":
+		if response.TuningSetting == nil || !response.TuningSetting.Valid() {
+			return nil, errors.New("invalid tuning setting")
+		}
+		fields["tuningSetting"] = response.TuningSetting
+		fields["transactionStatus"] = response.TransactionStatus
 	case "explain.result":
+		if response.Explain != nil && response.Explain.DML != nil {
+			fields["connected"] = response.Connected
+		}
 		fields["explain"] = response.Explain
 		fields["transactionStatus"] = response.TransactionStatus
 		fields["durationMs"] = response.DurationMS
@@ -1022,6 +1139,9 @@ func (response Response) MarshalJSON() ([]byte, error) {
 	case "cancel.ack":
 		fields["status"] = response.Status
 	case "error":
+		if response.ExplainDML != nil {
+			fields["explainDML"] = response.ExplainDML
+		}
 		if response.TableImport != nil {
 			fields["tableImport"] = response.TableImport
 		}

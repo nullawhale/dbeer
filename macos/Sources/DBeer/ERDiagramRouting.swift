@@ -40,7 +40,8 @@ enum ERDiagramRouting {
         let collapsed: Set<ERTableID>
     }
 
-    static func routes(_ geometry: Geometry, relationships: [ERRelationship]) -> [ERDiagramRoute] {
+    static func routes(_ geometry: Geometry, relationships: [ERRelationship], isCancelled: () -> Bool = { Task.isCancelled }) -> [ERDiagramRoute] {
+        guard !isCancelled() else { return [] }
         let selected = Set(geometry.tables)
         let cards = Dictionary(uniqueKeysWithValues: geometry.placements.filter { selected.contains($0.table) }.map {
             ($0.table, CGRect(x: $0.point.x, y: $0.point.y, width: ERDiagramLayout.width,
@@ -51,6 +52,7 @@ enum ERDiagramRouting {
         let rectangles = geometry.tables.compactMap { cards[$0] }
         var clearance = 12.0
         for (index, a) in rectangles.enumerated() {
+            guard !isCancelled() else { return [] }
             for b in rectangles.dropFirst(index + 1) {
                 if a.minY < b.maxY && b.minY < a.maxY {
                     let gap = max(a.minX - b.maxX, b.minX - a.maxX)
@@ -63,7 +65,22 @@ enum ERDiagramRouting {
             }
         }
         var result: [ERDiagramRoute] = []
+        let extent = rectangles.reduce(CGRect.null) { $0.union($1) }
         for (index, edge) in relationships.sorted(by: { $0.id < $1.id }).enumerated() {
+            guard !isCancelled() else { return [] }
+            var cards = cards
+            // Confirmed external links remain explicit stubs. They never
+            // pretend that metadata for another profile was loaded here.
+            if edge.kind == .logical, !extent.isNull {
+                if cards[edge.source] == nil, let target = cards[edge.target] {
+                    let y = anchorY(edge.target, column: edge.key.columns.first?.target, rect: target, geometry: geometry)
+                    cards[edge.source] = CGRect(x: extent.minX - 160, y: y - 24 + Double(index % 5) * 14, width: 0, height: 0)
+                }
+                if cards[edge.target] == nil, let source = cards[edge.source] {
+                    let y = anchorY(edge.source, column: edge.key.columns.first?.source, rect: source, geometry: geometry)
+                    cards[edge.target] = CGRect(x: extent.maxX + 160, y: y - 24 + Double(index % 5) * 14, width: 0, height: 0)
+                }
+            }
             guard let source = cards[edge.source], let target = cards[edge.target] else { continue }
             let sourceY = anchorY(edge.source, column: edge.key.columns.first?.source, rect: source, geometry: geometry)
             var targetY = anchorY(edge.target, column: edge.key.columns.first?.target, rect: target, geometry: geometry)
@@ -76,6 +93,7 @@ enum ERDiagramRouting {
             var best: [CGPoint]?
             var bestLength = Double.infinity
             for (sourceRight, targetRight) in sides {
+                guard !isCancelled() else { return [] }
                 let start = CGPoint(x: sourceRight ? source.maxX : source.minX, y: sourceY)
                 let end = CGPoint(x: targetRight ? target.maxX : target.minX, y: targetY)
                 let distance = terminalLead + Double(index % 3) * 8
@@ -93,7 +111,7 @@ enum ERDiagramRouting {
                 }
                 guard clear(start, exit, obstacles: cards.filter { $0.key != edge.source }.map { $0.value.insetBy(dx: -clearance, dy: -clearance) }),
                       clear(entry, end, obstacles: cards.filter { $0.key != edge.target }.map { $0.value.insetBy(dx: -clearance, dy: -clearance) }),
-                      let middle = route(exit, entry, obstacles: terminalObstacles) else { continue }
+                      let middle = route(exit, entry, obstacles: terminalObstacles, isCancelled: isCancelled) else { continue }
                 let candidate = simplified([start] + middle + [end])
                 guard candidate.count >= 2 else { continue }
                 let second = candidate[1], beforeEnd = candidate[candidate.count - 2]
@@ -105,7 +123,7 @@ enum ERDiagramRouting {
             }
             if let best { result.append(.init(relationshipID: edge.id, points: best)) }
         }
-        return result
+        return isCancelled() ? [] : result
     }
 
     private static func anchorY(_ table: ERTableID, column: String?, rect: CGRect, geometry: Geometry) -> Double {
@@ -141,7 +159,8 @@ enum ERDiagramRouting {
         return result
     }
 
-    private static func route(_ start: CGPoint, _ end: CGPoint, obstacles: [CGRect]) -> [CGPoint]? {
+    private static func route(_ start: CGPoint, _ end: CGPoint, obstacles: [CGRect], isCancelled: () -> Bool) -> [CGPoint]? {
+        guard !isCancelled() else { return nil }
         let extent = obstacles.reduce(CGRect.null) { $0.union($1) }
         var candidates = [[start, CGPoint(x: end.x, y: start.y), end],
                           [start, CGPoint(x: start.x, y: end.y), end]]
@@ -165,6 +184,7 @@ enum ERDiagramRouting {
         var costs = [first: 0.0], parents: [Int: Int] = [:], pending = Queue()
         pending.push(.init(index: first, cost: 0, estimate: length([start, end])))
         while let next = pending.pop() {
+            guard !isCancelled() else { return nil }
             guard next.cost == costs[next.index] else { continue }
             if next.index == goal {
                 var path = [end], current = goal
@@ -175,6 +195,7 @@ enum ERDiagramRouting {
             let neighbors = [x > 0 ? next.index - 1 : nil, x + 1 < width ? next.index + 1 : nil,
                 y > 0 ? next.index - width : nil, y + 1 < ys.count ? next.index + width : nil].compactMap { $0 }
             for neighbor in neighbors {
+                guard !isCancelled() else { return nil }
                 let destination = point(neighbor)
                 let cost = next.cost + length([origin, destination])
                 guard cost < costs[neighbor, default: .infinity], clear(origin, destination, obstacles: obstacles) else { continue }

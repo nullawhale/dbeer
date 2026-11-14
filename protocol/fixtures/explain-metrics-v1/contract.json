@@ -1,0 +1,2406 @@
+{
+  "version": 1,
+  "capability": "explainMetricsV1",
+  "plans": [
+    {
+      "id": "pg-serial-loops-exact-counters",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": "0.125",
+          "exclusiveReason": null,
+          "counters": {
+            "sharedHitBlocks": "0",
+            "sharedReadBlocks": "9007199254740993",
+            "ioReadTime": "0",
+            "walBytes": "123456789012345678901234567890"
+          }
+        }
+      ]
+    },
+    {
+      "id": "pg-zero-rows-and-time",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":0,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": "0",
+          "exclusiveReason": null
+        }
+      ]
+    },
+    {
+      "id": "pg-never-executed-exponent",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Plan Rows\":10,\"Actual Rows\":0,\"Actual Loops\":0e+2,\"Actual Total Time\":0}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "notExecuted",
+          "exclusiveValue": null,
+          "exclusiveReason": "notExecuted"
+        }
+      ]
+    },
+    {
+      "id": "pg-limit-consumption",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Limit\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Plans\":[{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125}]}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": null,
+          "exclusiveReason": "inclusiveOnly"
+        },
+        {
+          "scope": "serial",
+          "rowComparison": "partialInput",
+          "exclusiveValue": "0.125",
+          "exclusiveReason": null
+        }
+      ]
+    },
+    {
+      "id": "pg-merge-consumption",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Merge Join\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Plans\":[{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125}]}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": null,
+          "exclusiveReason": "inclusiveOnly"
+        },
+        {
+          "scope": "serial",
+          "rowComparison": "partialInput",
+          "exclusiveValue": "0.125",
+          "exclusiveReason": null
+        }
+      ]
+    },
+    {
+      "id": "pg-semi-consumption",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Nested Loop\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Join Type\":\"Semi\",\"Plans\":[{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125}]}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": null,
+          "exclusiveReason": "inclusiveOnly"
+        },
+        {
+          "scope": "serial",
+          "rowComparison": "partialInput",
+          "exclusiveValue": "0.125",
+          "exclusiveReason": null
+        }
+      ]
+    },
+    {
+      "id": "pg-parallel-workers-jit",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Gather\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":1,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Workers Planned\":2,\"Workers Launched\":1,\"Plans\":[{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":true,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Workers\":[{\"Worker Number\":0,\"Actual Rows\":0,\"Actual Loops\":2,\"Actual Startup Time\":0,\"Actual Total Time\":0,\"Shared Hit Blocks\":0,\"JIT\":{\"Functions\":1,\"Timing\":{\"Generation\":0.1,\"Total\":0.1}}}]}]},\"JIT\":{\"Functions\":4,\"Timing\":{\"Generation\":{\"Total\":1.25,\"Deform\":0.25},\"Inlining\":0,\"Optimization\":2,\"Emission\":3,\"Total\":6.25}}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "parallel",
+          "rowComparison": "parallel",
+          "exclusiveValue": null,
+          "exclusiveReason": "parallel",
+          "counters": {
+            "workersPlanned": "2",
+            "workersLaunched": "1"
+          },
+          "jit": {
+            "functions": "4",
+            "generationTime": "1.25",
+            "deformTime": "0.25",
+            "totalTime": "6.25"
+          }
+        },
+        {
+          "scope": "parallel",
+          "rowComparison": "parallel",
+          "exclusiveValue": null,
+          "exclusiveReason": "parallel",
+          "workers": [
+            {
+              "number": 0,
+              "metrics": {
+                "actualRows": "0",
+                "loops": "2",
+                "totalTime": "0",
+                "sharedHitBlocks": "0"
+              },
+              "jit": {
+                "functions": "1",
+                "generationTime": "0.1",
+                "totalTime": "0.1"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pg-timing-disabled",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125},\"JIT\":{\"Functions\":2}}]",
+      "timingDisabled": true,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": null,
+          "exclusiveReason": "disabled",
+          "jit": {
+            "functions": "2"
+          },
+          "jitDisabled": true
+        }
+      ]
+    },
+    {
+      "id": "pg-unproved-serial",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "unknown",
+          "rowComparison": "unknownScope",
+          "exclusiveValue": null,
+          "exclusiveReason": "unknownScope"
+        }
+      ]
+    },
+    {
+      "id": "pg-unrecognized-leaf",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Custom Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": null,
+          "exclusiveReason": "inclusiveOnly"
+        }
+      ]
+    },
+    {
+      "id": "pg-estimate-only",
+      "engine": "postgresql",
+      "mode": "plan",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125}}]",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "notCollected",
+          "exclusiveValue": null,
+          "exclusiveReason": "notCollected"
+        }
+      ]
+    },
+    {
+      "id": "mysql-tree-loops",
+      "engine": "mysql",
+      "mode": "analyze",
+      "raw": "-> Table scan on sample  (cost=12.5 rows=10) (actual time=0..0.125 rows=2 loops=3)\n",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": "0.125",
+          "exclusiveReason": null
+        }
+      ]
+    },
+    {
+      "id": "mysql-tree-zero-loops",
+      "engine": "mysql",
+      "mode": "analyze",
+      "raw": "-> Table scan on sample  (cost=12.5 rows=10) (actual time=0..0 rows=0 loops=0)\n",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "notExecuted",
+          "exclusiveValue": null,
+          "exclusiveReason": "notExecuted"
+        }
+      ]
+    },
+    {
+      "id": "mysql-tree-limit",
+      "engine": "mysql",
+      "mode": "analyze",
+      "raw": "-> Limit: 2 row(s)  (cost=12.5 rows=2) (actual time=0..0.125 rows=2 loops=1)\n    -> Table scan on sample  (cost=12.5 rows=10) (actual time=0..0.125 rows=2 loops=1)\n",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": null,
+          "exclusiveReason": "inclusiveOnly"
+        },
+        {
+          "scope": "serial",
+          "rowComparison": "partialInput",
+          "exclusiveValue": "0.125",
+          "exclusiveReason": null
+        }
+      ]
+    },
+    {
+      "id": "mysql-v2-loops",
+      "engine": "mysql",
+      "mode": "analyze",
+      "raw": "{\"operation\":\"Table scan on sample\",\"estimated_total_cost\":12.5,\"estimated_rows\":10,\"actual_rows\":2,\"actual_loops\":3,\"actual_first_row_ms\":0,\"actual_last_row_ms\":0.125}",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "serial",
+          "rowComparison": "comparable",
+          "exclusiveValue": "0.125",
+          "exclusiveReason": null
+        }
+      ]
+    },
+    {
+      "id": "mysql-v1-logical",
+      "engine": "mysql",
+      "mode": "plan",
+      "raw": "{\"query_block\":{\"select_id\":1,\"cost_info\":{\"query_cost\":\"12.5\"},\"table\":{\"table_name\":\"sample\",\"access_type\":\"ALL\",\"rows_examined_per_scan\":10,\"rows_produced_per_join\":2,\"cost_info\":{\"prefix_cost\":\"12.5\"}}}}",
+      "timingDisabled": false,
+      "expected": [
+        {
+          "scope": "logical",
+          "rowComparison": "logical",
+          "exclusiveValue": null,
+          "exclusiveReason": "notCollected"
+        },
+        {
+          "scope": "logical",
+          "rowComparison": "logical",
+          "exclusiveValue": null,
+          "exclusiveReason": "notCollected"
+        }
+      ]
+    }
+  ],
+  "results": [
+    {
+      "support": {
+        "engine": "postgresql",
+        "serverVersion": "17.10",
+        "format": "json",
+        "modes": [
+          "plan",
+          "analyze"
+        ]
+      },
+      "mode": "analyze",
+      "status": "tree",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+      "complete": true,
+      "roots": [
+        "0"
+      ],
+      "nodes": [
+        {
+          "id": "0",
+          "children": [],
+          "operation": "Seq Scan",
+          "details": {},
+          "execution": "executed",
+          "metrics": {
+            "estimatedRows": {
+              "unit": "rows",
+              "basis": "perInvocation",
+              "value": "10"
+            },
+            "actualRows": {
+              "unit": "rows",
+              "basis": "perInvocation",
+              "value": "2"
+            },
+            "loops": {
+              "unit": "count",
+              "basis": "total",
+              "value": "3"
+            },
+            "totalTime": {
+              "unit": "ms",
+              "basis": "perInvocation",
+              "value": "0.125"
+            }
+          },
+          "advancedMetrics": {
+            "version": 1,
+            "executionScope": "serial",
+            "rowComparison": "comparable",
+            "exclusiveTime": {
+              "unit": "ms",
+              "basis": "exclusivePerInvocation",
+              "value": "0.125"
+            },
+            "counters": {
+              "sharedHitBlocks": {
+                "unit": "blocks",
+                "basis": "inclusiveTotal",
+                "value": "0"
+              },
+              "sharedReadBlocks": {
+                "unit": "blocks",
+                "basis": "inclusiveTotal",
+                "value": "9007199254740993"
+              },
+              "ioReadTime": {
+                "unit": "ms",
+                "basis": "inclusiveTotal",
+                "value": "0"
+              },
+              "walBytes": {
+                "unit": "bytes",
+                "basis": "inclusiveTotal",
+                "value": "123456789012345678901234567890"
+              }
+            },
+            "workers": []
+          }
+        }
+      ],
+      "metrics": {},
+      "advancedMetrics": {
+        "version": 1
+      }
+    },
+    {
+      "support": {
+        "engine": "postgresql",
+        "serverVersion": "17.10",
+        "format": "json",
+        "modes": [
+          "plan",
+          "analyze"
+        ]
+      },
+      "mode": "analyze",
+      "status": "tree",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+      "complete": true,
+      "roots": [
+        "0"
+      ],
+      "nodes": [
+        {
+          "id": "0",
+          "children": [],
+          "operation": "Gather",
+          "details": {},
+          "execution": "executed",
+          "metrics": {
+            "estimatedRows": {
+              "unit": "rows",
+              "basis": "perInvocation",
+              "value": "10"
+            },
+            "actualRows": {
+              "unit": "rows",
+              "basis": "perInvocation",
+              "value": "2"
+            },
+            "loops": {
+              "unit": "count",
+              "basis": "total",
+              "value": "3"
+            },
+            "totalTime": {
+              "unit": "ms",
+              "basis": "perInvocation",
+              "value": "0.125"
+            }
+          },
+          "advancedMetrics": {
+            "version": 1,
+            "executionScope": "parallel",
+            "rowComparison": "parallel",
+            "exclusiveTime": {
+              "unit": "ms",
+              "basis": "exclusivePerInvocation",
+              "unavailableReason": "parallel"
+            },
+            "counters": {
+              "sharedHitBlocks": {
+                "unit": "blocks",
+                "basis": "inclusiveTotal",
+                "value": "0"
+              },
+              "sharedReadBlocks": {
+                "unit": "blocks",
+                "basis": "inclusiveTotal",
+                "value": "9007199254740993"
+              },
+              "ioReadTime": {
+                "unit": "ms",
+                "basis": "inclusiveTotal",
+                "value": "0"
+              },
+              "walBytes": {
+                "unit": "bytes",
+                "basis": "inclusiveTotal",
+                "value": "123456789012345678901234567890"
+              }
+            },
+            "workers": [
+              {
+                "number": 0,
+                "metrics": {
+                  "actualRows": {
+                    "unit": "rows",
+                    "basis": "perInvocation",
+                    "value": "0"
+                  },
+                  "loops": {
+                    "unit": "count",
+                    "basis": "total",
+                    "value": "2"
+                  },
+                  "sharedHitBlocks": {
+                    "unit": "blocks",
+                    "basis": "inclusiveTotal",
+                    "value": "0"
+                  }
+                },
+                "jit": {
+                  "scope": "worker",
+                  "metrics": {
+                    "functions": {
+                      "unit": "count",
+                      "basis": "total",
+                      "value": "1"
+                    }
+                  }
+                }
+              }
+            ],
+            "jit": {
+              "scope": "queryAggregate",
+              "metrics": {
+                "functions": {
+                  "unit": "count",
+                  "basis": "total",
+                  "value": "2"
+                },
+                "generationTime": {
+                  "unit": "ms",
+                  "basis": "total",
+                  "value": "0"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "metrics": {},
+      "advancedMetrics": {
+        "version": 1
+      }
+    }
+  ],
+  "invalidResults": [
+    {
+      "id": "future-version",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 2
+        }
+      }
+    },
+    {
+      "id": "unversioned-node",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {}
+      }
+    },
+    {
+      "id": "unknown-counter",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                },
+                "guessed": {
+                  "unit": "ms",
+                  "basis": "perInvocation",
+                  "value": "1"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "wrong-counter-basis",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "perInvocation",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "wrong-counter-unit",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "parallel-exclusive",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "parallel",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "forged-exclusive",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.126"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "zero-loop-comparison",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "0"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "unknown-leaf-exclusive",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Custom Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "duplicate-workers",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": [
+                {
+                  "number": 1,
+                  "metrics": {}
+                },
+                {
+                  "number": 1,
+                  "metrics": {}
+                }
+              ]
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "wrong-jit-scope",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": [],
+              "jit": {
+                "scope": "worker",
+                "metrics": {}
+              }
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "wrong-row-invocation-basis",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "total",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "wrong-time-invocation-basis",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "total",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "mysql-invented-io",
+      "result": {
+        "support": {
+          "engine": "mysql",
+          "serverVersion": "8.4.13",
+          "format": "tree",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "unknown-jit-metric",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": [],
+              "jit": {
+                "scope": "queryAggregate",
+                "metrics": {
+                  "cpuTime": {
+                    "unit": "ms",
+                    "basis": "total",
+                    "value": "1"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    }
+  ],
+  "invalidDecodes": [
+    {
+      "id": "null-result-advanced",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": null
+      }
+    },
+    {
+      "id": "null-node-advanced",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": null
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "unknown-node-field",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": [],
+              "unknown": null
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "null-jit",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": [],
+              "jit": null
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    },
+    {
+      "id": "unknown-plan-field",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1,
+          "jit": {}
+        }
+      }
+    },
+    {
+      "id": "unknown-metric-field",
+      "result": {
+        "support": {
+          "engine": "postgresql",
+          "serverVersion": "17.10",
+          "format": "json",
+          "modes": [
+            "plan",
+            "analyze"
+          ]
+        },
+        "mode": "analyze",
+        "status": "tree",
+        "raw": "[{\"Plan\":{\"Node Type\":\"Seq Scan\",\"Parallel Aware\":false,\"Startup Cost\":0,\"Total Cost\":12.5,\"Plan Rows\":10,\"Actual Rows\":2,\"Actual Loops\":3,\"Actual Startup Time\":0,\"Actual Total Time\":0.125,\"Shared Hit Blocks\":0,\"Shared Read Blocks\":9007199254740993,\"I/O Read Time\":0,\"WAL Bytes\":123456789012345678901234567890}}]",
+        "complete": true,
+        "roots": [
+          "0"
+        ],
+        "nodes": [
+          {
+            "id": "0",
+            "children": [],
+            "operation": "Seq Scan",
+            "details": {},
+            "execution": "executed",
+            "metrics": {
+              "estimatedRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "10"
+              },
+              "actualRows": {
+                "unit": "rows",
+                "basis": "perInvocation",
+                "value": "2"
+              },
+              "loops": {
+                "unit": "count",
+                "basis": "total",
+                "value": "3"
+              },
+              "totalTime": {
+                "unit": "ms",
+                "basis": "perInvocation",
+                "value": "0.125"
+              }
+            },
+            "advancedMetrics": {
+              "version": 1,
+              "executionScope": "serial",
+              "rowComparison": "comparable",
+              "exclusiveTime": {
+                "unit": "ms",
+                "basis": "exclusivePerInvocation",
+                "value": "0.125"
+              },
+              "counters": {
+                "sharedHitBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "0",
+                  "guessed": true
+                },
+                "sharedReadBlocks": {
+                  "unit": "blocks",
+                  "basis": "inclusiveTotal",
+                  "value": "9007199254740993"
+                },
+                "ioReadTime": {
+                  "unit": "ms",
+                  "basis": "inclusiveTotal",
+                  "value": "0"
+                },
+                "walBytes": {
+                  "unit": "bytes",
+                  "basis": "inclusiveTotal",
+                  "value": "123456789012345678901234567890"
+                }
+              },
+              "workers": []
+            }
+          }
+        ],
+        "metrics": {},
+        "advancedMetrics": {
+          "version": 1
+        }
+      }
+    }
+  ]
+}

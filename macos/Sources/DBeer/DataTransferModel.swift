@@ -89,7 +89,7 @@ final class DataTransferModel: ObservableObject, Identifiable {
          factory: @escaping @MainActor () -> any DataTransferBackend = { DataTransferHelperBackend() },
          cancelPreparation: @escaping @MainActor (SavedConnection, UUID) -> Void = { _, _ in },
          presets: TransferMappingPresetStore? = nil, changed: @escaping @MainActor (SavedConnection) -> Void = { _ in }) {
-        self.profiles = profiles.filter { [.postgresql, .mysql].contains($0.engine) }
+        self.profiles = profiles.filter { [.postgresql, .mysql, .mariadb].contains($0.engine) }
         self.resolve = resolve; self.current = current; self.authorize = authorize; self.factory = factory; self.changed = changed
         self.cancelPreparation = cancelPreparation
         self.presets = presets ?? TransferMappingPresetStore()

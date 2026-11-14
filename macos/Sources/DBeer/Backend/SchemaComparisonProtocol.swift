@@ -50,11 +50,18 @@ struct SchemaMappings: Codable, Equatable, Sendable {
             tables.allSatisfy { pairs($0.columns) && pairs($0.constraints) && pairs($0.indexes) }
     }
 }
-struct SchemaComparisonSide: Codable, Equatable, Sendable { var connection: ConnectionSettings }
+struct SchemaComparisonSide: Codable, Equatable, Sendable {
+    var connection: ConnectionSettings? = nil
+    var bundle: SchemaBundleSourceDescriptor? = nil
+    var engine: DatabaseEngine? { connection?.engine ?? bundle?.databaseEngine }
+    var valid: Bool { (connection != nil) != (bundle != nil) && (bundle?.valid(inspecting: false) ?? true) }
+}
 struct SchemaComparisonRequest: Codable, Equatable, Sendable {
+    var bundle: SchemaBundleSourceDescriptor?
     var source: SchemaComparisonSide?
     var target: SchemaComparisonSide?
     var mappings: SchemaMappings?
+    var schemas: [String]?
     var jobId: String?
     var collection: String?
     var offset: Int64?
@@ -64,14 +71,27 @@ struct SchemaComparisonRequest: Codable, Equatable, Sendable {
     var modelDigest: String?
 
     func valid(for type: String) -> Bool {
-        let noSources = source == nil && target == nil && mappings == nil
+        let noSources = source == nil && target == nil && mappings == nil && schemas == nil && bundle == nil
+        if type != "schema.bundle.start", schemas != nil { return false }
+        if type != "schema.import.start", bundle != nil { return false }
         let job = jobId.map(BackendMessage.validID) == true
         if type != "schema.plan", modelDigest != nil { return false }
         switch type {
+        case "schema.import.start":
+            return bundle?.valid(inspecting: true) == true && source == nil && target == nil && mappings == nil && schemas == nil &&
+                jobId == nil && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
+        case "schema.import.status", "schema.import.cancel", "schema.import.close":
+            return noSources && job && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
+        case "schema.bundle.start":
+            return source?.valid == true && source?.connection != nil && source?.bundle == nil && target == nil && mappings == nil && schemas.map { SchemaBundleManifest.schemasValid($0, engine: source?.engine?.rawValue ?? "") } == true && jobId == nil && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
+        case "schema.bundle.status", "schema.bundle.cancel", "schema.bundle.close":
+            return noSources && job && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
+        case "schema.bundle.export":
+            return noSources && job && collection == nil && limit == nil && (offset ?? 0) >= 0 && (1...1_048_576).contains(maxBytes ?? 65_536) && valueRef.map { $0 == "manifest" || $0 == "capture" || DataComparisonRequest.digestValid($0) } == true
         case "schema.plan":
             return noSources && job && modelDigest.map(DataComparisonRequest.digestValid) == true && collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
         case "schema.start":
-            return source != nil && target != nil && source?.connection.engine == target?.connection.engine &&
+            return source?.valid == true && target?.valid == true && source?.engine == target?.engine &&
                 mappings?.valid == true && jobId == nil &&
                 collection == nil && offset == nil && limit == nil && maxBytes == nil && valueRef == nil
         case "schema.status", "schema.cancel", "schema.close":
@@ -90,6 +110,7 @@ struct SchemaComparisonRequest: Codable, Equatable, Sendable {
     }
 }
 struct SchemaCaptureContext: Codable, Equatable, Sendable {
+    var origin: SchemaHistoricalOrigin? = nil
     var engine: String
     var version: String
     var database: String
@@ -98,9 +119,10 @@ struct SchemaCaptureContext: Codable, Equatable, Sendable {
     var consistency: String
     var visibility: String
     var valid: Bool {
-        ["postgresql", "mysql", "cassandra", "sqlite"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
+        ["postgresql", "mysql", "mariadb", "cassandra", "sqlite"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
         ["repeatableRead", "bestEffort"].contains(consistency) && ["complete", "partial", "unknown"].contains(visibility) &&
-        startedAt.utf8.count <= 64 && finishedAt.utf8.count <= 64 && !startedAt.isEmpty && !finishedAt.isEmpty
+        startedAt.utf8.count <= 64 && finishedAt.utf8.count <= 64 &&
+        (origin.map { $0.valid && ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine) && version.isEmpty && database.isEmpty && startedAt.isEmpty && finishedAt.isEmpty } ?? (!startedAt.isEmpty && !finishedAt.isEmpty))
     }
 }
 struct SchemaComparisonScope: Codable, Equatable, Sendable { var kind: String; var excludedObjectKinds: [String] }
@@ -190,25 +212,48 @@ struct SchemaComparisonChunk: Codable, Equatable, Sendable {
 }
 struct SchemaComparisonResponse: Codable, Equatable, Sendable {
     var jobId: String; var state: ResultComparisonState; var code: String?; var message: String?
+    var importSummary: SchemaImportedSource? = nil
+    var bundleSummary: SchemaBundleSummary?
     var summary: SchemaComparisonSummary?; var page: SchemaComparisonPage?; var value: SchemaComparisonChunk?; var export: SchemaComparisonChunk?
     var diff: ComparisonTextDiff?
     var offset: Int64?
     var plan: SynchronizationSQLPlan?
+    // Check payload presence once. Repeated Optional comparisons across every
+    // branch otherwise make debug builds copy this large value onto the stack.
+    private var payloadMask: Int {
+        var mask = 0
+        if summary != nil { mask |= 1 }
+        if page != nil { mask |= 2 }
+        if value != nil { mask |= 4 }
+        if export != nil { mask |= 8 }
+        if plan != nil { mask |= 16 }
+        if diff != nil { mask |= 32 }
+        if offset != nil { mask |= 64 }
+        if bundleSummary != nil { mask |= 128 }
+        if importSummary != nil { mask |= 256 }
+        return mask
+    }
     func valid(for type: String) -> Bool {
-        guard plan == nil || type == "schema.plan.result" else { return false }
-        guard (diff == nil && offset == nil) || type == "schema.diff.result" else { return false }
         guard BackendMessage.validID(jobId), (message?.utf8.count ?? 0) <= 4_096, (code?.utf8.count ?? 0) <= 128 else { return false }
+        let mask = payloadMask
         switch type {
-        case "schema.plan.result": return state == .completed && plan?.valid == true && plan?.kind == "schema" && summary == nil && page == nil && value == nil && export == nil
-        case "schema.diff.result": return state == .completed && diff?.valid == true && (offset ?? -1) >= 0 && summary == nil && page == nil && value == nil && export == nil
-        case "schema.start.result": return state == .pending && summary == nil && page == nil && value == nil && export == nil
-        case "schema.status.result": return (state == .completed ? summary?.valid == true : summary == nil) && page == nil && value == nil && export == nil
-        case "schema.page.result": return state == .completed && summary == nil && page?.valid == true && value == nil && export == nil
-        case "schema.value.result": return state == .completed && summary == nil && page == nil && value?.valid == true && value?.valueRef != nil && export == nil
-        case "schema.export.result": return state == .completed && summary == nil && page == nil && value == nil && export?.valid == true && export?.sha256?.count == 64
-        case "schema.cancel.result": return state == .cancelled && summary == nil && page == nil && value == nil && export == nil
-        case "schema.close.result": return state == .closed && summary == nil && page == nil && value == nil && export == nil
+        case "schema.import.start.result", "schema.bundle.start.result", "schema.start.result": return state == .pending && mask == 0
+        case "schema.import.status.result": return state == .completed ? mask == 256 && importSummary?.valid == true : mask == 0
+        case "schema.bundle.status.result": return state == .completed ? mask == 128 && bundleSummary?.valid == true : mask == 0
+        case "schema.status.result": return state == .completed ? mask == 1 && summary?.valid == true : mask == 0
+        case "schema.bundle.export.result": return state == .completed && mask == 8 && validBundleExport
+        case "schema.import.cancel.result", "schema.bundle.cancel.result", "schema.cancel.result": return state == .cancelled && mask == 0
+        case "schema.import.close.result", "schema.bundle.close.result", "schema.close.result": return state == .closed && mask == 0
+        case "schema.plan.result": return state == .completed && mask == 16 && plan?.valid == true && plan?.kind == "schema"
+        case "schema.diff.result": return state == .completed && mask == 96 && diff?.valid == true && (offset ?? -1) >= 0
+        case "schema.page.result": return state == .completed && mask == 2 && page?.valid == true
+        case "schema.value.result": return state == .completed && mask == 4 && value?.valid == true && value?.valueRef != nil
+        case "schema.export.result": return state == .completed && mask == 8 && export?.valid == true && export?.sha256?.count == 64
         default: return false
         }
+    }
+    private var validBundleExport: Bool {
+        guard let export, export.valid, let sha256 = export.sha256, DataComparisonRequest.digestValid(sha256), let ref = export.valueRef else { return false }
+        return ref == "manifest" || ref == "capture" || DataComparisonRequest.digestValid(ref)
     }
 }

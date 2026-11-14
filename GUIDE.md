@@ -20,6 +20,84 @@ Homebrew installation is not available.
 
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
 
+## MariaDB partial support
+
+MariaDB is available in the unreleased native macOS build as its own engine and
+Go adapter. The supported native server lines are 10.11.9+ and 11.4.3+; the live
+checks used 10.11.19 and 11.4.13. This increment is intentionally partial and does
+not claim complete MariaDB parity.
+
+Create a MariaDB profile with the native engine identity and default port 3306.
+Passwords remain in Keychain and are excluded from profile transfers; exported
+profiles exclude private keys. Restored documents remain disconnected. Use
+`verify-full` with your CA for database certificate/hostname verification. The
+existing verified-host SSH transport also supports MariaDB, including separate
+SQL/control owners and native TLS to the database beyond the bastion.
+
+The implemented subset includes independent SQL-tab sessions and transactions,
+parameterized queries, streaming and cancellation, native catalog and table browse,
+typed filters, explicit table-grid Preview/Apply, and frozen CSV import. SQL NULL,
+empty values, text `NULL`, exact numeric strings and binary values stay distinct.
+MariaDB JSON is text-backed: original whitespace and duplicate keys are retained.
+Native DECIMAL supports precision 65 and scale 38. ENUM/SET storage ordinals,
+TIMESTAMP instants and other storage-sensitive edits require their captured native
+witness. Historical system-versioned row contexts and coercing `ORACLE` or
+`EMPTY_STRING_IS_NULL` editing contexts refuse without changing session settings.
+SQL-result grids remain read-only; open the table from Connections to edit rows.
+
+Explain uses native JSON. Estimate does not execute the outer DML; Analyze is a
+separately reviewed execution and reports committed, transaction-pending or unknown
+outcome. Native timing/counters retain their MariaDB meanings. Monitoring uses a
+separate owner. Tuning keeps the ordinary-table complete-visibility guard and can
+review a SELECT-only `SET STATEMENT optimizer_switch` trial with exact original
+context and restoration checks. It does not become a generic settings editor.
+
+Ordinary permanent InnoDB V1/V2/V3 table authoring includes create/append,
+defaults, nullability, guarded lossless widening, and supported keys/indexes.
+Existing generated columns and AUTO_INCREMENT values remain captured and supported
+by the separate table-grid workflow. Structure Preview reads metadata and never
+evaluates authored expressions or scans existing rows. Apply may scan/rebuild rows
+and run reviewed expressions; MariaDB DDL commits implicitly. A later error or Stop
+cannot undo earlier acknowledged work. Lost acknowledgements require reconciliation,
+without automatic retry or replay. Bounded metadata observations cannot close every
+concurrent DDL/DML race.
+
+Generated-column/AUTO_INCREMENT authoring and V5 required-value backfill and
+physical reordering/reconstruction remain deferred until their complete
+native-client review contract is ready. Destructive column/table removal, general type/encoding
+conversion, multi-table FK repair migrations, advanced partition/MyISAM/Aria/history
+structure authoring, and physical partition/storage/online operations are also
+deferred. Their capabilities are not advertised and the partial structure workflow
+refuses these requests before DDL. Use separately reviewed native SQL when needed.
+These are client scope boundaries, not blanket MariaDB engine limitations.
+
+Schema comparison, guarded synchronization drafts, selected metadata observation,
+offline schema bundles and data comparison/transfer use captured facts and dedicated
+owners. Drafts never execute themselves. Unknown properties and unsupported
+transformations remain explicit manual steps; database options/schema roots are
+not fully captured, so a whole schema bundle can be marked incomplete while its
+supported table roots remain usable. Transfer of current system-versioned values
+explicitly omits history. Portable transfer can disclose omitted domains, indexes,
+defaults and native geometry representation rather than promising a complete clone.
+
+Backup/restore uses the actual `mariadb-dump` and `mariadb` utilities, SQL format
+only. Encrypted operations require native clients 11.4.3+ and a fingerprint bound
+to the reviewed peer, including encryption-only `require`; older 10.11 encrypted
+clients refuse. Current 11.4 clients were tested against both server lines. Native
+`--dump-history` preserves timestamp history; transaction-precise BIGINT history
+refuses because the utility does not port its transaction registry. Durable native
+sequence high-water/configuration can be backed up; unused CACHE reservations and
+session PREVIOUS VALUE state are not logical backup state. Empirically lossy
+binary/wide ENUM/SET labels and supplementary-text defaults refuse before export.
+Exact VARBINARY defaults remain supported. Backup/restore retains the usual review,
+path, overwrite, cancellation, credential and acknowledgement safeguards.
+
+This work reuses the already bundled MIT-licensed `go-mysql-org/go-mysql` transport;
+no additional driver or native client library is bundled. Database command-line
+utilities are separately installed user tools. No UI/window or installed-archive
+acceptance was run for this increment; completed native checks are explicitly
+headless. The packaged 0.4.0/build 13 release and its archives are unchanged.
+
 ## Using the application
 
 - The narrow strip on the left opens **Connections** (**⌘1**), **Files** (**⌘2**),
@@ -28,7 +106,8 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
   Change or clear each binding in **Settings → Shortcuts → Sidebar Panels**;
   the strip shows icons and names, with current bindings in tooltips. The commands are
   also in the **View** menu. With editor focus, **⌘F** opens local Find;
-  **Find in Connections** is a separate menu command with a configurable shortcut.
+  with grid focus it searches loaded result cells. **Find in Connections** is a
+  separate menu command with a configurable shortcut.
 - **⌘N** creates a PostgreSQL, MySQL, Cassandra, or MongoDB profile. The wider editor separates General, SSH, TLS and Options. Test Connection checks unsaved settings and closes its temporary session; Stop Test cancels the check. Save stores the settings; Save and Connect opens a connection. Passwords use macOS Keychain by default; a local CLI can supply dynamic passwords. Settings live in `~/Library/Application Support/DBeer/connections.json`.
 - In **General**, paste a `postgresql://`, `postgres://`, `mysql://` or JDBC-prefixed address into **URL** and choose **Use URL**. Single-host URLs support an explicit database, optional user/password, port, IPv6 and encoded values. PostgreSQL accepts `sslmode` and `sslrootcert`; MySQL accepts `ssl-mode` (or JDBC `sslMode`) and `ssl-ca`. Unsupported options and TLS modes are rejected. Omitted credentials and TLS options keep their current field values. The URL preview excludes passwords; imported passwords move into the Password field and use Keychain on Save. Apply or reset a pending URL before saving or testing.
 - **⌘T** creates a SQL tab. **⌘Return** executes the selection or the statement at the cursor; **⇧⌘Return** runs the entire script sequentially until the first error or Stop. The editor supports highlighting, line numbers, undo, completion, and navigation to PostgreSQL error positions. After connecting, user table, view, schema, function, and column names load automatically for completion without expanding the tree; columns respect tables and aliases in the current query. Suggestions appear while typing and with **⌃Space**; profile Refresh updates metadata.
@@ -43,6 +122,116 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column order and duplicate names are preserved. JSON uses metadata and value arrays, exact numbers are strings, and binary values use Base64. CSV uses UTF-8 and a selected NULL marker; a collision requires choosing another marker. Display is limited to 1,000 rows and 8 MiB with an explicit truncation notice; complete Run to File exports have no such limit. Statement timeout is 30 seconds.
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
+
+## Catalog metadata (unreleased)
+
+PostgreSQL, MySQL and SQLite catalog browsing, object search, structure inspection
+and ER loading collect metadata beyond the ordinary result display limit. Each
+paged collection retains one immutable observation. Composite foreign keys keep
+every ordered column pair together. PostgreSQL uses a read-only repeatable-read
+capture; MySQL rechecks its observation, and SQLite checks its schema version.
+Access failures, concurrent changes and server metadata warnings remain explicit.
+
+Captures allow up to 100,000 rows per collection and 64 MiB of private temporary
+storage per service session. Engine-specific lower limits can apply. Reaching a
+limit leaves an incomplete observation and requires narrowing the scope. Loading
+finishes by releasing its temporary observation; expiry and disconnect also clean
+it up. Existing ER selection and layout limits still apply. Workspace restoration
+keeps metadata unloaded until an explicit action.
+
+## Choosing referenced records (unreleased)
+
+Open an editable foreign-key cell and choose **Choose Related Record…** in its
+editor or context menu. Declared PostgreSQL, MySQL and SQLite foreign keys support
+this picker, including composite keys. Eligible PostgreSQL/MySQL SQL results use
+the same [source-row editing rules](#sql-result-source-rows-and-editing): a complete,
+verified single-table projection and an idle source session. Aliases and shuffled
+result columns retain their verified source-column mappings.
+
+Choose a search column and descriptive **Display Columns**. Text searches can
+match part of a value; **Exact Match** supports exact text, numbers, UUIDs and
+Base64 binary keys. For SQLite exact searches, explicitly choose Text, Integer,
+Real or BLOB storage to match the stored value, including heterogeneous `ANY` and
+typeless keys. Key values are always shown, with the complete selected key
+available for inspection. Results load in pages of 200, up to 10,000 per search;
+permission failures and incomplete results remain visible. Narrow the search
+when a limit is reached, or use **Stop** to cancel its current read.
+
+**Stage Related Key** places all composite-key components into one local row
+draft while preserving the original values. Review **Preview SQL**, then
+explicitly **Apply** to save it. Selection checks the captured source row,
+result, profile and session, and rejects protected columns. Search reads remain
+separate from SQL-tab transactions; opening restored documents never connects
+or starts a picker search.
+
+## Finding data across tables (unreleased)
+
+Choose **Find Data…** in a connection's context menu to search PostgreSQL, MySQL
+or SQLite table and view values. Explicitly load schemas, select objects and
+choose column types; loading another schema adds its objects to the scope.
+This workflow currently reports its client coverage limits for MongoDB and
+Cassandra instead of searching their fields or partitions.
+
+**Exact value** uses the existing typed table-filter predicates, with database
+equality and collation rules. Choose Text, Exact number, Binary (Base64) or
+SQL NULL; empty text and the text `NULL` remain distinct from SQL NULL. Exact
+numbers retain their decimal text. SQLite exact searches require explicit Text,
+INTEGER, REAL or BLOB storage. The separate **Contains text** mode searches
+declared textual columns. Unsupported types and denied reads remain visible in
+the column report.
+
+Search shows object progress and per-column observations, with at most 200
+matching rows returned per column. A `200+` observation is a lower bound;
+these output limits do not bound how much data the server may scan. Select up
+to 100 objects, with at most 2,000 column checks per search, and choose a deadline
+from 15 to 300 seconds. **Stop** cancels this search's current read. Completed
+observations remain available, and the report distinguishes checked, skipped,
+failed, stopped and unstarted scope.
+
+**Open Filtered Table** opens a new data tab using the captured column predicate
+and original profile, even after the search settings change. Search uses its own
+read-only session, leaving SQL-tab transactions independent. Closing Find Data
+or accepting Disconnect for its profile closes that session. Cancelling a close
+decision or closing an unrelated profile preserves the search. Restoration does
+not reconnect or replay a search; after helper failure, a fresh load or search
+requires an explicit action.
+
+## Data profiles (unreleased)
+
+Select loaded grid cells to see their count, SQL NULL count and exact numeric
+sum. **Profile Selection…** opens the frozen capture; the grid context menu's
+**Profile Visible Column…** profiles that column across locally visible rows.
+The matching-row filter retains original source indices. Profiles cover only
+captured loaded rows and exclude database rows outside that scope. Apply or
+discard pending edits and reload stale or uncertain results before profiling.
+
+Integer and decimal sums, averages and extrema retain all supported base-ten
+digits. Repeating averages appear as exact fractions. Arithmetic is bounded to
+4,096 input digits/exponent magnitude and a work budget; profiles allow at most
+100,000 cells and 8 MiB of captured values. Native floating-point, unsupported
+or mixed storage types show a reason instead of silently converting values.
+Frequency distributions preserve original bytes and value/storage kinds,
+including SQL NULL, text `NULL`, empty text, binary Base64 and SQLite native
+values. The report displays the 20 most frequent representations with bounded
+value previews and the remaining observed count.
+
+On an actual PostgreSQL/MySQL/SQLite table profile, **Capture First-N Server
+Sample…** offers an explicit fresh sample on a dedicated read-only connection.
+Choose up to 10,000 rows and a 15–300 second deadline; **Stop** cancels that
+capture's current read. Sampling uses the adapter's default table-browser order,
+ignores the tab's filters, relationship restrictions and custom sorting, and
+reads committed data independently
+from SQL-tab transactions. It is best effort across pages, with explicit bounds,
+partial coverage and capture times. It does not imply whole-table aggregates or
+a representative sample. Other engines retain loaded-value profiling. Pending
+workspace close decisions preserve active captures. Accepting a close of the
+source tab or Disconnect for its profile closes its owned sampler; unrelated
+accepted closes and cancelled decisions preserve it.
+
+**Copy Report** copies rendered Markdown with scope and coverage. **Attach to
+Investigation…** saves that frozen report in a new, saved or unsaved Investigation;
+a failed save can retry the same block. Reopening a report never connects to a
+database or repeats sampling.
 
 ## Repeatable data transfers (unreleased)
 
@@ -256,35 +445,212 @@ including subnormal and infinite values; unpreservable payloads are rejected.
 **Explain** shows EXPLAIN QUERY PLAN without fabricated costs or timing;
 **Explain Analyze** is unavailable for SQLite.
 
+## Local relationships
+
+Open **Local Relationships…** from the catalog or a table's relationship actions.
+Choose saved PostgreSQL, MySQL or SQLite profiles and exact table/view names,
+then **Load Columns**. Add ordered column pairs for a composite mapping. **Suggest
+by Name/Type** only creates an unconfirmed draft; inspect every pair, choose
+**Validate Mapping**, then **Confirm and Save**. This reads the selected profiles'
+current column metadata explicitly. It never creates a database constraint.
+
+Confirmed mappings live in a private local library, separately from declared
+foreign keys. Profile bindings exclude credentials and private keys. Opening or
+restoring the library never connects. Changed or missing profiles, columns and
+incomplete metadata require fresh validation; a profile name change alone does
+not rebind a mapping. Delete removes only the local mapping.
+
+From a stored row, choose a confirmed relationship to navigate exact captured
+key values into an independent target tab. Every composite component retains its
+native representation; NULL/DEFAULT keys and values with unavailable lossless
+representations do not start a target read. The target database supplies equality,
+affinity and collation. Cross-engine mappings involving SQLite require an explicit
+bound storage choice. **Stop** cancels the owned read while retaining the source
+and its draft. Unrelated navigation and cancelled close decisions preserve it.
+
+ER diagrams show these mappings as distinct local links, with profile-qualified
+external endpoints and visible stale/unverified notices. An external endpoint
+does not claim its metadata was loaded. ER exports retain the local relationship
+kind, original names and validation notice.
+
+Same-profile SQL JOIN completion uses only confirmed mappings whose exact current
+column declarations and comparison metadata match. Local suggestions are labelled
+**Local confirmed relationship**, separately from server foreign keys. Common
+PostgreSQL/MySQL text joins require compatible built-in types and the same verified
+character set and collation. Custom/unproven comparisons keep a visible unavailable
+reason in the library; navigation and ER remain available. SQLite local JOINs use
+`target.column = +source.column`, retaining the target's actual affinity and
+collation while removing source affinity, like a captured bound operand. Ordered
+metadata preserves distinct NFC/NFD identifiers. Cross-profile mappings never
+generate cross-server JOIN SQL. PostgreSQL/MySQL logical JOINs require schema-qualified source tables because the offline completion service cannot prove the current search path or default database; MySQL names must match exact case. Refresh the connected catalog explicitly to
+refresh suggestions; completion itself cannot connect or read row values.
+
 ## ER diagrams
 
-Choose **Open ER Diagram…** on a PostgreSQL or MySQL table or schema in the
-catalog. Add tables by schema-filtered search or by separate exact schema and
-table names, then choose **Build / Update** or **Connect and Build**. Selecting
-an area is a local draft; opening or restoring the diagram never connects or
-loads metadata. Multiple visible schemas/databases on the same profile may
-participate; the saved connection's database context remains fixed.
+Choose **Open ER Diagram…** on a PostgreSQL, MySQL or SQLite table or schema in
+the catalog. Use **Add Profile** and the **Profile** selector to combine saved
+relational profiles in one diagram. Add tables by schema-filtered search or by
+separate exact schema and table names, then choose **Build Source / Update Source**
+or **Connect and Build** for that source. Selecting an area is a local draft;
+opening or restoring the diagram never connects or loads metadata. Multiple
+visible schemas/databases on the same profile may participate; each saved
+connection's database context remains fixed.
+
+Each source retains its own progress, errors, completeness, Stop and schema
+observation. Loading or disconnecting one source retains the other sources'
+facts and manual positions. Cards, inspectors and PNG/PDF/SVG exports identify
+the owning profile, including equal schema/table names from different profiles.
+The limits of 16 profiles, 100 tables, 10,000 columns and 1,000 relationships apply
+to the whole diagram.
+
+Legacy diagrams require **Review Current Binding…** before their first metadata
+load. Changed or missing saved profiles remain visible and never fall back to
+another connection. To move an object, select its destination profile and exact
+schema/table, choose **Rebind Selected Table…**, then review the old and new
+ownership. Rebinding preserves placement and clears incompatible metadata for
+an explicit Build; existing destinations are not merged. **Remove Source…**
+removes only that source's diagram tables. Saved profiles, databases and confirmed
+local mappings are retained. Removing the original source leaves remaining
+sources independently loadable and exportable after disconnected restoration.
 
 Cards preserve catalog column order, native types, nullability and explicit PK
 positions. One arrow represents one declared FK, directed toward its referenced
 table. Relationship details retain every ordered pair in a composite key;
 self-references, parallel keys and cross-schema targets stay separate. References
-to tables outside the area offer **Add to Diagram**. Incoming FKs from unselected
-tables are outside discovery scope; cardinality and PK membership are not inferred.
+to tables outside the area offer **Add to Diagram**. Build loads outgoing FKs
+for the selected source; cardinality and PK membership are not inferred. Declared
+FKs stay within their actual profile. Cross-profile confirmed mappings keep their
+distinct local-link style and do not generate cross-server SQL.
+
+For an explicitly connected source, use a card's **Edit Structure…** or **Add
+Foreign Key…** action, or **Create Table…** in Add Tables, to open the shared
+structure editor. The exact profile, database context and table identifiers are
+captured before opening; changing the diagram selection cannot redirect the
+draft. Removing or rebinding a source or endpoint retires its structure draft,
+even if you add the same identifiers again while confirmation is pending.
+Metadata refresh and cosmetic profile-label changes retain the binding.
+Loading a structure draft, **Preview**, data validation where available,
+and **Apply** remain separate explicit steps. Preview and Apply use the same
+fresh baseline, dependency checks, execution policy and SQL review as
+catalog-initiated drafts. Apply requests any additional confirmation required by
+that policy. Opening or restoring a diagram never connects for these actions.
+
+A current confirmed local link between two tables on the same saved profile
+offers **Create Foreign Key…**. It copies the ordered exact column mapping into
+a new foreign-key intent; choose a new constraint name and review Preview.
+The local mapping is retained. Same-profile cross-schema references remain
+subject to the shared adapter's key, type, visibility and privilege checks.
+Cross-profile links, views and stale or unverified endpoints display the reason
+they cannot propose a database constraint. SQLite admits bounded reconstruction
+for simple tables; retained CHECK constraints and other definitions requiring manual reconstruction are refused by
+the shared editor's Preview.
+
+After a known terminal structure acknowledgement, matching already-connected
+diagram sources refresh their facts while retaining manual positions, collapsed
+cards and other profiles' metadata. A completed table creation adds its card to
+the originating diagram; a fully acknowledged rename retains the original
+card's presentation under its exact new name. Partial results keep their
+execution report and require explicit review of remaining changes. Unknown or
+in-progress outcomes leave facts stale for explicit inspection and reconciliation;
+DBeer never repeats a DDL step automatically. An acknowledged table removal keeps
+its local card with unavailable metadata until you remove it from the diagram.
+
+For a connected profile, **Find Neighbours** explicitly discovers a selected
+table's declared incoming and outgoing relationships. Sources with the same
+constraint name remain separate, including self-references and cross-schema
+references. Add chosen neighbours to the draft, then **Build / Update** to load
+the expanded area. Discovery never adds tables or rebuilds the graph automatically.
+
+In **Add Tables**, **Discover Schema** lists table names in the exact schema or
+database; **Discover All Visible** walks the visible schemas/databases on the
+current connection. Names appear progressively with a scope report. Name discovery
+retains at most 256 schemas and 10,000 table names and has a 120-second deadline.
+Neighbour discovery retains at most 1,000 source tables and 1,000 relationships.
+**Stop** cancels the owned metadata request and keeps a partial observation.
+Denied, missing, incomplete and stale metadata remain explicit; unavailable
+sources are not treated as proof of no relationships.
+
+These are client observation limits. The helper may finish an initial immutable
+metadata capture before the first page reaches the client, so page progress and
+retained-name bounds do not bound server catalog scan cost. Permissions determine
+visibility. Opening or restoring a diagram never starts this discovery; choose
+candidates, **Add** them to the draft, then **Build** explicitly. The selected
+area still has a separate 100-table limit.
 
 Drag cards to preserve manual positions, drag or scroll the background to pan,
 and pinch, Option-scroll or use the toolbar to zoom. **Fit All**, **Focus** and
 **Auto Layout** help navigate the graph; **Reset Layout** clears manual placement.
+Arrangement runs in a cancellable background task over captured graph facts.
+Manual positions survive ordinary Auto Layout; moving a card or changing the
+selected area retires an obsolete arrangement before it can replace newer work.
+
+The diagram's **Export** menu saves PNG, PDF or SVG. Choose **All Tables in
+Diagram** or **Selected Table**, Light/Dark appearance and a 1×, 2× or 3× PNG
+scale. Selection, manual positions, collapsed cards and loaded facts are captured
+when Export is chosen, before selecting the destination. Export works with a
+disconnected diagram and uses its captured metadata; unloaded, partial, stale and
+unavailable facts remain visible in the legend. It never reads table rows or
+connects to fill missing facts.
+
+The exported area includes relationship routes, external profile labels and a
+coverage legend. Declared foreign keys and confirmed local relationships retain
+their distinct styles and validation notices. Long labels use an explicit **…**;
+control characters and backslashes use reversible escapes. Original UTF-8 names,
+ordered key mappings, column details, metadata states and positions are embedded
+in each format's metadata. These notices also describe columns hidden by collapsed
+cards and relationships outside the selected area.
+
+Choose a new filename; existing files are kept. Rendering and file verification
+run in the background with **Stop Export** and guarded publication. Cancelled
+close decisions and unrelated tab navigation preserve active exports. Accepted
+closure or Disconnect of their source and application shutdown wait for owned
+cleanup. Captured external local-link endpoints also retain their source owner.
+During a profile Disconnect decision, existing exports keep running; new exports
+wait only for decisions involving their captured owners. Changed source identities
+stop an outdated export; concurrent destination
+changes are preserved. Confirmed exports remain saved, and the menu becomes
+available again after failed or cancelled work finishes cleanup.
+
+Exports allow at most 16 MiB of text/metadata and 64 MiB of encoded output. PNG
+images are limited to 16,384 pixels per side and 32 million pixels in total.
+Very large vector arrangements are also bounded. Select fewer tables, collapse
+cards or reduce the PNG scale when an export exceeds these limits.
+
 The table list and relationship details provide keyboard-accessible navigation.
 **Open Data**, **Open Data in New Tab** and **Show Structure** reuse the existing
 catalog actions; diagram loading itself never reads table rows.
+
+The bell menu offers **Observe Schema Changes** for a connected PostgreSQL or
+MySQL diagram. Enable it explicitly, then Build to refresh the diagram baseline.
+Observation uses its own readonly connection. Changes mark metadata stale;
+**Build / Update** explicitly refreshes the graph. **Stop Schema Observation**
+releases that connection. A changed profile or selected area, connection failure
+or incomplete observation stops collection and leaves a notice. Observation is
+session-only; reopen a saved diagram and enable it explicitly when needed.
+Pending or cancelled close decisions preserve active Build, search, discovery and
+observation. Accepted closure or disconnection of their source ends that work.
+
+For PostgreSQL, **Review Notification Installation SQL…** opens the exact setup
+script in an ordinary SQL tab. Review it and use **Run Script** through the normal
+execution policy. Installation requires a PostgreSQL superuser and creates the
+`dbeer_schema_watch_v1` schema, function and database-wide DDL event trigger.
+Committed DDL notifications are collected on the observer's connection. The
+expected function, schema marker and unfiltered trigger identity are checked;
+an altered or tag-filtered installation requires explicit inspection.
+**Review Notification Removal SQL…** opens guarded removal SQL for the same
+review and execution flow. The installed server objects remain until removal.
+
+MySQL checks fingerprints of the selected tables' columns, foreign keys and
+indexes every five seconds. Collections are bounded, separate best-effort reads.
+Permission gaps, server warnings and changing or limited metadata remain visible;
+these observations require a fresh explicit Build before relying on the graph.
 
 Diagrams retain at most 100 selected tables, 10,000 columns, 1,000 complete FKs
 and 16 MiB of normalized metadata. Existing per-response catalog limits still
 apply. Missing, denied, truncated and stale metadata remain visible limitations;
 failed collections never become an assertion of no relationships. Metadata is a
 best-effort read rather than a transactionally consistent schema snapshot.
-Workspace v12 saves table selections, placement, collapse and viewport state with
+The workspace saves table selections, placement, collapse and viewport state with
 private migration backups. Live metadata and session identifiers are not saved;
 restored diagrams require an explicit rebuild. Diagrams do not edit structure or
 relationships and cannot run SQL, edit result grids or export query results.
@@ -296,7 +662,8 @@ selection or current statement. **Explain Analyze…** is a separate action that
 executes the query after reviewing the exact helper-generated SQL and target.
 It can consume resources and have side effects; no automatic transaction or
 rollback is added. Supported servers are PostgreSQL 14+ and recognized Oracle
-MySQL 8.0.21+; unknown vendors and unsupported versions show a reason.
+MySQL 5.7+ for estimated plans and 8.0.18+ for Analyze; unknown vendors and
+unsupported versions show a reason.
 
 **Execution Plan** keeps an expandable tree, selected-operation details, up to
 three expensive operations and selectable/copyable **Raw Plan** output alongside
@@ -306,45 +673,642 @@ overlap; work estimates are not wall time. Missing metrics and never-executed
 operations remain explicit. A source or profile change marks the retained plan
 as belonging to an earlier query. Viewing a plan never runs SQL.
 
-The commands accept one unwrapped SELECT or read CTE. Multiple statements,
-parameters, known writes/side effects and locking queries are rejected; unknown
+Each request accepts one unwrapped SELECT, INSERT, UPDATE, DELETE or supported
+CTE with explicit typed parameters. Select multiple fragments through the
+existing batch chooser; each statement and setup command retains its separate
+review. Locking reads and client commands remain unavailable; unknown read
 functions still follow readonly/confirmation policy. Resolve pending grid edits
 before Explain. The tab retains its physical session, temporary tables and
 transaction; Stop waits for terminal recovery. Raw-only/limited results preserve
-confirmed SQL completion, and a lost completion is never retried. Plans stay in
-memory and are excluded from restored documents, SQL history and snapshots.
+confirmed SQL completion, and a lost completion is never retried. The current
+plan is held by its SQL tab. **Save Plan…** explicitly creates a local artifact.
+
+### Data-changing Explain and Analyze
+
+Estimated Explain plans INSERT, UPDATE and DELETE without executing the outer
+DML. Planning can still evaluate routines: MySQL derived-table optimization can
+invoke stored functions that change other data. Unknown or known-side-effect
+routines retain exact review and readonly rejection, including in development
+profiles. The original SQL is never rewritten to bypass this policy.
+PostgreSQL also supports data-modifying WITH bodies, including a SELECT whose
+CTE changes data. SQLite offers estimated EQP only; simple writes may return no
+scan operations. MySQL and SQLite do not support data-modifying CTE bodies.
+
+Analyze executes the exact reviewed diagnostic and typed values once. PostgreSQL
+actually performs the target INSERT, UPDATE, DELETE or data-changing CTE.
+It requires write access and a separate confirmation, even in a development
+profile. The review binds the source selection, target document/profile/session,
+options, values and current transaction state. A changed state requires another
+review. PostgreSQL 14+ supports INSERT, UPDATE, DELETE and data-changing CTEs.
+Oracle MySQL 8.0.18+ supports runtime iterator Analyze only for explicit multi-table
+UPDATE and DELETE forms; the server suppresses their target row modifications.
+It can still execute predicates/routines, acquire locks or cause external effects,
+so a write-capable owner and exact confirmation remain required. INSERT and
+single-table DML remain estimated only. The server behavior is explicit in its
+[UPDATE iterator](https://github.com/mysql/mysql-server/blob/mysql-8.4.13/sql/sql_update.cc#L2248-L2252)
+and [DELETE iterator](https://github.com/mysql/mysql-server/blob/mysql-8.4.13/sql/sql_delete.cc#L973-L977). DBeer never
+rewrites a single-table statement to obtain Analyze support. SQLite has no actual
+DML Analyze. See the [PostgreSQL EXPLAIN reference](https://www.postgresql.org/docs/14/sql-explain.html),
+[MySQL EXPLAIN reference](https://dev.mysql.com/doc/refman/8.0/en/explain.html) and
+[SQLite EQP reference](https://www.sqlite.org/eqp.html).
+
+The only disposition is **current session**. DBeer adds no BEGIN, COMMIT,
+ROLLBACK, savepoint or session-setting change. In an existing transaction,
+transactional row changes remain pending for the user's explicit commit or
+rollback. With autocommit, an acknowledged completed transaction is committed.
+An idle MySQL session with autocommit disabled can start a transaction during
+Analyze. Its target-row persistence stays **not executed** because target writes
+are suppressed; the separate returned transaction state records the session
+boundary. This does not promise that routines or external effects were absent.
+Sequences, nontransactional tables, triggers and external effects may persist
+even after a user rollback. DBeer does not promise that rollback undoes every
+effect. An error can also leave a transaction failed, requiring user recovery.
+
+Execution completion and persistence are separate facts. A confirmed completed
+statement remains completed if later connection cleanup fails; persistence stays
+unknown without the final transaction acknowledgement. Losing acknowledgement
+never becomes proof of rollback or commit. No retry, format fallback or reconnect
+reruns Analyze. Plan-node output rows, including ModifyTable output, are not an
+affected-row count; DML affected rows remain explicitly unreported.
+
+### Advanced plan metrics
+
+Use **Graph** for a selectable parent/input diagram and **Flame** for operation
+lanes by depth. Flame can show **Inclusive time**, **Estimated cost** or
+**Proven exclusive time**. The lanes show each operation's own reported basis;
+they are not a timeline or a partition of query wall time. Parent/child and
+parallel observations can overlap. A missing selected metric stays unavailable
+rather than silently changing to another measurement. **Tree** and **Raw Output**
+retain the complete captured evidence. SQLite has a structural Graph, without
+invented execution-time or cost lanes.
+
+Row-estimate discrepancies compare estimated and actual output per invocation
+only when their bases and measured loops are compatible. Zero rows and zero
+time remain measured zeros; a zero denominator does not become an infinite
+ratio. Parallel plans and potentially partial inputs beneath LIMIT, merge joins
+or early-stopping joins are labelled explicitly and do not receive a confident
+row-estimate error badge. MySQL JSON v1 logical/access estimates do not become
+iterator output measurements.
+
+PostgreSQL details show reported buffer blocks, I/O time, WAL, planned/launched
+workers and individual worker observations. Buffer counts and I/O time include
+child work and all loops: do not add ancestors or multiply these counters by
+loops. Blocks are not bytes, and buffer hits/reads are not distinct blocks.
+Worker observations overlap the node totals. **Query JIT** includes the server's
+aggregate across leader and workers; worker JIT remains separate, and Deform is
+already included in Generation. These aggregates are not a query wall-clock
+breakdown. Missing, disabled and unexecuted measurements keep their own states.
+
+New PostgreSQL captures request VERBOSE in the same reviewed Explain statement,
+including output expressions and per-worker evidence when the server reports
+it. TIMING off still retains rows, buffers and whole-query time while node and
+worker timing is explicitly disabled. Older helpers and saved captures remain
+readable; absent advanced evidence is unavailable until another explicit
+capture. Viewing an older plan never reruns it.
+
+Exclusive time is exposed only for a recognized serial leaf with measured loops
+and timing, where its inclusive time has no reported child work. Other nodes
+show why exclusive time cannot be proved. DBeer does not subtract rounded,
+parallel, materialization or otherwise overlapping child measurements from a
+parent.
+
+### Explain collection options
+
+After choosing the target SQL tab, review collection options supported by that
+physical server. PostgreSQL 14+ offers BUFFERS and SETTINGS for estimated and
+actual plans, plus WAL and TIMING for Analyze. PostgreSQL 17+ adds planning
+MEMORY and Analyze SERIALIZE (none, text or binary). TIMING off still collects
+actual rows/loops and whole-statement execution time; disabled node timing,
+reported zero and an unreported measurement remain distinct. Options are bound
+to the same single-use review as SQL, parameters, plan kind and target context.
+See the [PostgreSQL 14](https://www.postgresql.org/docs/14/sql-explain.html) and
+[PostgreSQL 17](https://www.postgresql.org/docs/17/sql-explain.html) references.
+
+MySQL offers Automatic, TREE and JSON formats when the selected mode supports
+them. Automatic chooses JSON on 5.7 and older 8.0, and TREE from 8.0.16. Analyze
+starts at 8.0.18 and uses implicit TREE syntax through 8.0.20; explicit TREE
+syntax starts at 8.0.21. JSON v1 preserves logical query blocks and table access
+information; it is not an iterator tree, and join-prefix costs/counts are kept
+as native evidence rather than invented per-iterator metrics. JSON v2 preserves
+iterator structure and per-loop actual metrics. Unknown counts stay unavailable.
+MySQL 8.0.18 does not evaluate SELECT-list expressions during Analyze (fixed
+in 8.0.19), so its measurements exclude that work. MySQL 8.0.18–19 cannot stop
+Analyze with KILL QUERY; cancellation may retire the connection after recovery
+and keep an unacknowledged outcome unknown. These server limitations appear with
+the options and remain in saved evidence. See the
+[MySQL 8.0 reference](https://dev.mysql.com/doc/refman/8.0/en/explain.html) and
+[Oracle bug 97296](https://bugs.mysql.com/bug.php?id=97296).
+
+JSON Analyze requires MySQL 8.3+ and the existing target session's
+`explain_json_format_version` to be 2. A cancellable read-only preflight checks
+that setting before the analyzed SQL is sent. DBeer does not change it; choose
+TREE or configure the session explicitly when JSON v1 is selected. The
+[Oracle optimizer format description](https://dev.mysql.com/blog-archive/new-json-format-for-explain/)
+and [8.3 implementation](https://github.com/mysql/mysql-server/blob/mysql-8.3.0/sql/opt_explain.cc)
+document the JSON v2 Analyze path. Format is selected before execution. The
+captured response is decoded in place; an unfamiliar or oversized response keeps
+Raw Plan and the known completion state without another Analyze execution.
+Saved plans preserve requested options and the observed format for offline use.
+
+### Engine diagnostics
+
+MongoDB tabs use the existing JSON find/aggregate request format. Choose
+**Query → Query Planner** for optimizer evidence, or **Execution Statistics…**
+for a separately reviewed execution of the read. The latter runs the winning
+operation to completion. Output pipelines (`$out`, `$merge`), unknown commands,
+JavaScript and bound parameters are rejected. Canonical Extended JSON retains
+BSON types and document order in the captured output. MongoDB Explain ignores
+the plan cache; stage estimates and document/key counters retain their native
+scope and are not relational cost or exclusive wall time. Unsupported output
+shapes remain visible in the captured evidence without rerunning the request.
+
+Cassandra provides **Query → Trace Read…**, rather than an estimated relational
+plan. Review the exact current/selected read and first-page scope before
+execution. DBeer traces one server page of up to 200 rows using that tab's
+physical session and saved read consistency. Later pages are not fetched.
+Preparation and execution can produce separate trace sessions. A bounded,
+cancellable collection reads `system_traces` at consistency ONE for at most
+two seconds, retaining up to four sessions, 1,000 events and 1 MiB of event data.
+Trace writes are asynchronous: missing permissions, expired traces and late
+information remain unavailable or partial, even when coordinator duration is
+present. Each source node's elapsed microseconds and coordinator duration are
+different measurements; do not add them or derive exclusive/global timing.
+Collection failure preserves the confirmed page outcome and never replays CQL.
+Writes, batches, setup statements, unbound markers and unknown functions cannot
+be traced through this read-only action.
+
+SQLite's existing estimated EQP tree also shows its exact node, parent and
+auxiliary fields, reported scan/search/sort strategy and original description.
+The auxiliary integer is unused by SQLite. This adapter does not expose actual
+scan statistics, planner costs, measured rows or execution timing; their absence
+is explicit and **Explain Analyze** stays unavailable.
+
+Engine diagnostics use distinct presentations and metric definitions. Explicit
+private saves retain the original query and captured evidence in plan artifact
+version 5; version 1–4 readers remain supported. Runtime execution grants,
+application session/profile handles and connection/server settings stay out of
+portable files. Opening or comparing saved evidence stays offline. A different
+engine/diagnostic kind has no relational tree comparison; missing measurements
+never become zero. Trace session IDs identify captured trace evidence rather
+than live application sessions.
+
+### Tuning recommendations and experiments
+
+Tuning inspection uses a captured plan, its original SQL and typed bindings, and
+fresh metadata for one explicitly qualified PostgreSQL14+ or Oracle MySQL8.0.30+ table.
+A supplied or imported capture is evidence for discussion, never execution
+permission. A complete supported numeric equality scan can suggest one
+nonunique B-tree index; existing leading indexes and key ownership suppress
+redundant advice. Incomplete catalogs, custom index/operator semantics and
+ambiguous scans remain explicit limitations. MySQL uses the existing structure
+editor's complete global SELECT/TRIGGER metadata visibility proof. No latency,
+selectivity threshold or performance gain is invented from node counters.
+
+Repeated numeric equalities on the same column can propose an IN-list variant.
+The original SQL and typed bindings remain intact. A proposal is unvalidated;
+the optimizer may already produce the same plan. Adopting or editing a variant
+does not execute it. Index changes open a new dedicated structure-editor
+baseline and follow its fresh SQL preview and reviewed apply workflow.
+
+Result validation is a separate, freshly reviewed operation. It accepts only
+bounded simple column-projection reads from an idle session of one ordinary qualified table with
+proven built-in types and operators. Functions, CTEs, joins, views, temporary
+tables, locking, ORDER BY and LIMIT are outside this validator. It compares two
+sequential observations in the same physical session, retaining exact native
+SQL NULL, empty/text NULL distinctions, numeric spelling, binary bytes and
+duplicate multiplicity while ignoring row order. Column/type changes differ.
+An observed match proves only those captured observations, not logical
+equivalence, a shared snapshot or improved performance. Open user transactions, uncommitted context and temporary tables are refused;
+session state and concurrent changes remain relevant. Errors, incomplete
+acknowledgements, cancellation or a row/byte/deadline bound are inconclusive.
+Limits are at most 10,000 rows per observation, 4 MiB combined encoded native
+rows and a 30-second execution deadline; adapter cancellation recovery can extend
+the response interval. E2 metadata may use its own internal read-only observation transaction. No
+transaction wraps the compared SELECTs, and there is no reconnect or retry.
+
+PostgreSQL work_mem experiments require an already open transaction and an
+exact reviewed SET LOCAL operation. A separate fixed read observes the current
+work_mem inside that transaction without loading structure metadata or changing
+transaction boundaries. The current value is rechecked before the
+change. Values are explicit KiB within 64...1,048,576; they are per sort/hash
+operation and worker, not a total query memory cap. Restoring the captured prior
+value is another freshly reviewed operation. COMMIT/ROLLBACK ends the local
+value, and rollback to an earlier savepoint can revert it. No automatic restore
+or transaction commands are issued; a lost acknowledgement stays uncertain.
+Other engine settings remain unavailable through this controlled experiment.
+
+Saved-baseline comparison remains offline and labels incompatible request,
+format, unit, invocation, partial-input, worker and parallel scopes. A plan
+shape alone does not establish comparable timing or a result match. Background
+collection requires explicit opt-in with bounded interval, executions, runtime,
+retention and storage. Saved configuration restores stopped and disconnected;
+starting binds the current profile, physical owner, exact SQL, typed values and
+options. Editing that scope, stopping, deleting it or closing the workspace
+retires collection and fences late replies. Default collection uses estimated
+read-only admitted sources; it cannot reuse a blanket Analyze confirmation,
+collect DML, change settings or connect on restoration. Captured files do not
+carry live grants or credential/connection settings. SQL and query results are
+not logged for the collector.
+
+### Saved execution plans
+
+Choose **Query → Saved Execution Plans…** to open the local plan library. Search
+titles and baseline names, filter by Explain or Explain Analyze, and use
+**Name / Baseline…** to label a saved observation. Select a second plan in
+**Compare with** to inspect changes in shape, native details and reported metrics.
+Duplicate matching candidates stay ambiguous. Identifiers and literal evidence
+are compared by their exact UTF-8 bytes. Different engine, version, format, mode
+or metric definitions are labelled so their values can be read independently.
+Raw-only and limited captures retain their availability and completeness labels.
+
+**Export…** and **Import…** transfer versioned `.dbeerplan` files containing the
+original captured SQL, server output, normalized nodes and exact metric strings.
+Recorded provenance includes the connection name, environment and an earlier-query
+marker when applicable. Imports receive a fresh local identity. Saving, opening,
+importing and comparing artifacts use local files. Plans share a local quota of up to 4,096 artifacts and 256 MiB with saved
+operation evidence. Plans have a 16 MiB per-file limit; deletion is explicit.
+
+An investigation's add-block menu offers **Saved Execution Plan…**, which inserts
+a local Markdown reference. Open that link inside DBeer to read the artifact.
+A result snapshot's **Plans…** button attaches or detaches saved plans through
+separate link metadata. Plan deletion checks saved and unsaved investigations
+and snapshot links; remove those references first and save the edited
+investigation. The library also lists snapshot attachments with **Remove Link**. Unreadable reference metadata blocks
+deletion until it can be checked. A confirmed file publication remains saved
+when a later library refresh fails, and the library displays the refresh warning.
+
+## Saved operation evidence (unreleased)
+
+Use **Save Outcome Evidence** in a retained structure report or **Save Evidence**
+in Session Monitor to copy the current observation into the local library.
+Choose **Query → Saved Operation Evidence…** to search, open, import or export
+versioned `.dbeerevidence` files. Saving is explicit and includes the reviewed
+SQL or visible diagnostic SQL. Artifacts retain original step acknowledgements,
+unknown outcomes, observation times and incomplete/stale notices. Opening a
+saved report never refreshes live status, connects, reconciles or executes SQL.
+
+Files contain the recorded engine, profile name and environment, with no
+connection settings, credentials, session handles or execution grants. Imported
+files receive a fresh local identity. Each file is limited to 8 MiB and shares
+the saved-plan quota. Artifacts are immutable; later live changes do not rewrite
+them. A known failed or rolled-back operation remains failed or rolled back.
+
+A snapshot's **Evidence…** button attaches local evidence through separate link
+metadata. An investigation's **Saved Operation Evidence…** block action inserts
+a local reference that opens inside DBeer. Deletion checks snapshot links and
+saved, unopened and unsaved investigation references. Remove the links and save
+the affected investigation before deleting its evidence.
+
+## Multi-object migrations
+
+Choose **Compose Migration…** from a connected catalog to open **Multi-object
+Migration**. Use **Load & Edit Object…** and **Stage Object Intent** for each
+table. Each object keeps its exact target and existing typed structure draft.
+The planner orders new referenced keys before foreign keys and dependent table
+drops before referenced table drops; explicit `after` edges retain additional
+user-selected ordering. Cycles require a separately reviewed phase.
+
+External repairs are individual choices. **Load Owner** reads the selected
+foreign-key owner; **Select repair for…** chooses that exact constraint for
+a permanent removal or an explicitly authored replacement. Specify replacement
+source columns, target table and target columns, including the reviewed new
+names after table/column renames. The owner's own reviewed table rename carries
+its stable object identity forward. No SQL text or replacement mapping is
+rewritten automatically. PostgreSQL schemas and MySQL databases may differ only
+within the same captured server/profile session. SQL for another profile is not
+executable in this workflow.
+
+Choose **Preview Migration SQL**, review every ordered unit, its exact SQL,
+consequences and expected intermediate structures, then choose **Apply Reviewed
+Migration…**. Expected structures bind each captured identity and fingerprint to
+the exact prior reviewed transitions; server-generated fingerprints are observed
+after acknowledgement. Every captured table is checked before dispatch. The
+whole migration is not atomic. PostgreSQL copy reconstruction and each SQLite
+reconstruction retain their proven transaction boundary; MySQL DDL commits
+independently. Removing a foreign key creates a referential-integrity gap.
+Concurrent writes can make its replacement fail, leaving earlier acknowledged
+steps and the selected removal in effect.
+
+**Check Execution Status** reads retained evidence from the original owner.
+Failed, unstarted, cancelled and unknown intent remains visible. After partial
+or uncertain execution, reconcile explicitly through **Reconcile Current
+Structures**, then separately choose **Review Retained Intent for a New Plan…**.
+Reconciliation observes the schema; it does not retry steps or reinterpret a
+lost acknowledgement as success. An unknown physical connection is retired;
+only its local retained status can be read. A new connection requires a fresh
+explicit load, review and preview, with no automatic replay.
+
+The **Migration** menu opens/saves portable `.dbeermigration` intent and exports
+reviewed SQL. Portable files contain typed intent only, strip destructive consent,
+and restore disconnected without credentials, session handles, plans or grants.
+A fresh connected preview and confirmation are required. Exported SQL is a
+manual script: it lacks the helper's freshness checks, preservation verification
+and outcome tracking. Independently saved `.dbeermigrationreport` files retain
+immutable reviewed steps and execution evidence; opening one never executes or
+reconciles it.
+
+Version 1 accepts at most 16 authored objects, 16 individually selected foreign-key
+repairs and 32 captured tables, including incoming owners, referenced tables and
+verified destinations. It bounds ordered units at 96, typed intent and generated
+SQL at 1 MiB each, and the review at 6 MiB. Existing ordinary-table and server
+limits still apply (PostgreSQL 14+, Oracle MySQL 8.0.30+, and SQLite `main`).
+Repairs require complete native constraint evidence and preserve only ordinary,
+validated, enforced, nondeferred foreign keys with default MATCH semantics.
+Views, routines, expression dependencies, unsupported constraints or incomplete
+metadata remain named prerequisites. Migration orchestration does not execute
+arbitrary repair SQL, add hidden CASCADE, disable constraint checks, evaluate
+expressions during Preview or inspect user rows. Existing SQLite reconstruction
+keeps its disclosed dedicated-session settings wrapper and restoration checks.
 
 ## Table structure drafts
 
-In a connected PostgreSQL/MySQL catalog, use **Create Table…** on a schema or
-**Edit Structure…** on a table. Prepare a local draft, choose **Preview SQL**, then
-explicitly **Apply** the reviewed plan. Preview reads metadata and never runs DDL.
-Readonly profiles can inspect and preview; the helper rejects Apply. Production
-writes and explicit key/index removals or replacements require confirmation.
+In a connected PostgreSQL, MySQL or SQLite catalog, use **Create Table…** on a
+schema or **Edit Structure…** on a table. Prepare a local draft, choose
+**Preview SQL**, then explicitly **Apply** the reviewed plan. Readonly profiles
+can inspect and preview; the helper rejects Apply. Production writes, explicit
+key/index removals or replacements, authored expressions and custom types require
+confirmation of the exact plan. Enabling MySQL AUTO_INCREMENT on an existing
+column also requires confirmation because it can change stored zero values.
 
-Supported operations include ordinary permanent table creation, one nullable
-appended column per existing-table plan, scalar literal defaults, nullability,
-integer-to-bigint widening and increased varchar length. Ordinary ordered BTREE
-indexes and supported primary/unique/foreign keys can be added, explicitly
-removed or replaced. Foreign keys preserve composite order, require a supported
-referenced primary/unique key and matching types/collations, and include any
-required MySQL supporting index in the SQL preview. Advanced index options,
-identity/generated columns, arbitrary expressions, renames, column/table deletion
-and lossy conversions remain outside the editor.
+The editor's **Draft** menu saves local typed changes in a versioned
+`.dbeerstructure` file through **Save Draft** or **Save Draft As…**. Incomplete
+fields, including expressions and qualified type references, can be saved for
+later editing. Files contain engine, exact target names and typed intent with a
+1 MiB limit. The current writer uses version 5 and reads versions 1–5. Save
+checks the previous file version and preserves concurrent external changes.
 
-Editing requires PostgreSQL 14+ or Oracle MySQL 8.0.30+. Unsupported table
-properties or incomplete dependency visibility block the affected operation.
-MySQL type widening and referenced-key removal require direct global SELECT
-metadata visibility without active roles or partial revokes; narrower accounts
-retain eligible additive and narrow column operations. Catalogs cannot prove the
-absence of dynamic SQL dependencies.
+Use **Open Draft…** in **Create Table…** for a matching schema or in
+**Edit Structure…** for the exact existing table and engine. Replacing current
+edits requires confirmation. Opening a file is local; explicitly choose
+**Load Structure**, review the restored changes, then prepare a fresh
+**Preview SQL** before Apply. Destructive choices require fresh selection.
+Execution evidence is kept separately for the workspace session.
 
-Apply uses a dedicated session and bounded lock waits. Every displayed statement
-is an independent execution unit: the entire plan is not atomic, and MySQL DDL
-can implicitly commit. Stop and Discard do not undo acknowledged changes. A later
+**Export Reviewed SQL…** saves the current preview or retained execution plan
+with ordered steps and warnings. The file represents the captured plan; review
+the current destination before executing it through the SQL editor.
+
+Supported operations include ordinary permanent table creation, multiple
+appended columns, explicit table/column renames, literal and expression defaults,
+generated columns and identity options where the server supports them. Existing
+columns offer **Keep existing** for untouched properties. PostgreSQL can resolve
+an existing type by its exact schema and name, with fresh identity, definition
+and USAGE checks before execution. Identity sequences retain exact start,
+increment, minimum, maximum, cache and cycle settings. PostgreSQL generated
+expression replacement requires version 17+; virtual generation requires 18+.
+
+The structure editor also reports explicit operation capabilities for PostgreSQL
+14–18 inheritance, declarative partitions, RLS/FORCE, typed and unlogged tables,
+and Oracle MySQL 8.0.30+/8.4 partitioned InnoDB and MyISAM tables. The advanced
+facts show the complete connected family, parents, native persistence/engine,
+type binding, and policy names, commands and roles. A displayed capability is
+observation; a fresh exact Preview and the existing Apply authorization are
+still required. Imported/restored intent remains disconnected and carries no
+catalog or execution authority.
+
+PostgreSQL table renames, literal defaults, applicable nullability changes,
+lossless integer/varchar widening and native index/key operations retain raw
+policies, FORCE, ACLs, roles, type bindings and all unaffected native properties.
+Local column/default operations name `ONLY`. Recursive parent column edits show
+every affected descendant; inherited child columns must be altered through their
+declaring parent. Partition parent normal indexes and primary/unique keys show
+native child creation or attachment and exact removal effects. A partitioned
+unique key must include every direct partition key in the affected tree; an
+expression partition key cannot meet that requirement. Concurrent parent-index
+creation remains unavailable in PostgreSQL; use the separate physical workflow
+for supported concurrent leaf/ordinary indexes and partition management.
+
+Advanced PostgreSQL foreign keys retain exact source/reference column mappings,
+backing indexes, native cloned constraints and RI trigger bindings, including
+partitioned and self references. Traditional-inheritance foreign keys are local
+to the selected relation. A policy dependency can prevent column type/removal
+changes; policies are never rewritten or disabled implicitly. Policy-filtered
+SELECT results are not proof of whole-table representability or NULL absence.
+The server validates reviewed DDL before transactional preservation checks and
+COMMIT. Typed-table shape belongs to its composite type; the editor never emits
+an implicit ALTER TYPE affecting other bound tables.
+
+MySQL advanced edits retain the complete native partition/table suffix,
+unaffected full column definitions, constraints/indexes, triggers and engine
+properties. Applicable table/column rename, nullable append, literal defaults,
+nullability, widening, indexes and primary/unique keys still need concrete
+engine and partition-key checks. Already strict SQL mode is required; a rebuild
+of existing AUTO_INCREMENT rows also requires already-present
+NO_AUTO_VALUE_ON_ZERO. MySQL DDL implicitly commits, and MyISAM row writes are
+nontransactional. The helper never changes SQL mode, silently removes a foreign
+key, changes an engine or repartitions a table as a side effect of an ordinary
+edit. Oracle MySQL partitioned InnoDB and MyISAM do not support foreign keys.
+
+UNLOGGED persistence is retained explicitly: its data is not WAL-logged, can be
+truncated after an unclean shutdown and is not replicated to standbys. Temporary
+tables remain with their original physical SQL-tab session; the dedicated
+structure connection cannot attach to another tab's temporary relation. Run
+explicit SQL in the original tab when that session-local scope is needed.
+Tuning inspection and result validation retain their stricter ordinary-table
+boundary even when the structure editor can safely author an advanced kind.
+
+Index drafts can use ordered column or expression terms. PostgreSQL supports
+expression and partial indexes, INCLUDE columns, qualified collations and
+operator classes with parameters, direction and NULL placement, and storage
+options for BTREE, HASH, GiST, SP-GiST, GIN and BRIN. Installed access methods can
+be selected when their bounded catalog metadata is available. Uniqueness uses
+BTREE; NULLS NOT DISTINCT requires PostgreSQL 15+. Preview checks method-specific
+constraints and binds referenced method/operator-class/collation metadata before
+Apply. Preview does not evaluate authored index expressions. Legitimate native
+planning and introspection callbacks remain supported.
+
+For ordinary InnoDB tables, MySQL supports BTREE prefixes, ASC/DESC order,
+functional terms, visibility and exact index comments, plus FULLTEXT and SPATIAL
+indexes with their applicable column restrictions. HASH is rejected because
+InnoDB normalizes it to BTREE. Use key operations for MySQL uniqueness so the
+constraint and backing index remain one unit. Constraint-owned indexes cannot be
+removed or replaced independently.
+MySQL functional-index expressions retain their exact catalog text, but their
+unresolved dependencies keep schema comparison indeterminate and require manual
+review even when two captured expressions are identical.
+
+Indexes with properties outside the exposed definition remain read-only with a
+concrete prerequisite. This includes PostgreSQL index comments, non-default
+tablespaces, cluster/replica-identity flags and custom statistics, and MySQL
+FULLTEXT parsers, engine attributes or unrecognized index syntax. Their raw
+metadata stays bound to the baseline; eligible additive operations preserve it.
+No hidden property is silently discarded during replacement. Changing a draft
+invalidates its Preview; imported index intent requires fresh loading, capability
+checks and exact-plan confirmation before Apply.
+
+Supported primary/unique/foreign keys can be added, explicitly removed or replaced. Foreign keys preserve composite order,
+require a supported referenced primary/unique key and matching types/collations,
+and show any required MySQL supporting index as an explicit step. MySQL
+AUTO_INCREMENT likewise requires an explicitly selected leading key. Before
+replacing its only supporting key, add an alternative leading index in a
+separate reviewed plan. Enabling AUTO_INCREMENT on existing data may replace
+stored zeros unless the captured SQL mode includes NO_AUTO_VALUE_ON_ZERO; DBeer
+does not scan values or change SQL mode during Preview.
+
+SQLite supports creation with expression defaults, generated columns and an
+explicit single INTEGER primary key for AUTO_INCREMENT. Native ADD COLUMN can
+append eligible nullable columns and virtual generated columns. Stored generated
+columns, expression defaults or identity added to an existing table, and changes
+requiring table reconstruction, are rejected with a prerequisite reason. Review
+SQLite renames separately from other edits; modern dependency handling requires
+legacy_alter_table=OFF. DBeer does not silently change that setting.
+
+Preview reads catalog metadata and checks expression boundaries; it never runs
+DDL, evaluates authored expressions or calls custom type input/output or typmod
+support routines. Expressions must fit one balanced slot; comments, parameters
+and backslash escapes are rejected. Expression text is never rewritten to repair
+references. PostgreSQL metadata that would need custom support code retains raw
+catalog evidence and is explicitly unavailable for affected changes. Ordinary
+safe enum/domain types remain eligible. MySQL catalog literal escaping is decoded
+only for comparison. Some MySQL 8 NO_BACKSLASH_ESCAPES expressions with doubled
+apostrophes are rejected because of a reproduced server parser limitation.
+
+PostgreSQL editing requires 14+ and Oracle MySQL editing requires 8.0.30+.
+Unsupported properties or incomplete dependency visibility block the affected
+operation. MySQL rename/type dependency proof requires direct global SELECT and
+TRIGGER metadata visibility without active roles or partial revokes; narrower
+accounts retain eligible additive and narrow column operations. A proven
+unrelated direct column reference can permit a rename while an uncertain or
+dependent expression still requires an explicit reviewed migration. Catalogs
+cannot prove the absence of dynamic SQL dependencies. Backfills and physical
+reordering use the separate reviewed workflow described below.
+
+Destructive drafts can explicitly remove a table or column and convert ordinary
+built-in columns. Review each named dependency and data-loss consequence before
+confirming the exact current plan. Dependent keys and indexes must be removed
+explicitly; external foreign keys, views, triggers and unproven expression
+dependencies block affected operations. No CASCADE removal or disabled checks
+are generated. PostgreSQL supports narrowing, a separately authored USING
+expression and exact qualified collations. USING is not evaluated by Preview;
+it can run user code and change every value during Apply. Drop an existing
+DEFAULT in a separate plan before conversion. Custom storage/compression policy
+and custom-type conversions require an explicit reviewed migration. PostgreSQL
+database encoding cannot be changed with ALTER COLUMN.
+
+MySQL supports narrowing, signed/unsigned integer or decimal conversions and
+exact column character-set/collation changes. A charset change requires the
+matching target collation; DBeer does not choose an implicit default or change
+SQL mode. Review truncation, rounding, range, character replacement and changed
+comparison semantics. Strict mode can reject a conversion; permissive mode may
+coerce stored values. PostgreSQL USING is unavailable for MySQL.
+
+SQLite supports native DROP TABLE and DROP COLUMN on ordinary tables, with
+DROP COLUMN requiring SQLite 3.35+. Incoming foreign keys and retained schema
+references block deletion. Existing indexes must be explicitly removed before
+dropping their columns, and primary/unique/reference clauses require a separate
+reconstruction. The remaining exact native values are verified during Apply.
+Direct type, USING, signedness and per-column encoding conversions are not
+provided by SQLite ALTER TABLE and require a separate reconstruction plan.
+
+Backfill, physical column order and explicit reconstruction use an exact reviewed
+plan with separate destructive permission and confirmation, including in a
+development profile. Review the full SQL, locks, copy costs and consequences.
+Preview reads catalog metadata only; it never scans data, evaluates backfill
+expressions or invokes custom type support code. A required appended ordinary
+built-in column can have an explicit backfill expression, without DEFAULT,
+generation or identity. Set a persistent DEFAULT in a separate plan. Every
+required appended column needs its own backfill. Reordering lists every retained
+and appended column exactly once and is reviewed separately from unrelated edits.
+
+PostgreSQL and MySQL backfill displays independent ADD-nullable, UPDATE-NULL-rows
+and NOT NULL enforcement steps. Each acknowledged step survives later failure or
+Stop. Concurrent inserts can make final enforcement fail; functions and UPDATE
+triggers can modify other values or external state. Such effects are part of the
+explicitly reviewed write and may not roll back. MySQL requires an already strict
+session SQL mode and does not change it. A separate validation request does not
+evaluate arbitrary backfill code: the report marks expression acceptance and
+side effects unavailable. It cannot authorize Apply or guarantee success.
+
+MySQL physical reordering uses full captured column definitions and native
+FIRST/AFTER in one ALTER TABLE with ALGORITHM=INPLACE and LOCK=EXCLUSIVE.
+Explicit reconstruction includes native FORCE with the same algorithm and lock,
+even with unchanged column order or when only virtual columns move. Moving a
+virtual generated column on MySQL before 8.4 requires a separate COPY migration;
+Preview rejects that native INPLACE limitation with a prerequisite.
+Captured defaults, generation, identity, character sets, collations, visibility,
+comments, keys, indexes and dependent metadata remain guarded and are checked
+after acknowledgement. Unsupported attributes block Preview; the helper does not
+discard them. The operation can rebuild the table and block other users. MySQL
+metadata checks remain best effort against concurrent DDL, and lost acknowledgement
+remains unknown. See the [MySQL ALTER TABLE reference](https://dev.mysql.com/doc/refman/8.0/en/alter-table.html).
+
+PostgreSQL has no direct ALTER COLUMN position. Eligible ordinary tables use
+transactional CREATE, INSERT SELECT, binary-value/multiplicity verification,
+DROP RESTRICT, RENAME and exact retained primary/unique key and plain btree-index
+recreation. Every retained catalog fact and ordinary column attribute is verified
+before COMMIT. The relation OID and physical row locations change. This deliberately
+bounded path requires ordinary built-in columns, default storage and privileges,
+and no generation, identity, default expressions, owned sequences, incoming
+foreign keys or other dependent objects. Custom permissions, statistics, comments,
+security labels, publications, policies, triggers and unproven properties require
+an explicit migration that preserves them. No CASCADE repair is generated.
+See the [PostgreSQL column-position guidance](https://wiki.postgresql.org/wiki/Alter_column_position).
+
+SQLite uses its established source-definition reconstruction: retained column and
+constraint clauses keep their original text, backfill expressions appear in the
+reviewed INSERT SELECT, and original indexes and triggers are recreated after the
+copy. Copying does not fire those retained triggers. STRICT/WITHOUT ROWID behavior,
+hidden rowids, INTEGER PRIMARY KEY alias behavior and AUTOINCREMENT high-water
+marks are preserved. Apply verifies the complete retained schema and dependent
+objects, exact typed values with duplicate multiplicity, requested order, sequence
+counters and foreign keys before COMMIT. Views or definitions that cannot be
+proven safe block reconstruction with a prerequisite. Foreign-key enforcement is
+suspended only on the dedicated physical structure session, outside the
+transaction, and its captured setting is restored and verified. Unknown COMMIT,
+rollback or restoration state retires that connection; SQL-tab sessions are
+independent. See the [SQLite generalized ALTER TABLE procedure](https://www.sqlite.org/lang_altertable.html#otheralter).
+
+A failed or cancelled atomic reconstruction rolls back its executed statements;
+later statements remain not started. Historical partial/unknown outcomes are
+retained and never implicitly replayed. An older helper without the dedicated
+reconstruction capability cannot receive a silently downgraded intent. Portable
+drafts retain backfill text, exact order and reconstruction intent in writer
+version 5 (readers 1–5), while saved evidence uses writer version 4 (readers 1–4).
+Restoring either artifact remains disconnected and grants no execution authority.
+
+**Validate Data** is a separate, explicitly confirmed read operation against
+the exact preview ID and digest. Its displayed SQL, costs and limitations are
+reviewed before scanning stored values. Checks use a read-only snapshot, are
+cancellable and retain only exact counts, without row samples. Checks may read
+the whole table and incur server CPU, I/O or lock waits. Arbitrary USING, custom
+conversion routines and unsupported conversion semantics remain visibly
+unavailable; they are never evaluated to guess safety. A passing historical
+check does not prove future values, authorize Apply or guarantee DDL success.
+Changing the draft requires a new Preview and fresh validation evidence.
+Destructive authoring and validation require the helper capability advertised
+for that engine; an older helper does not receive a silently downgraded intent.
+The explicit Apply confirmation shows the plan ID, digest, SQL and consequences;
+cancelling it sends no DDL. Saved structure evidence uses writer version 4, reads
+versions 1–4, and retains historical consequences and validation reports
+offline without a runtime session or execution grant.
+
+An acknowledged DROP TABLE retains its review and execution history without
+trying to reload the removed table. An unknown acknowledgement remains unknown;
+explicit reconciliation can observe whether the original target is present or
+absent, but never promotes observation into proof of execution or replays DROP.
+
+Apply uses a dedicated session and bounded lock waits. PostgreSQL/MySQL statements
+are independent execution units, and MySQL DDL can implicitly commit. SQLite
+uses an atomic transaction for its plan and retains known rollback evidence.
+Stop and Discard do not undo acknowledged changes. A later independent-step
 failure retains earlier applied steps and leaves later steps unstarted. Lost
 acknowledgements stay unknown even when a subsequent read finds matching schema;
-DBeer never retries them automatically. Reconcile explicitly before a new plan.
+DBeer never retries them automatically. Rename reviews retain the original target
+and execution identity alongside the resulting target for explicit reconciliation.
+
+**Check Execution Status** reads retained acknowledgements from the original
+helper session. Recovered evidence must match the exact execution, reviewed
+plan and SQL step count, and preserves any already acknowledged steps. The
+lookup keeps the original session binding. An unavailable helper or missing
+report leaves the outcome unresolved; matching schema alone cannot confirm an
+uncertain execution.
+
+**Reconcile** explicitly loads current structure before another preview. If the
+original database connection is unusable, it waits for acknowledged session
+closure or confirmed helper exit, then opens a fresh dedicated connection.
+Execution reports and reviewed intent stay available through closure,
+connection and loading failures. A successful load keeps those reports in
+Execution History while the next draft receives a new baseline and preview.
 
 Reviewed drafts, SQL and execution/observation reports remain in memory for the
 workspace session, including after reconciliation or reopening a table. Closing
@@ -353,6 +1317,29 @@ loaded data and completion metadata stale without replaying queries or discardin
 staged row edits.
 
 ## Table filters, sorting and saved views
+
+Right-click a loaded table cell and choose **Add Filter Condition** to show only
+that value, hide it, include the selected values in that column, or match SQL
+NULL/non-NULL values. These actions add to the current filter draft. Use
+**Apply View** to read matching data. Hiding a non-NULL value keeps NULL rows;
+selected values keep SQL NULL separate from empty strings and the text `NULL`.
+Existing AND/OR groups retain their meaning. Unavailable actions explain type,
+engine or filter-size restrictions in their tooltips.
+
+SQLite cell filters retain the loaded storage class and bytes for bound
+operands. The filter editor labels these operands and offers **Edit as Text**
+for an explicit text operand instead. Saved views and restored table documents
+retain typed operands and require a compatible connected helper before Apply.
+SQLite uses its normal comparison and column-affinity rules. Incoming-FK
+navigation uses a separate, visible relationship restriction so matching child
+rows follow the referenced parent's affinity and collation. Ordinary child-column
+conditions remain additional filters. **Remove Relationship Restriction** stages
+its removal in a loaded view; use **Apply View** to read the resulting rows.
+A restored or failed view also shows the saved parent/key restriction and offers
+removal without connecting or reading; **Load Data** remains a separate action.
+Changing the selected profile preserves the restriction. An incompatible engine
+or helper remains blocked until it supports the restriction or you remove it
+explicitly.
 
 Open **Filter** above a loaded table to prepare conditions and sorting
 without reading the database. **Apply** starts one read from the first page;
@@ -372,8 +1359,10 @@ and exact table, view or collection. Select a view to fill the draft, then Apply
 explicitly. Save New, Update Selected, Rename and Delete manage local entries;
 missing fields remain visible for correction. Views are private local data under
 `~/Library/Application Support/DBeer/TableViews/`, with no profile transfer or
-cross-connection copying. Applied settings survive workspace restoration in
-format v11; unapplied drafts last until the tab closes and are not restored.
+cross-connection copying. Applied settings, including relationship restrictions,
+survive workspace restoration in format v13; saved-view libraries use format v2.
+Older application versions reject these formats instead of silently losing a
+restriction. Unapplied drafts last until the tab closes and are not restored.
 Restoration never connects or reads data. Rows retained after a failed changed
 view are identified as belonging to the previous read.
 
@@ -384,7 +1373,9 @@ Source Row** to load its complete row in a new, independent table tab. The helpe
 verifies the table and column origins using server metadata and requires every
 primary-key column, including composite and binary keys. Display aliases never
 identify a source table or column. A projection containing the complete key can
-open its source row even when it omits other columns.
+open its source row even when it omits other columns. Server support and current
+source metadata determine availability. Editing also respects the connection's
+readonly policy. Incomplete source metadata keeps the affected action unavailable.
 
 A direct SELECT containing every table column exactly once can edit supported
 cells through the existing **Preview SQL**, **Apply**, and **Discard** controls.
@@ -714,19 +1705,28 @@ filters, page or pending changes. **Open in New Tab**, available in the catalog
 and a table tab's context menu, opens a separate view with its own session and
 clean browsing settings. Opening one view does not copy another view's edits.
 
-Select one loaded row and use **Related Rows** to follow a PostgreSQL or MySQL
-foreign key in the current view or a new tab. Composite keys use every mapped
-column in constraint order. Exact numeric text, empty strings and binary values
-retain their transport representation. A NULL or unresolved DEFAULT cannot
-identify a related row. Incomplete metadata and unavailable or denied targets
-show an explicit message.
+Select one loaded row and use **Related Rows** to follow a declared PostgreSQL,
+MySQL or SQLite foreign key in the current view or a new tab. **Find Incoming
+Relations…** explicitly discovers child tables referencing the current table.
+Select a stored parent row, then choose **Open Child Rows in New Tab** or **Open
+in This Tab** in the incoming-relations list. Discovery shows source progress,
+Stop and incomplete-metadata reports; its rows use server-resolved table names
+and complete constraint mappings.
 
-**Back** and **Forward** restore a view's table, page, filters and sorting.
+Composite keys use every mapped column in constraint order. Exact numeric text,
+empty strings and binary values retain their transport representation; SQLite
+retains the parent's storage values and comparison rules through a visible
+[relationship restriction](#table-filters-sorting-and-saved-views). A NULL or
+unresolved DEFAULT cannot identify a related row. Incomplete metadata and
+unavailable, changed or denied targets show an explicit message.
+
+**Back** and **Forward** restore a view's table, page, filters, relationship
+restriction and sorting.
 Navigation in the current view with pending edits offers the existing
 Apply/Discard/Cancel review; Apply still previews and confirms the generated
 changes. Opening related rows in a new tab uses confirmed source values and
-preserves unrelated pending edits; changed key values require Apply or Discard
-first. A failed relationship load preserves the source view. Other table views
+preserves unrelated pending edits; changed key bytes require Apply or Discard
+first, including visually identical Unicode text with a different representation. A failed relationship load preserves the source view. Other table views
 keep their own context and drafts. Autosave keeps the last confirmed location
 while a transition loads and excludes temporary related tabs until they load
 successfully. Navigation history stays in memory; workspace restoration saves the
@@ -828,13 +1828,70 @@ Captures are transient and are not saved result snapshots. Comparison performs
 no database writes. PostgreSQL/MySQL captures can produce an explicitly requested
 synchronization SQL plan as described below.
 
+## Schema bundles for Git
+
+Choose **Export Schema Bundle…** in a PostgreSQL, MySQL or SQLite connection's
+menu, enter the exact schemas and explicitly start **Capture Schema**. Capture
+uses a separate read-only connection with a deadline and Stop. Opening the sheet
+or restoring a workspace does not connect.
+
+Export into a new directory name. The bundle contains stable SQL files, a typed
+metadata snapshot and a manifest with dependencies, SHA-256 checksums and every
+included, omitted or incomplete object. Unsupported or incomplete definitions
+contain only a comment; review the reasons before using the files. Selected
+schema/database names and exact identifiers are retained, while clocks,
+connection provenance, statistics and changing sequence/AUTO_INCREMENT counters
+are excluded. PostgreSQL/MySQL views, routines, triggers, privileges and stored
+rows are outside this scope. SQLite retains table/index/trigger SQL together
+when its dependencies can be proved by preparation without executing programs.
+References to excluded views, unavailable functions and ambiguous trigger/view
+names remain explicit omissions or incomplete coverage.
+
+DBeer verifies every file in the background, with Stop available during final
+checks, and publishes the new directory atomically without replacing existing
+files or directories. Cancellation before confirmation removes only owned
+uncommitted files; a completed, acknowledged export remains saved. Captures stay
+bound to the original profile and close after accepted matching-profile Disconnect or workspace
+shutdown. Bundle files are source artifacts; they are not automatically applied.
+See [the v1 format](protocol/fixtures/schema-bundle-v1.md) for limits and coverage.
+
 ## Schema comparison
 
-Use **Connections → Compare Schema Structure…**, choose explicit source and
-target profiles with the same engine, and map their schema names. Opening or
-configuring the comparison never connects. **Compare** creates two independent
-read-only sessions, including when the same profile is selected twice; SQL tabs
-and their transactions remain independent. **Stop** cancels both captures.
+Use **Connections → Compare Schema Structure…**, choose each side as a
+**Connection** or **Schema Bundle**, and map schema names within the same engine.
+Opening or configuring the comparison never connects. **Compare** opens one
+independent read-only session for each selected live side, including when the
+same profile is selected twice. SQL tabs and their transactions remain independent.
+**Stop** cancels the captures. Two bundle sides require no database connection or
+credentials.
+
+For a PostgreSQL/MySQL/SQLite bundle folder, **Inspect Bundle…** validates the
+manifest, checksums, file membership and SQL against the typed capture. Inspection
+is an explicit files-only operation with Stop. Every comparison rechecks the exact
+inspected manifest and current-content identities; editing or replacing files
+requires another inspection. Hashes identify bytes and do not certify a trusted
+producer. Symlinks, unexpected files, malformed JSON/Unicode and unsupported SQL
+are rejected; Git metadata and README files may accompany a bundle.
+
+Choose **Import Modified SQL… → Choose Bundle with Supported SQL Edits…** to
+admit supported changes to object SQL files, including added or removed files.
+Keep the original manifest and capture unchanged. PostgreSQL/MySQL support a
+bounded DDL subset: ordinary tables, supported explicit column types and scalar
+NULL/string/exact-number defaults, simple keys/indexes and PostgreSQL enum,
+sequence and column-comment definitions. Unsupported edited expressions or table
+options reject the import. Unchanged definitions that cannot be independently
+proved remain visible for manual review; unknown facts never establish equality.
+SQLite reconstructs admitted table/index/trigger definitions in a restricted,
+empty in-memory database, with no attachments, extension loading or data import.
+Imported SQL is never executed on a live database.
+
+Historical sources show their original manifest and current-content digests,
+edited-file count and manual-review coverage. Portable bundles have no captured
+server version, database identity or capture clock; reports retain that absence
+instead of presenting them as current server observations. A SQL plan can be
+reviewed and saved for an offline target, but opening it in a live SQL editor
+requires a fresh comparison against the explicit live target. Generating or
+saving a plan never applies its SQL.
 
 Table, column, constraint, index and type name overrides declare correspondence.
 Explicit pairs consume their endpoints before remaining exact-name matching;
@@ -868,6 +1925,81 @@ prevent full equality. Unknown metadata on both sides is never equality. Large
 captures fail explicitly at bounded node/member/scalar/storage limits. Only a
 complete comparison can say **Selected table structure matches**. SQL planning is
 a separate explicit action; comparison never applies migration SQL.
+
+## Physical table operations (unreleased)
+
+Open **Partitions, Storage & Online DDL…** from a table's catalog menu.
+Physical operations use a dedicated idle connection and a fresh review of the
+selected table. Inspection and Preview read bounded catalogs only. They never
+scan table data, evaluate expressions, run user functions, or start background
+maintenance. Saved drafts contain typed intent; reopening a draft stays
+disconnected until you explicitly connect and inspect it. Catalog evidence,
+plan digests, execution grants, passwords and connection settings are not part
+of portable physical drafts. Save portable typed intent as `.dbeerphysical` and
+historical exact reviews/execution reports as `.dbeerphysicalreport`. Opening
+either file stays disconnected and supplies no connection, execution grant,
+status access or replay authority; future work requires explicit Inspect/Preview.
+
+PostgreSQL 14–18 supports reviewed RANGE, LIST and HASH partition creation and
+attachment, ordinary or concurrent detach, explicit finalization of an observed
+interrupted detach, and explicit partition DROP/TRUNCATE. New partitions use
+native parent inheritance. ATTACH can scan the candidate and default partition
+and create or attach inherited indexes or triggers. Ordinary operations use a
+transaction and bounded, ordered exclusive locks. Concurrent detach runs outside
+a user transaction, uses PostgreSQL's two internal transactions, and is unavailable
+when a default partition exists. Exact generated bound-CHECK proof additionally
+requires a root partitioned parent with direct built-in-type key columns; ordinary
+reviewed detach remains available for richer partition keys. Cancellation can
+leave `inhdetachpending`; only
+a fresh explicit FINALIZE review can complete it. DROP uses RESTRICT and deletes
+the partition and all its rows. TRUNCATE uses RESTRICT without restarting sequences.
+
+Concurrent PostgreSQL index creation/removal uses the existing typed index
+editor on ordinary tables or leaf partitions, outside a user transaction. A
+failed or cancelled CREATE can leave an INVALID index which can still impose
+write or uniqueness overhead. Validity, readiness and liveness are observations,
+separate from execution acknowledgement. The application never drops, replaces,
+retries or cleans up such an index automatically. Constraint-owned, inherited,
+replica-identity and clustered indexes require their own prerequisite changes.
+
+Oracle MySQL 8.0.30+ in the 8.0 series and 8.4 LTS supports explicit initial
+RANGE/LIST/HASH/KEY partitioning and removal, RANGE/LIST ADD/DROP/REORGANIZE,
+HASH/KEY ADD/COALESCE, partition TRUNCATE and validated EXCHANGE with an ordinary
+InnoDB table. COLUMNS bounds retain exact text, empty strings, SQL NULL and
+integer strings. Subpartitioned tables require a separate subpartition-aware
+migration so subordinate bounds and properties are not omitted. DROP/TRUNCATE
+permanently delete selected rows. EXCHANGE swaps row ownership and always uses
+WITH VALIDATION. Partition key, unique key, row-bound and engine restrictions are
+enforced by MySQL during Apply; catalog-only Preview cannot prove data acceptance.
+
+Every MySQL operation carries explicit ALGORITHM and LOCK choices. Unsupported
+combinations fail without server fallback. COPY requires SHARED or EXCLUSIVE;
+REORGANIZE/COALESCE use INPLACE with SHARED or EXCLUSIVE. LOCK=NONE still needs
+brief metadata locks. DDL implicitly commits and can rebuild or redistribute the
+entire table. Complete native column definitions are retained for reordering,
+including generated columns on the explicit COPY path. COPY or engine conversion
+on an AUTO_INCREMENT table requires NO_AUTO_VALUE_ON_ZERO already in the session;
+the helper never changes SQL mode or replaces stored zeros implicitly.
+
+Storage conversion explicitly selects active InnoDB or MyISAM on an ordinary
+nonpartitioned table with compatible retained properties. Foreign-key repairs
+must be reviewed first. MyISAM loses transactions, foreign-key enforcement,
+MVCC and InnoDB crash recovery and uses table locks. Unrecognized engine options,
+engine-specific row formats and unproven physical index properties require an
+explicit property migration; no column declaration, default, comment or index
+option is silently discarded. Strict SQL mode and NO_ENGINE_SUBSTITUTION are
+prerequisites. MariaDB, Percona and unproven MySQL version series are unavailable.
+
+Apply always requires confirmation of the exact current SQL and its loss,
+locking and dependency consequences, including in development. Retained progress
+reports metadata rechecking, running and acknowledged steps with elapsed time;
+it does not invent a server percentage. Stop uses the running operation's own
+cancellation handle. Acknowledged changes survive later Stop or observation
+failure; lost acknowledgement remains unknown even when a later catalog snapshot
+resembles the intended result. Explicit reconciliation reads current metadata and
+keeps that distinction. A preservation mismatch retains the report and requires
+reconciliation. There is no automatic reconnect, replay, cleanup, CASCADE,
+constraint disabling, or claim that several physical operations are atomic.
 
 ## Synchronization SQL plans
 
@@ -976,6 +2108,22 @@ Generated columns, missing keys and permissions retain their existing limits.
 Cassandra conditional grid editing retains its scalar, single-partition limits;
 complex values, counters and durations remain available through explicit CQL.
 
+## Find in loaded results (unreleased)
+
+Focus a table, SQL-result or snapshot grid and press **⌘F**. Search is
+case-insensitive and covers **All columns** or the columns selected when choosing
+**Selected columns**. The arrows and Return move between matching cells;
+**⌘G** and **⇧⌘G** navigate while the grid has focus. **Matches only** temporarily
+shows matching loaded rows. The search bar reports the number of loaded rows
+searched and highlights matching cells. Search runs locally over the displayed
+values and sends no SQL.
+
+Closing search or clearing its filter restores the previous selection if another
+cell or row has not been chosen. Replacing the result retires that selection
+bookmark. Filtered cells retain their original row numbers and editing, copying
+and inspection target their source rows. Pending changes keep the normal
+Preview/Apply workflow.
+
 ## Value inspector
 
 SQL results and table grids include a resizable **Value Inspector** beside the
@@ -995,6 +2143,27 @@ size, depth and token limits; invalid or oversized values retain their complete
 source text. Search highlights up to 10,000 matches. Inspection never executes
 SQL, connects to a server or changes pending grid edits; use the existing cell
 editor and Preview/Apply workflow to make changes.
+
+## Captured native values (unreleased)
+
+Results retain typed evidence separately from their displayed text. Exact
+integer/decimal strings, SQL NULL, binary bytes and floating-point width/bits
+remain distinct. MongoDB BSON objects and Cassandra collections retain captured
+entry order and duplicate elements or keys. Inspection, JSON copying, exports,
+snapshots and agent results preserve these records. Opaque values retain their
+bytes and type labels without implying semantic equality. MySQL floating-point
+text remains labelled native text when original IEEE bits are unavailable;
+non-roundtrippable Cassandra scalar text retains its original opaque bytes.
+
+Editing, filtering and key navigation require a proven lossless binding to the
+target. An unsupported original value makes its affected row read only; other
+proven rows remain editable. Profiles aggregate eligible exact integers and
+decimals, while floating-point and unsupported arithmetic show their limits.
+Native representation frequencies do not imply database semantic equality.
+
+One loaded result retains up to 100,000 native nodes, depth 32 and 4 MiB of typed
+evidence, including encoding overhead. A complete **Run to File** JSON export
+applies the native budget per row and can exceed the loaded-result limit.
 
 ## Result copying
 
@@ -1068,6 +2237,13 @@ stops new history entries and keeps existing history and favorites.
 History uses versioned workspace storage, currently v11. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values.
+
+JSON result export version 2 pairs each displayed row with its captured native
+values and any SQLite storage evidence. Version 1 remains readable. **Import
+JSON…** in Result Snapshots imports a local export as disconnected snapshots,
+with unknown original SQL/execution outcome and the import time recorded.
+Imports accept files up to 64 MiB and the native budget per result stated above;
+large complete exports remain intact when they exceed local snapshot limits.
 
 ## Result snapshot storage
 
@@ -1639,12 +2815,20 @@ active clients or revoke access in **Settings → Agents**. Restarting a client
 requires fresh approval; restored documents never establish an agent grant.
 
 The tools are `dbeer_connections` (approved profile identifiers, engine, query
-language and readonly enforcement), `dbeer_catalog`, `dbeer_query` and
-`dbeer_cancel`. PostgreSQL/MySQL accept SQL, Cassandra accepts CQL, and MongoDB
+language and readonly enforcement), `dbeer_catalog`, `dbeer_query`,
+`dbeer_cancel` and the separate `dbeer_command` foundation (unreleased).
+PostgreSQL/MySQL/SQLite accept SQL, Cassandra accepts CQL, and MongoDB
 accepts the same single JSON find/aggregation request as the editor, all through
 the query tool's `sql` string argument. MongoDB writes are limited to supported
 `$out`/`$merge` aggregation stages; JavaScript, arbitrary CRUD and administrative
 commands are not exposed.
+
+`dbeer_command` accepts a command name and ordered text or canonical-Base64
+binary arguments, with the same explicit grants, cancellation and uncertain
+write handling. The existing five engines currently return an unsupported
+command reason; this contract does not add a Redis connection or command
+adapter. The query tool keeps its existing `sql` argument. Native typed replies
+use an additive matrix and preserve ordered entries and original scalar bytes.
 
 Catalog kinds `schemas`, `tables` and `columns` remain available for every engine.
 Cassandra also accepts `keyspaces`; MongoDB accepts `databases`, `collections` and

@@ -4,6 +4,7 @@ import (
 	"context"
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
+	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 
 	"fmt"
@@ -32,12 +33,23 @@ func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tablee
 	return b, nil
 }
 func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) {
+	b, err := s.readStructurePhysical(t, true)
+	if err == nil {
+		err = s.myAdvancedCapture(&b)
+	}
+	return b, err
+}
+func (s *Session) readStructurePhysical(t tableedit.Target, physical bool) (tableedit.Baseline, error) {
 	observe := t.Reconcile
 	t.Reconcile = false
-	b := tableedit.Baseline{Target: t, Engine: "mysql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary nonpartitioned InnoDB tables and one create/add-column statement are supported.", "MySQL DDL implicitly commits. Metadata rechecks are best effort and cannot close a concurrent DDL race or prove drop/recreate identity. Stop and Discard do not undo applied DDL.", "Text defaults containing backslashes/control characters and TEXT defaults are not supported."}}
+	b := tableedit.Baseline{Target: t, Engine: "mysql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary nonpartitioned InnoDB tables are supported. Appended columns are nullable; required-column backfills and physical reconstruction require a separate reviewed plan.", "MySQL DDL implicitly commits. Metadata rechecks are best effort and cannot close a concurrent DDL race or prove drop/recreate identity. Stop and Discard do not undo applied DDL.", "Text literal defaults containing backslashes/control characters and literal TEXT defaults are unsupported; expression defaults use an explicit bounded SQL expression."}}
 	if !t.Valid() || s.TransactionStatus() != "idle" {
 		return b, tableedit.ErrUnsupported
 	}
+	if err := s.requireNativeMetadataEncoding(); err != nil {
+		return b, err
+	}
+
 	meta, e := s.work.client.Execute(`SELECT VERSION(), @@version_comment, @@sql_mode, @@lower_case_table_names, @@character_set_connection, @@collation_connection, DATABASE(), CURRENT_USER(), @@server_uuid`)
 	if e != nil {
 		return b, e
@@ -68,7 +80,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	if context[4] != "utf8mb4" {
 		return b, tableedit.ErrUnsupported
 	}
-	schema, e := s.work.client.Execute(`SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=?`, t.Schema)
+	schema, e := s.work.client.Execute(`SELECT SCHEMA_NAME, DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE BINARY SCHEMA_NAME=BINARY ?`, t.Schema)
 	if e != nil {
 		return b, e
 	}
@@ -80,8 +92,37 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 		v, _ := ownedStructureString(schema, 0, i)
 		context = append(context, v)
 	}
+	if context[9] != t.Schema {
+		return b, tableedit.ErrUnsupported
+	}
+	mode, err := strconv.ParseInt(context[3], 10, 64)
+	if err != nil {
+		return b, tableedit.ErrUnsupported
+	}
+	identitySQL, err := nativeBrowseTargetSQL(mode)
+	if err != nil {
+		return b, tableedit.ErrUnsupported
+	}
+	identities, err := s.work.client.Execute(identitySQL, t.Schema, t.Table)
+	if err != nil {
+		return b, err
+	}
+	count := identities.RowNumber()
+	if count > 1 {
+		identities.Close()
+		return b, tableedit.ErrUnsupported
+	}
+	if count == 1 {
+		schema, _ := ownedStructureString(identities, 0, 0)
+		table, _ := ownedStructureString(identities, 0, 1)
+		if schema != t.Schema || table != t.Table {
+			identities.Close()
+			return b, tableedit.ErrUnsupported
+		}
+	}
+	identities.Close()
 	b.Scope = tableedit.Fingerprint(context)
-	tables, e := s.work.client.Execute(`SELECT TABLE_TYPE, ENGINE, CREATE_OPTIONS, TABLE_COLLATION, TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=?`, t.Schema, t.Table)
+	tables, e := s.work.client.Execute(`SELECT TABLE_TYPE, ENGINE, CREATE_OPTIONS, TABLE_COLLATION, TABLE_COMMENT FROM information_schema.TABLES WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ?`, t.Schema, t.Table)
 	if e != nil {
 		return b, e
 	}
@@ -93,6 +134,8 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 		charset, _ := ownedStructureString(schema, 0, 1)
 		collation, _ := ownedStructureString(schema, 0, 2)
 		b.Facts = newStructureFacts(charset, collation)
+		b.Facts.ServerVersion = major*10000 + minor*100 + patch
+		b.Facts.EngineContext = []sc.Option{{Name: "sqlMode", Value: context[2]}}
 		tableedit.Summarize(&b)
 		b.Fingerprint = tableedit.Fingerprint([]any{context, t})
 		return b, nil
@@ -109,7 +152,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	options, _ := ownedStructureString(tables, 0, 2)
 	collation, _ := ownedStructureString(tables, 0, 3)
 	comment, _ := ownedStructureString(tables, 0, 4)
-	if kind != "BASE TABLE" || engine != "InnoDB" || strings.Contains(strings.ToLower(options), "partition") {
+	if kind != "BASE TABLE" || !physical && (engine != "InnoDB" || strings.Contains(strings.ToLower(options), "partition")) || physical && engine != "InnoDB" && engine != "MyISAM" {
 		return b, tableedit.ErrUnsupported
 	}
 	ddl, e := s.work.client.Execute("SHOW CREATE TABLE " + QuoteIdentifier(t.Schema) + "." + QuoteIdentifier(t.Table))
@@ -121,10 +164,11 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 		return b, tableedit.ErrUnsupported
 	}
 	definition, _ := ownedStructureString(ddl, 0, 1)
+	b.NativeDefinition = definition
 	if len(definition) > tableedit.MaxSQLBytes {
 		return b, tableedit.ErrUnsupported
 	}
-	cols, e := s.work.client.Execute(`SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? ORDER BY ORDINAL_POSITION LIMIT 129`, t.Schema, t.Table)
+	cols, e := s.work.client.Execute(`SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE BINARY TABLE_SCHEMA=BINARY ? AND BINARY TABLE_NAME=BINARY ? ORDER BY ORDINAL_POSITION LIMIT 129`, t.Schema, t.Table)
 	if e != nil {
 		return b, e
 	}
@@ -149,6 +193,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	if e != nil {
 		return b, e
 	}
+	b.Facts.ServerVersion = major*10000 + minor*100 + patch
 	tableedit.Summarize(&b)
 	b.Fingerprint = tableedit.Fingerprint([]any{context, kind, engine, options, collation, definition, b.Columns, b.Facts})
 	return b, nil
@@ -157,6 +202,15 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 var structureNumeric = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
 
 func structureColumn(c tableedit.Column) (string, error) {
+	if !c.Type.ValidForEngine("mysql") {
+		return "", tableedit.ErrUnsupported
+	}
+	return sharedColumnDefinitionSQL(c)
+}
+func sharedColumnDefinitionSQL(c tableedit.Column) (string, error) {
+	if c.Type.Reference != nil {
+		return "", tableedit.ErrUnsupported
+	}
 	if !c.Valid() {
 		return "", tableedit.ErrInvalid
 	}
@@ -176,6 +230,13 @@ func structureColumn(c tableedit.Column) (string, error) {
 		return "", tableedit.ErrUnsupported
 	}
 	out := QuoteIdentifier(c.Name) + " " + typ
+	if c.Generated != nil && c.Generated.Storage != "none" {
+		expr, err := tableedit.ExpressionSlot("mysql", c.Generated.Expression)
+		if err != nil {
+			return "", err
+		}
+		out += " GENERATED ALWAYS AS " + expr + " " + strings.ToUpper(c.Generated.Storage)
+	}
 	if !c.Nullable {
 		out += " NOT NULL"
 	}
@@ -201,8 +262,20 @@ func structureColumn(c tableedit.Column) (string, error) {
 			return "", tableedit.ErrInvalid
 		}
 		out += " DEFAULT " + *c.Default.Value
+	case "expression":
+		expr, err := tableedit.ExpressionSlot("mysql", *c.Default.Value)
+		if err != nil {
+			return "", err
+		}
+		out += " DEFAULT " + expr
 	default:
 		return "", tableedit.ErrInvalid
+	}
+	if c.Identity != nil && c.Identity.Kind != "none" {
+		if c.Identity.Kind != "autoIncrement" {
+			return "", tableedit.ErrUnsupported
+		}
+		out += " AUTO_INCREMENT"
 	}
 	return out, nil
 }
@@ -242,9 +315,10 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 func (s *Session) StructureApply(ctx context.Context, b tableedit.Baseline, sql []string) tableedit.Execution {
 	return s.applyStructureStep(ctx, b, sql, nil)
 }
-func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline) tableedit.Execution {
+func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline, conditions ...tableedit.Condition) tableedit.Execution {
 	dispatched := false
 	applied := false
+	preservationMessage := ""
 	response := s.executeWith(ctx, protocol.Command{Type: "structure.apply"}, func(_ *collector, _ *wire.Result) error {
 		if len(sql) != 1 {
 			return &adapter.ConnectionError{Category: "validation", Message: tableedit.ErrInvalid.Error()}
@@ -270,6 +344,16 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 		if fresh.Fingerprint != b.Fingerprint {
 			return &adapter.ConnectionError{Category: "conflict", Message: tableedit.ErrStale.Error()}
 		}
+		var dataProof *myAdvancedDataProof
+		if b.Advanced != nil {
+			if len(conditions) != 1 {
+				return &adapter.ConnectionError{Category: "validation", Message: "The advanced preservation condition is missing."}
+			}
+			dataProof, e = s.myAdvancedDataCapture(b, conditions[0])
+			if e != nil {
+				return e
+			}
+		}
 		if ctx.Err() != nil {
 			return &adapter.ConnectionError{Category: "cancelled", Message: "Cancelled before DDL dispatch."}
 		}
@@ -291,10 +375,13 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 			return execErr
 		}
 		applied = true
+		if err := s.myAdvancedDataVerify(dataProof, b.Target); err != nil {
+			preservationMessage = err.Error()
+		}
 		return nil
 	})
 	if applied {
-		return tableedit.Execution{State: "applied"}
+		return tableedit.Execution{State: "applied", Message: preservationMessage}
 	}
 	if !dispatched {
 		return tableedit.Execution{State: "notStarted", Message: "No DDL was sent. Reconcile the table and prepare a new preview."}

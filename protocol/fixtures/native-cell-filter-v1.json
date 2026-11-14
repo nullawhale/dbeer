@@ -1,0 +1,956 @@
+{
+  "capability": "nativeCellFilterV1",
+  "valid": [
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": ""
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "AP8="
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "é"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "é"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "9007199254740993.000000000000000001"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "numeric(40,20)",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "binary",
+          "value": "AP8="
+        },
+        "sourceEngine": "mysql",
+        "sourceType": "varbinary(2)",
+        "sqliteStorage": "blob"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "binary",
+          "value": ""
+        },
+        "sourceEngine": "mysql",
+        "sourceType": "blob",
+        "sqliteStorage": "blob"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteInteger",
+          "value": "9223372036854775807"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteInteger",
+          "value": "-9223372036854775808"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteReal",
+          "value": "3fb999999999999a"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "dynamic",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteReal",
+          "value": "7ff0000000000000"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "dynamic",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteReal",
+          "value": "fff0000000000000"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "dynamic",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteText",
+          "value": "YQBi"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteText",
+          "value": "/w=="
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteText",
+          "value": ""
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "ne",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteBlob",
+          "value": ""
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "blob"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteBlob",
+          "value": "AP+A"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "a\u0000b"
+        },
+        "sourceEngine": "mysql",
+        "sourceType": "varchar(10)",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": ""
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "varchar(20)",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "0.12345678901234567890123456789012345678"
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "decimal(65,38)",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "binary",
+          "value": "AP8="
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "varbinary(2)",
+        "sqliteStorage": "preserve"
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "mongodb",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "bad\u0000type",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "affinity"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": ""
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": null,
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": null,
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": null,
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": null
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "null",
+          "value": ""
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "default",
+          "value": ""
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "unknown",
+          "value": ""
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "binary",
+          "value": "?"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteInteger",
+          "value": "01"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteInteger",
+          "value": "9223372036854775808"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteReal",
+          "value": "7ff8000000000000"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteReal",
+          "value": "FFF0000000000000"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteReal",
+          "value": "1.5"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteBlob",
+          "value": "?"
+        },
+        "sourceEngine": "sqlite",
+        "sourceType": "ANY",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteInteger",
+          "value": "1"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteReal",
+          "value": "3ff0000000000000"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteText",
+          "value": "eA=="
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteBlob",
+          "value": "eA=="
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "isNull",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "isNotNull",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "contains",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "lt",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "gte",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      },
+      "value": null
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      },
+      "value": "x"
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      },
+      "sqliteValue": null
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      },
+      "sqliteValue": {
+        "type": "integer",
+        "value": "1"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": null
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text",
+        "extra": true
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "NULL",
+          "extra": true
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": null,
+          "value": "NULL"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text"
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": null
+        },
+        "sourceEngine": "postgresql",
+        "sourceType": "text",
+        "sqliteStorage": "text"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "binary",
+          "value": "AA==\n"
+        },
+        "sourceEngine": "mysql",
+        "sourceType": "blob",
+        "sqliteStorage": "blob"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "binary",
+          "value": "AB=="
+        },
+        "sourceEngine": "mysql",
+        "sourceType": "blob",
+        "sqliteStorage": "blob"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteInteger",
+          "value": "1"
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "int",
+        "sqliteStorage": "preserve"
+      }
+    }
+  ],
+  "invalidJSON": [
+    "{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"NULL\"},\"sourceEngine\":\"postgresql\",\"sourceEngine\":\"mysql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"kind\":\"binary\",\"value\":\"NULL\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"NULL\",\"value\":\"\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":null,\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"NULL\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"NULL\"},\"sourceEngine\":\"postgresql\",\"SourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"\\ud800\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"NULL\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"\\udc00\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"\\ud800\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"\\udc00\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}",
+    "{\"column\":\"name\\ud800tail\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}"
+  ],
+  "invalidCatalogJSON": [
+    "{\"kind\":\"browse\",\"schema\":\"\\ud800\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"\\udc00\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"\\ud800\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}],\"sort\":[{\"column\":\"\\ud800\",\"direction\":\"asc\"}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"prefix\\udc00tail\",\"objectKind\":\"table\",\"filterExpression\":{\"kind\":\"condition\",\"condition\":{\"column\":\"v\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}}}"
+  ],
+  "validCatalogJSON": [
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"é\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"é\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"�\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"\\\\ud800\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}",
+    "{\"kind\":\"browse\",\"schema\":\"main\",\"object\":\"typed\",\"objectKind\":\"table\",\"filters\":[{\"column\":\"\\ud83d\\ude00\",\"operator\":\"eq\",\"nativeValue\":{\"cell\":{\"kind\":\"text\",\"value\":\"fixture\"},\"sourceEngine\":\"postgresql\",\"sourceType\":\"text\",\"sqliteStorage\":\"text\"}}]}"
+  ],
+  "aggregateBudgets": [
+    {
+      "representation": "filters",
+      "copies": 3,
+      "payloadBytes": 1048576,
+      "escaped": false,
+      "valid": true
+    },
+    {
+      "representation": "filters",
+      "copies": 4,
+      "payloadBytes": 1048576,
+      "escaped": false,
+      "valid": false
+    },
+    {
+      "representation": "filterExpression",
+      "copies": 3,
+      "payloadBytes": 1048576,
+      "escaped": false,
+      "valid": true
+    },
+    {
+      "representation": "filterExpression",
+      "copies": 4,
+      "payloadBytes": 1048576,
+      "escaped": false,
+      "valid": false
+    },
+    {
+      "representation": "filters",
+      "copies": 1,
+      "payloadBytes": 1048576,
+      "escaped": true,
+      "valid": false
+    }
+  ]
+}

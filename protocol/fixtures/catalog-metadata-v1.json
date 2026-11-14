@@ -1,0 +1,158 @@
+{
+  "valid": [
+    {
+      "type": "catalog.page",
+      "requestId": "r1",
+      "sessionId": "s1",
+      "queryId": "q1",
+      "catalogMetadata": {
+        "selectors": [
+          {
+            "kind": "foreignKeys",
+            "schema": "public",
+            "object": "orders",
+            "objectKind": "table"
+          }
+        ],
+        "pageSize": 200
+      }
+    },
+    {
+      "type": "catalog.batch",
+      "requestId": "r2",
+      "sessionId": "s1",
+      "queryId": "q2",
+      "catalogMetadata": {
+        "selectors": [
+          {
+            "kind": "schemas"
+          },
+          {
+            "kind": "columns",
+            "schema": "public",
+            "object": "orders",
+            "objectKind": "table"
+          }
+        ]
+      }
+    },
+    {
+      "type": "catalog.close",
+      "requestId": "r3",
+      "sessionId": "s1",
+      "queryId": "q3",
+      "catalogMetadata": {
+        "captureIds": [
+          "capture"
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[]}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"foreignKeys\",\"schema\":\"public\",\"object\":\"orders\",\"objectKind\":\"table\"}],\"pageSize\":1001}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"foreignKeys\",\"schema\":\"public\",\"object\":\"orders\",\"objectKind\":\"table\",\"page\":0}]}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"foreignKeys\",\"schema\":\"public\",\"object\":\"orders\",\"objectKind\":\"table\",\"unknown\":\"value\"}]}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"browse\",\"schema\":\"public\",\"object\":\"orders\",\"objectKind\":\"table\"}]}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"foreignKeys\",\"schema\":\"public\",\"object\":\"orders\",\"objectKind\":\"table\"}],\"cursor\":\"bad\\n\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"foreignKeys\",\"schema\":\"public\",\"object\":\"orders\",\"objectKind\":\"table\"}],\"unknown\":true}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"schemas\",\"schema\":null}]}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"objects\",\"schema\":\"public\",\"objectKind\":\"table\",\"page\":0}]}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"schemas\",\"cursor\":\"\"}]}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"foreignKeys\",\"schema\":\"public\",\"object\":\"orders\",\"identity\":\"\"}]}}",
+    "{\"type\":\"catalog.batch\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"schemas\"},{\"kind\":\"schemas\",\"schema\":\"\"}]}}"
+  ],
+  "responses": [
+    {
+      "type": "catalog.page.result",
+      "requestId": "r1",
+      "sessionId": "s1",
+      "queryId": "q1",
+      "connected": true,
+      "transactionStatus": "idle",
+      "catalogMetadata": {
+        "collections": [
+          {
+            "selector": {
+              "kind": "foreignKeys",
+              "schema": "public",
+              "object": "orders",
+              "objectKind": "table"
+            },
+            "captureId": "capture",
+            "observedAt": "2026-11-05T12:00:00Z",
+            "consistency": "repeatableRead",
+            "state": "complete",
+            "columns": [
+              {
+                "index": 0,
+                "name": "name",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "targetSchema",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 2,
+                "name": "targetTable",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 3,
+                "name": "sourceColumn",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 4,
+                "name": "targetColumn",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 5,
+                "name": "position",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              }
+            ],
+            "rows": [
+              [
+                "orders_customer_fkey",
+                "public",
+                "customers",
+                "customer_id",
+                "id",
+                "1"
+              ]
+            ],
+            "nextCursor": "continuation"
+          }
+        ]
+      }
+    },
+    {
+      "type": "catalog.close.result",
+      "requestId": "r3",
+      "sessionId": "s1",
+      "queryId": "q3",
+      "connected": true,
+      "transactionStatus": "idle",
+      "catalogMetadata": {
+        "collections": [],
+        "closed": true
+      }
+    }
+  ]
+}

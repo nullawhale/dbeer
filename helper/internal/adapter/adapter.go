@@ -26,6 +26,19 @@ type ResultSink interface {
 	End(resultIndex int, summary protocol.ResultSet) error
 }
 
+// NativeResultSink receives the same captured row immediately before Row.
+// Existing display-only sinks remain valid; durable and streaming sinks retain it.
+type NativeResultSink interface {
+	NativeRow(resultIndex int, values []protocol.NativeValue) error
+}
+
+func DeliverNativeRow(sink ResultSink, index int, values []protocol.NativeValue) error {
+	if typed, ok := sink.(NativeResultSink); ok {
+		return typed.NativeRow(index, values)
+	}
+	return nil
+}
+
 type StreamingSession interface {
 	ExecuteWithSink(context.Context, protocol.Command, ResultSink) protocol.Response
 }
@@ -61,16 +74,18 @@ type ConnectionError struct {
 func (err *ConnectionError) Error() string { return err.Message }
 
 func Capabilities(engine string) []string {
-	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.BrowseFilterTreeCapability}
+	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.NativeResultValuesCapability, protocol.BrowseFilterTreeCapability}
 	switch engine {
+	case "mariadb":
+		return []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.NativeResultValuesCapability, "transactions", "serverReadOnly", protocol.QueryParametersCapability, protocol.SessionMonitorCapability, "gridEditing", protocol.TableImportCapability, protocol.CatalogColumnTypesCapability, "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureIndexAuthoringCapability, protocol.BrowseFilterTreeCapability, protocol.NativeCellFilterCapability}
 	case "sqlite":
-		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.QueryParametersCapability, protocol.TableImportCapability)
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.StructureMigrationsCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SQLiteCellFilterCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.SQLiteRelationshipBrowseCapability, protocol.IncomingRelationsCapability)
 	case "mongodb":
 		return append(common, "localReadOnly", "cursorPagination", "documentModelV1", "canonicalExtendedJSONV1")
 	case "cassandra":
 		return append(common, "localReadOnly", "cursorPagination", "gridEditing")
 	case "", "postgresql", "mysql":
-		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SessionMonitorCapability)
+		return append(common, "transactions", "gridEditing", "serverReadOnly", "resultSourceV1", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureIndexAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.StructureMigrationsCapability, protocol.StructurePhysicalCapability, protocol.StructureAdvancedKindsCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SessionMonitorCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.IncomingRelationsCapability)
 	default:
 		return nil
 	}

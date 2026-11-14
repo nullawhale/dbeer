@@ -165,8 +165,18 @@ struct AppCommandInvocation {
         gridHandlers[command] = handler
     }
 
+    func title(for command: AppCommandID, engine: DatabaseEngine? = nil) -> String {
+        if [.explain, .explainAnalyze].contains(command) {
+            let engine = engine ?? workspace.selectedDocument.flatMap { document in
+                workspace.library.savedConnections.first { $0.id == document.profileID }?.engine
+            } ?? .postgresql
+            return (command == .explainAnalyze ? ExplainMode.analyze : .plan).commandTitle(engine: engine)
+        }
+        return shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
+    }
+
     func help(for command: AppCommandID) -> String {
-        let title = shortcuts.descriptors.first { $0.id == command }?.title ?? command.rawValue
+        let title = title(for: command)
         return title + (shortcuts.shortcut(for: command).map { " (\($0.displayString))" } ?? "")
     }
 
@@ -222,7 +232,7 @@ struct AppCommandInvocation {
             }
             return gridHandlers[command] != nil
         }
-        if [.runCurrent, .runToJSON, .runToCSV, .explain, .explainAnalyze].contains(command),
+        if [.runCurrent, .runToJSON, .runToCSV].contains(command),
            workspace.editorState.hasMultipleSelections(for: document.id) { return false }
         if command == .stop { return document.isRunning || document.grid?.isApplying == true || document.erDiagramModel?.isLoading == true }
         guard !context.isComposingText else { return false }
@@ -234,7 +244,7 @@ struct AppCommandInvocation {
         if [.explain, .explainAnalyze].contains(command) {
             guard document.isSQLDocument, !document.queryResultSelectionLocked,
                   let profile = workspace.library.savedConnections.first(where: { $0.id == document.profileID }),
-                  [.postgresql, .mysql, .sqlite].contains(profile.engine) else { return false }
+                  profile.engine.supportsExplain(command == .explainAnalyze ? .analyze : .plan) else { return false }
         }
         if descriptor.scope == .sqlDocument, document.table != nil { return false }
         if document.table != nil { return command == .runCurrent }
@@ -330,6 +340,7 @@ struct AppCommandInvocation {
             profile: capturedProfile, explainProfileBinding: capturedExplainBinding,
             fragment: document.table == nil && command != .stop ? workspace.executionFragment(document, script: command == .runScript) : nil,
             parentDocumentID: tab.id, investigationID: owner.investigationID, blockID: owner.blockID, paneID: pane)
+        let capturedExplainSelections = workspace.editorState.selections(for: document.id, fallback: document.selection)
         let handler = gridHandlers[command]
         return Task { [workspace, invocationHandler] in
             if [.explain, .explainAnalyze].contains(command),
@@ -349,9 +360,9 @@ struct AppCommandInvocation {
                     await workspace.run(document)
                 }
                 else if let fragment = invocation.fragment { await workspace.runResolved(document, fragment: fragment) }
-            } else if [.explain, .explainAnalyze].contains(command), let fragment = invocation.fragment {
-                await workspace.explainResolved(document, fragment: fragment, mode: command == .explainAnalyze ? .analyze : .plan,
-                    profileBinding: invocation.explainProfileBinding)
+            } else if [.explain, .explainAnalyze].contains(command) {
+                workspace.beginExplainSelection(document, mode: command == .explainAnalyze ? .analyze : .plan,
+                    selections: capturedExplainSelections, profileBinding: invocation.explainProfileBinding)
             } else if command == .runScript, let fragment = invocation.fragment {
                 await workspace.runResolved(document, fragment: fragment, script: true)
             } else if command == .runToJSON || command == .runToCSV {

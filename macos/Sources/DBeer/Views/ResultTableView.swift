@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-struct ResultGridCell: Hashable {
+struct ResultGridCell: Hashable, Sendable {
     let row: Int
     let column: Int
 }
@@ -91,6 +91,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
 
     func selectPartitionRows(_ rows: IndexSet) {
         guard !rows.isEmpty, numberOfColumns > 0 else { return }
+        copyCoordinator?.userDidChangeSelection()
         copyCoordinator?.finishInlineEdit()
         window?.makeFirstResponder(self)
         // Publish the sparse group once, without scrolling to its first/last row.
@@ -111,6 +112,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
 
     private func select(_ cell: ResultGridCell, extending: Bool, wholeRow: Bool = false) {
         guard (0..<numberOfRows).contains(cell.row), (0..<numberOfColumns).contains(cell.column) else { return }
+        copyCoordinator?.userDidChangeSelection()
         let anchor = extending ? cellSelection?.anchor ?? cell : cell
         selectsWholeRows = wholeRow
         cellSelection = ResultGridSelection(
@@ -190,6 +192,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
     }
 
     private func toggleRowSelection(_ row: Int) {
+        copyCoordinator?.userDidChangeSelection()
         var rows = selectedRowIndexes
         if rows.contains(row) { rows.remove(row) } else { rows.insert(row) }
         let focusRow = rows.contains(row) ? row : (rows.last ?? row)
@@ -212,6 +215,7 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }
         WorkspacePaneContainerView.activatePane(containing: self)
+        if handleSearchKey(event) { return true }
         if commandHandler?(event) == true { return true }
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.charactersIgnoringModifiers?.lowercased() == "c" {
@@ -221,8 +225,35 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
         return super.performKeyEquivalent(with: event)
     }
 
+    private func handleSearchKey(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "f" {
+            copyCoordinator?.showSearch()
+            return true
+        }
+        if flags == .command || flags == [.command, .shift],
+           event.charactersIgnoringModifiers?.lowercased() == "g", copyCoordinator?.isSearchVisible == true {
+            copyCoordinator?.moveSearchMatch(flags.contains(.shift) ? -1 : 1)
+            return true
+        }
+        if event.keyCode == 53, flags.isEmpty, copyCoordinator?.isSearchVisible == true {
+            copyCoordinator?.closeSearch()
+            return true
+        }
+        return false
+    }
+
+    fileprivate func restoreSearchSelection(_ selection: ResultGridSelection?, rows: IndexSet, wholeRows: Bool) {
+        contextCell = nil
+        cellSelection = selection
+        selectsWholeRows = wholeRows
+        selectRowIndexes(rows, byExtendingSelection: false)
+        invalidateCellSelection()
+    }
+
     override func keyDown(with event: NSEvent) {
         WorkspacePaneContainerView.activatePane(containing: self)
+        if handleSearchKey(event) { return }
         if commandHandler?(event) == true { return }
         if [51, 117].contains(event.keyCode), copyCoordinator?.supportsEditing == true {
             copyCoordinator?.deleteSelectedRows()
@@ -300,6 +331,31 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
         let copyAs = NSMenuItem(title: "Copy as", action: nil, keyEquivalent: "")
         copyAs.submenu = formats
         menu.addItem(copyAs)
+        if copyCoordinator.onProfileColumn != nil {
+            let profile = NSMenuItem(title: "Profile Visible Column…",
+                action: #selector(ResultTableView.Coordinator.profileVisibleColumn(_:)), keyEquivalent: "")
+            profile.target = copyCoordinator
+            profile.isEnabled = copyCoordinator.profileSelectionAllowed && copyCoordinator.isCopyAllowed && contextCell != nil
+            menu.addItem(profile)
+        }
+        if copyCoordinator.onCellFilter != nil {
+            menu.addItem(.separator())
+            let filters = NSMenu(title: "Add Filter Condition")
+            filters.autoenablesItems = false
+            for (index, action) in TableCellFilterAction.allCases.enumerated() {
+                let item = NSMenuItem(title: action.title, action: #selector(ResultTableView.Coordinator.filterContextCell(_:)), keyEquivalent: "")
+                item.target = copyCoordinator
+                item.tag = index
+                let request = copyCoordinator.cellFilterRequest(action)
+                let reason = request.flatMap { copyCoordinator.cellFilterUnavailableReason?($0) }
+                item.isEnabled = request != nil && reason == nil
+                item.toolTip = reason ?? "Add a condition to the filter draft, then choose Apply View."
+                filters.addItem(item)
+            }
+            let filter = NSMenuItem(title: "Add Filter Condition", action: nil, keyEquivalent: "")
+            filter.submenu = filters
+            menu.addItem(filter)
+        }
         if copyCoordinator.onShowRowDetails != nil {
             menu.addItem(.separator())
             let details = NSMenuItem(title: "Row Details", action: #selector(ResultTableView.Coordinator.showContextRowDetails(_:)), keyEquivalent: "")
@@ -313,6 +369,12 @@ final class ResultGridTableView: NSTableView, AppGridCopyCommandResponder {
             edit.target = copyCoordinator
             edit.isEnabled = contextCell.map(copyCoordinator.canEditCell) ?? false
             menu.addItem(edit)
+            if copyCoordinator.onChooseRelatedCell != nil {
+                let related = NSMenuItem(title: "Choose Related Record…", action: #selector(ResultTableView.Coordinator.chooseRelatedContextCell(_:)), keyEquivalent: "")
+                related.target = copyCoordinator
+                related.isEnabled = contextCell.map { copyCoordinator.canEditCell($0) && copyCoordinator.relatedKeyColumns.contains($0.column) } ?? false
+                menu.addItem(related)
+            }
             if copyCoordinator.onSetCellValue != nil {
                 for (title, action, allowed) in [
                     ("Set NULL", #selector(ResultTableView.Coordinator.setContextNull(_:)), copyCoordinator.canSetNullColumns),
@@ -465,6 +527,7 @@ struct ResultTableView: NSViewRepresentable {
     let columns: [ResultColumn]
     let rows: [[String?]]
     var sqliteValues: [[SQLiteValue]]?
+    var nativeValues: [[NativeValue]]?
     var pasteboard: NSPasteboard = .general
     var copySettings: ResultCopySettings = .shared
     var editableColumns: IndexSet = []
@@ -473,16 +536,25 @@ struct ResultTableView: NSViewRepresentable {
     var canSetEmptyColumns: IndexSet = []
     var modifiedCells: Set<ResultGridCell> = []
     var deletedRows: IndexSet = []
+    var uneditableRows: IndexSet = []
     var valueKinds: [[String]]?
     var selectedRows: IndexSet?
     var dataIdentity: AnyObject?
     var partitionMarkers: [GridPartitionMarker?]?
     var onEditCell: ((ResultGridCell) -> Void)?
+    var onChooseRelatedCell: ((ResultGridCell) -> Void)?
+    var relatedKeyColumns: IndexSet = []
     var onCommitCell: ((ResultGridCell, String) -> Void)?
     var onInlineDraftChanged: ((Bool) -> Void)?
     var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
     var onSelectedRows: ((IndexSet) -> Void)?
     var onInspectValue: ((InspectedValue?) -> Void)?
+    var onProfileSelection: ((GridProfileSelection) -> Void)?
+    var onProfileColumn: ((GridProfileSelection) -> Void)?
+    var profileSelectionAllowed = true
+    var profileSelectionNotice: String?
+    var profileContext = "Loaded result"
+    var profileRequestGeneration: UUID?
     var onDeleteRows: (() -> Void)?
     var onShowRowDetails: (() -> Void)?
     var onToggleRowDetails: (() -> Void)?
@@ -490,6 +562,8 @@ struct ResultTableView: NSViewRepresentable {
     var sortAscending = true
     var sortOrders: [CatalogSort] = []
     var onSortColumn: ((Int) -> Void)?
+    var onCellFilter: ((TableCellFilterRequest) -> Void)?
+    var cellFilterUnavailableReason: ((TableCellFilterRequest) -> String?)?
     var onCoordinatorReady: ((Coordinator) -> Void)?
     var onSQLInsertCopy: ((ResultClipboardPayload, NSPasteboard) -> Void)?
     var onCopyError: ((String) -> Void)?
@@ -517,19 +591,31 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.canSetEmptyColumns = canSetEmptyColumns
         coordinator.modifiedCells = modifiedCells
         coordinator.deletedRows = deletedRows
+        coordinator.uneditableRows = uneditableRows
         coordinator.valueKinds = valueKinds
         coordinator.sqliteValues = sqliteValues
+        coordinator.nativeValues = nativeValues
         coordinator.partitionMarkers = partitionMarkers
         coordinator.onEditCell = onEditCell
+        coordinator.onChooseRelatedCell = onChooseRelatedCell
+        coordinator.relatedKeyColumns = relatedKeyColumns
         coordinator.onCommitCell = onCommitCell
         coordinator.onInlineDraftChanged = onInlineDraftChanged
         coordinator.onSetCellValue = onSetCellValue
         coordinator.onSelectedRows = onSelectedRows
         coordinator.onInspectValue = onInspectValue
+        coordinator.onProfileSelection = onProfileSelection
+        coordinator.onProfileColumn = onProfileColumn
+        coordinator.profileSelectionAllowed = profileSelectionAllowed
+        coordinator.profileSelectionNotice = profileSelectionNotice
+        coordinator.profileContext = profileContext
+        coordinator.profileRequestGeneration = profileRequestGeneration
         coordinator.onDeleteRows = onDeleteRows
         coordinator.onShowRowDetails = onShowRowDetails
         coordinator.onToggleRowDetails = onToggleRowDetails
         coordinator.onSortColumn = onSortColumn
+        coordinator.onCellFilter = onCellFilter
+        coordinator.cellFilterUnavailableReason = cellFilterUnavailableReason
         coordinator.sortColumn = sortColumn
         coordinator.sortAscending = sortAscending
         coordinator.sortOrders = sortOrders
@@ -541,15 +627,33 @@ struct ResultTableView: NSViewRepresentable {
         coordinator.update(columns: columns, rows: rows, dataIdentity: dataIdentity, in: scrollView)
         (scrollView.documentView as? ResultGridTableView)?.appCommandDocumentID = documentID
         (scrollView.documentView as? ResultGridTableView)?.commandHandler = commandHandler
-        if let selectedRows, let table = scrollView.documentView as? ResultGridTableView,
-           table.selectedRowIndexes != selectedRows { table.setRowsExternally(selectedRows) }
+        if let selectedRows { coordinator.setSourceSelection(selectedRows) }
+        coordinator.publishInspection()
         onCoordinatorReady?(coordinator)
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSSearchFieldDelegate {
         private var columns: [ResultColumn] = []
         private var rows: [[String?]] = []
+        private var originalRows: [[String?]] = []
+        private var nativePresentationIsValid = true
+        private(set) var searchResult = ResultGridSearchResult(sourceRows: [], matches: [])
+        private var matchingCells: Set<ResultGridCell> = []
+        private var findBar: ResultGridFindBar?
+        private(set) var isSearchVisible = false
+        private var searchColumnSelection: IndexSet?
+        private var activeSearchMatch: ResultGridCell?
+        private var searchQuery = ""
+        private var searchMatchingOnly = false
+        private var selectionRevision: UInt64 = 0
+        private struct SearchSelectionBookmark {
+            let rows: IndexSet
+            let anchor: ResultGridCell?
+            let focus: ResultGridCell?
+            let wholeRows: Bool
+        }
+        private var searchSelectionBookmark: SearchSelectionBookmark?
         private var columnOrdinals: [NSUserInterfaceItemIdentifier: Int] = [:]
         private let cellIdentifier = NSUserInterfaceItemIdentifier("result-cell")
         private let pasteboard: NSPasteboard
@@ -566,15 +670,37 @@ struct ResultTableView: NSViewRepresentable {
         var canSetEmptyColumns: IndexSet = []
         var modifiedCells: Set<ResultGridCell> = []
         var deletedRows: IndexSet = []
+        var uneditableRows: IndexSet = []
         var valueKinds: [[String]]?
         var sqliteValues: [[SQLiteValue]]?
+        var nativeValues: [[NativeValue]]?
         var partitionMarkers: [GridPartitionMarker?]?
         var onEditCell: ((ResultGridCell) -> Void)?
+        var onChooseRelatedCell: ((ResultGridCell) -> Void)?
+        var relatedKeyColumns: IndexSet = []
         var onCommitCell: ((ResultGridCell, String) -> Void)?
         var onInlineDraftChanged: ((Bool) -> Void)?
         var onSetCellValue: ((ResultGridCell, ChangeValue) -> Void)?
         var onSelectedRows: ((IndexSet) -> Void)?
         var onInspectValue: ((InspectedValue?) -> Void)?
+        var onProfileSelection: ((GridProfileSelection) -> Void)?
+        var onProfileColumn: ((GridProfileSelection) -> Void)?
+        var profileSelectionAllowed = true
+        var profileSelectionNotice: String?
+        var profileContext = "Loaded result"
+        var profileRequestGeneration: UUID?
+        private var profileDataRevision: UInt64 = 0
+        private struct ProfileSelectionToken: Equatable {
+            let revision: UInt64
+            let rows: [Int]
+            let columns: [Int]
+            let visibleRows: [Int]
+            let allowed: Bool
+            let context: Data
+            let notice: Data?
+            let request: UUID?
+        }
+        private var profileSelectionToken: ProfileSelectionToken?
         private var inspectionRevision: UInt64 = 0
         var onDeleteRows: (() -> Void)?
         var onShowRowDetails: (() -> Void)?
@@ -583,12 +709,17 @@ struct ResultTableView: NSViewRepresentable {
         var sortAscending = true
         var sortOrders: [CatalogSort] = []
         var onSortColumn: ((Int) -> Void)?
+        var onCellFilter: ((TableCellFilterRequest) -> Void)?
+        var cellFilterUnavailableReason: ((TableCellFilterRequest) -> String?)?
         private var previousSelection: IndexSet = []
         private var isSynchronizingSelection = false
         private var previousDataIdentity: AnyObject?
         private var renderedModifiedCells: Set<ResultGridCell> = []
         private var renderedDeletedRows: IndexSet = []
+        private var renderedUneditableRows: IndexSet = []
         private var renderedValueKinds: [[String]]?
+        private var renderedSQLiteValues: [[SQLiteValue]]?
+        private var renderedNativeValues: [[NativeValue]]?
         private var inlineEditor: NSTextField?
         private var inlineViewportSize: NSSize?
         private var editingCell: ResultGridCell?
@@ -596,7 +727,7 @@ struct ResultTableView: NSViewRepresentable {
         private var originalInlineIsSpecial = false
         private var inlineTextChanged = false
         private var inlineDraftIsDirty = false
-        var supportsEditing: Bool { onEditCell != nil || onCommitCell != nil }
+        var supportsEditing: Bool { nativePresentationIsValid && (onEditCell != nil || onCommitCell != nil) }
 
         init(pasteboard: NSPasteboard = .general) { self.pasteboard = pasteboard }
 
@@ -639,20 +770,184 @@ struct ResultTableView: NSViewRepresentable {
             return scrollView
         }
 
+        func showSearch() {
+            guard let table, let scroll = table.enclosingScrollView else { return }
+            finishInlineEdit()
+            if findBar == nil {
+                let bar = ResultGridFindBar()
+                bar.field.delegate = self
+                bar.changed = { [weak self, weak bar] in
+                    guard let self, let bar else { return }
+                    let selected = bar.scope.indexOfSelectedItem == 1
+                    let scope = selected ? self.searchColumnSelection ?? self.selectedSearchColumns() : nil
+                    self.setSearch(query: bar.field.stringValue, columns: scope, matchingOnly: bar.matchingOnly.state == .on)
+                }
+                bar.navigate = { [weak self] in self?.moveSearchMatch($0) }
+                bar.dismissed = { [weak self] in self?.closeSearch() }
+                findBar = bar
+                scroll.findBarView = bar
+                scroll.findBarPosition = .aboveContent
+            }
+            isSearchVisible = true
+            scroll.isFindBarVisible = true
+            if let findBar {
+                setSearch(query: findBar.field.stringValue,
+                    columns: findBar.scope.indexOfSelectedItem == 1 ? selectedSearchColumns() : nil,
+                    matchingOnly: findBar.matchingOnly.state == .on)
+            }
+            updateSearchStatus()
+            table.window?.makeFirstResponder(findBar?.field)
+            findBar?.field.selectText(nil)
+        }
+
+        private func selectedSearchColumns() -> IndexSet {
+            guard let selection = table?.cellSelection else { return [] }
+            return IndexSet(integersIn: selection.columnRange)
+        }
+
+        /// Query changes are local. Every callback continues to address the original result rows.
+        func setSearch(query: String, columns: IndexSet? = nil, matchingOnly: Bool = false) {
+            guard let table else { return }
+            finishInlineEdit()
+            let selection = searchResult.sourceSelection(table.selectedRowIndexes)
+            let current = SearchSelectionBookmark(rows: selection,
+                anchor: table.cellSelection.flatMap { searchResult.sourceCell($0.anchor) },
+                focus: table.cellSelection.flatMap { searchResult.sourceCell($0.focus) },
+                wholeRows: table.selectsWholeRows)
+            let wasFiltering = searchMatchingOnly && !searchQuery.isEmpty
+            let willFilter = matchingOnly && !query.isEmpty
+            if !wasFiltering && willFilter { searchSelectionBookmark = current }
+            let restoring = wasFiltering && !willFilter
+            let retained = restoring ? searchSelectionBookmark ?? current : current
+            if restoring { searchSelectionBookmark = nil }
+            let previousRows = searchResult.sourceRows
+            searchQuery = query
+            searchColumnSelection = columns
+            searchMatchingOnly = matchingOnly
+            activeSearchMatch = nil
+            rebuildSearchResult()
+            synchronizeSelection {
+                if previousRows != searchResult.sourceRows {
+                    table.reloadData()
+                    restoreSearchSelection(retained.rows, anchor: retained.anchor, focus: retained.focus, wholeRows: retained.wholeRows)
+                } else {
+                    if restoring { restoreSearchSelection(retained.rows, anchor: retained.anchor, focus: retained.focus, wholeRows: retained.wholeRows) }
+                    refreshVisibleCells(in: table)
+                }
+            }
+            let visibleSelection = searchResult.sourceSelection(table.selectedRowIndexes)
+            if visibleSelection != selection { onSelectedRows?(visibleSelection) }
+            updateSearchRuler()
+            updateSearchStatus()
+        }
+
+        func closeSearch() {
+            guard let table else { return }
+            setSearch(query: "")
+            isSearchVisible = false
+            table.enclosingScrollView?.isFindBarVisible = false
+            table.window?.makeFirstResponder(table)
+        }
+
+        func moveSearchMatch(_ direction: Int) {
+            guard !searchResult.matches.isEmpty, let table else { return }
+            let count = searchResult.matches.count
+            let current = activeSearchMatch.flatMap { searchResult.matches.firstIndex(of: $0) }
+            let next = current.map { ($0 + direction + count) % count } ?? (direction < 0 ? count - 1 : 0)
+            let source = searchResult.matches[next]
+            guard let cell = searchResult.displayedCell(source) else { return }
+            finishInlineEdit()
+            activeSearchMatch = source
+            table.selectCellForEditing(cell)
+            updateSearchStatus()
+        }
+
+        fileprivate func userDidChangeSelection() {
+            guard !isSynchronizingSelection else { return }
+            searchSelectionBookmark = nil
+        }
+
+        func setSourceSelection(_ source: IndexSet) {
+            guard let table else { return }
+            let displayed = searchResult.displayedSelection(source)
+            if table.selectedRowIndexes != displayed { table.setRowsExternally(displayed) }
+            let visible = searchResult.sourceSelection(displayed)
+            guard visible != source else { return }
+            selectionRevision &+= 1
+            let revision = selectionRevision
+            // Avoid publishing a model change during the representable update.
+            Task { @MainActor [weak self] in
+                guard let self, self.selectionRevision == revision, let table = self.table,
+                      self.searchResult.sourceSelection(table.selectedRowIndexes) == visible else { return }
+                self.onSelectedRows?(visible)
+            }
+        }
+
+        private func rebuildSearchResult() {
+            searchResult = ResultGridSearch.find(searchQuery, rows: rows,
+                columns: searchColumnSelection ?? IndexSet(integersIn: columns.indices),
+                valueKinds: valueKinds, matchingOnly: searchMatchingOnly)
+            matchingCells = Set(searchResult.matches)
+            if let activeSearchMatch, !matchingCells.contains(activeSearchMatch) { self.activeSearchMatch = nil }
+        }
+
+        private func restoreSearchSelection(_ source: IndexSet, anchor: ResultGridCell?, focus: ResultGridCell?, wholeRows: Bool) {
+            guard let table else { return }
+            let selected = searchResult.displayedSelection(source)
+            if let anchor, let focus, let mappedAnchor = searchResult.displayedCell(anchor),
+               let mappedFocus = searchResult.displayedCell(focus), !selected.isEmpty {
+                table.restoreSearchSelection(ResultGridSelection(anchor: mappedAnchor, focus: mappedFocus), rows: selected, wholeRows: wholeRows)
+            } else { table.setRowsExternally(selected) }
+        }
+
+        private func updateSearchRuler() {
+            guard let ruler = table?.enclosingScrollView?.verticalRulerView as? ResultGridRowNumberRuler else { return }
+            ruler.partitionMarkers = partitionMarkers.map { markers in searchResult.sourceRows.map { markers.indices.contains($0) ? markers[$0] : nil } }
+            ruler.sourceRowNumbers = searchResult.sourceRows
+            ruler.isFiltered = searchResult.sourceRows.count != rows.count
+            ruler.updateRowCount()
+        }
+
+        private func updateSearchStatus() {
+            findBar?.updateStatus(loadedRows: rows.count, visibleRows: searchResult.sourceRows.count,
+                matches: searchResult.matches.count, active: activeSearchMatch.flatMap { searchResult.matches.firstIndex(of: $0) })
+        }
+
         func update(columns: [ResultColumn], rows: [[String?]], dataIdentity: AnyObject? = nil, in scrollView: NSScrollView) {
             guard let tableView = scrollView.documentView as? ResultGridTableView else { return }
-            let schemaChanged = self.columns != columns
-            let rowsChanged = dataIdentity.map { previousDataIdentity !== $0 } ?? (self.rows != rows)
-            let presentationChanged = renderedModifiedCells != modifiedCells || renderedDeletedRows != deletedRows ||
-                (dataIdentity == nil && renderedValueKinds != valueKinds)
+            let schemaChanged = !Self.sameColumns(self.columns, columns)
+            let nativeChanged = renderedNativeValues != nativeValues
+            let rowsChanged = (dataIdentity.map { previousDataIdentity !== $0 } ?? !Self.sameRows(self.originalRows, rows)) || nativeChanged
+            let sqliteChanged = renderedSQLiteValues != sqliteValues
+            if schemaChanged || rowsChanged { searchSelectionBookmark = nil }
+            let presentationChanged = renderedModifiedCells != modifiedCells || renderedDeletedRows != deletedRows || renderedUneditableRows != uneditableRows ||
+                (dataIdentity == nil && renderedValueKinds != valueKinds) || sqliteChanged || nativeChanged
+            if schemaChanged || rowsChanged || presentationChanged { profileDataRevision &+= 1 }
+            let retainedSelection = searchResult.sourceSelection(tableView.selectedRowIndexes)
+            let retainedAnchor = tableView.cellSelection.flatMap { searchResult.sourceCell($0.anchor) }
+            let retainedFocus = tableView.cellSelection.flatMap { searchResult.sourceCell($0.focus) }
+            let wholeRows = tableView.selectsWholeRows
             self.columns = columns
             tableView.fillsDocumentColumn = columns.count == 1 && columns[0].engine == .mongodb && columns[0].nativeType == "BSON document"
             tableView.autoresizingMask = tableView.fillsDocumentColumn ? [.width] : []
-            self.rows = rows
+            originalRows = rows
+            if schemaChanged || rowsChanged || nativeChanged || sqliteChanged {
+                nativePresentationIsValid = NativeValue.validMatrix(nativeValues, rows: rows.count, columns: columns.count) &&
+                    (!columns.contains(where: { $0.engine == .sqlite }) ||
+                        SQLiteValue.validMatrix(sqliteValues, rows: rows.count, columns: columns.count) && NativeValue.matchesSQLite(nativeValues, storage: sqliteValues))
+                if let nativeValues, nativePresentationIsValid { self.rows = nativeValues.map { $0.map(NativeValuePresentation.text) } }
+                else if nativeValues != nil { self.rows = rows.map { $0.map { _ in "Unavailable native value" } } }
+                else { self.rows = rows }
+            }
+            if schemaChanged { searchColumnSelection = nil; findBar?.scope.selectItem(at: 0) }
+            if schemaChanged || rowsChanged || presentationChanged { rebuildSearchResult() }
             previousDataIdentity = dataIdentity
             renderedModifiedCells = modifiedCells
             renderedDeletedRows = deletedRows
+            renderedUneditableRows = uneditableRows
             renderedValueKinds = valueKinds
+            renderedSQLiteValues = sqliteValues
+            renderedNativeValues = nativeValues
 
             synchronizeSelection {
                 if schemaChanged {
@@ -683,11 +978,9 @@ struct ResultTableView: NSViewRepresentable {
 
                 if schemaChanged || rowsChanged {
                     finishInlineEdit(cancel: true)
-                    let selectedRows = tableView.selectedRowIndexes
                     tableView.reloadData()
                     if !schemaChanged {
-                        tableView.selectRowIndexes(selectedRows.intersection(IndexSet(integersIn: 0..<rows.count)),
-                            byExtendingSelection: false)
+                        restoreSearchSelection(retainedSelection, anchor: retainedAnchor, focus: retainedFocus, wholeRows: wholeRows)
                     }
                 } else if presentationChanged {
                     refreshVisibleCells(in: tableView)
@@ -696,10 +989,8 @@ struct ResultTableView: NSViewRepresentable {
                 tableView.clampCellSelection()
             }
             updateSortIndicators(in: tableView)
-            if let ruler = scrollView.verticalRulerView as? ResultGridRowNumberRuler {
-                ruler.partitionMarkers = partitionMarkers
-                ruler.updateRowCount()
-            }
+            updateSearchRuler()
+            updateSearchStatus()
             // Keep the document at its natural width so wide results scroll horizontally.
             tableView.frame.size.width = max(scrollView.contentSize.width,
                 tableView.tableColumns.reduce(0) { $0 + $1.width + tableView.intercellSpacing.width })
@@ -761,12 +1052,35 @@ struct ResultTableView: NSViewRepresentable {
             copy(rowIndices: [point.row], columnIndices: [point.column])
         }
 
-        func canEditCell(_ cell: ResultGridCell) -> Bool {
-            editableColumns.contains(cell.column) && !deletedRows.contains(cell.row) && rows.indices.contains(cell.row) &&
-                columns.indices.contains(cell.column) && rows[cell.row].indices.contains(cell.column)
+        func cellFilterRequest(_ action: TableCellFilterAction) -> TableCellFilterRequest? {
+            guard let table, let displayed = table.contextCell ?? table.cellSelection?.focus,
+                  let source = searchResult.sourceCell(displayed), rows.indices.contains(source.row),
+                  columns.indices.contains(source.column) else { return nil }
+            let selected = searchResult.sourceSelection(table.selectedRowIndexes)
+            return .init(action: action, cell: source, rows: selected.isEmpty ? [source.row] : Array(selected))
         }
 
-        func editCell(_ cell: ResultGridCell) { if canEditCell(cell) { onEditCell?(cell) } }
+        @objc func filterContextCell(_ sender: NSMenuItem) {
+            let actions = TableCellFilterAction.allCases
+            guard actions.indices.contains(sender.tag), let request = cellFilterRequest(actions[sender.tag]),
+                  cellFilterUnavailableReason?(request) == nil else { return }
+            onCellFilter?(request)
+        }
+
+        func canEditCell(_ cell: ResultGridCell) -> Bool {
+            guard nativePresentationIsValid, let source = searchResult.sourceCell(cell),
+                  editableColumns.contains(source.column), !deletedRows.contains(source.row), !uneditableRows.contains(source.row), rows.indices.contains(source.row),
+                  columns.indices.contains(source.column), rows[source.row].indices.contains(source.column) else { return false }
+            if let native = nativeValues?[source.row][source.column] {
+                if columns[source.column].engine == .sqlite { return sqliteValues?[source.row][source.column].valid == true }
+                return native.flatChangeValue(for: columns[source.column]) != nil
+            }
+            return true
+        }
+
+        func editCell(_ cell: ResultGridCell) {
+            if canEditCell(cell), let source = searchResult.sourceCell(cell) { onEditCell?(source) }
+        }
 
         func activateCell(_ cell: ResultGridCell) {
             showRowDetails(for: cell)
@@ -774,7 +1088,7 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         private func showRowDetails(for cell: ResultGridCell) {
-            guard let onShowRowDetails, let table, rows.indices.contains(cell.row),
+            guard let onShowRowDetails, let table, searchResult.sourceCell(cell) != nil,
                   columns.indices.contains(cell.column) else { return }
             finishInlineEdit()
             table.selectCellForEditing(cell)
@@ -787,8 +1101,8 @@ struct ResultTableView: NSViewRepresentable {
 
         func beginInlineEdit(_ cell: ResultGridCell) {
             finishInlineEdit()
-            guard canEditCell(cell) else { return }
-            let value = rows[cell.row][cell.column]
+            guard canEditCell(cell), let source = searchResult.sourceCell(cell) else { return }
+            let value = rows[source.row][source.column]
             let column = columns[cell.column]
             guard onCommitCell != nil, column.encoding != "base64", column.typeOid != 17,
                   !(value?.contains("\n") ?? false), (value?.count ?? 0) <= 512,
@@ -798,7 +1112,7 @@ struct ResultTableView: NSViewRepresentable {
             let field = NSTextField(frame: table.frameOfCell(atColumn: cell.column, row: cell.row).insetBy(dx: 1, dy: 0))
             field.identifier = NSUserInterfaceItemIdentifier("inlineGridCellEditor")
             field.setAccessibilityIdentifier("inlineGridCellEditor")
-            field.setAccessibilityLabel("Edit \(column.name), row \(cell.row + 1)")
+            field.setAccessibilityLabel("Edit \(column.name), row \(source.row + 1)")
             field.isEditable = true
             field.isSelectable = true
             field.usesSingleLineMode = true
@@ -892,7 +1206,7 @@ struct ResultTableView: NSViewRepresentable {
             field.delegate = nil
             if restoreFocus { field.window?.makeFirstResponder(table) }
             field.removeFromSuperview()
-            if !cancel, changed, canEditCell(cell) { onCommitCell?(cell, value) }
+            if !cancel, changed, canEditCell(cell), let source = searchResult.sourceCell(cell) { onCommitCell?(source, value) }
         }
 
         func controlTextDidChange(_ notification: Notification) {
@@ -917,6 +1231,14 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            if control === findBar?.field {
+                if commandSelector == #selector(NSResponder.cancelOperation(_:)) { closeSearch(); return true }
+                if commandSelector == #selector(NSResponder.insertNewline(_:)) || commandSelector == #selector(NSResponder.moveDown(_:)) {
+                    moveSearchMatch(1); return true
+                }
+                if commandSelector == #selector(NSResponder.moveUp(_:)) { moveSearchMatch(-1); return true }
+                return false
+            }
             guard control === inlineEditor else { return false }
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
                 finishInlineEdit(cancel: true)
@@ -933,7 +1255,7 @@ struct ResultTableView: NSViewRepresentable {
                 if let cell, let table, !columns.isEmpty {
                     let step = backwards ? -1 : 1
                     var ordinal = cell.row * columns.count + cell.column + step
-                    while ordinal >= 0, ordinal < rows.count * columns.count {
+                    while ordinal >= 0, ordinal < searchResult.sourceRows.count * columns.count {
                         let next = ResultGridCell(row: ordinal / columns.count, column: ordinal % columns.count)
                         if canEditCell(next) {
                             table.selectCellForEditing(next)
@@ -949,8 +1271,18 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         private func isDefault(_ cell: ResultGridCell) -> Bool {
-            guard let valueKinds, valueKinds.indices.contains(cell.row), valueKinds[cell.row].indices.contains(cell.column) else { return false }
-            return valueKinds[cell.row][cell.column] == "default"
+            guard let source = searchResult.sourceCell(cell), nativeValues == nil, let valueKinds,
+                  valueKinds.indices.contains(source.row), valueKinds[source.row].indices.contains(source.column) else { return false }
+            return valueKinds[source.row][source.column] == "default"
+        }
+        func chooseRelatedCell(_ cell: ResultGridCell) {
+            guard canEditCell(cell), relatedKeyColumns.contains(cell.column),
+                  let source = searchResult.sourceCell(cell) else { return }
+            finishInlineEdit()
+            onChooseRelatedCell?(source)
+        }
+        @objc func chooseRelatedContextCell(_ sender: Any?) {
+            if let cell = table?.contextCell ?? table?.cellSelection?.focus { chooseRelatedCell(cell) }
         }
         @objc func editContextCell(_ sender: Any?) {
             if let cell = table?.contextCell ?? table?.cellSelection?.focus { editCell(cell) }
@@ -968,30 +1300,105 @@ struct ResultTableView: NSViewRepresentable {
             guard let cell = table?.contextCell ?? table?.cellSelection?.focus,
                   canEditCell(cell), allowed.contains(cell.column) else { return }
             finishInlineEdit(cancel: true)
-            onSetCellValue?(cell, value)
+            if let source = searchResult.sourceCell(cell) { onSetCellValue?(source, value) }
         }
-        func deleteSelectedRows() { onDeleteRows?() }
+        func deleteSelectedRows() {
+            if let table { onSelectedRows?(searchResult.sourceSelection(table.selectedRowIndexes)) }
+            onDeleteRows?()
+        }
         @objc func deleteContextRows(_ sender: Any?) { deleteSelectedRows() }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !isSynchronizingSelection, let table, previousSelection != table.selectedRowIndexes else { return }
+            userDidChangeSelection()
             previousSelection = table.selectedRowIndexes
-            onSelectedRows?(previousSelection)
+            selectionRevision &+= 1
+            onSelectedRows?(searchResult.sourceSelection(previousSelection))
             publishInspection()
         }
 
         func publishInspection() {
-            guard !isSynchronizingSelection, onInspectValue != nil else { return }
+            guard !isSynchronizingSelection, onInspectValue != nil || onProfileSelection != nil else { return }
             inspectionRevision &+= 1
             let revision = inspectionRevision
             // Representable updates may replace rows or clamp selection. Deliver
             // only the final snapshot after SwiftUI has finished that update.
             Task { @MainActor [weak self] in
                 guard let self, self.inspectionRevision == revision, let table = self.table else { return }
+                self.publishProfileSelection()
                 let cell = table.cellSelection?.focus
                 self.onInspectValue?(InspectedValue.capture(
-                    cell: cell.flatMap { table.selectedRowIndexes.contains($0.row) ? $0 : nil },
-                    columns: self.columns, rows: self.rows, valueKinds: self.valueKinds, sqliteValues: self.sqliteValues))
+                    cell: cell.flatMap { table.selectedRowIndexes.contains($0.row) ? self.searchResult.sourceCell($0) : nil },
+                    columns: self.columns, rows: self.rows, valueKinds: self.valueKinds, sqliteValues: self.sqliteValues, nativeValues: self.nativeValues))
+            }
+        }
+
+        /// Captures displayed ordinals through the same source mapping and typed values as Copy.
+        func captureProfileSelection(visibleColumn: Int? = nil) -> GridProfileSelection {
+            guard profileSelectionAllowed, isCopyAllowed else {
+                return .unavailable(profileSelectionNotice ?? "Profiling is unavailable while this result is changing.")
+            }
+            guard let table else { return .empty }
+            let rowIndices: [Int], columnIndices: [Int]
+            if let visibleColumn {
+                guard columns.indices.contains(visibleColumn) else { return .empty }
+                rowIndices = Array(searchResult.sourceRows.indices); columnIndices = [visibleColumn]
+            } else {
+                rowIndices = table.selectsWholeRows ? Array(table.selectedRowIndexes) :
+                    table.cellSelection.map { Array($0.rowRange) } ?? Array(table.selectedRowIndexes)
+                columnIndices = table.cellSelection.map { Array($0.columnRange) } ?? Array(columns.indices)
+            }
+            guard !rowIndices.isEmpty, !columnIndices.isEmpty else { return .empty }
+            let cells = rowIndices.count.multipliedReportingOverflow(by: columnIndices.count)
+            guard !cells.overflow, cells.partialValue <= GridProfileLimits.maximumCells else {
+                return .unavailable("Select at most 100,000 cells for a loaded-value profile.")
+            }
+            do {
+                let payload = try copyPayload(rowIndices: rowIndices, columnIndices: columnIndices)
+                let scope = GridProfileScope(title: profileContext,
+                    notice: "\(rowIndices.count) selected rows, \(columnIndices.count) columns; \(searchResult.sourceRows.count) visible of \(rows.count) loaded rows. " +
+                        "Statistics cover only these captured loaded values, after the local matching-row filter. Database rows outside this result are excluded.",
+                    partial: true)
+                return .values(GridProfileInput(payload: payload, scope: scope))
+            } catch { return .unavailable(error.localizedDescription) }
+        }
+
+        @objc func profileVisibleColumn(_ sender: Any?) {
+            guard let column = table?.contextCell?.column ?? table?.cellSelection?.focus.column else { return }
+            onProfileColumn?(captureProfileSelection(visibleColumn: column))
+        }
+
+        private func publishProfileSelection() {
+            guard onProfileSelection != nil, let table else { return }
+            let selectedRows = table.selectsWholeRows ? Array(table.selectedRowIndexes) :
+                table.cellSelection.map { Array($0.rowRange) } ?? Array(table.selectedRowIndexes)
+            let selectedColumns = table.cellSelection.map { Array($0.columnRange) } ?? Array(columns.indices)
+            let token = ProfileSelectionToken(revision: profileDataRevision, rows: selectedRows, columns: selectedColumns,
+                visibleRows: searchResult.sourceRows, allowed: profileSelectionAllowed && isCopyAllowed,
+                context: Data(profileContext.utf8), notice: profileSelectionNotice.map { Data($0.utf8) }, request: profileRequestGeneration)
+            guard token != profileSelectionToken else { return }
+            profileSelectionToken = token
+            onProfileSelection?(captureProfileSelection())
+        }
+
+        private static func sameRows(_ left: [[String?]], _ right: [[String?]]) -> Bool {
+            guard left.count == right.count else { return false }
+            return zip(left, right).allSatisfy { a, b in
+                a.count == b.count && zip(a, b).allSatisfy { x, y in
+                    switch (x, y) {
+                    case (.none, .none): true
+                    case (.some(let x), .some(let y)): x.utf8.elementsEqual(y.utf8)
+                    default: false
+                    }
+                }
+            }
+        }
+        private static func sameColumns(_ left: [ResultColumn], _ right: [ResultColumn]) -> Bool {
+            guard left.count == right.count else { return false }
+            return zip(left, right).allSatisfy { a, b in
+                a.index == b.index && a.engine == b.engine && a.typeOid == b.typeOid && a.encoding == b.encoding &&
+                    Data(a.name.utf8) == Data(b.name.utf8) && Data(a.nativeType.utf8) == Data(b.nativeType.utf8) &&
+                    a.typeIdentity.map { Data($0.utf8) } == b.typeIdentity.map { Data($0.utf8) }
             }
         }
 
@@ -1021,8 +1428,7 @@ struct ResultTableView: NSViewRepresentable {
             let publisher = ResultCopyPublication.shared
             let ticket = publisher.capture(changeCount: pasteboard.changeCount)
             do {
-                let payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds, sqliteValues: sqliteValues,
-                    rowIndices: rowIndices, columnIndices: columnIndices)
+                let payload = try copyPayload(rowIndices: rowIndices, columnIndices: columnIndices)
                 let prepared = try PreparedResultCopy(payload: payload, format: options.format,
                     includesHeaders: options.includesHeaders)
                 if !publisher.publish(prepared, to: pasteboard, ticket: ticket) {
@@ -1059,8 +1465,7 @@ struct ResultTableView: NSViewRepresentable {
             guard isCopyAllowed else { return nil }
             let payload: ResultClipboardPayload
             do {
-                payload = try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds, sqliteValues: sqliteValues,
-                    rowIndices: rowIndices, columnIndices: columnIndices)
+                payload = try copyPayload(rowIndices: rowIndices, columnIndices: columnIndices)
             } catch {
                 onCopyError?(error.localizedDescription)
                 return nil
@@ -1095,7 +1500,14 @@ struct ResultTableView: NSViewRepresentable {
             }
         }
 
-        func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+        private func copyPayload(rowIndices: [Int], columnIndices: [Int]) throws -> ResultClipboardPayload {
+            let sourceRows = rowIndices.compactMap { searchResult.sourceCell(ResultGridCell(row: $0, column: 0))?.row }
+            guard sourceRows.count == rowIndices.count else { throw ResultCopyError.malformed }
+            return try ResultCopy.selection(columns: columns, rows: rows, valueKinds: valueKinds, sqliteValues: sqliteValues, nativeValues: nativeValues,
+                rowIndices: sourceRows, columnIndices: columnIndices)
+        }
+
+        func numberOfRows(in tableView: NSTableView) -> Int { searchResult.sourceRows.count }
 
         func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
             let rowView = ResultGridRowView()
@@ -1109,30 +1521,34 @@ struct ResultTableView: NSViewRepresentable {
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard let tableColumn, let ordinal = columnOrdinals[tableColumn.identifier],
-                  rows.indices.contains(row), rows[row].indices.contains(ordinal) else { return nil }
+                  let source = searchResult.sourceCell(ResultGridCell(row: row, column: ordinal)),
+                  rows.indices.contains(source.row), rows[source.row].indices.contains(ordinal) else { return nil }
 
             let cell = (tableView.makeView(withIdentifier: cellIdentifier, owner: self) as? NSTableCellView)
                 ?? makeCell()
             guard let field = cell.textField as? ResultTextField else { return cell }
-            let value = rows[row][ordinal]
+            let value = rows[source.row][ordinal]
             let defaultValue = isDefault(ResultGridCell(row: row, column: ordinal))
             let font = NSFont.monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
             field.stringValue = defaultValue ? "DEFAULT" : (value ?? "NULL")
             field.font = value == nil || defaultValue ? NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask) : font
             field.textColor = textColor(for: ResultGridCell(row: row, column: ordinal), in: tableView as? ResultGridTableView)
             cell.wantsLayer = true
-            let modified = modifiedCells.contains(ResultGridCell(row: row, column: ordinal))
-            cell.layer?.backgroundColor = modified ? NSColor.systemOrange.withAlphaComponent(0.15).cgColor : nil
-            if deletedRows.contains(row) {
+            let modified = modifiedCells.contains(source)
+            cell.layer?.backgroundColor = modified ? NSColor.systemOrange.withAlphaComponent(0.15).cgColor :
+                (matchingCells.contains(source) ? NSColor.systemYellow.withAlphaComponent(0.25).cgColor : nil)
+            if deletedRows.contains(source.row) {
                 field.attributedStringValue = NSAttributedString(string: field.stringValue,
                     attributes: [.font: font,
                         .foregroundColor: textColor(for: ResultGridCell(row: row, column: ordinal), in: tableView as? ResultGridTableView),
                         .strikethroughStyle: NSUnderlineStyle.single.rawValue])
             }
-            let accessibleValue = defaultValue ? "SQL DEFAULT" : (value.map { $0.isEmpty ? "Empty string" : $0 } ?? "SQL NULL")
+            let native = nativePresentationIsValid ? nativeValues?[source.row][ordinal] : nil
+            let accessibleValue = native.map { NativeValuePresentation.description($0) + ": " + (NativeValuePresentation.text($0) ?? "NULL") } ??
+                (defaultValue ? "SQL DEFAULT" : (value.map { $0.isEmpty ? "Empty string" : $0 } ?? "SQL NULL"))
             field.toolTip = accessibleValue
             cell.toolTip = accessibleValue
-            field.setAccessibilityLabel("\(columns[ordinal].name), row \(row + 1)")
+            field.setAccessibilityLabel("\(columns[ordinal].name), row \(source.row + 1)")
             field.resultAccessibilityValue = accessibleValue
             return cell
         }
@@ -1174,8 +1590,9 @@ struct ResultTableView: NSViewRepresentable {
         }
 
         private func textColor(for cell: ResultGridCell, in table: ResultGridTableView?) -> NSColor {
-            let secondary = deletedRows.contains(cell.row) ||
-                (rows.indices.contains(cell.row) && rows[cell.row].indices.contains(cell.column) && rows[cell.row][cell.column] == nil)
+            let source = searchResult.sourceCell(cell)
+            let secondary = source.map { source in deletedRows.contains(source.row) ||
+                (rows.indices.contains(source.row) && rows[source.row].indices.contains(source.column) && rows[source.row][source.column] == nil) } ?? false
             guard AppPalette.isCustom else { return secondary ? .secondaryLabelColor : .labelColor }
             if let selection = table?.cellSelection, table?.selectedRowIndexes.contains(cell.row) == true,
                selection.columnRange.contains(cell.column) {

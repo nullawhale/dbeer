@@ -101,7 +101,11 @@ func (s *Session) Execute(ctx context.Context, command protocol.Command) protoco
 func (s *Session) response(command protocol.Command) protocol.Response {
 	known := false
 	keyspace := s.keyspace
-	return protocol.Response{Type: "query.result", RequestID: command.RequestID, SessionID: command.SessionID, QueryID: command.QueryID, Connected: true, TransactionStatus: "unsupported", AffectedRowCountKnown: &known, CurrentKeyspace: &keyspace, Columns: []protocol.Column{}, Rows: [][]*string{}}
+	response := protocol.Response{Type: "query.result", RequestID: command.RequestID, SessionID: command.SessionID, QueryID: command.QueryID, Connected: true, TransactionStatus: "unsupported", AffectedRowCountKnown: &known, CurrentKeyspace: &keyspace, Columns: []protocol.Column{}, Rows: [][]*string{}}
+	if command.ResultValues == protocol.NativeResultValuesFormat {
+		response.NativeValues = [][]protocol.NativeValue{}
+	}
+	return response
 }
 func (s *Session) failure(command protocol.Command, category, message string) protocol.Response {
 	response := protocol.ErrorResponse(command, category, message)
@@ -152,6 +156,9 @@ func (s *Session) ExecuteWithSink(ctx context.Context, command protocol.Command,
 			s.cursors = make(map[string]browseCursor)
 			known := false
 			result = protocol.ResultSet{Columns: []protocol.Column{}, Rows: [][]*string{}, CommandTag: "USE", AffectedRowCountKnown: &known}
+			if command.ResultValues == protocol.NativeResultValuesFormat {
+				result.NativeValues = [][]protocol.NativeValue{}
+			}
 			if sink != nil && (!budget.metadataOmitted || command.Export != nil) {
 				err := sink.Begin(index, result.Columns)
 				if endErr := sink.End(index, result); err == nil {
@@ -196,6 +203,7 @@ func (s *Session) ExecuteWithSink(ctx context.Context, command protocol.Command,
 		r := results[0]
 		response.Columns = r.Columns
 		response.Rows = r.Rows
+		response.NativeValues = r.NativeValues
 		response.CommandTag = r.CommandTag
 		response.RowCount = r.RowCount
 		response.DisplayedRowCount = r.DisplayedRowCount

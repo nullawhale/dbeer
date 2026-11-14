@@ -29,6 +29,32 @@ func TestEngineCapabilitiesDescribeActualGuarantees(t *testing.T) {
 		t.Fatal("unknown engine advertises features")
 	}
 	for _, engine := range []string{"postgresql", "mysql", "sqlite", "cassandra", "mongodb"} {
+		seen := make(map[string]bool)
+		for _, capability := range Capabilities(engine) {
+			if seen[capability] {
+				t.Fatalf("%s repeats a capability", engine)
+			}
+			seen[capability] = true
+		}
+		authoring := engine == "postgresql" || engine == "mysql" || engine == "sqlite"
+		if slices.Contains(Capabilities(engine), protocol.StructureAuthoringCapability) != authoring {
+			t.Fatalf("%s has an invalid structure authoring capability", engine)
+		}
+		if slices.Contains(Capabilities(engine), protocol.StructureMigrationsCapability) != authoring {
+			t.Fatalf("%s has an invalid migrations capability", engine)
+		}
+		if slices.Contains(Capabilities(engine), protocol.StructureReconstructionCapability) != authoring {
+			t.Fatalf("%s has an invalid reconstruction capability", engine)
+		}
+		if slices.Contains(Capabilities(engine), protocol.StructureDestructiveCapability) != authoring {
+			t.Fatalf("%s has an invalid destructive structure capability", engine)
+		}
+		if slices.Contains(Capabilities(engine), protocol.StructureIndexAuthoringCapability) != (engine == "postgresql" || engine == "mysql") {
+			t.Fatal("advanced index capability escaped its completed adapters")
+		}
+		if !slices.Contains(Capabilities(engine), protocol.NativeResultValuesCapability) {
+			t.Fatalf("%s lacks its completed native result contract", engine)
+		}
 		if slices.Contains(Capabilities(engine), protocol.SessionMonitorCapability) != (engine == "postgresql" || engine == "mysql") {
 			t.Fatalf("%s has an invalid session monitor capability", engine)
 		}

@@ -2,6 +2,275 @@
 
 ## Unreleased
 
+- Add a separate, partial MariaDB adapter for native 10.11.9+ and 11.4.3+:
+  independent SQL/transaction/TLS/SSH owners, exact values, table-grid edits and
+  frozen imports, native JSON Explain/Analyze, monitoring and reviewed tuning,
+  guarded schema/data comparisons, drafts and transfer, native SQL tools, and
+  ordinary V1/V2/V3 structure authoring. Preserve JSON text/duplicate
+  keys and DECIMAL(65,38), explicit review and uncertain acknowledgements. Keep
+  SQL-result editing, generation/AUTO_INCREMENT authoring, V5 backfill/rebuild,
+  destructive conversion, multi-table migrations, advanced table authoring and
+  physical operations disabled/manual. Full MariaDB parity
+  remains deferred; existing release archives are unchanged.
+
+- Add operation-specific structure authoring for PostgreSQL inheritance,
+  declarative partitions, RLS/FORCE, typed and unlogged tables and MySQL
+  partitioned InnoDB and MyISAM tables. Review complete hierarchy, security,
+  type-binding and storage facts; retain native properties through transactional
+  PostgreSQL checks and explicit MySQL acknowledgement checks. Disclose recursive
+  column and partition-index/key effects, keep temporary tables with their
+  original SQL-tab session, and retain the stricter ordinary-table tuning guard.
+
+- Add explainable tuning candidates from captured plans and fresh complete
+  relational metadata, explicit query variants and offline baseline comparison.
+  Route index changes through fresh structure previews; separately review bounded
+  native-value result observations and PostgreSQL transaction-local work_mem
+  experiments and restores. Keep opt-in collection bounded, scoped to the current
+  owner and stopped after restoration, without automatic connections, DML,
+  Analyze grants, hidden setting changes or invented performance gains.
+
+- Review PostgreSQL RANGE/LIST/HASH partition create, attach, detach, interrupted
+  detach finalization, drop and truncate, and concurrent index creation/removal.
+  Add MySQL partition creation/removal, RANGE/LIST reorganization and loss actions,
+  HASH/KEY resizing, validated exchange, explicit storage-engine conversion,
+  strict online index algorithms/locks and native COPY column reordering. Keep
+  portable intent separate from current catalog proof and exact single-use
+  execution authority; retain acknowledgement, intermediate server states,
+  cancellation and uncertain outcomes without automatic cleanup or replay. Open
+  the table catalog's Partitions, Storage & Online DDL… workspace; save portable
+  `.dbeerphysical` intent or historical `.dbeerphysicalreport` evidence. Reopened
+  files remain disconnected and carry no execution or replay authority.
+
+- Explain INSERT/UPDATE/DELETE and PostgreSQL data-changing CTEs without
+  executing the outer DML, while retaining routine/side-effect policy during
+  planning. Authorize actual DML Analyze separately with exact typed
+  values and current-session transaction conditions; support PostgreSQL and
+  MySQL multi-table UPDATE/DELETE iterator diagnostics, explicitly distinguishing
+  their suppressed target writes from PostgreSQL execution. Preserve acknowledged
+  completion, pending transactional changes and uncertain persistence without
+  hidden transaction commands, rewrites or retries; never infer affected rows
+  from plan-node output.
+
+- Compose dependency-ordered multi-object migrations from typed table drafts and
+  individually selected foreign-key repairs, including explicit rename mappings
+  across PostgreSQL schemas and supported MySQL databases on the same server.
+  Review exact SQL and expected intermediate structures, export portable intent
+  or manual SQL, and retain per-unit/statement acknowledgement reports. Preserve
+  failed/unstarted intent and require explicit reconciliation and a fresh review
+  after partial or uncertain execution; never reconnect or replay writes implicitly.
+
+- Add selectable execution-plan Graph and Flame views with explicit inclusive
+  time, estimated cost and proven serial-leaf exclusive time. Compare row
+  estimates only on compatible invocation bases; disclose partial inputs,
+  parallel overlap, zeros and unavailable measurements. Preserve exact
+  PostgreSQL buffer/I/O/WAL counters, worker evidence and scoped JIT aggregates,
+  capturing VERBOSE in the same reviewed statement without rerunning Analyze.
+  Save advanced evidence in version 5 plan files while retaining version 1–4 readers.
+
+- Review explicit required-column backfills, complete physical column order and
+  table reconstruction through exact SQL and destructive confirmation. Add native
+  MySQL FIRST/AFTER and FORCE, guarded transactional PostgreSQL reconstruction,
+  and source-preserving SQLite reconstruction with typed-value, rowid, counter,
+  constraint/index and dependent-schema checks. Keep Preview catalog-only and
+  retain partial, cancelled and uncertain outcomes without implicit replay.
+
+- Choose capability-checked PostgreSQL Explain collection options, including
+  PostgreSQL 17 MEMORY/SERIALIZE and explicit TIMING off, while retaining actual
+  counts and whole-query timing. Add Oracle MySQL 5.7 estimated JSON plans,
+  version-correct older 8.0 TREE/Analyze syntax and JSON v1/v2 normalization.
+  Select formats before execution; JSON Analyze requires an existing v2 session
+  setting, checked without changing it. Preserve options and observed format in
+  saved evidence, and never rerun Analyze to decode an unfamiliar response.
+
+- Open the shared structure editor from ER cards and links for table creation,
+  structure edits and proposed same-profile foreign keys. Capture exact source
+  ownership and ordered mappings, retain local declarations, and keep Load,
+  Preview, data validation and confirmed Apply explicit. Refresh matching connected
+  source facts after known acknowledgements while preserving manual/collapsed
+  layout; unknown outcomes remain stale for explicit reconciliation.
+
+- Review explicit table/column deletion and lossy built-in conversions with named
+  dependencies, data-loss consequences and confirmation of the exact plan. Add
+  PostgreSQL USING/collation and MySQL signedness/charset/collation authoring,
+  plus native SQLite DROP. Keep Preview metadata-only; authorize cancellable
+  read-only data validation separately and retain exact counts, per-step
+  acknowledgements and unknown outcomes without automatic replay.
+
+- Add MongoDB query-planner/execution-statistics diagnostics and separately
+  confirmed Cassandra read tracing through the existing session owner. Preserve
+  BSON evidence, source-node elapsed time, bounded first-page/eventual trace
+  scope and explicit missing measurements. Expand SQLite EQP native fields and
+  unavailable actual metrics. Save/import these distinct diagnostic kinds as
+  private plan artifacts while retaining older offline readers.
+
+- Explain typed named parameters and explicitly chosen script fragments or
+  multiple editor selections in their original document order. Choose the source
+  SQL tab, an existing SQL tab or a new session for another saved connection;
+  review each statement separately and run setup commands only when selected.
+  Offer PostgreSQL custom plans and value-independent generic plans on supported
+  servers. Keep per-statement results and captured ranges, stop after uncertain
+  outcomes, and save parameter values only in explicitly saved plan evidence.
+  Read existing plan artifacts and exclude runtime ownership from portable files.
+
+- Preserve captured native values separately from display text across results,
+  inspection, JSON copying/export, snapshots, comparisons, profiling and Agent/MCP
+  replies. Retain exact numeric strings, binary bytes, IEEE widths/bits and
+  ordered nested entries with duplicate keys. Bind edits and key predicates only
+  from proven source values, keeping unsupported rows read only. Add JSON export
+  version 2, snapshot version 3 and explicit offline JSON import while preserving
+  older readers and guarded file publication.
+
+- Save immutable structure outcomes and session diagnostics as portable local
+  evidence, with historical acknowledgements, collection times and completeness
+  notices. Reuse the saved-plan library's guarded storage and shared quota, add
+  offline viewers, snapshot attachments and Investigation references, and keep
+  live session handles and execution grants out of files.
+
+- Add a separate binary-safe `dbeer_command` MCP contract with ordered arguments,
+  exact operation grants and existing cancellation/unknown-outcome handling.
+  The five existing engines explicitly reject native commands; a Redis engine
+  and its command implementation remain future work.
+
+- Compare PostgreSQL/MySQL/SQLite schema bundles with live databases or other
+  bundles. Add explicit cancellable files-only inspection, exact source identities
+  and opt-in supported SQL edits with added/removed object files. Validate SQL
+  independently from manifest checksums, preserve historical and manual coverage,
+  and generate reviewed SQL plans without executing imported SQL on live servers.
+  Offline targets can export a plan and require a fresh live-target comparison
+  before opening it in a SQL editor.
+
+- Add a private confirmed local-relationship library with composite/table/view
+  and cross-profile mappings, explicit name/type suggestions and fresh metadata
+  validation. Navigate captured native values into independent tabs with owned
+  cancellation and disconnected restoration. Show distinct local/external ER
+  links and export notices. Add confirmed same-profile JOIN completion using
+  exact ordered type metadata and verified comparison semantics, including
+  character sets/collations and SQLite target-affinity equality; keep unproven
+  comparisons and cross-profile JOIN restrictions visible.
+
+- Combine saved PostgreSQL/MySQL/SQLite profiles in one ER diagram with separate
+  metadata loads, progress, errors, Stop and schema observation. Preserve exact
+  profile ownership, manual positions, independent source lifetimes and shared
+  graph bounds. Add explicit source removal and reviewed object rebinding, keep
+  legacy restoration disconnected until binding review, and retain remaining
+  sources after the original source is removed. Label card and export owners,
+  including external local-link endpoints, and distinguish pending decisions
+  from accepted source retirement.
+
+- Export captured ER areas or the selected table to PNG, PDF and SVG with
+  Light/Dark appearance, PNG scale, manual placement and collapsed cards.
+  Include relationship kinds, external profile labels and incomplete metadata
+  notices; visibly escape control characters, mark shortened labels and retain
+  exact original names and graph facts in file metadata. Add bounded background
+  rendering, Stop, guarded new-file publication and owned cleanup through source
+  teardown. Preserve active work through cancelled close decisions and restore
+  export readiness after failed or cancelled cleanup.
+
+- Discover declared incoming PostgreSQL/MySQL/SQLite foreign keys and open child
+  rows from a stored parent row in the current view or an independent tab.
+  Preserve complete composite mappings, canonical target identity and exact key
+  bytes. Keep SQLite parent-affinity/collation semantics in a visible, removable
+  relationship restriction through history, saved views and disconnected restore;
+  retain it on profile changes and expose removal in unloaded or failed views.
+  Add explicit schema/all-visible table-name discovery and ER neighbour candidates
+  with progress, deadlines, Stop and partial reports. Keep client retention bounds
+  separate from initial helper capture cost and require Add then Build for the
+  100-table diagram area. Preserve active ER work through cancelled close decisions.
+
+- Export reproducible PostgreSQL/MySQL/SQLite schema bundles from an explicit
+  read-only capture, with exact collision-safe object paths, a typed catalog
+  snapshot, dependencies, checksums and included/omitted/incomplete reports.
+  Discard partial SQL previews, preserve external dependency evidence, support
+  deadlines and Stop, and atomically publish verified files into a new directory.
+  Prove SQLite program dependencies without executing them, preserve unknown
+  references explicitly, and verify files off the main actor with cancellable
+  chunk reads and guarded confirmation/cleanup.
+
+- Profile loaded selections and locally visible columns with exact bounded
+  integer/decimal aggregates, SQL NULL counts and byte/storage-aware value
+  distributions. Preserve filtered source mapping, label unavailable arithmetic
+  and repeating averages, and exclude unresolved drafts or stale results.
+  Add explicit bounded first-N PostgreSQL/MySQL/SQLite samples on owned readonly
+  sessions with deadlines, Stop and committed-data coverage reports. Preserve
+  active captures through pending/cancelled or unrelated close decisions and
+  release registered owners after accepted source-tab/profile closure. Copy frozen
+  Markdown or attach it to saved/unsaved Investigations with retry-safe saves.
+
+- Add **Find Data…** across explicitly selected PostgreSQL/MySQL/SQLite tables
+  and views, with exact typed values, SQL NULL, explicit SQLite storage and a
+  separate text-contains mode. Use a dedicated read-only session, bounded
+  per-column match evidence, progress, deadlines, Stop and coverage reports.
+  Open results through their captured table-filter predicate and original
+  profile; preserve searches through cancelled or unrelated close decisions
+  and release their session after an accepted matching-profile Disconnect.
+
+- Choose referenced records while editing declared PostgreSQL/MySQL/SQLite foreign
+  keys, including eligible PostgreSQL/MySQL SQL results with aliases or reordered
+  columns. Add bounded descriptive-column search, complete composite-key details,
+  exact typed operands and explicit SQLite storage types. Stage every key
+  component atomically in the local Preview/Apply draft, preserve original values
+  and reject changed or uneditable source contexts.
+
+- Save explicit execution-plan artifacts with original SQL, raw and normalized
+  evidence, named baselines and local operation-aware history. Add portable
+  `.dbeerplan` import/export, byte-exact conservative comparison and offline
+  investigation/snapshot references with deletion protection. Keep partial
+  evidence visible and distinguish confirmed publication from refresh failures.
+
+- Recover retained table-structure execution acknowledgements through explicit
+  original-session status checks. Match execution, plan and per-step evidence,
+  preserve unknown outcomes when evidence is unavailable, and let explicit
+  reconciliation retire an unusable connection before opening a fresh dedicated
+  session. Keep reviewed intent and reports through recovery failures and require
+  a fresh baseline and preview before another Apply.
+
+- Arrange ER diagrams in cancellable background tasks while preserving manual
+  placements and rejecting obsolete layout results. Add explicit schema
+  observation through dedicated readonly connections: reviewed PostgreSQL
+  notification installation/removal SQL and bounded MySQL selected-table
+  fingerprints. Mark changed metadata stale for explicit rebuilding, surface
+  incomplete observations and keep observer state transient.
+
+- Add table-cell context actions for equality, exclusion, selected-value lists
+  and NULL predicates through the existing filter draft and explicit Apply.
+  Preserve nested groups, exact numbers and binary values, and bind SQLite
+  storage values without converting them to display text. Retain source row
+  mapping while loaded-result search is active.
+
+- Add reviewed advanced index definitions: PostgreSQL expression/partial indexes,
+  INCLUDE, qualified collations/operator classes, parameters, access methods and
+  version-aware NULL semantics; MySQL prefix/order/functional/visibility/comment,
+  FULLTEXT and SPATIAL indexes. Preserve key ownership and exact execution evidence,
+  keep Preview non-executing, and reject replacement of indexes whose unexposed
+  attributes cannot be retained. Read earlier portable drafts and evidence while
+  saving the new typed formats with explicit version admission.
+
+- Expand reviewed structure authoring with multiple appended columns, explicit
+  table/column renames, qualified PostgreSQL custom types, expression defaults,
+  generated columns and version-aware identity/sequence/AUTO_INCREMENT settings.
+  Keep Preview non-executing, preserve untouched catalog evidence and require
+  explicit supporting keys and confirmation of value-changing identity effects.
+  Retain original/result targets, atomic SQLite rollback evidence and unknown
+  execution status through reconciliation; save unfinished authoring in version 2
+  portable drafts while continuing to read version 1.
+
+- Save and reopen typed table-structure drafts as versioned `.dbeerstructure`
+  files, with guarded Save/Save As, exact target checks and fresh structure
+  loading and SQL preview before Apply. Export reviewed SQL steps with warnings
+  and keep execution evidence separate from portable draft intent.
+
+- Add bounded PostgreSQL/MySQL/SQLite metadata paging and selected-object batches
+  beyond the ordinary result display limit. Retain immutable observations and
+  complete composite foreign keys, surface access gaps, source changes and MySQL
+  metadata warnings, and clean private captures after loading, expiry or disconnect.
+
+- Add local Command-F search to table, SQL-result and snapshot grids, with column
+  scope, matching-cell navigation, loaded-row counts and matching-only filtering.
+  Preserve source-row editing/copying and restore the original selection on clear
+  until another selection or result replaces it.
+- Check operation availability using current adapter/server support, readonly
+  policy and object metadata for Explain, structure and result-source actions.
+
 - Add reviewed CSV/TSV table creation with checked type suggestions, reusable
   mapping settings for creation and append imports, and immutable PostgreSQL/MySQL
   table-copy jobs across connections. Show validation, progress, schema omissions,

@@ -36,7 +36,7 @@ struct TransferMappingPreset: Codable, Identifiable, Equatable, Sendable {
     var fileOptions: FileOptions
 
     var valid: Bool {
-        guard [.postgresql, .mysql, .sqlite].contains(engine), ["append", "create", "table"].contains(purpose),
+        guard [.postgresql, .mysql, .mariadb, .sqlite].contains(engine), ["append", "create", "table"].contains(purpose),
               Self.nameValid(name), (1...256).contains(headers.count), headers.allSatisfy(Self.fieldValid),
               columns.count == headers.count, Set(columns.map(\.sourceIndex)) == Set(headers.indices),
               columns.allSatisfy(columnValid), fileOptions.options != nil,
@@ -51,12 +51,12 @@ struct TransferMappingPreset: Codable, Identifiable, Equatable, Sendable {
         if purpose == "append" || column.targetName == nil {
             return column.type == nil && column.nullable == nil && column.precision == nil && column.scale == nil
         }
-        guard [.postgresql, .mysql].contains(engine), let name = column.targetName,
+        guard [.postgresql, .mysql, .mariadb].contains(engine), let name = column.targetName,
               let type = column.type, let nullable = column.nullable else { return false }
         let mapped = DataTransferColumn(sourceIndex: column.sourceIndex, name: name, type: type,
             nullable: nullable, precision: column.precision, scale: column.scale)
-        return mapped.valid && (engine != .mysql || type != "decimal" ||
-            (column.precision ?? 0) <= 65 && (column.scale ?? 0) <= 30)
+        return mapped.valid && (!engine.usesMySQLSyntax || type != "decimal" ||
+            (column.precision ?? 0) <= 65 && (column.scale ?? 0) <= (engine == .mariadb ? 38 : 30))
     }
     private static func fieldValid(_ value: String) -> Bool { value.utf8.count <= 1_024 && !value.contains("\0") }
     private static func nameValid(_ value: String) -> Bool { fieldValid(value) && !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

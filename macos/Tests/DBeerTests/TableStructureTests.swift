@@ -40,7 +40,12 @@ struct TableStructureDraftTests {
             #expect(value.valid)
             #expect(try JSONDecoder().decode(StructureDefault.self, from: JSONEncoder().encode(value)) == value)
         }
-        #expect(!StructureDefault(kind: "expression", value: "now()").valid)
+        let expression = StructureDefault(kind: "expression", value: "now()")
+        #expect(expression.valid)
+        var advanced = StructureDraft(columns: [.init(name: "created_at", type: .init(kind: "text"), nullable: true, default: expression)])
+        #expect(!advanced.valid)
+        advanced.authoringVersion = 2
+        #expect(advanced.valid)
         #expect(!StructureDefault(kind: "null", value: "").valid)
     }
 }

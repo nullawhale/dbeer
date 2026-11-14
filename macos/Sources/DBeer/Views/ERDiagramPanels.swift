@@ -11,18 +11,25 @@ struct ERDiagramAreaPanel: View {
     private var exactNameState = SwiftUI.State(initialValue: "")
     private var listSearchState = SwiftUI.State(initialValue: "")
     private var addExpandedState: SwiftUI.State<Bool>
+    private var bindingReview = SwiftUI.State<ERDiagramSource?>(initialValue: nil)
+    private var showingBindingReview = SwiftUI.State(initialValue: false)
+    private var rebindReview = SwiftUI.State<ERDiagramRebindReview?>(initialValue: nil)
+    private var showingRebindReview = SwiftUI.State(initialValue: false)
+    private var removalReview = SwiftUI.State<ERDiagramRemovalReview?>(initialValue: nil)
+    private var showingRemovalReview = SwiftUI.State(initialValue: false)
 
     init(model: ERDiagramModel, workspace: ApplicationWorkspace, document: SQLDocument, focus: @escaping () -> Void) {
         self.model = model; self.workspace = workspace; self.document = document; self.focus = focus
         schemaState = SwiftUI.State(initialValue: model.initialSchema ?? model.stored.tables.first?.schema ??
-            (model.stored.engine == .mysql ? model.stored.database : "public"))
+            (model.stored.engine.usesMySQLSyntax ? model.stored.database : model.stored.engine == .sqlite ? "main" : "public"))
         addExpandedState = SwiftUI.State(initialValue: model.stored.tables.isEmpty)
     }
 
     private var connected: Bool { workspace.erDiagramContext(model) != nil }
-    private var canSearch: Bool {
-        connected && !model.isLoading && !model.isSearching && ERTableID.validName(schemaState.wrappedValue)
+    private var canDiscoverAll: Bool {
+        connected && !model.activeSourceIsLoading && !model.isSearching && model.visibleTableDiscovery?.isBusy != true && model.neighbourDiscovery?.isBusy != true
     }
+    private var canSearch: Bool { canDiscoverAll && ERTableID.validName(schemaState.wrappedValue) }
     private var tables: [ERTableID] {
         model.stored.tables.filter { listSearchState.wrappedValue.isEmpty || $0.label.localizedCaseInsensitiveContains(listSearchState.wrappedValue) }
     }
@@ -34,6 +41,7 @@ struct ERDiagramAreaPanel: View {
                 Spacer()
                 Text("\(model.stored.tables.count)").font(.caption).monospacedDigit().appSecondaryText()
             }.padding(.horizontal, 12).padding(.top, 14).padding(.bottom, 10)
+            sourcePicker.padding(.horizontal, 12).padding(.bottom, 10)
             TextField("Filter diagram tables", text: listSearchState.projectedValue)
                 .textFieldStyle(.roundedBorder).accessibilityLabel("Filter diagram tables")
                 .padding(.horizontal, 12).padding(.bottom, 10)
@@ -61,7 +69,7 @@ struct ERDiagramAreaPanel: View {
                 Spacer(minLength: 0)
                 ControlIconButton(systemName: "minus.circle") {
                     if let table = model.stored.selected { model.remove(table) }
-                }.disabled(model.stored.selected == nil || model.isLoading)
+                }.disabled(model.stored.selected == nil || model.stored.selected.map { model.sourceState($0.profileID).loading } == true)
                     .help("Remove selected table from this diagram")
                     .accessibilityLabel("Remove table from diagram")
             }.padding(10)
@@ -70,6 +78,67 @@ struct ERDiagramAreaPanel: View {
                     .font(.caption).foregroundStyle(.orange).padding(.horizontal, 12).padding(.bottom, 10)
             }
         }.background(AppPalette.panel)
+            .onChange(of: model.activeSourceID) { _, id in
+                let source = model.source(id)
+                schemaState.wrappedValue = model.stored.tables.first(where: { $0.profileID == id })?.schema ??
+                    (source?.engine.usesMySQLSyntax == true ? source?.database ?? "" : source?.engine == .sqlite ? "main" : "public")
+                searchState.wrappedValue = ""; exactNameState.wrappedValue = ""
+            }
+    }
+
+    private var sourcePicker: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Picker("Profile", selection: Binding(get: { model.activeSourceID }, set: { workspace.selectERDiagramSource(model, profileID: $0) })) {
+                ForEach(Array(model.sourceProfileIDs).sorted(by: { $0.uuidString < $1.uuidString }), id: \.self) { id in
+                    Text(model.source(id)?.name ?? workspace.library.savedConnections.first(where: { $0.id == id })?.name ?? "Missing profile " + id.uuidString).tag(id)
+                }
+            }.accessibilityLabel("Active diagram source profile")
+            Menu("Add Profile") {
+                ForEach(workspace.library.savedConnections.filter { [.postgresql, .mysql, .mariadb, .sqlite].contains($0.engine) && !model.ownsSource($0.id) }) { profile in
+                    Button(profile.name) { workspace.confirmERDiagramSource(document, profileID: profile.id) }
+                }
+            }.controlHover().disabled(model.stored.sourceProfileIDs.count >= ERDiagramLimits.sources)
+            Button("Remove Source…") {
+                let id = model.activeSourceID
+                removalReview.wrappedValue = .init(profileID: id, name: model.ownerName(id), fingerprint: model.source(id)?.fingerprint ?? "legacy",
+                    tables: model.stored.tables.filter { $0.profileID == id })
+                showingRemovalReview.wrappedValue = true
+            }.controlHover()
+            if model.source(model.activeSourceID) == nil {
+                Text("This legacy diagram has no saved server identity. Review its current saved profile before reading metadata.").font(.caption2).foregroundStyle(.orange)
+                Button("Review Current Binding…") {
+                    if let profile = workspace.library.savedConnections.first(where: { $0.id == model.activeSourceID }) {
+                        bindingReview.wrappedValue = .init(profile); showingBindingReview.wrappedValue = true
+                    }
+                }.controlHover().disabled(!workspace.library.savedConnections.contains { $0.id == model.activeSourceID })
+            } else if let source = model.source(model.activeSourceID), !workspace.library.savedConnections.contains(where: { source.matches($0) }) {
+                Text("The original saved profile is missing or changed. Rebind an object explicitly; no replacement is selected automatically.")
+                    .font(.caption2).foregroundStyle(.orange)
+            }
+            ForEach(model.stored.sources) { source in
+                let state = model.sourceState(source.profileID)
+                if state.loading {
+                    Text(source.name + ": loading " + String(state.progress) + "/" + String(model.stored.tables.filter { $0.profileID == source.profileID }.count))
+                        .font(.caption2).appSecondaryText()
+                } else if let reason = state.notice {
+                    Text(source.name + ": " + reason).font(.caption2).appSecondaryText().lineLimit(3).help(reason)
+                }
+            }
+        }
+        .confirmationDialog("Remove Diagram Source", isPresented: showingRemovalReview.projectedValue, presenting: removalReview.wrappedValue) { review in
+            Button("Remove Source and Its Tables") {
+                workspace.removeERDiagramSource(document, profileID: review.profileID, expectedFingerprint: review.fingerprint, expectedTables: review.tables)
+            }
+        } message: { review in
+            Text("Remove " + review.name + " and its " + String(review.tables.count) + " selected tables from this diagram? Saved profiles, databases and confirmed local mappings are retained.")
+        }
+        .confirmationDialog("Confirm Diagram Source", isPresented: showingBindingReview.projectedValue, presenting: bindingReview.wrappedValue) { source in
+            Button("Bind to This Saved Profile") {
+                workspace.confirmERDiagramSource(document, profileID: source.profileID, expectedFingerprint: source.fingerprint)
+            }
+        } message: { source in
+            Text("Use " + source.name + " (" + source.engine.rawValue + " · " + source.database + ") for this diagram's original objects? This records its current nonsecret identity. Loading and connecting remain separate explicit actions.")
+        }
     }
 
     private var tableList: some View {
@@ -79,13 +148,13 @@ struct ERDiagramAreaPanel: View {
                     Image(systemName: "tablecells").font(.system(size: 13)).appSecondaryText().padding(.top, 2)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(table.name).font(.callout).lineLimit(1)
-                        Text(table.schema).font(.caption).appSecondaryText().lineLimit(1)
+                        Text(model.ownerName(table.profileID) + " · " + table.schema).font(.caption).appSecondaryText().lineLimit(1)
                         if let state = model.metadata[table]?.columnState.reason {
                             Text(state).font(.caption2).appSecondaryText().lineLimit(2)
                         }
                     }
                     Spacer(minLength: 0)
-                }.padding(.vertical, 4).tag(table).help(table.label)
+                }.padding(.vertical, 4).tag(table).help(model.ownerName(table.profileID) + " · " + table.label + " · " + table.profileID.uuidString)
             }
         }.listStyle(.plain).scrollContentBackground(.hidden)
             .accessibilityLabel("Tables in diagram")
@@ -100,6 +169,13 @@ struct ERDiagramAreaPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             TextField("Schema / database", text: schemaState.projectedValue)
                 .textFieldStyle(.roundedBorder).accessibilityLabel("Exact schema or database")
+            let createAction = ERStructureAction.create(profileID: model.activeSourceID, schema: schemaState.wrappedValue)
+            let createReason = workspace.erStructureUnavailableReason(document, action: createAction)
+            Button("Create Table…") {
+                let action = createAction
+                Task { await workspace.openERStructure(document, action: action) }
+            }.controlHover().disabled(createReason != nil)
+                .help(createReason ?? "Open a new table draft in the shared structure editor. Preview and Apply remain explicit.")
             HStack(spacing: 6) {
                 TextField("Search tables", text: searchState.projectedValue)
                     .textFieldStyle(.roundedBorder).accessibilityLabel("Search tables in schema")
@@ -107,6 +183,17 @@ struct ERDiagramAreaPanel: View {
                     Task { await workspace.searchERDiagram(document, schema: schemaState.wrappedValue, search: searchState.wrappedValue) }
                 }.disabled(!canSearch).help("Search table metadata in the exact schema or database")
                     .accessibilityLabel("Search tables")
+            }
+            HStack(spacing: 6) {
+                Button("Discover Schema") { Task { await workspace.discoverERVisibleTables(document, schema: schemaState.wrappedValue) } }
+                    .controlHover().disabled(!canSearch || !workspace.supportsRelationshipDiscovery(profileID: model.activeSourceID))
+                Button("Discover All Visible") { Task { await workspace.discoverERVisibleTables(document) } }
+                    .controlHover().disabled(!canDiscoverAll || !workspace.supportsRelationshipDiscovery(profileID: model.activeSourceID))
+            }
+            Text("Explicit discovery retains up to 256 schemas and 10,000 table names for two minutes. Stop keeps a partial list. Add tables, then Build (100 tables maximum).")
+                .font(.caption2).appSecondaryText()
+            if let discovery = model.visibleTableDiscovery {
+                VisibleTableDiscoveryPanel(discovery: discovery, diagram: model)
             }
             if model.isSearching { ProgressView().controlSize(.small) }
             if let notice = model.candidateNotice {
@@ -124,7 +211,7 @@ struct ERDiagramAreaPanel: View {
                                 Spacer(minLength: 0)
                                 Button(model.stored.tables.contains(table) ? "Added" : "Add") { model.add(table) }
                                     .controlHover().controlSize(.small)
-                                    .disabled(model.stored.tables.contains(table) || model.isLoading)
+                                    .disabled(model.stored.tables.contains(table) || model.sourceState(table.profileID).loading)
                             }
                         }
                     }.padding(.vertical, 3)
@@ -133,17 +220,50 @@ struct ERDiagramAreaPanel: View {
             HStack(spacing: 6) {
                 TextField("Exact table name", text: exactNameState.projectedValue).textFieldStyle(.roundedBorder)
                 ControlIconButton(systemName: "plus") {
-                    model.add(.init(profileID: model.stored.profileID, schema: schemaState.wrappedValue, name: exactNameState.wrappedValue))
+                    model.add(.init(profileID: model.activeSourceID, schema: schemaState.wrappedValue, name: exactNameState.wrappedValue))
                     exactNameState.wrappedValue = ""
-                }.disabled(model.isLoading || !ERTableID.validName(schemaState.wrappedValue) || !ERTableID.validName(exactNameState.wrappedValue))
+                }.disabled(model.activeSourceIsLoading || !ERTableID.validName(schemaState.wrappedValue) || !ERTableID.validName(exactNameState.wrappedValue))
                     .help("Add this exact schema and table name without searching")
                     .accessibilityLabel("Add exact table name")
+            }
+            if let selected = model.stored.selected {
+                Button("Rebind Selected Table…") {
+                    guard let profile = workspace.library.savedConnections.first(where: { $0.id == model.activeSourceID }) else { return }
+                    rebindReview.wrappedValue = .init(original: selected,
+                        replacement: .init(profileID: profile.id, schema: schemaState.wrappedValue, name: exactNameState.wrappedValue),
+                        originalFingerprint: model.source(selected.profileID)?.fingerprint ?? "legacy",
+                        originalOwner: model.ownerName(selected.profileID), destination: .init(profile))
+                    showingRebindReview.wrappedValue = true
+                }.controlHover().disabled(!ERTableID.validName(schemaState.wrappedValue) || !ERTableID.validName(exactNameState.wrappedValue))
             }
             Text("Names are exact identifiers. Build checks availability.")
                 .font(.caption2).appSecondaryText()
                 .help("Schema and table names are separate exact identifiers, including any punctuation. Metadata is read only when you explicitly Search or Build.")
         }.controlSize(.small)
+            .confirmationDialog("Rebind Diagram Object", isPresented: showingRebindReview.projectedValue, presenting: rebindReview.wrappedValue) { review in
+                Button("Rebind and Clear Metadata") {
+                    workspace.rebindERDiagramTable(document, original: review.original, replacement: review.replacement,
+                        expectedOriginalFingerprint: review.originalFingerprint, expectedDestinationFingerprint: review.destination.fingerprint)
+                }
+            } message: { review in
+                Text(review.originalOwner + " · " + review.original.label + " → " + review.destination.name + " · " + review.replacement.label + ". Columns and relationships will be cleared until an explicit Build. Confirmed local mappings retain their original endpoints.")
+            }
     }
+}
+
+private struct ERDiagramRemovalReview {
+    let profileID: UUID
+    let name: String
+    let fingerprint: String
+    let tables: [ERTableID]
+}
+
+private struct ERDiagramRebindReview {
+    let original: ERTableID
+    let replacement: ERTableID
+    let originalFingerprint: String
+    let originalOwner: String
+    let destination: ERDiagramSource
 }
 
 struct ERDiagramInspector: View {
@@ -152,7 +272,7 @@ struct ERDiagramInspector: View {
     @ObservedObject var document: SQLDocument
     private var columnsExpandedState = SwiftUI.State(initialValue: true)
 
-    private var connected: Bool { workspace.erDiagramContext(model) != nil }
+    private var connected: Bool { workspace.erDiagramContext(model, profileID: model.stored.selected?.profileID ?? model.activeSourceID) != nil }
     private var relationships: [ERRelationship] {
         model.relationships.filter { model.stored.selected == nil || $0.source == model.stored.selected || $0.target == model.stored.selected }
     }
@@ -164,7 +284,7 @@ struct ERDiagramInspector: View {
                 else {
                     VStack(alignment: .leading, spacing: 6) {
                         Label("Inspector", systemImage: "info.circle").font(.headline)
-                        Text("Select a table to inspect its columns and declared relationships.")
+                        Text("Select a table to inspect its columns and relationships.")
                             .font(.caption).appSecondaryText()
                     }
                 }
@@ -180,7 +300,7 @@ struct ERDiagramInspector: View {
                 Image(systemName: "tablecells").font(.title3).foregroundStyle(AppPalette.accent).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(table.name).font(.headline).textSelection(.enabled)
-                    Text(table.schema).font(.caption).appSecondaryText().textSelection(.enabled)
+                    Text(model.ownerName(table.profileID) + " · " + table.schema).font(.caption).appSecondaryText().textSelection(.enabled)
                 }
                 Spacer(minLength: 0)
             }
@@ -191,11 +311,22 @@ struct ERDiagramInspector: View {
                 Menu {
                     Button("Open Data in New Tab") { Task { await workspace.openERTable(document, table: table, newTab: true) } }
                     Button("Show Structure") { Task { await workspace.openERTable(document, table: table, structure: true) } }
+                    Button("Edit Structure…") { Task { await workspace.openERStructure(document, action: .edit(table)) } }
+                        .disabled(workspace.erStructureUnavailableReason(document, action: .edit(table)) != nil)
+                    Button("Add Foreign Key…") { Task { await workspace.openERStructure(document, action: .addForeignKey(table)) } }
+                        .disabled(workspace.erStructureUnavailableReason(document, action: .addForeignKey(table)) != nil)
                     Divider()
                     Button(model.stored.collapsed.contains(table) ? "Show All Columns" : "Collapse Non-key Columns") { model.toggleCollapse(table) }
                 } label: { Image(systemName: "ellipsis") }
                     .menuStyle(.borderlessButton).fixedSize().controlHover().accessibilityLabel("Table actions")
             }.controlSize(.small)
+            Button("Find Neighbours") { Task { await workspace.discoverERNeighbours(document) } }
+                .controlHover().controlSize(.small)
+                .disabled(!connected || model.sourceState(table.profileID).loading || model.isSearching || model.neighbourDiscovery?.isBusy == true ||
+                    model.visibleTableDiscovery?.isBusy == true || !workspace.supportsRelationshipDiscovery(profileID: table.profileID))
+            if let discovery = model.neighbourDiscovery, (discovery.resolvedTarget ?? discovery.target) == table {
+                ERNeighbourDiscoveryPanel(discovery: discovery, diagram: model)
+            }
             if let facts = model.metadata[table] {
                 metadataState(facts)
                 Divider()
@@ -230,8 +361,8 @@ struct ERDiagramInspector: View {
             Text("Relationships: " + reason).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
         }
         if !facts.columnState.isAvailable || !facts.relationshipState.isAvailable {
-            Button("Retry Metadata") { Task { await workspace.buildERDiagram(document, retryFailuresOnly: true) } }
-                .controlHover().controlSize(.small).disabled(model.isLoading || !connected)
+            Button("Retry Metadata") { Task { await workspace.buildERDiagram(document, profileID: facts.table.profileID, retryFailuresOnly: true) } }
+                .controlHover().controlSize(.small).disabled(model.sourceState(facts.table.profileID).loading || workspace.erDiagramContext(model, profileID: facts.table.profileID) == nil)
         }
     }
 
@@ -264,8 +395,8 @@ struct ERDiagramInspector: View {
                 Spacer()
                 Text("\(relationships.count)").font(.caption).monospacedDigit().appSecondaryText()
             }
-            Text("Foreign key → referenced table")
-                .font(.caption).appSecondaryText().help("Only declared foreign keys are shown. No cardinality is inferred.")
+            Text("Solid: declared foreign key · Dashed: local confirmed mapping")
+                .font(.caption).appSecondaryText().help("Local mappings do not enforce database constraints. No cardinality is inferred.")
             if relationships.isEmpty {
                 Text("No loaded relationships in this selection.")
                     .font(.caption).appSecondaryText()
@@ -285,15 +416,41 @@ struct ERDiagramInspector: View {
                 model.stored.collapsed.removeAll { $0 == edge.source || $0 == edge.target }; model.changed?()
             } label: {
                 HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "arrow.triangle.branch").foregroundStyle(selected ? AppPalette.accent : AppPalette.secondaryText)
+                    Image(systemName: edge.kind == .logical ? "link" : "arrow.triangle.branch").foregroundStyle(selected ? AppPalette.accent : AppPalette.secondaryText)
                     Text(edge.key.name).font(.caption).fontWeight(.semibold).lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.contentShape(Rectangle())
-            }.buttonStyle(.plain).controlHover().help(edge.key.name).accessibilityLabel("Highlight foreign key \(edge.key.name)")
+            }.buttonStyle(.plain).controlHover().help(edge.key.name).accessibilityLabel("Highlight \(edge.kind == .logical ? "local relationship" : "foreign key") \(edge.key.name)")
             VStack(alignment: .leading, spacing: 4) {
-                Text(edge.source.label).font(.caption).textSelection(.enabled)
-                Label(edge.target.label, systemImage: "arrow.turn.down.right").font(.caption).textSelection(.enabled)
+                Text((edge.sourceProfileName ?? model.ownerName(edge.source.profileID)) + " · " + edge.source.label).font(.caption).textSelection(.enabled)
+                Label((edge.targetProfileName ?? model.ownerName(edge.target.profileID)) + " · " + edge.target.label, systemImage: "arrow.turn.down.right").font(.caption).textSelection(.enabled)
             }.foregroundStyle(AppPalette.secondaryText)
+            if edge.kind == .logical {
+                Text("Local · User-confirmed · No database constraint").font(.caption2).appSecondaryText()
+                if let notice = edge.validationNotice { Text(notice).font(.caption2).foregroundStyle(.orange).textSelection(.enabled) }
+                HStack {
+                    Button("Open Source") { Task { await workspace.openLogicalRelationshipEndpoint(edge, target: false, from: document) } }
+                    Button("Open Target") { Task { await workspace.openLogicalRelationshipEndpoint(edge, target: true, from: document) } }
+                }.controlHover().controlSize(.small)
+                    .disabled(!workspace.canStartOperation(document))
+                let foreignKeyAction = ERStructureAction.createForeignKey(edge)
+                let foreignKeyReason = workspace.erStructureUnavailableReason(document, action: foreignKeyAction)
+                Button("Create Foreign Key…") {
+                    let action = foreignKeyAction
+                    Task { await workspace.openERStructure(document, action: action) }
+                }.controlHover().controlSize(.small).disabled(foreignKeyReason != nil)
+                    .help(foreignKeyReason ?? "Propose this ordered mapping in the shared structure editor. The local mapping is retained.")
+                if let foreignKeyReason { Text(foreignKeyReason).font(.caption2).appSecondaryText().textSelection(.enabled) }
+                Button("Edit Local Mapping…") {
+                    guard let id = edge.logicalID, let relationship = workspace.logicalRelationships.relationship(id: id) else { return }
+                    workspace.editLogicalRelationship(relationship)
+                }.controlHover().controlSize(.small)
+            }
+            if edge.kind == .declared {
+                Button("Edit Structure…") { Task { await workspace.openERStructure(document, action: .edit(edge.source)) } }
+                    .controlHover().controlSize(.small)
+                    .disabled(workspace.erStructureUnavailableReason(document, action: .edit(edge.source)) != nil)
+            }
             Divider()
             ForEach(Array(edge.key.columns.enumerated()), id: \.offset) { _, pair in
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -306,7 +463,14 @@ struct ERDiagramInspector: View {
             }
             if !model.stored.tables.contains(edge.target) {
                 Text("Referenced table is outside the diagram.").font(.caption2).appSecondaryText()
-                Button("Add to Diagram") { model.add(edge.target) }.controlHover().controlSize(.small).disabled(model.isLoading)
+                if model.ownsSource(edge.target.profileID) {
+                    Button("Add to Diagram") { model.add(edge.target) }.controlHover().controlSize(.small).disabled(model.sourceState(edge.target.profileID).loading)
+                } else if let profile = workspace.library.savedConnections.first(where: { $0.id == edge.target.profileID }) {
+                    Button("Add Target Profile and Table") {
+                        workspace.confirmERDiagramSource(document, profileID: profile.id)
+                        model.add(edge.target)
+                    }.controlHover().controlSize(.small)
+                } else { Text("The external saved profile is missing.").font(.caption2).appSecondaryText() }
             } else if model.metadata[edge.target]?.columnState.isAvailable != true {
                 Text("Target columns are unavailable or stale. Table-level reference only.")
                     .font(.caption2).foregroundStyle(.orange)

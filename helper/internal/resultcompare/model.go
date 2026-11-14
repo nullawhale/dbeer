@@ -5,7 +5,9 @@ package resultcompare
 import (
 	"context"
 	"crypto/sha256"
+	"dbeer/helper/internal/nativevalue"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 )
@@ -215,4 +217,15 @@ func (s *Summary) addSchema(d SchemaDifference) {
 	} else {
 		s.SchemaDifferencesTruncated = true
 	}
+}
+
+func knownCell(column Column, value *string) bool {
+	if !known(column) {
+		return false
+	}
+	if column.Encoding != "nativeValue" || value == nil {
+		return true
+	}
+	var native nativevalue.NativeValue
+	return json.Unmarshal([]byte(*value), &native) == nil && native.Comparable()
 }

@@ -19,19 +19,23 @@ import (
 
 type Session struct {
 	adapter.TransportBinding
-	conn              *lib.Conn
-	settings          protocol.Connection
-	path              string
-	identity          os.FileInfo
-	readOnly          bool
-	internal          bool
-	closed            bool
-	attachAllowed     string
-	attachmentChanged bool
-	attachments       map[string]os.FileInfo
-	attachPath        string
-	attachIdentity    os.FileInfo
-	allowVacuum       bool
+	conn                    *lib.Conn
+	settings                protocol.Connection
+	path                    string
+	identity                os.FileInfo
+	readOnly                bool
+	internal                bool
+	metadataCapture         bool
+	closed                  bool
+	structureUncertain      bool
+	structureAfterStep      func(int)
+	structureCommitOverride func(func() error) error
+	attachAllowed           string
+	attachmentChanged       bool
+	attachments             map[string]os.FileInfo
+	attachPath              string
+	attachIdentity          os.FileInfo
+	allowVacuum             bool
 }
 
 func localFile(path string) (os.FileInfo, error) {
@@ -127,6 +131,9 @@ func (s *Session) Close() {
 	}
 }
 func (s *Session) TransactionStatus() string {
+	if s.structureUncertain {
+		return "unknown"
+	}
 	if s.closed {
 		return "idle"
 	}

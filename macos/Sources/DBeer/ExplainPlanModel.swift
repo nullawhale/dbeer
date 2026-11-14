@@ -33,10 +33,11 @@ struct ExplainProfileBinding: Sendable {
     }
 }
 
-/// Transient source-bound evidence. Never included in document persistence,
-/// SQL history, result snapshots or diagnostics.
+/// Transient source-bound evidence. Explicit plan saves copy only the captured
+/// request and validated result. Runtime ownership stays process-local.
 struct ExplainPlanModel {
     let id = UUID()
+    let capturedAt = Date()
     var request: ExplainRequest
     var sourceText: String
     var sourceRange: NSRange
@@ -44,7 +45,14 @@ struct ExplainPlanModel {
     var profile: SavedConnection?
     var profileBinding: ExplainProfileBinding?
     var sessionID: String?
+    var sourceDocumentID: UUID?
+    var targetDocumentID: UUID?
+    var sourceProfileID: UUID?
+    var sourceProfileBinding: ExplainProfileBinding?
+    var transactionStatus: TransactionStatus?
+    var sourceEvidence: ExplainSourceEvidence?
     var result: ExplainResult?
+    var dmlOutcome: ExplainDMLResult?
     var status = "Starting"
     var clientDurationMs: Double?
     var failure: WorkspaceModel.QueryFailure?
@@ -56,17 +64,35 @@ struct ExplainPlanModel {
         else { changedProfile = false }
         return !sourceText.utf8.elementsEqual(text.utf8) || self.profileID != profileID || changedProfile
     }
+    func isStaleSource(text: String, profileID: UUID?, profile: SavedConnection?) -> Bool {
+        if let sourceProfileID {
+            return !sourceText.utf8.elementsEqual(text.utf8) || sourceProfileID != profileID ||
+                sourceProfileBinding?.matches(profile) == false
+        }
+        return isStale(text: text, profileID: profileID, profile: profile)
+    }
+
     static func request(fragment: SQLExecutionFragment, mode: ExplainMode, engine: DatabaseEngine = .postgresql) throws -> ExplainRequest {
         if let diagnostic = fragment.diagnostic { throw ExecutionPolicyError(message: diagnostic.message) }
         guard fragment.kind != .script, fragment.statements.count == 1 else {
             throw ExecutionPolicyError(message: "Explain requires exactly one selected or current statement.")
         }
         let request = ExplainRequest(sql: fragment.statements[0].sql, mode: mode)
+        guard request.valid else { throw ExecutionPolicyError(message: "The selected statement exceeds the Explain input limit.") }
+        if engine == .mongodb {
+            guard MongoDBScript.validDiagnostic(request.sql) else {
+                throw ExecutionPolicyError(message: "MongoDB diagnostics require one read-only find or aggregate JSON request without output stages or executable JavaScript.")
+            }
+            return request
+        }
+        guard engine.supportsExplain(mode) else {
+            throw ExecutionPolicyError(message: "Cassandra does not expose an estimated plan. Choose Trace Read to execute the selected read with tracing.")
+        }
         let parsed = SQLScriptParser.parse(request.sql, engine: engine)
         let tokens = parsed.tokens.filter { $0.kind != .comment }
         guard let first = tokens.first, first.kind == .keyword,
-              ["SELECT", "WITH"].contains((request.sql as NSString).substring(with: first.range).uppercased()) else {
-            throw ExecutionPolicyError(message: "Explain requires an unwrapped SELECT or WITH … SELECT statement.")
+              (engine == .cassandra ? ["SELECT"] : ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]).contains((request.sql as NSString).substring(with: first.range).uppercased()) else {
+            throw ExecutionPolicyError(message: "Explain requires one unwrapped SELECT, INSERT, UPDATE, DELETE or WITH statement.")
         }
         var prefix = (request.sql as NSString).substring(to: first.range.location)
         for comment in parsed.tokens.filter({ $0.kind == .comment && NSMaxRange($0.range) <= first.range.location }).reversed() {
@@ -91,7 +117,9 @@ struct ExplainRanking {
             candidates.compactMap { node in
                 let score: Decimal?
                 if measured {
-                    if let time = node.metrics["totalTime"]?.decimal, let loops = node.metrics["loops"]?.decimal {
+                    if let metric = node.metrics["totalTime"], metric.unit == "ms", let time = metric.decimal, metric.basis == "inclusiveTotal" {
+                        score = time
+                    } else if let metric = node.metrics["totalTime"], metric.unit == "ms", metric.basis == "perInvocation", let time = metric.decimal, let loops = node.metrics["loops"]?.decimal {
                         var left = time, right = loops, product = Decimal()
                         score = NSDecimalMultiply(&product, &left, &right, .plain) == .noError && !product.isNaN ? product : nil
                     } else { score = nil }
@@ -103,6 +131,6 @@ struct ExplainRanking {
         let ranked = measured.isEmpty ? scores(measured: false) : measured
         entries = Array(ranked.prefix(3))
         basis = ranked.isEmpty ? "Ranking unavailable: no comparable reported metrics" :
-            measured.isEmpty ? "Inclusive estimated cost (planner units)" : "Inclusive time × loops (ms of work, not wall time)"
+            measured.isEmpty ? "Inclusive estimated cost (planner units)" : result.nodes.contains(where: { $0.metrics["totalTime"]?.basis == "inclusiveTotal" }) ? "Inclusive total time (ms across loops, not wall time)" : "Inclusive time × loops (ms of work, not wall time)"
     }
 }

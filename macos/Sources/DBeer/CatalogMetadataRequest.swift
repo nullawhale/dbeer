@@ -5,7 +5,7 @@ import Foundation
 /// a correlated helper cancellation and a terminal reply before another load.
 @MainActor
 final class CatalogMetadataRequest {
-    let queryID = UUID().uuidString
+    var queryID = UUID().uuidString
     var task: Task<BackendMessage, Error>?
     var submitted = false
     var finished = false

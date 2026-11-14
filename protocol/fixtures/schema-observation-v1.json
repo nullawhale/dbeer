@@ -1,0 +1,292 @@
+{
+  "requests": [
+    {
+      "valid": true,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "poll",
+          "tables": [
+            {
+              "schema": "public",
+              "name": "orders"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "valid": true,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "previewInstall",
+          "tables": []
+        }
+      }
+    },
+    {
+      "valid": false,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "poll",
+          "tables": [
+            {
+              "schema": "public",
+              "name": "orders"
+            }
+          ]
+        },
+        "sql": "SELECT 1"
+      }
+    },
+    {
+      "valid": false,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": null,
+          "tables": [
+            {
+              "schema": "public",
+              "name": "orders"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "valid": false,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "poll",
+          "tables": [
+            {
+              "schema": "public",
+              "name": "orders"
+            }
+          ],
+          "extra": true
+        }
+      }
+    },
+    {
+      "valid": false,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "poll",
+          "tables": []
+        }
+      }
+    },
+    {
+      "valid": false,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "poll",
+          "tables": [
+            {
+              "schema": "public",
+              "name": "orders"
+            },
+            {
+              "schema": "public",
+              "name": "orders"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "valid": false,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "poll",
+          "tables": [
+            {
+              "schema": null,
+              "name": "orders"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "valid": false,
+      "command": {
+        "type": "monitor.schema",
+        "requestId": "request",
+        "sessionId": "session",
+        "queryId": "query",
+        "schemaObservation": {
+          "action": "poll",
+          "tables": [
+            {
+              "schema": "public",
+              "name": "orders",
+              "extra": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "observations": [
+    {
+      "valid": true,
+      "observation": {
+        "engine": "postgresql",
+        "action": "poll",
+        "tables": [
+          {
+            "schema": "public",
+            "name": "orders"
+          }
+        ],
+        "mode": "notifications",
+        "revision": "0",
+        "observedAt": "2026-11-05T12:34:56.123Z",
+        "installed": true,
+        "canInstall": false,
+        "canRemove": true,
+        "complete": true,
+        "notices": []
+      }
+    },
+    {
+      "valid": true,
+      "observation": {
+        "engine": "mysql",
+        "action": "poll",
+        "tables": [
+          {
+            "schema": "public",
+            "name": "orders"
+          }
+        ],
+        "mode": "fingerprint",
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedAt": "2026-11-05T12:34:56.123Z",
+        "installed": false,
+        "canInstall": false,
+        "canRemove": false,
+        "complete": true,
+        "notices": []
+      }
+    },
+    {
+      "valid": false,
+      "observation": {
+        "engine": "postgresql",
+        "action": "poll",
+        "tables": [
+          {
+            "schema": "public",
+            "name": "orders"
+          }
+        ],
+        "mode": "notifications",
+        "revision": "00",
+        "observedAt": "2026-11-05T12:34:56.123Z",
+        "installed": true,
+        "canInstall": false,
+        "canRemove": true,
+        "complete": true,
+        "notices": []
+      }
+    },
+    {
+      "valid": false,
+      "observation": {
+        "engine": "postgresql",
+        "action": "poll",
+        "tables": [
+          {
+            "schema": "public",
+            "name": "orders"
+          }
+        ],
+        "mode": "notifications",
+        "revision": "0",
+        "observedAt": "2026-11-05T12:34:56.123Z",
+        "installed": true,
+        "canInstall": false,
+        "canRemove": true,
+        "complete": true,
+        "notices": [],
+        "sql": "SELECT 1"
+      }
+    },
+    {
+      "valid": false,
+      "observation": {
+        "engine": "postgresql",
+        "action": "poll",
+        "tables": [
+          {
+            "schema": "public",
+            "name": "orders"
+          }
+        ],
+        "mode": "notifications",
+        "revision": "0",
+        "observedAt": "2026-02-30T12:00:00Z",
+        "installed": true,
+        "canInstall": false,
+        "canRemove": true,
+        "complete": true,
+        "notices": []
+      }
+    },
+    {
+      "valid": false,
+      "observation": {
+        "engine": "postgresql",
+        "action": "poll",
+        "tables": [
+          {
+            "schema": "public",
+            "name": "orders"
+          }
+        ],
+        "mode": "notifications",
+        "revision": "0",
+        "observedAt": "2026-11-05T12:34:56.123Z",
+        "installed": true,
+        "canInstall": false,
+        "canRemove": true,
+        "complete": false,
+        "notices": []
+      }
+    }
+  ]
+}

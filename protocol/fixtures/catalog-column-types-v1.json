@@ -1,0 +1,78 @@
+{
+  "version": 6,
+  "capability": "catalogColumnTypesV1",
+  "valid": [
+    [
+      {
+        "name": "é",
+        "nativeType": "text",
+        "comparison": {
+          "kind": "text",
+          "baseType": "pg_catalog.text",
+          "charset": "UTF8",
+          "collationSchema": "pg_catalog",
+          "collationName": "C",
+          "collationIdentity": "950"
+        }
+      },
+      {
+        "name": "é",
+        "nativeType": "bigint",
+        "comparison": {
+          "kind": "native",
+          "baseType": "pg_catalog.int8"
+        }
+      }
+    ],
+    [
+      {
+        "name": "clé",
+        "nativeType": "varchar(30)",
+        "comparison": {
+          "kind": "text",
+          "baseType": "varchar",
+          "charset": "utf8mb4",
+          "collationName": "utf8mb4_bin",
+          "collationIdentity": "46"
+        }
+      }
+    ],
+    [
+      {
+        "name": "value",
+        "nativeType": "TEXT",
+        "comparison": {
+          "kind": "native",
+          "baseType": "text"
+        }
+      },
+      {
+        "name": "untyped",
+        "nativeType": "dynamic",
+        "comparison": {
+          "kind": "native",
+          "baseType": "blob"
+        }
+      }
+    ],
+    [
+      {
+        "name": "custom",
+        "nativeType": "private.id_domain",
+        "comparison": {
+          "kind": "unknown",
+          "baseType": "pg_catalog.int8"
+        }
+      }
+    ],
+    []
+  ],
+  "invalidJSON": [
+    "[{\"name\":\"x\",\"nativeType\":\"int\"},{\"name\":\"x\",\"nativeType\":\"text\"}]",
+    "[{\"name\":\"x\",\"name\":\"y\",\"nativeType\":\"text\"}]",
+    "[{\"name\":\"x\",\"nativeType\":\"\"}]",
+    "[{\"name\":\"x\",\"nativeType\":\"text\",\"comparison\":{\"kind\":\"text\",\"baseType\":\"pg_catalog.text\",\"unexpected\":\"SQL\"}}]",
+    "[{\"name\":\"\\ud800\",\"nativeType\":\"text\"}]",
+    "null"
+  ]
+}

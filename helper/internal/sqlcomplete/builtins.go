@@ -114,7 +114,7 @@ func builtinSignatures(name, engine string) []FunctionSignature {
 	if values := common[name]; len(values) > 0 {
 		return values
 	}
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
 		values := map[string][]FunctionSignature{
 			"SUM":          {sig("DECIMAL / DOUBLE", p("value", "numeric"))},
 			"AVG":          {sig("DECIMAL / DOUBLE", p("value", "numeric"))},
@@ -129,6 +129,22 @@ func builtinSignatures(name, engine string) []FunctionSignature {
 			"DATE_FORMAT":  {sig("string", p("date", "date / datetime"), p("format", "string"))},
 			"JSON_EXTRACT": {sig("json", p("document", "json"), variadic(p("paths", "string")))},
 			"GROUP_CONCAT": {sig("string", variadic(p("expressions", "any")))},
+		}
+		if engine == "mariadb" {
+			values["JSON_EXTRACT"] = []FunctionSignature{sig("JSON text", p("document", "JSON text"), variadic(p("paths", "string")))}
+			values["JSON_QUERY"] = []FunctionSignature{sig("JSON object/array text", p("document", "JSON text"), p("path", "string"))}
+			values["JSON_VALUE"] = []FunctionSignature{sig("scalar", p("document", "JSON text"), p("path", "string"))}
+			values["JSON_VALID"] = []FunctionSignature{sig("integer (0/1)", p("document", "JSON text"))}
+			values["STR_TO_DATE"] = []FunctionSignature{sig("date / datetime / time", p("value", "string"), p("format", "string"))}
+			values["VERSION"] = []FunctionSignature{sig("string")}
+			values["CURRENT_USER"] = []FunctionSignature{sig("string")}
+			values["CONNECTION_ID"] = []FunctionSignature{sig("integer")}
+			values["LAST_INSERT_ID"] = []FunctionSignature{sig("integer", optional(p("value", "integer")))}
+			values["UUID"] = []FunctionSignature{sig("string")}
+			values["CHAR_LENGTH"] = []FunctionSignature{sig("integer", p("value", "string"))}
+			values["OCTET_LENGTH"] = []FunctionSignature{sig("integer", p("value", "string"))}
+			values["INET6_ATON"] = []FunctionSignature{sig("binary", p("address", "string"))}
+			values["INET6_NTOA"] = []FunctionSignature{sig("string", p("address", "binary"))}
 		}
 		return values[name]
 	}

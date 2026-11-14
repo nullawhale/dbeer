@@ -112,6 +112,7 @@ final class ResultSnapshotDocumentModel: ObservableObject {
             displayedRowCount: artifact.rows.count, truncated: metadata.truncated,
             displayNotice: metadata.isComplete ? nil : "This snapshot contains a partial or truncated result.")
         result.sqliteValues = artifact.sqliteValues
+        result.nativeValues = artifact.nativeValues
         return result
     }
 }

@@ -1,0 +1,368 @@
+{
+  "version": 1,
+  "capability": "explainOptionsV1",
+  "commands": [
+    {
+      "type": "explain.run",
+      "requestId": "r0",
+      "sessionId": "s",
+      "queryId": "q0",
+      "explain": {
+        "sql": "SELECT 1",
+        "mode": "plan",
+        "options": {
+          "postgresql": {
+            "buffers": true,
+            "settings": false
+          }
+        }
+      }
+    },
+    {
+      "type": "explain.run",
+      "requestId": "r1",
+      "sessionId": "s",
+      "queryId": "q1",
+      "explain": {
+        "sql": "SELECT 1",
+        "mode": "analyze",
+        "options": {
+          "postgresql": {
+            "buffers": false,
+            "wal": true,
+            "settings": true,
+            "memory": true,
+            "serialize": "binary",
+            "timing": false
+          }
+        }
+      }
+    },
+    {
+      "type": "explain.run",
+      "requestId": "r2",
+      "sessionId": "s",
+      "queryId": "q2",
+      "explain": {
+        "sql": "SELECT 1",
+        "mode": "plan",
+        "options": {
+          "mysql": {
+            "format": "json"
+          }
+        }
+      }
+    },
+    {
+      "type": "explain.run",
+      "requestId": "r3",
+      "sessionId": "s",
+      "queryId": "q3",
+      "explain": {
+        "sql": "SELECT 1",
+        "mode": "analyze",
+        "options": {
+          "mysql": {
+            "format": "tree"
+          }
+        }
+      }
+    },
+    {
+      "type": "explain.run",
+      "requestId": "r4",
+      "sessionId": "s",
+      "queryId": "q4",
+      "explain": {
+        "sql": "SELECT 1",
+        "mode": "analyze",
+        "options": {
+          "mysql": {
+            "format": "auto"
+          }
+        }
+      }
+    }
+  ],
+  "invalidCommands": [
+    {
+      "id": "null",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": null
+        }
+      }
+    },
+    {
+      "id": "empty",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {}
+        }
+      }
+    },
+    {
+      "id": "both",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "postgresql": {},
+            "mysql": {
+              "format": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "wrongVariant",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "sqlite": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "pgUnknown",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "postgresql": {
+              "analyze": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pgNullBool",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "postgresql": {
+              "timing": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pgStringBool",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "postgresql": {
+              "timing": "false"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pgUnknownSerialize",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "postgresql": {
+              "serialize": "xml"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pgNullSerialize",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "postgresql": {
+              "serialize": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "mysqlNull",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "mysql": null
+          }
+        }
+      }
+    },
+    {
+      "id": "mysqlMissingFormat",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "mysql": {}
+          }
+        }
+      }
+    },
+    {
+      "id": "mysqlUnknown",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "mysql": {
+              "format": "traditional"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "mysqlExtra",
+      "command": {
+        "type": "explain.run",
+        "requestId": "r",
+        "sessionId": "s",
+        "queryId": "q",
+        "explain": {
+          "sql": "SELECT 1",
+          "mode": "plan",
+          "options": {
+            "mysql": {
+              "format": "tree",
+              "retry": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "plans": [
+    {
+      "id": "pg17TimingDisabled",
+      "engine": "postgresql",
+      "mode": "analyze",
+      "format": "json",
+      "raw": "[{\"Plan\":{\"Node Type\":\"Result\",\"Startup Cost\":0,\"Total Cost\":0.01,\"Plan Rows\":1,\"Actual Rows\":1,\"Actual Loops\":1},\"Planning Time\":0,\"Execution Time\":0,\"Settings\":{\"work_mem\":\"8MB\"},\"Planning\":{\"Memory Used\":8,\"Memory Allocated\":16},\"Serialization\":{\"Output Volume\":1,\"Format\":\"binary\"}}]",
+      "options": {
+        "postgresql": {
+          "timing": false
+        }
+      },
+      "nodes": 1
+    },
+    {
+      "id": "mysql57JSONv1",
+      "engine": "mysql",
+      "mode": "plan",
+      "format": "jsonV1",
+      "raw": "{\"query_block\":{\"select_id\":1,\"cost_info\":{\"query_cost\":\"9007199254740993.0000001\"},\"nested_loop\":[{\"table\":{\"table_name\":\"a\",\"access_type\":\"ALL\",\"rows_examined_per_scan\":10,\"rows_produced_per_join\":5,\"filtered\":\"50.00\",\"cost_info\":{\"read_cost\":\"1.20\",\"eval_cost\":\"1.00\",\"prefix_cost\":\"2.20\"}}},{\"table\":{\"table_name\":\"b\",\"access_type\":\"ref\",\"rows_examined_per_scan\":2,\"rows_produced_per_join\":10,\"cost_info\":{\"prefix_cost\":\"3.40\"}}}]}}",
+      "nodes": 5
+    },
+    {
+      "id": "mysql84JSONv2",
+      "engine": "mysql",
+      "mode": "analyze",
+      "format": "jsonV2",
+      "raw": "{\"operation\":\"Nested loop inner join\",\"estimated_rows\":2.5,\"estimated_total_cost\":3.4,\"actual_rows\":2,\"actual_loops\":1,\"actual_first_row_ms\":0,\"actual_last_row_ms\":0.2,\"inputs\":[{\"operation\":\"Table scan on a\",\"estimated_rows\":2,\"estimated_total_cost\":1,\"actual_rows\":2,\"actual_loops\":1,\"actual_first_row_ms\":0,\"actual_last_row_ms\":0.1},{\"operation\":\"Index lookup on b\",\"estimated_rows\":1,\"estimated_total_cost\":0.25,\"actual_rows\":1,\"actual_loops\":2,\"actual_first_row_ms\":0.01,\"actual_last_row_ms\":0.02}]}",
+      "nodes": 3
+    },
+    {
+      "id": "mysql84UnknownLoops",
+      "engine": "mysql",
+      "mode": "analyze",
+      "format": "jsonV2",
+      "raw": "{\"operation\":\"Unfamiliar iterator\",\"estimated_rows\":0,\"actual_rows\":0}",
+      "nodes": 1
+    },
+    {
+      "id": "mysql84NeverExecuted",
+      "engine": "mysql",
+      "mode": "analyze",
+      "format": "jsonV2",
+      "raw": "{\"operation\":\"Never reached\",\"estimated_rows\":1,\"actual_rows\":0,\"actual_loops\":0,\"actual_first_row_ms\":0,\"actual_last_row_ms\":0}",
+      "nodes": 1
+    }
+  ],
+  "sources": [
+    "https://www.postgresql.org/docs/14/sql-explain.html",
+    "https://www.postgresql.org/docs/17/sql-explain.html",
+    "https://www.postgresql.org/about/news/postgresql-17-beta-1-released-2865/",
+    "https://dev.mysql.com/doc/refman/8.0/en/explain.html",
+    "https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-3-0.html",
+    "https://dev.mysql.com/blog-archive/new-json-format-for-explain/",
+    "https://raw.githubusercontent.com/mysql/mysql-server/mysql-8.3.0/sql/opt_explain.cc",
+    "https://bugs.mysql.com/bug.php?id=97296"
+  ]
+}

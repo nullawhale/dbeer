@@ -41,7 +41,7 @@ func TestSDKToolDiscoveryDoesNotConnectToApplication(t *testing.T) {
 		return nil, errors.New("private transport details")
 	})
 	tools, err := client.ListTools(testContext(t), nil)
-	if err != nil || len(tools.Tools) != 4 || dials.Load() != 0 {
+	if err != nil || len(tools.Tools) != 5 || dials.Load() != 0 {
 		t.Fatalf("unexpected tool discovery: %v, dials=%d", err, dials.Load())
 	}
 	for _, tool := range tools.Tools {

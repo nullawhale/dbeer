@@ -5,7 +5,9 @@ import (
 	"strconv"
 	"strings"
 
+	"dbeer/helper/internal/browsevalue"
 	"dbeer/helper/internal/protocol"
+	wire "github.com/go-mysql-org/go-mysql/mysql"
 )
 
 type browsePlan struct {
@@ -18,6 +20,10 @@ type browsePlan struct {
 // The executed statement and its standalone source share one plan. Only bound
 // operands differ; text and binary quoting reuse the offline INSERT formatter.
 func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, primaryKey []string, columnOrders ...[]string) (browsePlan, error) {
+	return buildBrowsePlanWithCharsets(request, actual, primaryKey, nil, columnOrders...)
+}
+
+func buildBrowsePlanWithCharsets(request protocol.CatalogRequest, actual map[string]string, primaryKey []string, charsets map[string]string, columnOrders ...[]string) (browsePlan, error) {
 	storageColumns := mysqlBrowseStorageColumns(actual)
 	visibleProjection := "*"
 	canonical := false
@@ -52,11 +58,46 @@ func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, 
 	}
 	var args []any
 	compileCondition := func(filter protocol.CatalogFilter) (string, string, error) {
+		if filter.SQLiteValue != nil {
+			return "", "", invalidSettings("SQLite operands require a SQLite connection.")
+		}
 		kind, ok := actual[filter.Column]
 		if !ok {
 			return "", "", invalidSettings("Unknown MySQL filter column.")
 		}
+		if filter.NativeValue != nil {
+			numeric := false
+			bits := 0
+			switch kind {
+			case "tinyint", "smallint", "mediumint", "int", "integer", "bigint", "decimal", "numeric":
+				numeric = true
+			case "float":
+				numeric, bits = true, 32
+			case "double":
+				numeric, bits = true, 64
+			}
+			cell, err := browsevalue.Server(*filter.NativeValue, browsevalue.Target{Binary: binaryType(kind), Numeric: numeric, FloatBits: bits})
+			if err != nil {
+				return "", "", invalidSettings(err.Error())
+			}
+			filter.Value = cell.Value
+			if kind == "timestamp" {
+				canonical, err := nativeTimestampValue(*filter.NativeValue)
+				if err != nil {
+					return "", "", err
+				}
+				filter.Value = &canonical
+			}
+			if !numeric && !binaryType(kind) {
+				if err := nativeBrowseTextCharset(kind, charsets[filter.Column], *cell.Value); err != nil {
+					return "", "", err
+				}
+			}
+		}
 		column := QuoteIdentifier(filter.Column)
+		if filter.NativeValue != nil && kind == "timestamp" {
+			column = nativeTimestampProjection(filter.Column)
+		}
 		if filter.Operator == "isNull" || filter.Operator == "isNotNull" {
 			if filter.Value != nil {
 				return "", "", invalidSettings("A MySQL NULL filter cannot have a value.")
@@ -78,6 +119,9 @@ func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, 
 				return "", "", invalidSettings("MySQL binary filter values must use base64.")
 			}
 			value, cell.Kind = decoded, "binary"
+			if filter.NativeValue != nil {
+				value = wire.TypedBytes{Type: wire.MYSQL_TYPE_BLOB, Bytes: decoded}
+			}
 		}
 		if spatialType(kind) || kind == "vector" {
 			column = "UNHEX(HEX(" + column + "))"
@@ -97,6 +141,16 @@ func buildBrowsePlan(request protocol.CatalogRequest, actual map[string]string, 
 			if parameter != "?" {
 				value = canonical
 				literal, _ = insertLiteral(protocol.CellValue{Kind: "text", Value: &canonical})
+			}
+			if filter.NativeValue != nil && !binaryType(kind) && parameter == "?" {
+				// Go []byte is MYSQL_TYPE_STRING in this driver. Bind an explicit
+				// BLOB wire type so SET NAMES cannot reinterpret UTF8 bytes.
+				// The generated cast never uses untrusted source metadata.
+				value = wire.TypedBytes{Type: wire.MYSQL_TYPE_BLOB, Bytes: []byte(*filter.Value)}
+				parameter = "CONVERT(? USING utf8mb4)"
+				if kind == "timestamp" {
+					parameter = "CAST(CONVERT(? USING utf8mb4) AS DATETIME(6))"
+				}
 			}
 			operator := map[string]string{"eq": "=", "ne": "<>", "lt": "<", "lte": "<=", "gt": ">", "gte": ">="}[filter.Operator]
 			if operator == "" {

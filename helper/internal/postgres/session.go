@@ -2,7 +2,9 @@ package postgres
 
 import (
 	"context"
+	"github.com/jackc/pgx/v5/pgconn"
 	"strings"
+	"sync/atomic"
 
 	"dbeer/helper/internal/adapter"
 	"dbeer/helper/internal/protocol"
@@ -15,21 +17,34 @@ func PrepareEnvironment() { clearPostgresEnvironment() }
 
 type Session struct {
 	adapter.TransportBinding
-	conn                    *pgx.Conn
-	explainIdentity         string
-	afterStructureStep      func(int)
-	structureCommitOverride func(func() error) error
+	conn                       *pgx.Conn
+	schemaObservationListening bool
+	schemaObservationRevision  *atomic.Uint64
+	explainIdentity            string
+	afterStructureStep         func(int)
+	structureCommitOverride    func(func() error) error
+	advancedCopyCheckpoint     *pgAdvancedCopyCheckpoint
 }
 
 func Open(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {
-	conn, err := connect(ctx, connection)
+	var revision *atomic.Uint64
+	var notification func(*pgconn.Notification)
+	if connection.SessionPurpose == "monitor" {
+		revision = &atomic.Uint64{}
+		notification = func(event *pgconn.Notification) {
+			if event.Channel == "dbeer_schema_watch_v1" {
+				revision.Add(1)
+			}
+		}
+	}
+	conn, err := connectWithNotifications(ctx, connection, notification)
 	if err != nil {
 		response := connectionError(protocol.Command{}, err)
 		return nil, &adapter.ConnectionError{Category: response.Category, Message: response.Message, SQLState: response.SQLState}
 	}
 	var identity string
 	_ = conn.QueryRow(ctx, "SELECT pg_catalog.version()").Scan(&identity)
-	return &Session{conn: conn, explainIdentity: identity, TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
+	return &Session{conn: conn, schemaObservationRevision: revision, explainIdentity: identity, TransportBinding: adapter.TransportBinding{Transport: adapter.TransportFromContext(ctx)}}, nil
 }
 
 func (session *Session) Execute(ctx context.Context, command protocol.Command) protocol.Response {

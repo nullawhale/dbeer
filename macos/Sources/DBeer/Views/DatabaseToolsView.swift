@@ -10,7 +10,7 @@ struct DatabaseToolsView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Database Dump & Restore").font(.title2.weight(.semibold))
-                    Text("PostgreSQL and MySQL native utilities").font(.caption).appSecondaryText()
+                    Text("PostgreSQL, MySQL and MariaDB native utilities").font(.caption).appSecondaryText()
                 }
                 Spacer()
                 if model.isBusy { ProgressView().controlSize(.small) }

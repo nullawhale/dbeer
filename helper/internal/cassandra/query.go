@@ -46,6 +46,11 @@ func (budget *displayBudget) retainColumns(columns []protocol.Column) bool {
 func (s *Session) query(ctx context.Context, command protocol.Command, sql string, values []any, index int, sink adapter.ResultSink, budget *displayBudget, full, onePage bool, page []byte, skip int, write bool) (protocol.ResultSet, []byte, int, *protocol.Response) {
 	known := false
 	result := protocol.ResultSet{Columns: []protocol.Column{}, Rows: [][]*string{}, CommandTag: firstWord(sql), AffectedRowCountKnown: &known}
+	nativeRequested := command.ResultValues == protocol.NativeResultValuesFormat
+	var nativeBudget protocol.NativeMatrixBudget
+	if nativeRequested {
+		result.NativeValues = [][]protocol.NativeValue{}
+	}
 	begun, retained, sendSink := false, false, false
 	var observer *attemptObserver
 	failure := func(err error) *protocol.Response {
@@ -60,7 +65,14 @@ func (s *Session) query(ctx context.Context, command protocol.Command, sql strin
 		}
 		observer = &attemptObserver{}
 		query := ConfigureQuery(s.driver.Query(sql, values...), s.keyspace).NoSkipMetadata().PageSize(pageRows).PageState(page).Observer(observer)
+		trace, _ := ctx.Value(diagnosticTraceKey{}).(*diagnosticTraces)
+		if trace != nil {
+			query = query.Trace(trace)
+		}
 		iter := query.IterContext(ctx)
+		if trace != nil {
+			trace.observeFirstPage(iter.PageState())
+		}
 		columns := iter.Columns()
 		numRows := iter.NumRows()
 		// Server errors have no result metadata. Check them before exposing a result
@@ -151,7 +163,23 @@ func (s *Session) query(ctx context.Context, command protocol.Command, sql strin
 				}
 			}
 			encoded, _ := json.Marshal(row)
-			fits := retained && budget.rows < maxRows && budget.bytes+len(encoded)+1 <= retainedDataBytes
+			var native []protocol.NativeValue
+			nativeBytes := 0
+			if nativeRequested {
+				var err error
+				native, err = nativeCQLRow(raw)
+				if err != nil {
+					_ = iter.Close()
+					return finishDeliveryFailure(err)
+				}
+				data, err := json.Marshal(native)
+				if err != nil {
+					_ = iter.Close()
+					return finishDeliveryFailure(err)
+				}
+				nativeBytes = len(data)
+			}
+			fits := retained && budget.rows < maxRows && budget.bytes+len(encoded)+nativeBytes+1 <= retainedDataBytes && (!nativeRequested || nativeBudget.Append(native, len(row)))
 			if !full && !fits && deliveryErr == nil {
 				result.Truncated = true
 				stopped = true
@@ -161,10 +189,18 @@ func (s *Session) query(ctx context.Context, command protocol.Command, sql strin
 			result.RowCount++
 			if fits {
 				result.Rows = append(result.Rows, row)
+				if nativeRequested {
+					result.NativeValues = append(result.NativeValues, native)
+				}
 				budget.rows++
-				budget.bytes += len(encoded) + 1
+				budget.bytes += len(encoded) + nativeBytes + 1
 			} else {
 				result.Truncated = true
+			}
+			if sendSink && deliveryErr == nil {
+				if nativeRequested {
+					deliveryErr = adapter.DeliverNativeRow(sink, index, native)
+				}
 			}
 			if sendSink && deliveryErr == nil {
 				deliveryErr = sink.Row(index, row)

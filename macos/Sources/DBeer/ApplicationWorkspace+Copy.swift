@@ -10,10 +10,17 @@ struct InsertCopyTarget: Sendable {
     func request(payload: ResultClipboardPayload) throws -> InsertFormatRequest {
         try ResultCopy.validate(payload)
         guard columnNames.count == payload.columns.count else { throw ResultCopyError.malformed }
+        let rows: [[ChangeValue]]
+        if let native = payload.nativeValues, payload.sqliteValues == nil {
+            rows = try native.map { row in try row.enumerated().map { index, value in
+                guard let bound = value.flatChangeValue(for: payload.columns[index]) else { throw ResultCopyError.nativeBindingUnavailable }
+                return bound
+            } }
+        } else {
+            rows = payload.values.map { row in row.map { ChangeValue(kind: $0.kind.rawValue, value: $0.value) } }
+        }
         let request = InsertFormatRequest(engine: engine, schema: schema, table: table,
-            columns: columnNames.map { InsertFormatColumn(name: $0) },
-            rows: payload.values.map { row in row.map { ChangeValue(kind: $0.kind.rawValue, value: $0.value) } },
-            sqliteValues: payload.sqliteValues)
+            columns: columnNames.map { InsertFormatColumn(name: $0) }, rows: rows, sqliteValues: payload.sqliteValues)
         guard request.valid else { throw ResultCopyError.malformed }
         return request
     }
@@ -43,7 +50,7 @@ extension ApplicationWorkspace {
               insertCopySelection == nil else { return }
         let sourceEngine = payload.columns.first?.engine ?? .postgresql
         insertCopySelection = InsertCopySelection(payload: payload,
-            engine: sourceEngine == .sqlite ? .sqlite : sourceEngine == .mysql ? .mysql : .postgresql,
+            engine: [.postgresql, .mysql, .mariadb, .sqlite].contains(sourceEngine) ? sourceEngine : .postgresql,
             schema: document.table?.schema ?? "", table: document.table?.name ?? "", pasteboard: pasteboard)
     }
 

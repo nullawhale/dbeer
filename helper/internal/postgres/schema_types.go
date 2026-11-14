@@ -117,7 +117,11 @@ func (r *schemaCapture) typeFunction(oid, role string) (*sc.TypeFunction, error)
 	if oid == "0" {
 		return nil, nil
 	}
-	rows, e := r.rows("SELECT n.nspname,p.proname,rn.nspname,rt.typname,l.lanname,p.prosrc,COALESCE(p.probin,''),p.provolatile::pg_catalog.text,p.proisstrict::pg_catalog.text,p.prosecdef::pg_catalog.text,p.proleakproof::pg_catalog.text,p.proparallel::pg_catalog.text,COALESCE(pg_catalog.array_to_json(p.proconfig)::pg_catalog.text,'[]'),p.procost::pg_catalog.text,p.prorows::pg_catalog.text,CASE WHEN p.prosqlbody IS NULL THEN '' ELSE pg_catalog.pg_get_functiondef(p.oid) END FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace JOIN pg_catalog.pg_type rt ON rt.oid=p.prorettype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace JOIN pg_catalog.pg_language l ON l.oid=p.prolang WHERE p.oid=$1::pg_catalog.oid", oid)
+	body := "CASE WHEN p.prosqlbody IS NULL THEN '' ELSE pg_catalog.pg_get_functiondef(p.oid) END"
+	if r.skipCustomTypeFormatting {
+		body = "COALESCE(p.prosqlbody::pg_catalog.text,'')"
+	}
+	rows, e := r.rows("SELECT n.nspname,p.proname,rn.nspname,rt.typname,l.lanname,p.prosrc,COALESCE(p.probin,''),p.provolatile::pg_catalog.text,p.proisstrict::pg_catalog.text,p.prosecdef::pg_catalog.text,p.proleakproof::pg_catalog.text,p.proparallel::pg_catalog.text,COALESCE(pg_catalog.array_to_json(p.proconfig)::pg_catalog.text,'[]'),p.procost::pg_catalog.text,p.prorows::pg_catalog.text,"+body+",COALESCE(p.proargdefaults::pg_catalog.text,'') FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace JOIN pg_catalog.pg_type rt ON rt.oid=p.prorettype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace JOIN pg_catalog.pg_language l ON l.oid=p.prolang WHERE p.oid=$1::pg_catalog.oid", oid)
 	if e != nil || len(rows) != 1 {
 		return nil, sc.ErrInvalid
 	}
@@ -125,6 +129,9 @@ func (r *schemaCapture) typeFunction(oid, role string) (*sc.TypeFunction, error)
 	out := &sc.TypeFunction{Role: role, Ref: sc.Ref{Kind: "routine", Schema: v[0], Name: v[1]}, Result: sc.Ref{Kind: "type", Schema: v[2], Name: v[3]}, Arguments: []sc.Ref{}, Properties: sc.Complete[sc.Option](nil)}
 	for i, name := range []string{"language", "source", "binary", "volatility", "strict", "securityDefiner", "leakproof", "parallel", "configuration", "cost", "rows", "sqlBody"} {
 		out.Properties.Items = append(out.Properties.Items, sc.Option{Name: name, Value: v[4+i]})
+	}
+	if r.skipCustomTypeFormatting {
+		out.Properties.Items = append(out.Properties.Items, sc.Option{Name: "sqlBodyEncoding", Value: "catalogNodeTree"}, sc.Option{Name: "argumentDefaults", Value: v[16]})
 	}
 	args, e := r.rows("SELECT n.nspname,t.typname FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.unnest(p.proargtypes) WITH ORDINALITY a(oid,ord) JOIN pg_catalog.pg_type t ON t.oid=a.oid JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE p.oid=$1::pg_catalog.oid ORDER BY a.ord", oid)
 	if e != nil {
@@ -145,7 +152,7 @@ func (r *schemaCapture) typeOperatorClass(oid string) (*sc.TypeOperatorClass, er
 	}
 	v := rows[0]
 	out := &sc.TypeOperatorClass{Method: v[0], Family: sc.Ref{Kind: "opfamily", Schema: v[1], Name: v[2]}, Input: sc.Ref{Kind: "type", Schema: v[3], Name: v[4]}, Default: pgBool(v[5]), Operators: []sc.TypeOperator{}, Functions: []sc.TypeFunction{}}
-	ops, e := r.rows("SELECT n.nspname,o.oprname,m.amopstrategy::pg_catalog.text,m.amoppurpose::pg_catalog.text,ln.nspname,l.typname,rn.nspname,rt.typname,o.oprcode::pg_catalog.oid::pg_catalog.text,COALESCE(sn.nspname,''),COALESCE(sf.opfname,'') FROM pg_catalog.pg_amop m JOIN pg_operator o ON o.oid=m.amopopr JOIN pg_catalog.pg_namespace n ON n.oid=o.oprnamespace JOIN pg_catalog.pg_type l ON l.oid=m.amoplefttype JOIN pg_catalog.pg_namespace ln ON ln.oid=l.typnamespace JOIN pg_catalog.pg_type rt ON rt.oid=m.amoprighttype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace LEFT JOIN pg_catalog.pg_opfamily sf ON sf.oid=m.amopsortfamily LEFT JOIN pg_catalog.pg_namespace sn ON sn.oid=sf.opfnamespace WHERE m.amopfamily=$1::pg_catalog.oid ORDER BY m.amopstrategy,ln.nspname,l.typname,rn.nspname,rt.typname,m.amoppurpose", v[6])
+	ops, e := r.rows("SELECT n.nspname,o.oprname,m.amopstrategy::pg_catalog.text,m.amoppurpose::pg_catalog.text,ln.nspname,l.typname,rn.nspname,rt.typname,o.oprcode::pg_catalog.oid::pg_catalog.text,COALESCE(sn.nspname,''),COALESCE(sf.opfname,'') FROM pg_catalog.pg_amop m JOIN pg_catalog.pg_operator o ON o.oid=m.amopopr JOIN pg_catalog.pg_namespace n ON n.oid=o.oprnamespace JOIN pg_catalog.pg_type l ON l.oid=m.amoplefttype JOIN pg_catalog.pg_namespace ln ON ln.oid=l.typnamespace JOIN pg_catalog.pg_type rt ON rt.oid=m.amoprighttype JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace LEFT JOIN pg_catalog.pg_opfamily sf ON sf.oid=m.amopsortfamily LEFT JOIN pg_catalog.pg_namespace sn ON sn.oid=sf.opfnamespace WHERE m.amopfamily=$1::pg_catalog.oid ORDER BY m.amopstrategy,ln.nspname,l.typname,rn.nspname,rt.typname,m.amoppurpose", v[6])
 	if e != nil {
 		return nil, e
 	}
@@ -175,7 +182,7 @@ func (r *schemaCapture) typeOperatorClass(oid string) (*sc.TypeOperatorClass, er
 }
 
 func (r *schemaCapture) expressionOperator(oid string) (*sc.TypeOperator, error) {
-	rows, e := r.rows("SELECT n.nspname,o.oprname,COALESCE(ln.nspname,''),COALESCE(l.typname,''),COALESCE(rn.nspname,''),COALESCE(rt.typname,''),o.oprcode::pg_catalog.oid::pg_catalog.text FROM pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid=o.oprnamespace LEFT JOIN pg_catalog.pg_type l ON l.oid=o.oprleft LEFT JOIN pg_catalog.pg_namespace ln ON ln.oid=l.typnamespace LEFT JOIN pg_catalog.pg_type rt ON rt.oid=o.oprright LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace WHERE o.oid=$1::pg_catalog.oid", oid)
+	rows, e := r.rows("SELECT n.nspname,o.oprname,COALESCE(ln.nspname,''),COALESCE(l.typname,''),COALESCE(rn.nspname,''),COALESCE(rt.typname,''),o.oprcode::pg_catalog.oid::pg_catalog.text FROM pg_catalog.pg_operator o JOIN pg_catalog.pg_namespace n ON n.oid=o.oprnamespace LEFT JOIN pg_catalog.pg_type l ON l.oid=o.oprleft LEFT JOIN pg_catalog.pg_namespace ln ON ln.oid=l.typnamespace LEFT JOIN pg_catalog.pg_type rt ON rt.oid=o.oprright LEFT JOIN pg_catalog.pg_namespace rn ON rn.oid=rt.typnamespace WHERE o.oid=$1::pg_catalog.oid", oid)
 	if e != nil || len(rows) != 1 {
 		return nil, sc.ErrInvalid
 	}

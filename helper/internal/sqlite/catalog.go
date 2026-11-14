@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/browsevalue"
 	"dbeer/helper/internal/protocol"
 )
 
@@ -106,15 +107,18 @@ func (s *Session) catalog(ctx context.Context, c protocol.Command, sink adapter.
 			sql += " AND instr(lower(name),lower(?))>0"
 			args = append(args, r.Search)
 		}
-		sql += " ORDER BY name LIMIT 200 OFFSET ?"
-		args = append(args, r.Page*200)
+		sql += " ORDER BY name"
+		if !s.metadataCapture {
+			sql += " LIMIT 200 OFFSET ?"
+			args = append(args, r.Page*200)
+		}
 	case "columns":
 		cols, err := s.tableInfo(ctx, schema, r.Object)
 		if err != nil {
 			return s.fail(c, ctx, err)
 		}
 		editable := s.editableTable(ctx, r.Object, cols) && !s.readOnly
-		names := []string{"name", "nativeType", "nullable", "default", "generated", "primaryKey", "editable", "editReason"}
+		names := []string{"name", "nativeType", "nullable", "default", "generated", "primaryKey", "editable", "editReason", "comparison"}
 		rows := [][]protocol.SQLiteValue{}
 		for _, col := range cols {
 			if col.Hidden == 1 {
@@ -139,9 +143,19 @@ func (s *Session) catalog(ctx context.Context, c protocol.Command, sink adapter.
 			if col.Hidden != 0 {
 				generated = "generated"
 			}
-			rows = append(rows, []protocol.SQLiteValue{stringValue(col.Name), stringValue(native), stringValue(strconv.FormatBool(!col.NotNull)), def, stringValue(generated), stringValue(strconv.Itoa(col.PrimaryKey)), stringValue(strconv.FormatBool(can)), stringValue(reason)})
+			rows = append(rows, []protocol.SQLiteValue{stringValue(col.Name), stringValue(native), stringValue(strconv.FormatBool(!col.NotNull)), def, stringValue(generated), stringValue(strconv.Itoa(col.PrimaryKey)), stringValue(strconv.FormatBool(can)), stringValue(reason), stringValue(sqliteComparisonJSON(col.NativeType))})
 		}
 		return s.catalogRows(ctx, c, names, rows, sink)
+	case "referencingTables":
+		if _, err := s.tableInfo(ctx, schema, r.Object); err != nil {
+			return s.fail(c, ctx, err)
+		}
+		sql = `SELECT DISTINCT 'main' AS schema,t.name AS name,'table' AS kind
+FROM main.sqlite_schema t JOIN pragma_foreign_key_list(t.name) k
+WHERE t.type='table' AND substr(t.name,1,7) COLLATE NOCASE <> 'sqlite_'
+AND t.name NOT IN (SELECT name FROM pragma_table_list WHERE type='shadow')
+AND k."table" COLLATE NOCASE=? ORDER BY t.name COLLATE BINARY`
+		args = []any{r.Object}
 	case "foreignKeys":
 		sql = `SELECT 'fk_'||id AS name,'main' AS targetSchema,"table" AS targetTable,"from" AS sourceColumn,"to" AS targetColumn,seq+1 AS position FROM pragma_foreign_key_list(?) ORDER BY id,seq`
 		args = []any{r.Object}
@@ -168,6 +182,11 @@ func (s *Session) catalog(ctx context.Context, c protocol.Command, sink adapter.
 		if err != nil {
 			return s.fail(c, ctx, err)
 		}
+		if r.RelationshipScope != nil {
+			if err = s.validateRelationshipScope(ctx, *r.RelationshipScope); err != nil {
+				return s.fail(c, ctx, err)
+			}
+		}
 		sql, args, err = buildBrowse(*r, cols)
 		if err != nil {
 			return s.fail(c, ctx, err)
@@ -185,21 +204,8 @@ func (s *Session) catalog(ctx context.Context, c protocol.Command, sink adapter.
 		return s.fail(c, ctx, err)
 	}
 	if r.Kind == "foreignKeys" {
-		for _, row := range rows {
-			if row[4].Type != "null" {
-				continue
-			}
-			target, err := s.tableInfo(ctx, "main", text(row[2]))
-			if err != nil {
-				return s.fail(c, ctx, err)
-			}
-			position := integer(row[5])
-			for _, column := range target {
-				if column.PrimaryKey == position {
-					row[4] = stringValue(column.Name)
-					break
-				}
-			}
+		if err := s.resolveForeignKeyNames(ctx, r.Object, rows); err != nil {
+			return s.fail(c, ctx, err)
 		}
 	}
 	if r.Kind == "keys" || r.Kind == "constraints" {
@@ -290,6 +296,16 @@ func buildBrowse(r protocol.CatalogRequest, cols []columnInfo) (string, []any, e
 	}
 	sql := "SELECT * FROM main." + quote(r.Object)
 	args := []any{}
+	predicates := []string{}
+	if r.RelationshipScope != nil {
+		if !r.Valid() {
+			return "", nil, errors.New("Invalid relationship scope.")
+		}
+		sql += " AS " + quote("__dbeer_child")
+		predicate, values := relationshipPredicate(*r.RelationshipScope)
+		predicates = append(predicates, predicate)
+		args = append(args, values...)
+	}
 	expr, valid := r.EffectiveFilterExpression()
 	if !valid {
 		return "", nil, errors.New("Invalid filters.")
@@ -307,6 +323,29 @@ func buildBrowse(r protocol.CatalogRequest, cols []columnInfo) (string, []any, e
 			}
 			if f.Operator == "isNotNull" {
 				return q + " IS NOT NULL", nil
+			}
+			if f.NativeValue != nil {
+				scalar, err := browsevalue.SQLite(*f.NativeValue)
+				if err != nil {
+					return "", err
+				}
+				args = append(args, scalar)
+				op := "="
+				if f.Operator == "ne" {
+					op = "<>"
+				}
+				return q + op + "?", nil
+			}
+			if f.SQLiteValue != nil {
+				if !f.Valid() {
+					return "", errors.New("Invalid SQLite filter operand.")
+				}
+				args = append(args, *f.SQLiteValue)
+				op := "="
+				if f.Operator == "ne" {
+					op = "<>"
+				}
+				return q + op + "?", nil
 			}
 			if f.Value == nil {
 				return "", errors.New("Missing filter operand.")
@@ -340,7 +379,10 @@ func buildBrowse(r protocol.CatalogRequest, cols []columnInfo) (string, []any, e
 		if err != nil {
 			return "", nil, err
 		}
-		sql += " WHERE " + where
+		predicates = append(predicates, where)
+	}
+	if len(predicates) > 0 {
+		sql += " WHERE " + strings.Join(predicates, " AND ")
 	}
 	seen := map[string]bool{}
 	order := []string{}

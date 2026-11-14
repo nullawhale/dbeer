@@ -6,18 +6,20 @@ enum BackendProtocol {
 }
 
 enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
-    case postgresql, mysql, cassandra, mongodb, sqlite
+    case postgresql, mysql, mariadb, cassandra, mongodb, sqlite
 
-    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra, .mongodb, .sqlite]
+    static let availableCases: [Self] = [.postgresql, .mysql, .mariadb, .cassandra, .mongodb, .sqlite]
     var id: String { rawValue }
-    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra"; case .mongodb: "MongoDB"; case .sqlite: "SQLite" } }
-    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042; case .mongodb: 27017; case .sqlite: 0 } }
-    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra, .mongodb, .sqlite: "" } }
-    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra, .mongodb, .sqlite: "" } }
+    /// Shared lexical quoting; engine identity and server capabilities stay distinct.
+    var usesMySQLSyntax: Bool { self == .mysql || self == .mariadb }
+    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .mariadb: "MariaDB"; case .cassandra: "Apache Cassandra"; case .mongodb: "MongoDB"; case .sqlite: "SQLite" } }
+    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql, .mariadb: 3306; case .cassandra: 9042; case .mongodb: 27017; case .sqlite: 0 } }
+    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql, .mariadb: "mysql"; case .cassandra, .mongodb, .sqlite: "" } }
+    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql, .mariadb: "root"; case .cassandra, .mongodb, .sqlite: "" } }
     var sslModes: [String] {
         switch self {
         case .postgresql: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
-        case .mysql: ["disable", "require", "verify-ca", "verify-full"]
+        case .mysql, .mariadb: ["disable", "require", "verify-ca", "verify-full"]
         case .cassandra, .mongodb: ["verify-full", "disable"]
         case .sqlite: ["disable"]
         }
@@ -120,6 +122,7 @@ struct CatalogRequest: Codable, Sendable, Equatable {
     var filterExpression: CatalogFilterExpression?
     /// PostgreSQL-only, read-only DDL generation. Empty enum labels are values.
     var typeChange: TypeChange?
+    var relationshipScope: SQLiteRelationshipScope? = nil
 }
 
 extension CatalogRequest {
@@ -138,7 +141,18 @@ extension CatalogRequest {
         typeChange = try values.decodeIfPresent(TypeChange.self, forKey: .typeChange)
         filterExpression = values.contains(.filterExpression)
             ? try values.decode(CatalogFilterExpression.self, forKey: .filterExpression) : nil
-        let settings = TableBrowseConfiguration(filterExpression: filterExpression ?? .conjunction(filters ?? []), sort: sort ?? [])
+        if ["referencingTables", "foreignKeys", "name"].contains(kind) {
+            let fields = try decoder.container(keyedBy: RelationshipSelectorCodingKey.self)
+            let allowed: Set<String> = kind == "name" ? ["kind", "schema", "object", "objectKind", "identity"] : ["kind", "schema", "object", "objectKind"]
+            guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: allowed),
+                  fields.allKeys.allSatisfy({ (try? fields.decodeNil(forKey: $0)) == false }) else { throw BackendTransportError(.invalidMessage) }
+            if kind != "name" { guard supportsMetadataPaging else { throw BackendTransportError(.invalidMessage) } }
+        }
+        relationshipScope = values.contains(.relationshipScope) ? try values.decode(SQLiteRelationshipScope.self, forKey: .relationshipScope) : nil
+        if let relationshipScope {
+            guard kind == "browse", relationshipScope.matches(.init(schema: schema ?? "", name: object ?? "", kind: objectKind ?? "")) else { throw BackendTransportError(.invalidMessage) }
+        }
+        let settings = TableBrowseConfiguration(filterExpression: filterExpression ?? .conjunction(filters ?? []), sort: sort ?? [], relationshipScope: relationshipScope)
         guard settings.isValid, filterExpression == nil || ((filters ?? []).isEmpty && kind == "browse") else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid browse settings."))
         }
@@ -161,6 +175,66 @@ struct CatalogFilter: Codable, Sendable, Equatable {
     var column: String
     var `operator`: String
     var value: String?
+    var sqliteValue: SQLiteValue?
+    var nativeValue: NativeCellFilterValue?
+
+    init(column: String, operator operation: String, value: String? = nil, sqliteValue: SQLiteValue? = nil, nativeValue: NativeCellFilterValue? = nil) {
+        self.column = column
+        self.operator = operation
+        self.value = value
+        self.sqliteValue = sqliteValue
+        self.nativeValue = nativeValue
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        guard Data(lhs.column.utf8) == Data(rhs.column.utf8), lhs.operator == rhs.operator, lhs.sqliteValue == rhs.sqliteValue, lhs.nativeValue == rhs.nativeValue else { return false }
+        switch (lhs.value, rhs.value) {
+        case (nil, nil): return true
+        case let (left?, right?): return Data(left.utf8) == Data(right.utf8)
+        default: return false
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey { case column, `operator`, value, sqliteValue, nativeValue }
+    private struct Key: CodingKey {
+        let stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { return nil }
+    }
+
+    init(from decoder: Decoder) throws {
+        let fields = try decoder.container(keyedBy: Key.self)
+        guard Set(fields.allKeys.map(\.stringValue)).isSubset(of: ["column", "operator", "value", "sqliteValue", "nativeValue"]) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown filter condition field."))
+        }
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        column = try values.decode(String.self, forKey: .column)
+        self.operator = try values.decode(String.self, forKey: .operator)
+        value = try values.decodeIfPresent(String.self, forKey: .value)
+        sqliteValue = nil
+        nativeValue = nil
+        if values.contains(.nativeValue) {
+            guard !values.contains(.value), !values.contains(.sqliteValue) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Ambiguous native filter operands."))
+            }
+            nativeValue = try values.decode(NativeCellFilterValue.self, forKey: .nativeValue)
+        }
+        if values.contains(.sqliteValue) {
+            guard !values.contains(.value) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Ambiguous filter operands."))
+            }
+            let nested = try values.superDecoder(forKey: .sqliteValue).container(keyedBy: Key.self)
+            guard Set(nested.allKeys.map(\.stringValue)).isSubset(of: ["type", "value"]) else {
+                throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unknown SQLite operand field."))
+            }
+            if let key = Key(stringValue: "value"), nested.contains(key) { _ = try nested.decode(String.self, forKey: key) }
+            sqliteValue = try values.decode(SQLiteValue.self, forKey: .sqliteValue)
+        }
+        guard isValid else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid filter operand."))
+        }
+    }
 }
 
 struct ExportDestination: Codable, Sendable, Equatable {
@@ -196,7 +270,7 @@ struct InsertFormatRequest: Codable, Sendable, Equatable {
 
     var valid: Bool {
         func validName(_ value: String) -> Bool { !value.isEmpty && value.utf8.count <= 1_024 && !value.contains("\0") }
-        guard [.postgresql, .mysql, .sqlite].contains(engine), (schema.isEmpty || validName(schema)), validName(table),
+        guard [.postgresql, .mysql, .mariadb, .sqlite].contains(engine), (schema.isEmpty || validName(schema)), validName(table),
               !columns.isEmpty, columns.count <= Self.maximumColumns,
               !rows.isEmpty, rows.count <= Self.maximumRows,
               columns.count * rows.count <= Self.maximumCells,
@@ -238,6 +312,7 @@ struct QueryResultSet: Codable, Sendable, Equatable {
     var affectedRowCountKnown: Bool?
     var nextCursor: String?
     var sqliteValues: [[SQLiteValue]]?
+    var nativeValues: [[NativeValue]]? = nil
     var storageTokens: [String]?
     var source: SQLResultSource?
 
@@ -247,6 +322,8 @@ struct QueryResultSet: Codable, Sendable, Equatable {
         (nextCursor == nil || Self.validCursor(nextCursor!)) && rowCount >= 0 && displayedRowCount >= 0 &&
             Self.validStorageTokens(storageTokens, rowCount: displayedRowCount) &&
             SQLiteValue.validMatrix(sqliteValues, rows: displayedRowCount, columns: columns.count) &&
+            NativeValue.validMatrix(nativeValues, rows: displayedRowCount, columns: columns.count) &&
+            (!columns.contains(where: { $0.engine == .sqlite }) || NativeValue.matchesSQLite(nativeValues, storage: sqliteValues)) &&
             (source?.valid(for: columns) ?? true) &&
             (streamed ? rows.isEmpty : displayedRowCount == rows.count) &&
             columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
@@ -271,7 +348,9 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var queryId: String?
     var sql: String?
     var catalog: CatalogRequest?
+    var catalogMetadata: CatalogMetadataPageRequest?
     var stream: Bool?
+    var resultValues: String? = nil
     var export: ExportRequest?
     var sequence: Int?
     var changes: ChangesRequest?
@@ -288,6 +367,29 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var tableImport: TableImportRequest?
     var databaseTools: DatabaseToolsRequest?
     var transfer: DataTransferRequest?
+    var schemaObservation: SchemaObservationRequest?
+    var nativeCommand: NativeCommand? = nil
+    @OptionalTransportPayload var tuningInspect: TuningInspectRequest? = nil
+    @OptionalTransportPayload var tuningValidation: TuningValidationRequest? = nil
+    @OptionalTransportPayload var tuningSettingObservation: TuningSettingObservationRequest? = nil
+    @OptionalTransportPayload var tuningSetting: TuningSettingRequest? = nil
+
+    static func tuningInspect(sessionId: String, request: TuningInspectRequest) -> Self {
+        Self(type: "tuning.inspect", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningInspect: request)
+    }
+    static func tuningValidate(sessionId: String, request: TuningValidationRequest) -> Self {
+        Self(type: "tuning.validate", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningValidation: request)
+    }
+    static func tuningObserveSetting(sessionId: String, request: TuningSettingObservationRequest) -> Self {
+        Self(type: "tuning.setting.observe", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningSettingObservation: request)
+    }
+    static func tuningSet(sessionId: String, request: TuningSettingRequest) -> Self {
+        Self(type: "tuning.setting", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningSetting: request)
+    }
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -313,6 +415,11 @@ struct BackendCommand: Codable, Sendable, Equatable {
                         parameters: [QueryParameterBinding]? = nil) -> Self {
         Self(type: "execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId, sql: sql, stream: true,
             parameters: parameters)
+    }
+
+    static func executeCommand(sessionId: String, queryId: String = UUID().uuidString, command: NativeCommand) -> Self {
+        Self(type: "command.execute", requestId: UUID().uuidString, sessionId: sessionId, queryId: queryId,
+            resultValues: NativeValue.format, nativeCommand: command)
     }
 
     static func catalog(sessionId: String, queryId: String = UUID().uuidString, request: CatalogRequest) -> Self {
@@ -395,10 +502,17 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "ssh.trust": "ssh.trust.result"
         case "connect": "connect.result"
         case "sqlite.create": "sqlite.create.result"
-        case "execute", "catalog", "changes.preview", "changes.apply": "query.result"
+        case "execute", "command.execute", "catalog", "changes.preview", "changes.apply": "query.result"
+        case "catalog.page", "catalog.batch", "catalog.close": type + ".result"
         case "explain.run": "explain.result"
+        case "tuning.inspect": "tuning.inspect.result"
+        case "tuning.validate": "tuning.validate.result"
+        case "tuning.setting.observe": "tuning.setting.observe.result"
+        case "tuning.setting": "tuning.setting.result"
         case "monitor.snapshot": "monitor.result"
-        case "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close": type + ".result"
+        case "monitor.schema": "monitor.schema.result"
+        case "structure.load", "structure.preview", "structure.validate", "structure.apply", "structure.status", "structure.close",
+             "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.status", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close": type + ".result"
         case "import.describe", "import.preview", "import.apply": type + ".result"
         case "cancel": "cancel.ack"
         case "disconnect": "disconnect.ack"
@@ -406,7 +520,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "operation.assess": "operation.assessment"
         case "formatInserts": "insertSQL"
         case "data.describe", "data.start", "data.status", "data.page", "data.value", "data.diff", "data.plan", "data.cancel", "data.close": type + ".result"
-        case "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.plan", "schema.export", "schema.cancel", "schema.close": type + ".result"
+        case "schema.import.start", "schema.import.status", "schema.import.cancel", "schema.import.close", "schema.bundle.start", "schema.bundle.status", "schema.bundle.export", "schema.bundle.cancel", "schema.bundle.close", "schema.start", "schema.status", "schema.page", "schema.value", "schema.diff", "schema.plan", "schema.export", "schema.cancel", "schema.close": type + ".result"
         case "compare.start", "compare.status", "compare.page", "compare.value", "compare.cancel", "compare.close": type + ".result"
         case "dbtools.preview", "dbtools.start", "dbtools.status", "dbtools.cancel", "dbtools.close": type + ".result"
         case "transfer.describe", "transfer.preview", "transfer.apply", "transfer.status", "transfer.cancel", "transfer.close": type + ".result"
@@ -481,6 +595,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
     var columns: [ResultColumn]?
     var rows: [[String?]]?
     var sqliteValues: [[SQLiteValue]]?
+    var nativeValues: [[NativeValue]]? = nil
     var storageTokens: [String]?
     var source: SQLResultSource?
     var commandTag: String?
@@ -515,14 +630,32 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var schemaComparison: SchemaComparisonResponse? = nil
     @OptionalTransportPayload var dataComparison: DataComparisonResponse? = nil
     @OptionalTransportPayload var explain: ExplainResult? = nil
+    @OptionalTransportPayload var explainDML: ExplainDMLResult? = nil
     @OptionalTransportPayload var explainSupport: ExplainSupport? = nil
+    @OptionalTransportPayload var catalogMetadata: CatalogMetadataReply? = nil
+    @OptionalTransportPayload var operationSupport: OperationSupport? = nil
     var structure: StructureReply?
     var tableImport: TableImportReply?
     var monitor: SessionMonitorSnapshot?
+    @OptionalTransportPayload var schemaObservation: SchemaObservation? = nil
     var databaseTools: DatabaseToolsReply?
     var transfer: DataTransferReply?
+    @OptionalTransportPayload var tuningInspection: TuningInspection? = nil
+    @OptionalTransportPayload var tuningValidation: TuningValidation? = nil
+    @OptionalTransportPayload var tuningSettingObservation: TuningSettingObservation? = nil
+    @OptionalTransportPayload var tuningSetting: TuningSettingResult? = nil
 
     func validate() throws {
+        // Keep phase frames separate from receive/hydrate on the worker stack.
+        try validateTransportValues()
+        try validateOperationSupport()
+        let valid = validMessageShape()
+        try validateProductPayloadPlacement()
+        try validateSQLCompletion(valid: valid)
+    }
+
+    @inline(never)
+    private func validateTransportValues() throws {
         guard Self.validID(requestId) else { throw BackendTransportError(.invalidMessage) }
         if let sessionId, !Self.validID(sessionId) { throw BackendTransportError(.invalidMessage) }
         if let queryId, !Self.validID(queryId) { throw BackendTransportError(.invalidMessage) }
@@ -537,92 +670,213 @@ struct BackendMessage: Codable, Sendable, Equatable {
             let typedColumns = streamed == true ? resultSets?.first?.columns.count ?? 0 : columns?.count ?? 0
             guard type == "query.result", SQLiteValue.validMatrix(sqliteValues, rows: displayedRowCount ?? -1, columns: typedColumns) else { throw BackendTransportError(.invalidMessage) }
         }
+        if let nativeValues {
+            let width = columns?.count ?? rows?.first?.count ?? 0
+            guard ["query.result", "query.chunk"].contains(type), streamed != true,
+                  NativeValue.validMatrix(nativeValues, rows: rows?.count ?? -1, columns: width),
+                  type != "query.result" || columns?.contains(where: { $0.engine == .sqlite }) != true ||
+                    NativeValue.matchesSQLite(nativeValues, storage: sqliteValues) else { throw BackendTransportError(.invalidMessage) }
+        }
         let sourceColumns = streamed == true
             ? (resultSets?.first(where: { !$0.columns.isEmpty })?.columns ?? columns ?? []) : (columns ?? [])
         if let source, type != "query.result" || !source.valid(for: sourceColumns) {
             throw BackendTransportError(.invalidMessage)
         }
-        let valid: Bool
+    }
+
+    @inline(never)
+    private func validateOperationSupport() throws {
+        if let operationSupport {
+            guard operationSupport.valid,
+                  type == "connect.result" ? operationSupport.scope == .session && operationSupport.engine == engine :
+                    type.hasPrefix("structure.") && operationSupport.scope == .structure &&
+                    (structure?.baseline.map { $0.engine == operationSupport.engine.rawValue } ?? true) else {
+                throw BackendTransportError(.invalidMessage)
+            }
+        }
+    }
+
+    @inline(never)
+    private func validMessageShape() -> Bool {
         switch type {
-        case "hello.ack": valid = protocolVersion != nil
-        case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
-                streamed == nil && source == nil && databaseTools?.valid(for: type) == true
-        case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
-                streamed == nil && source == nil && transfer?.valid == true
-        case "sqlite.create.result": valid = sessionId == nil && queryId == nil
         case "import.describe.result", "import.preview.result", "import.apply.result":
-            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+            return validStructuralMessageShape()
+        case "structure.load.result", "structure.preview.result", "structure.validate.result", "structure.apply.result", "structure.status.result", "structure.close.result",
+             "structure.physical.inspect.result", "structure.physical.preview.result", "structure.physical.apply.result", "structure.physical.status.result", "structure.physical.reconcile.result", "structure.physical.close.result", "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
+            return validStructuralMessageShape()
+        case "query.progress":
+            return validSQLMessageShape()
+        case "explain.result":
+            return validSQLMessageShape()
+        case "query.started":
+            return validSQLMessageShape()
+        case "query.chunk":
+            return validSQLMessageShape()
+        case "query.result":
+            return validSQLMessageShape()
+        case "error":
+            return validSQLMessageShape()
+        default: return validServiceMessageShape()
+        }
+    }
+
+    @inline(never)
+    private func validStructuralMessageShape() -> Bool {
+        switch type {
+        case "import.describe.result", "import.preview.result", "import.apply.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
                 columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
                 tableImport?.valid(for: type) == true && (durationMs.map { $0.isFinite && $0 >= 0 } ?? true)
-        case "structure.load.result", "structure.preview.result", "structure.apply.result", "structure.status.result", "structure.close.result":
-            valid = sessionId != nil && queryId != nil && connected != nil &&
+        case "structure.load.result", "structure.preview.result", "structure.validate.result", "structure.apply.result", "structure.status.result", "structure.close.result",
+             "structure.physical.inspect.result", "structure.physical.preview.result", "structure.physical.apply.result", "structure.physical.status.result", "structure.physical.reconcile.result", "structure.physical.close.result", "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
+            return sessionId != nil && queryId != nil && connected != nil &&
                 (transactionStatus != nil || connected == false) && columns == nil && rows == nil &&
                 resultSets == nil && streamed == nil && source == nil && structure?.valid(for: type) == true
-        case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && dataComparison?.valid(for: type) == true
-        case "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.plan.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && schemaComparison?.valid(for: type) == true
-        case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
-            valid = sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
-                comparison?.valid(for: type) == true
-        case "insertSQL":
-            valid = sessionId == nil && queryId == nil && sql?.isEmpty == false &&
-                (sql?.utf8.count ?? Int.max) <= InsertFormatRequest.maximumBytes && sql?.contains("\0") == false
-        case "operation.assessment": valid = sessionId != nil && queryId != nil && assessment?.valid == true
-        case "ssh.probe.result", "ssh.trust.result": valid = ssh?.isValid == true
-        case "connect.result": valid = sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
-        case "monitor.result":
-            valid = sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
-                monitor?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
-        case "query.progress": valid = (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
+        default: return false
+        }
+    }
+
+    @inline(never)
+    private func validSQLMessageShape() -> Bool {
+        switch type {
+        case "query.progress": return (sequence ?? 0) > 0 && sessionId != nil && queryId != nil && (resultIndex ?? -1) >= 0 && (rowCount ?? -1) >= 0
         case "explain.result":
-            valid = sessionId != nil && queryId != nil && transactionStatus != nil && sqlCompleted == true &&
+            return sessionId != nil && queryId != nil && transactionStatus != nil && sqlCompleted == true &&
                 durationMs.map { $0.isFinite && $0 >= 0 } == true && explain?.valid == true &&
                 columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
-        case "query.started": valid = sessionId != nil && queryId != nil
+        case "query.started": return sessionId != nil && queryId != nil
         case "query.chunk":
-            valid = sessionId != nil && queryId != nil && (sequence ?? 0) > 0 &&
+            return sessionId != nil && queryId != nil && (sequence ?? 0) > 0 &&
                 (resultIndex ?? -1) >= 0 && (resultIndex ?? 1_024) < 1_024 && rows != nil &&
                 (columns?.enumerated().allSatisfy { $0.offset == $0.element.index &&
                     ($0.element.encoding == nil || $0.element.encoding == "base64") } ?? true)
         case "query.result":
             if let columns, let rows, let durationMs, let rowCount, let displayedRowCount {
-                valid = sessionId != nil && queryId != nil && transactionStatus != nil &&
+                return sessionId != nil && queryId != nil && transactionStatus != nil &&
                     durationMs.isFinite && durationMs >= 0 && rowCount >= 0 &&
                     (streamed == true ? (rows.isEmpty && displayedRowCount >= 0) : displayedRowCount == rows.count) && truncated != nil && commandTag != nil &&
                     columns.enumerated().allSatisfy { $0.offset == $0.element.index &&
                         ($0.element.encoding == nil || $0.element.encoding == "base64") } &&
                     rows.allSatisfy { $0.count == columns.count } &&
                     (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
-            } else { valid = false }
-        case "cancel.ack":
-            valid = sessionId != nil && queryId != nil && ["accepted", "alreadyFinished"].contains(status)
-        case "disconnect.ack": valid = sessionId != nil
-        case "shutdown.ack": valid = true
+            } else { return false }
         case "error":
-            valid = category != nil && message != nil && connected != nil && outcomeUnknown != nil &&
+            return category != nil && message != nil && connected != nil && outcomeUnknown != nil &&
                 (errorPosition == nil || errorPosition! > 0)
                 && (resultSets?.allSatisfy { $0.valid(streamed: streamed == true) } ?? true)
-        default: valid = false
+        default: return false
         }
+    }
+
+    @inline(never)
+    private func validServiceMessageShape() -> Bool {
+        switch type {
+        case "tuning.inspect.result", "tuning.validate.result", "tuning.setting.observe.result", "tuning.setting.result":
+            return validTuningMessageShape
+        case "hello.ack": return protocolVersion != nil
+        case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                streamed == nil && source == nil && databaseTools?.valid(for: type) == true
+        case "transfer.describe.result", "transfer.preview.result", "transfer.apply.result", "transfer.status.result", "transfer.cancel.result", "transfer.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                streamed == nil && source == nil && transfer?.valid == true
+        case "sqlite.create.result": return sessionId == nil && queryId == nil
+        case "data.describe.result", "data.start.result", "data.status.result", "data.page.result", "data.value.result", "data.diff.result", "data.plan.result", "data.cancel.result", "data.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && dataComparison?.valid(for: type) == true
+        case "schema.import.start.result", "schema.import.status.result", "schema.import.cancel.result", "schema.import.close.result", "schema.bundle.start.result", "schema.bundle.status.result", "schema.bundle.export.result", "schema.bundle.cancel.result", "schema.bundle.close.result", "schema.start.result", "schema.status.result", "schema.page.result", "schema.value.result", "schema.diff.result", "schema.plan.result", "schema.export.result", "schema.cancel.result", "schema.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil && schemaComparison?.valid(for: type) == true
+        case "compare.start.result", "compare.status.result", "compare.page.result", "compare.value.result", "compare.cancel.result", "compare.close.result":
+            return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
+                comparison?.valid(for: type) == true
+        case "insertSQL":
+            return sessionId == nil && queryId == nil && sql?.isEmpty == false &&
+                (sql?.utf8.count ?? Int.max) <= InsertFormatRequest.maximumBytes && sql?.contains("\0") == false
+        case "operation.assessment": return sessionId != nil && queryId != nil && assessment?.valid == true
+        case "ssh.probe.result", "ssh.trust.result": return ssh?.isValid == true
+        case "connect.result": return sessionId != nil && transactionStatus != nil && engine != nil && capabilities != nil
+        case "catalog.page.result", "catalog.batch.result", "catalog.close.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                catalogMetadata?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
+                (type == "catalog.close.result" ? catalogMetadata?.closed == true : catalogMetadata?.closed != true)
+        case "monitor.schema.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                schemaObservation?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
+        case "monitor.result":
+            return sessionId != nil && queryId != nil && connected == true && transactionStatus == .idle &&
+                monitor?.valid == true && columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil
+        case "cancel.ack":
+            return sessionId != nil && queryId != nil && ["accepted", "alreadyFinished"].contains(status)
+        case "disconnect.ack": return sessionId != nil
+        case "shutdown.ack": return true
+        default: return false
+        }
+    }
+
+    @inline(never)
+    private func validateProductPayloadPlacement() throws {
         guard tableImport == nil || (type.hasPrefix("import.") || type == "error") && tableImport?.valid(for: type) == true,
               databaseTools == nil || type.hasPrefix("dbtools."),
               transfer == nil || type.hasPrefix("transfer."),
               monitor == nil || type == "monitor.result",
+              !_tuningInspection.isPresent || type == "tuning.inspect.result",
+              !_tuningValidation.isPresent || type == "tuning.validate.result",
+              !_tuningSettingObservation.isPresent || type == "tuning.setting.observe.result",
+              !_tuningSetting.isPresent || type == "tuning.setting.result",
+              !_schemaObservation.isPresent || type == "monitor.schema.result",
+              !_catalogMetadata.isPresent || ["catalog.page.result", "catalog.batch.result", "catalog.close.result"].contains(type),
               structure == nil || type.hasPrefix("structure."),
-              explain == nil || type == "explain.result",
-              explainSupport == nil || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,
-              dataComparison == nil || type.hasPrefix("data."),
-              schemaComparison == nil || type.hasPrefix("schema."),
-              comparison == nil || type.hasPrefix("compare."),
-              sql == nil || (type == "insertSQL" || type == "query.result") &&
+              !_explain.isPresent || type == "explain.result",
+              validExplainDMLErrorEnvelope,
+              !_explainSupport.isPresent || type == "connect.result" && explainSupport?.valid == true && explainSupport?.engine == engine,
+              !_dataComparison.isPresent || type.hasPrefix("data."),
+              !_schemaComparison.isPresent || type.hasPrefix("schema."),
+              !_comparison.isPresent || type.hasPrefix("compare.") else { throw BackendTransportError(.invalidMessage) }
+    }
+
+    private var validTuningMessageShape: Bool {
+        guard sessionId != nil, queryId != nil, transactionStatus != nil,
+              columns == nil, rows == nil, resultSets == nil, streamed == nil, source == nil,
+              sqlCompleted == nil, sqlNotExecuted == nil, outcomeUnknown == nil else { return false }
+        switch type {
+        case "tuning.inspect.result": return transactionStatus == .idle && tuningInspection?.valid == true
+        case "tuning.validate.result": return tuningValidation?.valid == true
+        case "tuning.setting.observe.result": return transactionStatus == .transaction && tuningSettingObservation?.valid == true
+        case "tuning.setting.result": return transactionStatus == .transaction && tuningSetting?.valid == true
+        default: return false
+        }
+    }
+
+    @inline(never)
+    private func validateSQLCompletion(valid: Bool) throws {
+        guard sql == nil || (type == "insertSQL" || type == "query.result") &&
                 sql?.isEmpty == false && (sql?.utf8.count ?? Int.max) <= BackendProtocol.maxFrameBytes / 2 &&
                 sql?.contains("\0") == false,
               sqlNotExecuted != true || (type == "error" && outcomeUnknown != true && sqlCompleted != true),
-              sqlCompleted != true || ((type == "error" || type == "explain.result") && outcomeUnknown != true),
+              sqlCompleted != true || ((type == "error" || type == "explain.result") &&
+                (outcomeUnknown != true || permitsExplainDMLUnknownCompletion)),
               exportPublication == nil || ((sqlCompleted == true || sqlNotExecuted == true) && ["notPublished", "unknown"].contains(exportPublication)), valid else { throw BackendTransportError(.invalidMessage) }
+    }
+
+    private var permitsExplainDMLUnknownCompletion: Bool {
+        guard type == "error", let dml = explainDML, dml.execution == "completed" else { return false }
+        return dml.persistence == "unknown" || dml.targetExecution == "suppressed" &&
+            dml.persistence == "notExecuted" && dml.transactionAfter == "unknown"
+    }
+
+    private var validExplainDMLErrorEnvelope: Bool {
+        guard _explainDML.isPresent else { return true }
+        guard type == "error", let dml = explainDML,
+              columns == nil, rows == nil, resultSets == nil, streamed == nil, source == nil, tableImport == nil,
+              exportPublication == nil, exportPath == nil, exportFormat == nil, exportRowCount == nil,
+              [DatabaseEngine.postgresql, .mysql, .mariadb].contains(where: { dml.valid(engine: $0, mode: .analyze) }),
+              (dml.transactionAfter == "unknown" ? transactionStatus == nil :
+                transactionStatus?.rawValue == dml.transactionAfter || connected == false && transactionStatus == nil) else { return false }
+        switch dml.execution {
+        case "completed": return sqlCompleted == true && (outcomeUnknown == true) == permitsExplainDMLUnknownCompletion
+        case "notExecuted": return sqlNotExecuted == true
+        case "unknown": return sqlCompleted != true && sqlNotExecuted != true && outcomeUnknown == true
+        default: return sqlCompleted != true && sqlNotExecuted != true
+        }
     }
 
     static func validID(_ value: String) -> Bool {
@@ -721,7 +975,17 @@ struct NDJSONFramer: Sendable {
         // Keep the value validated from original bytes, before JSONDecoder can
         // discard duplicate keys or normalize an oversized nested representation.
         reply.buildIdentity = identity
+        try SchemaBundleSummary.validateFrame(frame)
+        try SchemaBundleSourceFrame.validate(frame)
+        try TuningTransportAdmission.validateFrame(frame)
         try reply.validate()
         return reply
     }
+}
+
+private struct RelationshipSelectorCodingKey: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
 }

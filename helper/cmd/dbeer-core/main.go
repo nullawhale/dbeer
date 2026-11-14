@@ -15,6 +15,7 @@ import (
 	"dbeer/helper/internal/comparisonjob"
 	"dbeer/helper/internal/datacomparisonjob"
 	"dbeer/helper/internal/dbtools"
+	"dbeer/helper/internal/mariadb"
 	"dbeer/helper/internal/mcpbridge"
 	"dbeer/helper/internal/mongodb"
 	"dbeer/helper/internal/mysql"
@@ -57,6 +58,8 @@ func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, 
 		return postgres.RenderSchemaDefinition(ctx, capture, ref)
 	case "mysql":
 		return mysql.RenderSchemaDefinition(ctx, capture, ref)
+	case "mariadb":
+		return mariadb.RenderSchemaDefinition(ctx, capture, ref)
 	case "cassandra":
 		return cassandra.RenderSchemaDefinition(ctx, capture, ref)
 	default:
@@ -72,6 +75,8 @@ func renderSynchronizationSchema(ctx context.Context, report schemacompare.Repor
 		return syncplan.Schema(ctx, report, postgres.RenderSynchronizationSchema)
 	case "mysql":
 		return syncplan.Schema(ctx, report, mysql.RenderSynchronizationSchema)
+	case "mariadb":
+		return syncplan.Schema(ctx, report, mariadb.RenderSynchronizationSchema)
 	default:
 		return syncplan.Plan{}, syncplan.ErrInvalid
 	}
@@ -85,6 +90,8 @@ func renderSynchronizationData(op syncplan.DataOperation) (string, error) {
 		return postgres.RenderDataSynchronization(op)
 	case "mysql":
 		return mysql.RenderDataSynchronization(op)
+	case "mariadb":
+		return mariadb.RenderDataSynchronization(op)
 	default:
 		return "", syncplan.ErrInvalid
 	}
@@ -100,6 +107,8 @@ func openDatabase(ctx context.Context, connection protocol.Connection) (adapter.
 		return postgres.Open(ctx, connection)
 	case "mysql":
 		return mysql.Open(ctx, connection)
+	case "mariadb":
+		return mariadb.Open(ctx, connection)
 	case "cassandra":
 		return cassandra.Open(ctx, connection)
 	default:
@@ -232,7 +241,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 				response = protocol.ErrorResponse(command, "protocol", "Protocol handshake has already completed.")
 			} else {
 				handshaken = true
-				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.DataTransferCapability, protocol.DatabaseToolsCapability, protocol.SessionMonitorCapability, protocol.TableImportCapability, protocol.QueryParametersCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
+				response = protocol.Response{Type: "hello.ack", RequestID: command.RequestID, ProtocolVersion: protocol.Version, Capabilities: []string{protocol.NativeResultValuesCapability, protocol.NativeCommandsCapability, protocol.StructureAuthoringCapability, protocol.StructureIndexAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.StructureMigrationsCapability, protocol.StructurePhysicalCapability, protocol.StructureAdvancedKindsCapability, protocol.SchemaObservationCapability, protocol.CatalogMetadataCapability, protocol.DataTransferCapability, protocol.DatabaseToolsCapability, protocol.SessionMonitorCapability, protocol.TableImportCapability, protocol.QueryParametersCapability, protocol.ExplainParametersCapability, protocol.ExplainOptionsCapability, protocol.ExplainMetricsCapability, protocol.ExplainDMLCapability, protocol.TuningCapability, protocol.EngineDiagnosticsCapability, "capturedExportV1", "formatInsertsV1", "passwordCommandV1", protocol.BrowseFilterTreeCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.ResultComparisonCapability, protocol.SchemaComparisonCapability, protocol.SchemaBundleCapability, protocol.SchemaBundleSourceCapability, protocol.DataComparisonCapability, syncplan.Capability}, BuildIdentity: identity}
 				if tunnels != nil {
 					response.Capabilities = append(response.Capabilities, "sshTunnelsV1", "sshConfigV1")
 				}
@@ -388,7 +397,7 @@ func readCommands(input io.Reader, manager *session.Manager, local chan<- protoc
 			}(command)
 			continue
 		}
-		if command.Type == "monitor.snapshot" || command.Type == "execute" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || strings.HasPrefix(command.Type, "structure.") {
+		if strings.HasPrefix(command.Type, "tuning.") || command.Type == "monitor.schema" || command.Type == "monitor.snapshot" || command.Type == "execute" || command.Type == "command.execute" || command.Type == "catalog" || command.Type == "catalog.page" || command.Type == "catalog.batch" || command.Type == "catalog.close" || command.Type == "changes.preview" || command.Type == "changes.apply" || strings.HasPrefix(command.Type, "structure.") {
 			if queries[command.QueryID] != "" {
 				if !emit(protocol.ErrorResponse(command, "protocol", "Query identifier has already been used.")) {
 					return

@@ -67,6 +67,7 @@ final class CatalogNode: ObservableObject, Identifiable {
             case "function", "procedure": "function"
             case "trigger": "bolt"
             case "enum": "list.number"
+            case "sequence": "list.number"
             case "type": "curlybraces"
             default: "doc.text"
             }

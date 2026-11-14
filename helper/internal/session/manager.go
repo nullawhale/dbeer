@@ -7,10 +7,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/catalogmetadata"
 	"dbeer/helper/internal/credential"
 	"dbeer/helper/internal/protocol"
 	"dbeer/helper/internal/queryparams"
@@ -80,7 +83,7 @@ func (manager *Manager) Submit(command protocol.Command) bool {
 }
 
 func (manager *Manager) markPending(command protocol.Command) {
-	if command.Type == "monitor.snapshot" || command.Type == "execute" || command.Type == "explain.run" || command.Type == "catalog" || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
+	if strings.HasPrefix(command.Type, "tuning.") || (command.Type == "monitor.snapshot" || command.Type == "monitor.schema") || command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "catalog" || isCatalogMetadata(command.Type) || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
 		manager.controlMu.Lock()
 		manager.pendingQueries[command.QueryID] = pendingQuery{sessionID: command.SessionID}
 		manager.controlMu.Unlock()
@@ -114,7 +117,7 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 // Keep them distinct from terminal failures of dispatched database commands.
 func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
 	response := protocol.ErrorResponse(command, category, message)
-	response.SQLNotExecuted = command.Type == "execute" || command.Type == "explain.run" || command.Type == "structure.apply" || isImport(command.Type)
+	response.SQLNotExecuted = strings.HasPrefix(command.Type, "tuning.") || command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || isImport(command.Type)
 	return response
 }
 
@@ -209,7 +212,7 @@ func (manager *Manager) run() {
 					}
 					continue
 				}
-				if command.Connection.SessionPurpose == "monitor" && command.Connection.DatabaseEngine() != "postgresql" && command.Connection.DatabaseEngine() != "mysql" {
+				if command.Connection.SessionPurpose == "monitor" && command.Connection.DatabaseEngine() != "postgresql" && command.Connection.DatabaseEngine() != "mysql" && command.Connection.DatabaseEngine() != "mariadb" {
 					if !emit(protocol.ErrorResponse(command, "capability", "Session monitoring is available only for PostgreSQL and MySQL.")) {
 						return
 					}
@@ -264,7 +267,10 @@ type operation struct {
 }
 
 type owner struct {
+	metadata           catalogmetadata.Store
 	structure          tableedit.Store
+	migration          tableedit.MigrationStore
+	physicalDDL        tableedit.PhysicalStore
 	structureOnly      bool
 	importOnly         bool
 	monitorOnly        bool
@@ -426,6 +432,7 @@ func (owner *owner) closeRouting() []protocol.Response {
 }
 
 func (owner *owner) run(connectCommand protocol.Command) {
+	defer owner.metadata.Close()
 	var physical adapter.Session
 	defer func() {
 		if physical != nil {
@@ -588,10 +595,48 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					outgoing = append(outgoing, protocol.ErrorResponse(pending, "cancelled", "Connection attempt was cancelled."))
 				} else {
 					response := protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id, Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus}
+					if support, ok := physical.(tableedit.AdvancedKindsAdapter); !ok || !support.SupportsAdvancedKinds() {
+						response.Capabilities = slices.DeleteFunc(response.Capabilities, func(c string) bool { return c == protocol.StructureAdvancedKindsCapability })
+					}
+					if _, ok := physical.(tableedit.PhysicalAdapter); !ok {
+						response.Capabilities = slices.DeleteFunc(response.Capabilities, func(c string) bool { return c == protocol.StructurePhysicalCapability })
+					}
+					support := adapter.SessionOperationSupport(engine, physical, policy)
+					response.OperationSupport = &support
+					if _, ok := physical.(adapter.NativeCommandSession); ok {
+						response.Capabilities = append(response.Capabilities, protocol.NativeCommandsCapability)
+						if !slices.Contains(response.Capabilities, protocol.NativeResultValuesCapability) {
+							response.Capabilities = append(response.Capabilities, protocol.NativeResultValuesCapability)
+						}
+					}
+					response.Capabilities = append(response.Capabilities, protocol.OperationSupportCapability)
+					if _, ok := physical.(adapter.SchemaObserver); ok {
+						response.Capabilities = append(response.Capabilities, protocol.SchemaObservationCapability)
+					}
+					if _, ok := physical.(adapter.CatalogMetadataReader); ok {
+						response.Capabilities = append(response.Capabilities, protocol.CatalogMetadataCapability)
+					}
 					if explain, ok := physical.(adapter.ExplainSession); ok {
 						support := explain.ExplainSupport()
 						response.ExplainSupport = &support
+						if !owner.structureOnly && !owner.importOnly && !owner.monitorOnly && tuningAvailable(physical) {
+							response.Capabilities = append(response.Capabilities, protocol.TuningCapability)
+						}
 						response.Capabilities = append(response.Capabilities, protocol.VisualExplainCapability)
+						if support.DML != nil {
+							response.Capabilities = append(response.Capabilities, protocol.ExplainDMLCapability)
+						}
+						if support.Engine == "postgresql" || support.Engine == "mysql" || support.Engine == "mariadb" {
+							response.Capabilities = append(response.Capabilities, protocol.ExplainMetricsCapability)
+						}
+						if support.DiagnosticModel != "" {
+							response.Capabilities = append(response.Capabilities, protocol.EngineDiagnosticsCapability)
+						} else {
+							response.Capabilities = append(response.Capabilities, protocol.ExplainParametersCapability)
+							if support.Options != nil {
+								response.Capabilities = append(response.Capabilities, protocol.ExplainOptionsCapability)
+							}
+						}
 					}
 					if current, ok := physical.(interface{ CurrentKeyspace() string }); ok {
 						keyspace := current.CurrentKeyspace()
@@ -601,6 +646,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			} else {
 				response := completed.response
+				attachOperationSupport(&response, engine, policy)
 				if transportFailed && response.Type == "error" {
 					response.Connected = false
 				}
@@ -631,6 +677,11 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			}
 			var response protocol.Response
 			switch command.Type {
+			case "structure.physical.status":
+				owner.manager.forgetPending(command)
+				response = owner.physicalStatus(command)
+				response.Connected = txStatus != "unknown"
+				response.TransactionStatus = txStatus
 			case "operation.assess":
 				if owner.monitorOnly {
 					response = protocol.ErrorResponse(command, "policy", "This session is reserved for readonly monitoring.")
@@ -639,14 +690,14 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else {
 					response = owner.assess(command, engine, policy, physical)
 				}
-			case "monitor.snapshot", "import.describe", "import.preview", "import.apply", "structure.load", "structure.preview", "structure.apply", "structure.status", "structure.close", "execute", "explain.run", "catalog", "changes.preview", "changes.apply":
+			case "tuning.setting.observe", "tuning.inspect", "tuning.validate", "tuning.setting", "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
 				} else if owner.manager.pendingWasCancelled(command) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "cancelled", "Execution was cancelled before it started.")
-				} else if owner.monitorOnly && command.Type != "monitor.snapshot" || !owner.monitorOnly && command.Type == "monitor.snapshot" {
+				} else if owner.monitorOnly && command.Type != "monitor.snapshot" && command.Type != "monitor.schema" || !owner.monitorOnly && (command.Type == "monitor.snapshot" || command.Type == "monitor.schema") {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "Open a dedicated readonly monitor session to collect session activity.")
 				} else if owner.importOnly && !isImport(command.Type) || !owner.importOnly && isImport(command.Type) {
@@ -655,16 +706,30 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else if owner.structureOnly && !isStructure(command.Type) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "This session is reserved for the table structure editor.")
+				} else if command.Type == "command.execute" && !nativeCommandAvailable(physical, command) {
+					owner.manager.forgetPending(command)
+					owner.invalidateGrant()
+					response = rejectedCommand(command, "capability", "Native commands are unavailable for this adapter.")
+				} else if command.ResultValues != "" && command.Type != "command.execute" && !slices.Contains(adapter.Capabilities(engine), protocol.NativeResultValuesCapability) {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "capability", "This adapter does not provide native result values.")
 				} else if command.Type == "execute" && queryParameterError(engine, command) != nil {
 					owner.manager.forgetPending(command)
 					owner.invalidateGrant()
 					response = rejectedCommand(command, "validation", queryParameterError(engine, command).Error())
+				} else if command.Catalog != nil && command.Catalog.RelationshipScope != nil && engine != "sqlite" {
+					owner.manager.forgetPending(command)
+					response = rejectedCommand(command, "capability", "Incoming relationship scopes require the SQLite adapter.")
 				} else if !owner.authorize(command, engine, policy, physical) {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
 				} else {
 					command.PreparedExplainSQL = owner.takeApprovedExplainSQL()
-					ctx, cancel = context.WithTimeout(context.Background(), owner.manager.timeout)
+					duration := owner.manager.timeout
+					if command.Type == "structure.physical.apply" {
+						duration = 30 * time.Minute
+					}
+					ctx, cancel = context.WithTimeout(context.Background(), duration)
 					pending = command
 					credit := newCreditState(owner, command)
 					owner.manager.controlMu.Lock()
@@ -693,7 +758,13 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						case <-begin:
 						case <-ctx.Done():
 						}
-						if command.Type == "monitor.snapshot" {
+						if strings.HasPrefix(command.Type, "tuning.") {
+							result <- operation{response: owner.runTuning(ctx, physical, command, engine)}
+						} else if isCatalogMetadata(command.Type) {
+							result <- operation{response: owner.runCatalogMetadata(ctx, physical, command)}
+						} else if command.Type == "monitor.schema" {
+							result <- operation{response: runSchemaObservation(ctx, physical, command, engine)}
+						} else if command.Type == "monitor.snapshot" {
 							result <- operation{response: runMonitor(ctx, physical, command, engine)}
 						} else if isStructure(command.Type) {
 							result <- operation{response: owner.runStructure(ctx, physical, command)}
@@ -705,7 +776,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			case "cancel":
 				status := "alreadyFinished"
-				if active != nil && (pending.Type == "monitor.snapshot" || pending.Type == "execute" || pending.Type == "explain.run" || pending.Type == "catalog" || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
+				if active != nil && (strings.HasPrefix(pending.Type, "tuning.") || (pending.Type == "monitor.snapshot" || pending.Type == "monitor.schema") || pending.Type == "execute" || pending.Type == "command.execute" || pending.Type == "explain.run" || pending.Type == "catalog" || isCatalogMetadata(pending.Type) || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
 					cancel()
 					status = "accepted"
 				}

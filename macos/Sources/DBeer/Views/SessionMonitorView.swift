@@ -4,24 +4,33 @@ import SwiftUI
 struct SessionMonitorView: View {
     @ObservedObject var model: SessionMonitorModel
     let close: () -> Void
+    var saveEvidence: (() -> Void)? = nil
+    var evidenceModel: SavedEvidenceModel? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Session Monitor").font(.title2.weight(.semibold))
+                    Text(model.isOffline ? "Saved Session Diagnostic" : "Session Monitor").font(.title2.weight(.semibold))
                     Text("\(model.profile.name) · Read-only observation").font(.caption).appSecondaryText()
                 }
                 Spacer()
-                Toggle("Every 5 seconds", isOn: $model.autoRefresh).toggleStyle(.checkbox)
-                    .disabled(model.isClosing).controlHover().accessibilityIdentifier("sessionMonitorAutoRefresh")
-                if model.isBusy { ProgressView().controlSize(.small) }
-                Button("Refresh") { Task { await model.refresh() } }
-                    .disabled(model.isBusy || model.isClosing).controlHover().accessibilityIdentifier("sessionMonitorRefresh")
-                Button("Stop") { Task { await model.stop() } }
-                    .disabled(!model.isBusy && !model.autoRefresh || model.isClosing).controlHover()
-                Button("Close", action: close).keyboardShortcut(.cancelAction).controlHover()
+                if !model.isOffline {
+                    if let saveEvidence {
+                        Button("Save Evidence", action: saveEvidence).disabled(model.snapshot == nil || model.isClosing || evidenceModel?.isBusy == true)
+                            .controlHover().help("Save this observation, including visible SQL, sessions, waits and completeness notices, as an immutable local artifact.")
+                    }
+                    Toggle("Every 5 seconds", isOn: $model.autoRefresh).toggleStyle(.checkbox)
+                        .disabled(model.isClosing).controlHover().accessibilityIdentifier("sessionMonitorAutoRefresh")
+                    if model.isBusy { ProgressView().controlSize(.small) }
+                    Button("Refresh") { Task { await model.refresh() } }
+                        .disabled(model.isBusy || model.isClosing).controlHover().accessibilityIdentifier("sessionMonitorRefresh")
+                    Button("Stop") { Task { await model.stop() } }
+                        .disabled(!model.isBusy && !model.autoRefresh || model.isClosing).controlHover()
+                }
+                if !model.isOffline { Button("Close", action: close).keyboardShortcut(.cancelAction).controlHover() }
             }.padding(18)
+            if let evidenceModel { SavedEvidenceStatusView(model: evidenceModel).padding(.horizontal, 18).padding(.bottom, 6) }
             Divider()
             HStack {
                 TextField("Filter sessions", text: $model.filter).textFieldStyle(.roundedBorder).frame(maxWidth: 260)
@@ -173,10 +182,10 @@ final class SessionMonitorWindowController: NSWindowController, NSWindowDelegate
     let model: SessionMonitorModel
     private let requestClose: @MainActor () -> Void
 
-    init(model: SessionMonitorModel, appearance: AppAppearance, requestClose: @escaping @MainActor () -> Void) {
+    init(model: SessionMonitorModel, appearance: AppAppearance, evidenceModel: SavedEvidenceModel? = nil, saveEvidence: (@MainActor () -> Void)? = nil, requestClose: @escaping @MainActor () -> Void) {
         self.model = model
         self.requestClose = requestClose
-        let content = SessionMonitorView(model: model, close: requestClose).applicationTheme(appearance: appearance)
+        let content = SessionMonitorView(model: model, close: requestClose, saveEvidence: saveEvidence, evidenceModel: evidenceModel).applicationTheme(appearance: appearance)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1_200, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "Session Monitor — \(model.profile.name)"

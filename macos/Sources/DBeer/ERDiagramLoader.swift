@@ -6,24 +6,19 @@ enum ERDiagramLoader {
     typealias Provider = @MainActor (CatalogRequest) async throws -> BackendMessage
     static func load(_ model: ERDiagramModel, context: ERDiagramLoadContext,
                      isCurrent: @MainActor () -> Bool, provider: Provider, retryFailuresOnly: Bool = false) async {
-        model.beginLoad(retryingFailures: retryFailuresOnly)
-        model.context = context
-        let generation = model.generation
-        let tables = model.stored.tables
-        func current() -> Bool { !Task.isCancelled && model.generation == generation && model.context == context && isCurrent() && model.stored.tables == tables }
+        let profileID = context.profileID
+        model.beginLoad(profileID: profileID, retryingFailures: retryFailuresOnly)
+        model.sourceStates[profileID, default: .init()].context = context
+        let generation = model.sourceState(profileID).generation
+        let tables = model.stored.tables.filter { $0.profileID == profileID }
+        func current() -> Bool { !Task.isCancelled && model.sourceState(profileID).generation == generation && model.sourceState(profileID).context == context && isCurrent() && model.stored.tables.filter { $0.profileID == profileID } == tables }
         defer {
-            if model.generation == generation {
-                model.isLoading = false
-                if current() { model.autoLayout() }
-            }
+            model.finishLoad(profileID, generation: generation)
         }
-        var columnsUsed = model.metadata.values.reduce(0) { $0 + $1.columns.count }
-        var keysUsed = model.metadata.values.reduce(0) { $0 + $1.foreignKeys.count }
-        var bytesUsed = model.metadata.values.reduce(0) { $0 + $1.retainedBytes }
         for table in tables {
             guard current() else { return }
             if retryFailuresOnly, let previous = model.metadata[table], previous.columnState.isAvailable, previous.relationshipState.isAvailable {
-                model.progress += 1; await Task.yield(); continue
+                model.sourceStates[profileID, default: .init()].progress += 1; await Task.yield(); continue
             }
             var facts = ERTableMetadata(table: table)
             do {
@@ -53,18 +48,22 @@ enum ERDiagramLoader {
                 guard current() else { return }
                 facts.relationshipState = .unavailable(safeError(error, collection: "Foreign-key"))
             }
-            guard columnsUsed + facts.columns.count <= ERDiagramLimits.columns,
-                  keysUsed + facts.foreignKeys.count <= ERDiagramLimits.relationships,
-                  bytesUsed + facts.retainedBytes <= ERDiagramLimits.metadataBytes else {
+            let retained = model.metadata.filter { $0.key != table }.values
+            guard retained.reduce(0, { $0 + $1.columns.count }) + facts.columns.count <= ERDiagramLimits.columns,
+                  retained.reduce(0, { $0 + $1.foreignKeys.count }) + facts.foreignKeys.count <= ERDiagramLimits.relationships,
+                  retained.reduce(0, { $0 + $1.retainedBytes }) + facts.retainedBytes <= ERDiagramLimits.metadataBytes else {
                 model.notice = "Diagram metadata limit reached. Remaining selected tables are not loaded; narrow the area and Build again."
+                model.sourceStates[profileID, default: .init()].notice = model.notice
+                await model.autoLayout()
                 return
             }
-            columnsUsed += facts.columns.count; keysUsed += facts.foreignKeys.count; bytesUsed += facts.retainedBytes
-            model.setMetadata(facts); model.progress += 1
+            model.setMetadata(facts); model.sourceStates[profileID, default: .init()].progress += 1
             await Task.yield()
         }
         guard current() else { return }
-        model.notice = "Metadata is a best-effort read. Arrows point from FK to referenced table; no cardinality is inferred. Incoming keys from unselected tables are outside this diagram's scope."
+        let complete = tables.filter { model.metadata[$0]?.columnState.isAvailable == true && model.metadata[$0]?.relationshipState.isAvailable == true }.count
+        model.sourceStates[profileID, default: .init()].notice = "Complete metadata for \(complete)/\(tables.count) selected tables. Metadata is a best-effort read. Arrows point from FK to referenced table; no cardinality is inferred. Incoming keys from unselected tables are outside this diagram's scope."
+        await model.autoLayout()
     }
     private static func safeError(_ error: Error, collection: String) -> String {
         if let failure = error as? ERDiagramFailure { return failure.message }

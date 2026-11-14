@@ -17,6 +17,14 @@ unchanged. Homebrew installation is not available.
 4. Open **Connections → Import Connections…**, review the profiles, and select a local CA if needed; alternatively, create a profile with **⌘N**. PostgreSQL 16/17/18, MySQL 8.0/8.4, Cassandra 4.1/5.0 and MongoDB 8.0 are supported. Enter your password in the profile editor. Use `verify-full` and a trusted CA for certificate verification. The password is stored in the local Keychain and excluded from profile exports.
 5. For PostgreSQL/MySQL, connect the profile, create a SQL tab (**⌘T**), and execute `SELECT 1` (**⌘Return**). Double-click a table to open its data. Grid changes reach the database only after **Apply**. MongoDB uses JSON find/aggregation requests; see [the MongoDB guide](GUIDE.md#mongodb).
 
+The unreleased source build also includes partial MariaDB support for native
+10.11.9+ and 11.4.3+ servers. It is not part of the packaged 0.4.0/build 13 release.
+Select the separate MariaDB engine, use a trusted CA/`verify-full` as appropriate,
+and review [the supported subset and deferred workflows](GUIDE.md#mariadb-partial-support).
+Encrypted SQL backup/restore additionally requires separately installed
+`mariadb-dump` and `mariadb` clients 11.4.3+; older encrypted clients refuse.
+No new release archive or installation acceptance is implied by this source change.
+
 Normal updates preserve profiles and passwords in the user directory and Keychain. Updates must come from the same owner with persistent application and helper signatures. A certificate change may cause macOS to request access to an existing password. Do not install temporarily signed CI builds over the working application.
 
 Version 0.1.0 is an early internal build. On October 18, 2026, the owner waived the required second-Mac check; the agreed acceptance run of packaged archives from build 5 to build 6 on the current Mac completed with **PASS**. It covered two-profile import, `SELECT 1` on both database engines before and after updating, Cancel/Stop and Continue during a long query, UUID/draft/Keychain preservation, normal shutdown, and cleanup. This run does not verify Finder/Gatekeeper or installation on a clean second device. An Apple Development signature is not notarization; use only an archive obtained from the owner and verified with SHA256.

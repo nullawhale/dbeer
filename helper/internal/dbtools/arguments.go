@@ -23,6 +23,12 @@ func serverMajor(value string) (int, int, error) {
 	return major, minor, nil
 }
 func expectedTool(engine, operation, format string) string {
+	if engine == "mariadb" {
+		if operation == "dump" {
+			return "mariadb-dump"
+		}
+		return "mariadb"
+	}
 	if engine == "mysql" {
 		if operation == "dump" {
 			return "mysqldump"
@@ -38,6 +44,9 @@ func expectedTool(engine, operation, format string) string {
 	return "pg_restore"
 }
 func compatible(engine string, v toolVersion, server string) error {
+	if engine == "mariadb" {
+		return mariaDBCompatible(v, server)
+	}
 	major, minor, err := serverMajor(server)
 	if err != nil {
 		return err
@@ -60,6 +69,10 @@ func supportsRestrict(v toolVersion) bool {
 func utilityArguments(r protocol.DatabaseToolsRequest, p PreparedConnection, dir string) ([]string, []string, error) {
 	env := baseEnvironment(dir)
 	connection := p.Connection
+	if connection.DatabaseEngine() == "mariadb" {
+		args, err := mariaDBArguments(r, p, dir)
+		return args, env, err
+	}
 	if connection.DatabaseEngine() == "postgresql" {
 		password := strings.NewReplacer(`\`, `\\`, `:`, `\:`, "\n", "", "\r", "").Replace(connection.Password)
 		if strings.ContainsAny(connection.Password, "\r\n") {

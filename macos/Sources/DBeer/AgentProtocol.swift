@@ -14,6 +14,29 @@ struct AgentRequest: Codable, Sendable {
     var object: String?
     var maxRows: Int?
     var timeoutSeconds: Int?
+    var nativeCommand: NativeCommand? = nil
+}
+
+extension AgentRequest {
+    static func decode(_ frame: Data) throws -> Self {
+        try ExactJSONKeys.validate(frame, maximumBytes: AgentSocketBroker.maximumRequestBytes, maximumDepth: 40)
+        guard let fields = try JSONSerialization.jsonObject(with: frame) as? [String: Any],
+              let method = fields["method"] as? String else { throw ExactJSONKeys.Failure.invalid }
+        let allowed: Set<String>
+        switch method {
+        case "hello": allowed = ["id", "method", "clientName"]
+        case "connections": allowed = ["id", "method"]
+        case "query": allowed = ["id", "method", "profileId", "sql", "queryId", "maxRows", "timeoutSeconds"]
+        case "command": allowed = ["id", "method", "profileId", "nativeCommand", "queryId", "maxRows", "timeoutSeconds"]
+        case "catalog": allowed = ["id", "method", "profileId", "queryId", "kind", "schema", "object"]
+        case "cancel": allowed = ["id", "method", "queryId"]
+        default: throw ExactJSONKeys.Failure.invalid
+        }
+        guard Set(fields.keys).isSubset(of: allowed), !fields.values.contains(where: { $0 is NSNull }) else { throw ExactJSONKeys.Failure.invalid }
+        let request = try JSONDecoder().decode(Self.self, from: frame)
+        guard method != "command" || request.nativeCommand?.valid == true else { throw ExactJSONKeys.Failure.invalid }
+        return request
+    }
 }
 
 struct AgentConnection: Codable, Sendable {
@@ -40,6 +63,7 @@ struct AgentResult: Codable, Sendable {
     var displayNotice: String? = nil
     var affectedRowCountKnown: Bool? = nil
     var sqliteValues: [[SQLiteValue]]? = nil
+    var nativeValues: [[NativeValue]]? = nil
 }
 
 struct AgentResponse: Codable, Sendable {

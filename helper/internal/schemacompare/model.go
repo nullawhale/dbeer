@@ -93,15 +93,40 @@ type CaptureSpec struct {
 	Schemas []string
 	Limits  Limits
 }
+type HistoricalOrigin struct {
+	Kind           string `json:"kind"`
+	Label          string `json:"label"`
+	ManifestSHA256 string `json:"manifestSha256"`
+	ContentSHA256  string `json:"contentSha256"`
+	ModifiedSQL    int    `json:"modifiedSQL"`
+	ManualObjects  int    `json:"manualObjects"`
+}
+
+func (o HistoricalOrigin) Valid() bool {
+	digest := func(s string) bool {
+		if len(s) != 64 {
+			return false
+		}
+		for _, c := range []byte(s) {
+			if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+				return false
+			}
+		}
+		return true
+	}
+	return (o.Kind == "bundle" || o.Kind == "editedBundle") && ValidName(o.Label) && digest(o.ManifestSHA256) && digest(o.ContentSHA256) && o.ModifiedSQL >= 0 && o.ModifiedSQL <= 20000 && o.ManualObjects >= 0 && o.ManualObjects <= 10000 && (o.Kind != "bundle" || o.ModifiedSQL == 0) && (o.Kind != "editedBundle" || o.ModifiedSQL > 0)
+}
+
 type CaptureContext struct {
-	Engine        string         `json:"engine"`
-	Version       string         `json:"version"`
-	Database      string         `json:"database"`
-	StartedAt     string         `json:"startedAt"`
-	FinishedAt    string         `json:"finishedAt"`
-	Consistency   string         `json:"consistency"`
-	Visibility    string         `json:"visibility"`
-	EngineContext Fact[[]Option] `json:"engineContext"`
+	Origin        *HistoricalOrigin `json:"origin,omitempty"`
+	Engine        string            `json:"engine"`
+	Version       string            `json:"version"`
+	Database      string            `json:"database"`
+	StartedAt     string            `json:"startedAt"`
+	FinishedAt    string            `json:"finishedAt"`
+	Consistency   string            `json:"consistency"`
+	Visibility    string            `json:"visibility"`
+	EngineContext Fact[[]Option]    `json:"engineContext"`
 }
 type Inventory struct {
 	Schema    string          `json:"schema"`

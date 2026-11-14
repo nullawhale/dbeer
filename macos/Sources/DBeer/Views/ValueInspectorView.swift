@@ -5,24 +5,63 @@ import SwiftUI
 struct InspectedResultTableView: View {
     let table: ResultTableView
     var rowDetails: GridRowDetailsView?
+    var profileTitle: String? = nil
+    var serverProfile: ((ResultColumn) throws -> GridProfileServerModel)? = nil
+    var investigations: InvestigationLibraryModel? = nil
+    var mayAttach: @MainActor () -> Bool = { true }
     @StateObject private var inspector = ValueInspectorModel()
+    @StateObject private var profiler = GridProfileSelectionModel()
+    @StateObject private var columnProfiler = GridProfileSelectionModel()
+    private var sheetReport = SwiftUI.State<GridProfileReport?>(initialValue: nil)
+    private var pendingColumn = SwiftUI.State<Bool>(initialValue: false)
+    private var requestGeneration = SwiftUI.State<UUID>(initialValue: UUID())
 
     var body: some View {
-        HSplitView {
-            inspectedTable.frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
-            if let rowDetails {
-                rowDetails.frame(minWidth: 240, idealWidth: 280, maxWidth: 380)
-            } else {
-                ValueInspectorView(model: inspector)
-                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 600, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            if profiler.report != nil || profiler.isBusy || profiler.notice != nil || columnProfiler.notice != nil {
+                HStack(spacing: 12) {
+                    if let report = profiler.report {
+                        Text("Count \(report.cellCount) · SQL NULL \(report.nullCount)").monospacedDigit()
+                        if report.columns.count == 1, let column = report.columns.first, let sum = column.sum {
+                            Text("Exact sum \(sum)").lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                        }
+                        if let notice = columnProfiler.notice { Text(notice).lineLimit(2).foregroundStyle(.orange) }
+                        Spacer(minLength: 8)
+                        Button("Profile Selection…") { sheetReport.wrappedValue = report }.controlHover()
+                    } else if profiler.isBusy { ProgressView().controlSize(.small); Text("Profiling loaded selection…"); Spacer() }
+                    else { Text(columnProfiler.notice ?? profiler.notice ?? "").lineLimit(2); Spacer() }
+                }.font(.caption).padding(.horizontal, 10).padding(.vertical, 6).background(AppPalette.panel)
+                Divider()
+            }
+            HSplitView {
+                inspectedTable.frame(minWidth: 220, maxWidth: .infinity, maxHeight: .infinity)
+                if let rowDetails { rowDetails.frame(minWidth: 240, idealWidth: 280, maxWidth: 380) }
+                else {
+                    ValueInspectorView(model: inspector)
+                        .frame(minWidth: 260, idealWidth: 320, maxWidth: 600, maxHeight: .infinity)
+                }
             }
         }
-        .onDisappear { inspector.cancel() }
+        .sheet(item: sheetReport.projectedValue) { report in
+            GridProfileView(report: report, serverProfile: serverProfile, investigations: investigations, mayAttach: mayAttach)
+        }
+        .onReceive(columnProfiler.$report) { report in
+            if pendingColumn.wrappedValue, let report { pendingColumn.wrappedValue = false; sheetReport.wrappedValue = report }
+        }
+        .onReceive(columnProfiler.$notice) { notice in
+            if pendingColumn.wrappedValue, notice != nil { pendingColumn.wrappedValue = false }
+        }
+        .onAppear { requestGeneration.wrappedValue = UUID() }
+        .onDisappear { inspector.cancel(); profiler.cancel(); columnProfiler.cancel(); pendingColumn.wrappedValue = false }
     }
 
     private var inspectedTable: ResultTableView {
         var view = table
+        if let profileTitle { view.profileContext = profileTitle }
         view.onInspectValue = { inspector.select($0) }
+        view.onProfileSelection = { profiler.select($0) }
+        view.onProfileColumn = { pendingColumn.wrappedValue = true; columnProfiler.select($0) }
+        view.profileRequestGeneration = requestGeneration.wrappedValue
         return view
     }
 }
@@ -48,8 +87,8 @@ struct ValueInspectorView: View {
                             .accessibilityIdentifier("valueInspectorWrap")
                         Spacer(minLength: 0)
                         if model.content.formatted != nil {
-                            Toggle("Format JSON", isOn: $model.formatted).toggleStyle(.checkbox).controlHover()
-                                .help("Show formatted JSON while preserving the original value")
+                            Toggle(value.nativeValue == nil ? "Format JSON" : "Format captured value", isOn: $model.formatted).toggleStyle(.checkbox).controlHover()
+                                .help("Format the captured representation while preserving its original type, order and bytes")
                                 .accessibilityIdentifier("valueInspectorFormatJSON")
                         }
                     }.font(.caption)

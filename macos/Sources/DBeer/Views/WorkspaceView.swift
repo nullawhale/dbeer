@@ -195,7 +195,7 @@ struct WorkspaceView: View {
                     Divider()
                 }
                 if let columns = result.columns, !columns.isEmpty {
-                    ResultTableView(columns: columns, rows: result.rows ?? [])
+                    ResultTableView(columns: columns, rows: result.rows ?? [], sqliteValues: result.sqliteValues, nativeValues: result.nativeValues)
                         .accessibilityIdentifier("queryResults")
                 } else {
                     emptyState(symbol: "checkmark.circle", title: "Command completed",

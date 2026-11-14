@@ -65,9 +65,16 @@ func (owner *Owner) Close() {
 }
 
 func connect(ctx context.Context, connection protocol.Connection) (*pgx.Conn, error) {
+	return connectWithNotifications(ctx, connection, nil)
+}
+
+func connectWithNotifications(ctx context.Context, connection protocol.Connection, notification func(*pgconn.Notification)) (*pgx.Conn, error) {
 	config, err := connectionConfig(connection)
 	if err != nil {
 		return nil, err
+	}
+	if notification != nil {
+		config.OnNotification = func(_ *pgconn.PgConn, event *pgconn.Notification) { notification(event) }
 	}
 	if err := configureTransport(ctx, connection, config); err != nil {
 		return nil, err

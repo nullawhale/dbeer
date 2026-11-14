@@ -19,6 +19,15 @@ func FormatInserts(request protocol.InsertFormatRequest) (string, error) {
 	if request.Engine != "mysql" || !request.Valid() {
 		return "", insertformat.ErrInvalid
 	}
+	return FormatBacktickInserts(request)
+}
+
+// FormatBacktickInserts shares only the bounded literal/identifier grammar.
+// Connection identity, native schema and execution remain adapter-owned.
+func FormatBacktickInserts(request protocol.InsertFormatRequest) (string, error) {
+	if (request.Engine != "mysql" && request.Engine != "mariadb") || !request.Valid() {
+		return "", insertformat.ErrInvalid
+	}
 	seen := make(map[string]bool, len(request.Columns))
 	for _, column := range request.Columns {
 		key := insertColumnCaseKey(column.Name)

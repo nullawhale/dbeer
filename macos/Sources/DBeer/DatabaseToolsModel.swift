@@ -74,7 +74,7 @@ final class DatabaseToolsModel: ObservableObject, Identifiable {
          bindingIsCurrent: @escaping @MainActor (SavedConnection) -> Bool = { _ in true },
          factory: @escaping @MainActor () -> any DatabaseToolsBackend = { DatabaseToolsHelperBackend() },
          cancelPreparation: @escaping @MainActor (SavedConnection, UUID) -> Void = { _, _ in }) {
-        self.profiles = profiles.filter { [.postgresql, .mysql].contains($0.engine) }
+        self.profiles = profiles.filter { [.postgresql, .mysql, .mariadb].contains($0.engine) }
         self.resolve = resolve; self.authorize = authorize; self.bindingIsCurrent = bindingIsCurrent
         self.factory = factory; self.cancelPreparation = cancelPreparation
         profileID = self.profiles.first { $0.id == initialProfileID }?.id ?? self.profiles.first?.id
@@ -82,8 +82,9 @@ final class DatabaseToolsModel: ObservableObject, Identifiable {
     }
 
     var selectedProfile: SavedConnection? { profiles.first { $0.id == profileID } }
-    var formats: [DatabaseToolsFormat] { selectedProfile?.engine == .mysql ? [.sql] : DatabaseToolsFormat.allCases }
+    var formats: [DatabaseToolsFormat] { selectedProfile?.engine.usesMySQLSyntax == true ? [.sql] : DatabaseToolsFormat.allCases }
     var expectedToolName: String {
+        if selectedProfile?.engine == .mariadb { return operation == .dump ? "mariadb-dump" : "mariadb" }
         if selectedProfile?.engine == .mysql { return operation == .dump ? "mysqldump" : "mysql" }
         return operation == .dump ? "pg_dump" : format == .sql ? "psql" : "pg_restore"
     }
@@ -112,7 +113,7 @@ final class DatabaseToolsModel: ObservableObject, Identifiable {
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         return try? encoder.encode(InputBinding(profile: profile, database: database, operation: operation, format: format, path: path, toolPath: toolPath))
     }
-    private func normalizeFormat() { if selectedProfile?.engine == .mysql { format = .sql } }
+    private func normalizeFormat() { if selectedProfile?.engine.usesMySQLSyntax == true { format = .sql } }
     private func invalidatePreview() {
         preview = nil; preparedBinding = nil
     }

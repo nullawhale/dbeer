@@ -1,0 +1,388 @@
+{
+  "valid": [
+    {
+      "type": "catalog",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "catalog": {
+        "kind": "referencingTables",
+        "schema": "public",
+        "object": "Parent",
+        "objectKind": "table"
+      }
+    },
+    {
+      "type": "catalog.page",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "catalogMetadata": {
+        "selectors": [
+          {
+            "kind": "referencingTables",
+            "schema": "public",
+            "object": "Parent",
+            "objectKind": "table"
+          }
+        ]
+      }
+    },
+    {
+      "type": "catalog.page",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "catalogMetadata": {
+        "selectors": [
+          {
+            "kind": "referencingTables",
+            "schema": "public",
+            "object": "Parent",
+            "objectKind": "table"
+          }
+        ],
+        "pageSize": 1,
+        "cursor": "cursor"
+      }
+    },
+    {
+      "type": "catalog.batch",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "catalogMetadata": {
+        "selectors": [
+          {
+            "kind": "referencingTables",
+            "schema": "public",
+            "object": "Parent",
+            "objectKind": "table"
+          },
+          {
+            "kind": "foreignKeys",
+            "schema": "public",
+            "object": "Child",
+            "objectKind": "table"
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"page\":0}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"page\":0}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"identity\":\"\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"identity\":\"\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"identity\":\"x\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"identity\":\"x\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"view\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"view\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"search\":\"x\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"search\":\"x\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"cursor\":\"\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"cursor\":\"\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"unknown\":true}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"Parent\",\"objectKind\":\"table\",\"unknown\":true}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":null,\"object\":\"Parent\",\"objectKind\":\"table\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":null,\"object\":\"Parent\",\"objectKind\":\"table\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":null,\"objectKind\":\"table\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":null,\"objectKind\":\"table\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"\",\"object\":\"Parent\",\"objectKind\":\"table\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"\",\"object\":\"Parent\",\"objectKind\":\"table\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"\",\"objectKind\":\"table\"}}",
+    "{\"type\":\"catalog.page\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalogMetadata\":{\"selectors\":[{\"kind\":\"referencingTables\",\"schema\":\"public\",\"object\":\"\",\"objectKind\":\"table\"}]}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"name\",\"schema\":\"public\",\"object\":\"Parent\",\"page\":0}}",
+    "{\"type\":\"catalog\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"catalog\":{\"kind\":\"foreignKeys\",\"schema\":\"public\",\"object\":\"Parent\",\"page\":0}}"
+  ],
+  "responses": [
+    {
+      "type": "catalog.page.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "connected": true,
+      "transactionStatus": "idle",
+      "catalogMetadata": {
+        "collections": [
+          {
+            "selector": {
+              "kind": "referencingTables",
+              "schema": "public",
+              "object": "Parent",
+              "objectKind": "table"
+            },
+            "captureId": "incoming-page",
+            "observedAt": "2026-11-05T12:00:00Z",
+            "consistency": "repeatableRead",
+            "state": "complete",
+            "columns": [
+              {
+                "index": 0,
+                "name": "schema",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "name",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 2,
+                "name": "kind",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              }
+            ],
+            "rows": [
+              [
+                "public",
+                "Child",
+                "table"
+              ],
+              [
+                "other",
+                "Child",
+                "table"
+              ]
+            ],
+            "nextCursor": "next",
+            "target": {
+              "schema": "public",
+              "name": "Parent"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "catalog.page.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "connected": true,
+      "transactionStatus": "idle",
+      "catalogMetadata": {
+        "collections": [
+          {
+            "selector": {
+              "kind": "referencingTables",
+              "schema": "public",
+              "object": "Parent",
+              "objectKind": "table"
+            },
+            "captureId": "incoming-empty",
+            "observedAt": "2026-11-05T12:00:00Z",
+            "consistency": "repeatableRead",
+            "state": "complete",
+            "columns": [
+              {
+                "index": 0,
+                "name": "schema",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "name",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 2,
+                "name": "kind",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              }
+            ],
+            "rows": [],
+            "target": {
+              "schema": "public",
+              "name": "Parent"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "catalog.page.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "connected": true,
+      "transactionStatus": "idle",
+      "catalogMetadata": {
+        "collections": [
+          {
+            "selector": {
+              "kind": "referencingTables",
+              "schema": "public",
+              "object": "Parent",
+              "objectKind": "table"
+            },
+            "captureId": "incoming-partial",
+            "observedAt": "2026-11-05T12:00:00Z",
+            "consistency": "repeatableRead",
+            "state": "partial",
+            "columns": [
+              {
+                "index": 0,
+                "name": "schema",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "name",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 2,
+                "name": "kind",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              }
+            ],
+            "rows": [
+              [
+                "public",
+                "VisibleChild",
+                "table"
+              ]
+            ],
+            "issue": "Some metadata could not be observed.",
+            "target": {
+              "schema": "public",
+              "name": "Parent"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "catalog.page.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "connected": true,
+      "transactionStatus": "idle",
+      "catalogMetadata": {
+        "collections": [
+          {
+            "selector": {
+              "kind": "referencingTables",
+              "schema": "public",
+              "object": "Parent",
+              "objectKind": "table"
+            },
+            "captureId": "incoming-denied",
+            "observedAt": "2026-11-05T12:00:00Z",
+            "consistency": "repeatableRead",
+            "state": "unavailable",
+            "columns": [
+              {
+                "index": 0,
+                "name": "schema",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "name",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 2,
+                "name": "kind",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              }
+            ],
+            "rows": [],
+            "issue": "Metadata is unavailable or access was denied."
+          }
+        ]
+      }
+    },
+    {
+      "type": "catalog.page.result",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "connected": true,
+      "transactionStatus": "idle",
+      "catalogMetadata": {
+        "collections": [
+          {
+            "selector": {
+              "kind": "referencingTables",
+              "schema": "main",
+              "object": "EMPTY",
+              "objectKind": "table"
+            },
+            "captureId": "incoming-page",
+            "observedAt": "2026-11-05T12:00:00Z",
+            "consistency": "repeatableRead",
+            "state": "complete",
+            "columns": [
+              {
+                "index": 0,
+                "name": "schema",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 1,
+                "name": "name",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              },
+              {
+                "index": 2,
+                "name": "kind",
+                "engine": "postgresql",
+                "nativeType": "text",
+                "typeOid": 25
+              }
+            ],
+            "rows": [],
+            "target": {
+              "schema": "main",
+              "name": "Empty"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "invalidResponses": [
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":null}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":{\"schema\":\"public\",\"name\":\"\"}}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":{\"schema\":\"public\",\"name\":\"Parent\",\"unknown\":true}}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":{\"schema\":null,\"name\":\"Parent\"}}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[]}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"objects\",\"schema\":\"main\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":{\"schema\":\"main\",\"name\":\"Empty\"}}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"unavailable\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":{\"schema\":\"main\",\"name\":\"Empty\"},\"issue\":\"Metadata unavailable\"}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":null}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"objects\",\"schema\":\"main\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":null}]}}",
+    "{\"type\":\"catalog.page.result\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"connected\":true,\"transactionStatus\":\"idle\",\"catalogMetadata\":{\"collections\":[{\"selector\":{\"kind\":\"referencingTables\",\"schema\":\"main\",\"object\":\"EMPTY\",\"objectKind\":\"table\"},\"captureId\":\"incoming-page\",\"observedAt\":\"2026-11-05T12:00:00Z\",\"consistency\":\"repeatableRead\",\"state\":\"complete\",\"columns\":[{\"index\":0,\"name\":\"schema\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":1,\"name\":\"name\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25},{\"index\":2,\"name\":\"kind\",\"engine\":\"postgresql\",\"nativeType\":\"text\",\"typeOid\":25}],\"rows\":[],\"target\":{\"schema\":\"main\",\"name\":\"Empty\"},\"unknown\":true}]}}"
+  ]
+}

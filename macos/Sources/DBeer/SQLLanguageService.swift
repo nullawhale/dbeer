@@ -16,6 +16,9 @@ struct SQLFunctionSignature: Codable, Equatable, Sendable {
 struct SQLCompletionForeignKeyColumn: Codable, Equatable, Sendable {
     var source: String
     var target: String
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        Data(lhs.source.utf8) == Data(rhs.source.utf8) && Data(lhs.target.utf8) == Data(rhs.target.utf8)
+    }
 }
 
 struct SQLCompletionForeignKey: Codable, Equatable, Sendable {
@@ -23,6 +26,11 @@ struct SQLCompletionForeignKey: Codable, Equatable, Sendable {
     var targetSchema: String
     var targetTable: String
     var columns: [SQLCompletionForeignKeyColumn]
+    var origin: String? = nil
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        Data(lhs.name.utf8) == Data(rhs.name.utf8) && Data(lhs.targetSchema.utf8) == Data(rhs.targetSchema.utf8) &&
+            Data(lhs.targetTable.utf8) == Data(rhs.targetTable.utf8) && lhs.columns == rhs.columns && lhs.origin == rhs.origin
+    }
 }
 
 struct SQLCompletionRelation: Equatable, Sendable {
@@ -37,6 +45,15 @@ struct SQLCompletionRelation: Equatable, Sendable {
     var clusteringColumns: [String] = []
     var staticColumns: [String] = []
     var columnTypes: [String: String] = [:]
+    var columnTypeEntries: [CatalogColumnTypeEntry] = []
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        Data(lhs.schema.utf8) == Data(rhs.schema.utf8) && Data(lhs.name.utf8) == Data(rhs.name.utf8) && lhs.kind == rhs.kind &&
+            lhs.columns.map { Data($0.utf8) } == rhs.columns.map { Data($0.utf8) } && lhs.foreignKeys == rhs.foreignKeys &&
+            lhs.signatures == rhs.signatures && lhs.partitionKeys.map { Data($0.utf8) } == rhs.partitionKeys.map { Data($0.utf8) } &&
+            lhs.clusteringColumns.map { Data($0.utf8) } == rhs.clusteringColumns.map { Data($0.utf8) } &&
+            lhs.staticColumns.map { Data($0.utf8) } == rhs.staticColumns.map { Data($0.utf8) } &&
+            lhs.columnTypes == rhs.columnTypes && lhs.columnTypeEntries == rhs.columnTypeEntries
+    }
 }
 
 struct SQLCompletionContext: Equatable, Sendable {
@@ -176,7 +193,7 @@ final class SQLLanguageService {
             return
         }
         if var document = documents[documentID] {
-            guard document.text != text || document.engine != engine || document.context != context else { return }
+            guard Data(document.text.utf8) != Data(text.utf8) || document.engine != engine || document.context != context else { return }
             if document.engine != engine || document.context.profileID != context.profileID {
                 closingURIs.insert(document.uri)
                 document = Document(uri: Self.uri(documentID), text: text, engine: engine, context: context,
@@ -540,13 +557,23 @@ final class SQLLanguageService {
                 columns.append(.string(column))
             }
             var columnTypes: [String: SQLLSPJSON] = [:]
-            for column in columns.compactMap(\.string) {
-                guard let nativeType = relation.columnTypes[column], !nativeType.isEmpty,
-                      nativeType.utf8.count <= 4_096 else { continue }
-                let typeBytes = 16 + 6 * (column.utf8.count + nativeType.utf8.count)
+            var columnTypeEntries: [SQLLSPJSON] = []
+            let retained = columns.compactMap(\.string)
+            let entries = relation.columnTypeEntries.isEmpty ? retained.compactMap { name -> CatalogColumnTypeEntry? in
+                relation.columnTypes[name].map { .init(name: name, nativeType: $0) }
+            } : relation.columnTypeEntries
+            for entry in entries where entry.isValid && retained.contains(where: { Data($0.utf8) == Data(entry.name.utf8) }) {
+                let typeBytes = 256 + 6 * (entry.name.utf8.count + entry.nativeType.utf8.count)
                 guard typeBytes <= remainingBytes else { break }
                 remainingBytes -= typeBytes
-                columnTypes[column] = .string(nativeType)
+                columnTypeEntries.append(.object(["name": .string(entry.name), "nativeType": .string(entry.nativeType)]))
+            }
+            if Set(entries.map(\.name)).count == entries.count {
+                for entry in entries where columnTypeEntries.contains(where: { $0["name"]?.string.map { Data($0.utf8) == Data(entry.name.utf8) } == true }) {
+                    let typeBytes = 16 + 6 * (entry.name.utf8.count + entry.nativeType.utf8.count)
+                    guard typeBytes <= remainingBytes else { break }
+                    remainingBytes -= typeBytes; columnTypes[entry.name] = .string(entry.nativeType)
+                }
             }
             var foreignKeys: [SQLLSPJSON] = []
             for key in relation.foreignKeys.prefix(64) {
@@ -559,7 +586,7 @@ final class SQLLanguageService {
                 remainingBytes -= keyBytes
                 remainingKeyColumns -= key.columns.count
                 foreignKeys.append(.object(["name": .string(key.name), "targetSchema": .string(key.targetSchema),
-                    "targetTable": .string(key.targetTable), "columns": .array(key.columns.map {
+                    "targetTable": .string(key.targetTable), "origin": .string(key.origin ?? "declared"), "columns": .array(key.columns.map {
                         .object(["source": .string($0.source), "target": .string($0.target)])
                     })]))
             }
@@ -581,7 +608,7 @@ final class SQLLanguageService {
             }
             func keyNames(_ names: [String]) -> SQLLSPJSON {
                 var values: [SQLLSPJSON] = []
-                for name in names.prefix(2_000) where relation.columns.contains(name) {
+                for name in names.prefix(2_000) where relation.columns.contains(where: { Data($0.utf8) == Data(name.utf8) }) {
                     let bytes = 8 + 6 * name.utf8.count
                     guard bytes <= remainingBytes, remainingKeyColumns > 0 else { break }
                     remainingBytes -= bytes
@@ -597,7 +624,7 @@ final class SQLLanguageService {
                                    "kind": .string(relation.kind), "columns": .array(columns), "foreignKeys": .array(foreignKeys),
                                    "signatures": .array(signatures), "partitionKeys": partitionKeys,
                                    "clusteringColumns": clusteringColumns, "staticColumns": staticColumns,
-                                   "columnTypes": .object(columnTypes)]))
+                                   "columnTypes": .object(columnTypes), "columnTypeEntries": .array(columnTypeEntries)]))
         }
         return result
     }

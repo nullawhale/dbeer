@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 	"encoding/json"
 	"errors"
@@ -20,7 +21,7 @@ type structureReader interface {
 }
 
 func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tableedit.Baseline, error) {
-	if !t.Valid() || s.TransactionStatus() != "idle" {
+	if !t.Valid() || s.TransactionStatus() != "idle" || !nativePostgresEncodingSafe(s.conn.PgConn().ParameterStatus("client_encoding"), s.conn.PgConn().ParameterStatus("server_encoding")) {
 		return tableedit.Baseline{}, tableedit.ErrUnsupported
 	}
 	tx, e := s.conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
@@ -49,13 +50,17 @@ func structureRollback(tx pgx.Tx) {
 	_ = tx.Rollback(ctx)
 }
 func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (tableedit.Baseline, error) {
+	q = pgCatalogReader(q)
 	observe := t.Reconcile
 	t.Reconcile = false
-	b := tableedit.Baseline{Target: t, Engine: "postgresql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary permanent tables, validated scalar types and one create/add-column statement are supported.", "DDL acquires locks. Apply uses BEGIN, a bounded lock wait, metadata recheck, DDL and COMMIT; Discard cannot undo acknowledged changes."}}
+	b := tableedit.Baseline{Target: t, Engine: "postgresql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary permanent tables are supported. Appended columns are nullable; required-column backfills and physical reconstruction require a separate reviewed plan.", "DDL acquires locks. Apply uses BEGIN, a bounded lock wait, metadata recheck, DDL and COMMIT; Discard cannot undo acknowledged changes."}}
 	var environment string
 	var schemaOID uint32
 	var schemaAllowed bool
-	e := q.QueryRow(ctx, `SELECT n.oid, pg_catalog.has_schema_privilege(n.oid, 'USAGE') AND pg_catalog.has_schema_privilege(n.oid, 'CREATE'), pg_catalog.current_database() || ':' || pg_catalog.current_setting('server_version_num') || ':' || pg_catalog.current_setting('server_encoding') || ':' || current_user FROM pg_catalog.pg_namespace n WHERE n.nspname=$1`, t.Schema).Scan(&schemaOID, &schemaAllowed, &environment)
+	e := q.QueryRow(ctx, `SELECT n.oid, pg_catalog.has_schema_privilege(n.oid, 'USAGE') AND pg_catalog.has_schema_privilege(n.oid, 'CREATE'), pg_catalog.current_database() || ':' || pg_catalog.current_setting('server_version_num') || ':' || pg_catalog.current_setting('server_encoding') || ':' || current_user || ':' || pg_catalog.current_setting('search_path') || ':' || pg_catalog.current_setting('standard_conforming_strings') FROM pg_catalog.pg_namespace n WHERE n.nspname=$1`, t.Schema).Scan(&schemaOID, &schemaAllowed, &environment)
+	if strings.HasPrefix(t.Schema, "pg_temp_") {
+		return b, errors.New("Temporary tables belong to their original owning physical SQL-tab session. This dedicated structure session cannot attach to or author another session's temporary relation; use raw SQL in the original tab.")
+	}
 	if e != nil || !schemaAllowed || strings.HasPrefix(t.Schema, "pg_") || t.Schema == "information_schema" {
 		return b, tableedit.ErrUnsupported
 	}
@@ -63,7 +68,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	var oid uint32
 	var eligible bool
 	var facts string
-	e = q.QueryRow(ctx, `SELECT c.oid, c.relkind='r' AND c.relpersistence='p' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity AND c.reloftype=0 AND NOT c.relispartition AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid=c.oid OR i.inhparent=c.oid), pg_catalog.row_to_json(c)::text FROM pg_catalog.pg_class c WHERE c.relnamespace=$1 AND c.relname=$2`, schemaOID, t.Table).Scan(&oid, &eligible, &facts)
+	e = q.QueryRow(ctx, `SELECT c.oid, (pg_catalog.chareq(c.relkind,'r') OR pg_catalog.chareq(c.relkind,'p')) AND (pg_catalog.chareq(c.relpersistence,'p') OR pg_catalog.chareq(c.relpersistence,'u')), pg_catalog.row_to_json(c)::pg_catalog.text FROM pg_catalog.pg_class c WHERE c.relnamespace=$1 AND c.relname=$2`, schemaOID, t.Table).Scan(&oid, &eligible, &facts)
 	if errors.Is(e, pgx.ErrNoRows) {
 		if !t.Create {
 			return b, tableedit.ErrUnsupported
@@ -80,6 +85,12 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 		t.Create = false
 		b.Target.Create = false
 	}
+	if e == nil && !eligible && !t.Create {
+		var kind map[string]any
+		if json.Unmarshal([]byte(facts), &kind) == nil && kind["relpersistence"] == "t" {
+			return b, errors.New("Temporary tables belong to their original owning physical SQL-tab session. The dedicated structure operation never reconnects or attaches to a different tab's temporary relation.")
+		}
+	}
 	if e != nil || t.Create || !eligible {
 		return b, tableedit.ErrUnsupported
 	}
@@ -91,7 +102,27 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	for _, k := range []string{"relpages", "reltuples", "relallvisible", "relallfrozen", "relfrozenxid", "relminmxid", "relhasindex"} {
 		delete(class, k)
 	}
-	rows, e := q.Query(ctx, `SELECT a.attname, pg_catalog.format_type(a.atttypid,a.atttypmod), NOT a.attnotnull, pg_catalog.pg_get_expr(d.adbin,d.adrelid), pg_catalog.row_to_json(a)::text, a.attisdropped FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=$1 AND a.attnum>0 ORDER BY a.attnum LIMIT 130`, oid)
+	advanced, evidence, advancedErr := pgAdvancedCapture(ctx, q, oid, class)
+	if advancedErr != nil {
+		return b, advancedErr
+	}
+	b.Advanced, b.AdvancedEvidence = advanced, evidence
+	if class["relpersistence"] == "u" {
+		b.Limitations = append(b.Limitations, "This is an UNLOGGED table. Its native persistence is retained: row data is not WAL-logged, can be truncated after an unclean shutdown and is not replicated to standbys. Authoring does not silently convert durability.")
+	}
+	if advanced != nil {
+		b.Limitations[0] = "Advanced local edits use explicit ONLY scope; reviewed recursive column/index/key operations disclose their native descendant effects. Every connected ancestor/descendant and security/type/native property is retained and checked. Policy-filtered rows are never whole-table validation proof."
+	}
+	// row_to_json(pg_attribute) describes attmissingval, which can call a
+	// custom element output routine even when expression deparsing is disabled.
+	var unsafeMissing bool
+	if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a JOIN pg_catalog.pg_type t ON t.oid=a.atttypid WHERE a.attrelid=$1 AND a.attnum>0 AND NOT a.attisdropped AND a.atthasmissing AND (t.oid>=16384 OR t.typoutput>=16384 OR t.typmodout>=16384 OR t.typtype='p'))`, oid).Scan(&unsafeMissing); err != nil {
+		return b, tableedit.ErrUnsupported
+	}
+	if unsafeMissing {
+		return b, errors.New("Stored fast-default metadata requires custom type support; use an explicit reviewed migration without evaluating that support during structure observation.")
+	}
+	rows, e := q.Query(ctx, `SELECT a.attname, pg_catalog.format_type(a.atttypid,NULL), NOT a.attnotnull, NULL::pg_catalog.text, pg_catalog.row_to_json(a)::pg_catalog.text, a.attisdropped FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum WHERE a.attrelid=$1 AND a.attnum>0 ORDER BY a.attnum LIMIT 130`, oid)
 	if e != nil {
 		return b, tableedit.ErrUnsupported
 	}
@@ -121,7 +152,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	if rows.Err() != nil {
 		return b, tableedit.ErrUnsupported
 	}
-	factsCapture, e := readStructureFacts(ctx, q, t, oid)
+	factsCapture, e := readStructureFacts(ctx, q, t, oid, advanced != nil)
 	if e != nil {
 		return b, e
 	}
@@ -132,19 +163,50 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	}
 	b.Guard = tableedit.Fingerprint(guard)
 	b.Facts = factsCapture
+	if advanced != nil {
+		b.Facts.Table.Kind = sc.Known(fmt.Sprint(class["relkind"]))
+	}
+	if len(factsCapture.RawExpressions) > 0 {
+		b.Limitations = append(b.Limitations, "Some expressions require custom type support code to describe. Raw catalog proof is retained; affected attribute changes and dependent renames require an explicit reviewed migration. Untouched raw proof is compared without invoking those routines.")
+	}
 	tableedit.Summarize(&b)
-	b.Fingerprint = tableedit.Fingerprint([]any{environment, schemaOID, oid, class, attributes, b.Columns, b.Facts})
+	for i := range b.Columns {
+		c := &b.Columns[i]
+		if actual, ok := tableedit.FindColumn(b, c.Name); ok {
+			if actual.Generated.Value != nil && actual.Generated.Value.Expression != nil {
+				v := actual.Generated.Value.Expression.Text
+				c.DefaultExpression = &v
+			} else if actual.Default.Value != nil && actual.Default.Value.Expression != nil {
+				v := actual.Default.Value.Expression.Text
+				c.DefaultExpression = &v
+			}
+		}
+		if typ := c.EditableType; typ != nil {
+			switch typ.Kind {
+			case "varchar":
+				c.NativeType += fmt.Sprintf("(%d)", typ.Length)
+			case "numeric":
+				c.NativeType += fmt.Sprintf("(%d,%d)", typ.Precision, typ.Scale)
+			}
+		}
+	}
+	b.Fingerprint = tableedit.Fingerprint([]any{environment, schemaOID, oid, class, attributes, b.Columns, b.Facts, b.AdvancedEvidence})
 	return b, nil
 }
 
 var structureNumeric = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
 
 func structureColumn(c tableedit.Column) (string, error) {
-	if !c.Valid() {
+	if !c.Valid() || !c.Type.ValidForEngine("postgresql") {
 		return "", tableedit.ErrInvalid
 	}
 	typ := map[string]string{"integer": "pg_catalog.int4", "bigint": "pg_catalog.int8", "boolean": "pg_catalog.bool", "text": "pg_catalog.text"}[c.Type.Kind]
 	switch c.Type.Kind {
+	case "reference":
+		if c.Type.Reference == nil || c.Resolved == nil || c.Resolved.Reference != *c.Type.Reference {
+			return "", tableedit.ErrUnsupported
+		}
+		typ = pgx.Identifier{c.Type.Reference.Schema, c.Type.Reference.Name}.Sanitize()
 	case "varchar":
 		typ = fmt.Sprintf("pg_catalog.varchar(%d)", c.Type.Length)
 	case "numeric":
@@ -162,22 +224,42 @@ func structureColumn(c tableedit.Column) (string, error) {
 	case "null":
 		out += " DEFAULT NULL"
 	case "text":
-		if c.Type.Kind != "text" && c.Type.Kind != "varchar" {
+		if c.Type.Kind != "text" && c.Type.Kind != "varchar" && c.Type.Kind != "reference" {
 			return "", tableedit.ErrInvalid
 		}
 		out += " DEFAULT " + postgresTextLiteral(*c.Default.Value)
 	case "numeric":
-		if c.Type.Kind != "integer" && c.Type.Kind != "bigint" && c.Type.Kind != "numeric" || !structureNumeric.MatchString(*c.Default.Value) {
+		if c.Type.Kind != "integer" && c.Type.Kind != "bigint" && c.Type.Kind != "numeric" && c.Type.Kind != "reference" || !structureNumeric.MatchString(*c.Default.Value) {
 			return "", tableedit.ErrInvalid
 		}
 		out += " DEFAULT " + *c.Default.Value
 	case "boolean":
-		if c.Type.Kind != "boolean" || (*c.Default.Value != "true" && *c.Default.Value != "false") {
+		if c.Type.Kind != "boolean" && c.Type.Kind != "reference" || (*c.Default.Value != "true" && *c.Default.Value != "false") {
 			return "", tableedit.ErrInvalid
 		}
 		out += " DEFAULT " + *c.Default.Value
+	case "expression":
+		expr, err := tableedit.ExpressionSlot("postgresql", *c.Default.Value)
+		if err != nil {
+			return "", err
+		}
+		out += " DEFAULT " + expr
 	default:
 		return "", tableedit.ErrInvalid
+	}
+	if c.Generated != nil && c.Generated.Storage != "none" {
+		expr, err := tableedit.ExpressionSlot("postgresql", c.Generated.Expression)
+		if err != nil {
+			return "", err
+		}
+		out += " GENERATED ALWAYS AS " + expr + " " + strings.ToUpper(c.Generated.Storage)
+	}
+	if c.Identity != nil && c.Identity.Kind != "none" {
+		x := pgIdentityDefinition(*c.Identity)
+		if x == "" {
+			return "", tableedit.ErrUnsupported
+		}
+		out += x
 	}
 	return out, nil
 }
@@ -211,7 +293,15 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 func (s *Session) StructureApply(ctx context.Context, b tableedit.Baseline, sql []string) tableedit.Execution {
 	return s.applyStructureStep(ctx, b, sql, nil)
 }
-func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline) tableedit.Execution {
+
+type structureGuards struct {
+	Types             []tableedit.TypeGuard
+	Indexes           []tableedit.IndexGuard
+	AdvancedCondition *tableedit.Condition
+	AdvancedProof     *tableedit.AdvancedEvidence
+}
+
+func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline, guardSets ...structureGuards) tableedit.Execution {
 	fail := func(state, message string) tableedit.Execution {
 		return tableedit.Execution{State: state, Message: message}
 	}
@@ -235,14 +325,32 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 	if _, e = tx.Exec(ctx, "SET LOCAL lock_timeout = '5s'"); e != nil {
 		return fail("notStarted", "Cannot set the declared lock timeout.")
 	}
-	if !b.Target.Create {
+	var combinedProof *tableedit.AdvancedEvidence
+	if len(guardSets) == 1 {
+		combinedProof = guardSets[0].AdvancedProof
+	}
+	if combinedProof != nil {
+		for _, target := range combinedProof.Targets {
+			if _, e = tx.Exec(ctx, "LOCK TABLE ONLY "+pgx.Identifier{target.Schema, target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
+				return fail("notStarted", "A complete source/reference hierarchy lock could not be acquired.")
+			}
+		}
+	} else if b.Advanced != nil {
+		for _, target := range b.AdvancedEvidence.Targets {
+			if _, e = tx.Exec(ctx, "LOCK TABLE ONLY "+pgx.Identifier{target.Schema, target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
+				return fail("notStarted", "A complete hierarchy lock could not be acquired. No DDL was sent.")
+			}
+		}
+	} else if !b.Target.Create {
 		if _, e = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{b.Target.Schema, b.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
 			return fail("notStarted", "The table lock could not be acquired. No DDL was sent.")
 		}
 	}
 	for _, ref := range refs {
-		if _, e = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{ref.Target.Schema, ref.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
-			return fail("notStarted", "Referenced table lock could not be acquired.")
+		if !ref.Target.Create && combinedProof == nil {
+			if _, e = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{ref.Target.Schema, ref.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
+				return fail("notStarted", "Referenced table lock could not be acquired.")
+			}
 		}
 		observed, err := readStructure(ctx, tx, ref.Target)
 		if err != nil || observed.Fingerprint != ref.Fingerprint {
@@ -253,6 +361,27 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 	if e != nil || fresh.Fingerprint != b.Fingerprint {
 		return fail("notStarted", tableedit.ErrStale.Error())
 	}
+	for _, guards := range guardSets {
+		if !verifyStructureTypes(ctx, tx, guards.Types) || !verifyIndexGuards(ctx, tx, guards.Indexes) {
+			return fail("notStarted", "A referenced type, index method, operator class, collation or its privileges changed. Prepare a fresh preview.")
+		}
+	}
+	if combinedProof != nil {
+		currentProof, err := pgAdvancedCombined(ctx, tx, fresh, refs)
+		if err != nil || tableedit.Fingerprint(currentProof) != tableedit.Fingerprint(combinedProof) {
+			return fail("notStarted", "The complete advanced source/reference native proof changed before dispatch.")
+		}
+	}
+	var dataProof *pgAdvancedDataProof
+	if b.Advanced != nil {
+		if len(guardSets) != 1 || guardSets[0].AdvancedCondition == nil {
+			return fail("notStarted", "The advanced preservation condition is missing.")
+		}
+		dataProof, e = pgAdvancedBoundDataCapture(ctx, tx, b, *guardSets[0].AdvancedCondition)
+		if e != nil {
+			return fail("notStarted", e.Error())
+		}
+	}
 	if ctx.Err() != nil {
 		return fail("notStarted", "Cancelled before DDL dispatch.")
 	}
@@ -262,6 +391,44 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 			return fail("failed", "PostgreSQL rejected the DDL. No commit was sent.")
 		}
 		return fail("unknown", "DDL completion could not be confirmed. Reconcile before another edit.")
+	}
+	if b.Advanced != nil || combinedProof != nil {
+		if len(guardSets) != 1 || guardSets[0].AdvancedCondition == nil {
+			return fail("failed", "The advanced preservation condition is missing; the transaction was rolled back.")
+		}
+		condition := *guardSets[0].AdvancedCondition
+		next, err := readStructure(ctx, tx, tableedit.StepTarget(b.Target, condition))
+		if err != nil {
+			return fail("failed", "Advanced metadata could not be captured. The DDL transaction was rolled back.")
+		}
+		if !(combinedProof != nil && pgAdvancedForeignCondition(condition)) && !pgAdvancedRecursiveCondition(b, condition) && !pgAdvancedGenerationTransition(b, next, condition, func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, next.Facts) }) {
+			return fail("failed", "Advanced typed transition did not match. The DDL transaction was rolled back.")
+		}
+		if combinedProof != nil && pgAdvancedForeignCondition(condition) {
+			observedRefs := []tableedit.Baseline{}
+			for _, ref := range refs {
+				observed, err := readStructure(ctx, tx, ref.Target)
+				if err != nil {
+					return fail("failed", "Referenced typed properties changed unexpectedly; the transaction was rolled back.")
+				}
+				observedRefs = append(observedRefs, observed)
+			}
+			nextProof, err := pgAdvancedCombined(ctx, tx, next, observedRefs)
+			if err != nil {
+				return fail("failed", "The complete advanced foreign-key proof could not be observed; transaction rolled back.")
+			}
+			if err = pgAdvancedForeignPreservationError(b, next, condition, combinedProof, nextProof); err != nil {
+				return fail("failed", err.Error()+" The DDL transaction was rolled back.")
+			}
+		} else if err := pgAdvancedPreservationError(b, next, condition); err != nil {
+			return fail("failed", err.Error()+" The DDL transaction was rolled back.")
+		}
+
+	}
+	if dataProof != nil {
+		if err := dataProof.Verify(ctx, tx); err != nil {
+			return fail("failed", err.Error()+" The DDL transaction was rolled back.")
+		}
 	}
 	commit := func() error { return tx.Commit(ctx) }
 	if s.structureCommitOverride != nil {

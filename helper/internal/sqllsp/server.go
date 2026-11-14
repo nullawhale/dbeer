@@ -280,7 +280,7 @@ func (s *server) acceptDocument(uri, text string) bool {
 	return total <= maxTotalDocumentBytes
 }
 func boundedConfiguration(c configuration) bool {
-	if len(c.Keyspace) > 1024 || strings.ContainsRune(c.Keyspace, 0) || c.URI == "" || len(c.URI) > 4096 || (c.Engine != "postgresql" && c.Engine != "mysql" && c.Engine != "cassandra" && c.Engine != "mongodb" && c.Engine != "sqlite") || len(c.Catalog) > maxCatalogEntries {
+	if len(c.Keyspace) > 1024 || strings.ContainsRune(c.Keyspace, 0) || c.URI == "" || len(c.URI) > 4096 || (c.Engine != "postgresql" && c.Engine != "mysql" && c.Engine != "mariadb" && c.Engine != "cassandra" && c.Engine != "mongodb" && c.Engine != "sqlite") || len(c.Catalog) > maxCatalogEntries {
 		return false
 	}
 	columns, keyColumns, parameters := 0, 0, 0
@@ -320,11 +320,22 @@ func boundedConfiguration(c configuration) bool {
 			}
 		}
 
+		if len(entry.ColumnTypeEntries) > len(entry.Columns) {
+			return false
+		}
+		entryNames := map[string]bool{}
+		for _, value := range entry.ColumnTypeEntries {
+			if !columnNames[value.Name] || entryNames[value.Name] || len(value.Name) > 1024 || value.NativeType == "" || len(value.NativeType) > 4096 {
+				return false
+			}
+			entryNames[value.Name] = true
+		}
+
 		if len(entry.ForeignKeys) > 64 {
 			return false
 		}
 		for _, key := range entry.ForeignKeys {
-			if len(key.Name) > 1024 || key.TargetTable == "" || len(key.TargetTable) > 1024 || len(key.TargetSchema) > 1024 || len(key.Columns) == 0 || len(key.Columns) > 32 {
+			if (key.Origin != "" && key.Origin != "declared" && key.Origin != "logical") || len(key.Name) > 1024 || key.TargetTable == "" || len(key.TargetTable) > 1024 || len(key.TargetSchema) > 1024 || len(key.Columns) == 0 || len(key.Columns) > 32 {
 				return false
 			}
 			keyColumns += len(key.Columns)

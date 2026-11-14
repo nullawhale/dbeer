@@ -50,3 +50,27 @@ func TestStructureSessionPurposeIsAdditiveAndStrict(t *testing.T) {
 		}
 	}
 }
+
+func TestStructureAuthoringV2SharedContract(t *testing.T) {
+	b, e := os.ReadFile("../../../protocol/fixtures/table-structure-authoring-v2.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var f struct {
+		Valid   []json.RawMessage `json:"valid"`
+		Invalid []string          `json:"invalid"`
+	}
+	if json.Unmarshal(b, &f) != nil {
+		t.Fatal("invalid fixture")
+	}
+	for i, b := range f.Valid {
+		if _, e := ParseCommand(b); e != nil {
+			t.Errorf("valid authoring case %d rejected", i)
+		}
+	}
+	for i, b := range f.Invalid {
+		if _, e := ParseCommand([]byte(b)); e == nil {
+			t.Errorf("invalid authoring case %d accepted", i)
+		}
+	}
+}

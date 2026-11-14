@@ -43,7 +43,8 @@ every day, with independent sessions for each SQL tab.
 | **An editor that gets you** | Contextual completion, multiple cursors, find/replace, offline formatting and code folding. |
 | **Tabs with their own space** | Each SQL tab keeps its connection, transaction, session settings and temporary tables until disconnected. |
 | **Edits you can review** | Stage cell changes, inspect **Preview SQL**, then **Apply**. Conflicts roll back the batch. |
-| **A workspace worth keeping** | Split panes, SQL files, a shared query library, result snapshots and investigation documents. |
+| **A workspace worth keeping** | Split panes, SQL files, a shared query library, result snapshots and investigation documents. Unreleased: saved structure and diagnostic evidence. |
+| **Unreleased schema maps** | PostgreSQL/MySQL/SQLite ER diagrams combine saved profiles with independent metadata loads, explicit rebinding, shared reviewed structure drafts and owned exports. |
 | **Data on the move** | Copy cells and ranges, export loaded results, or use **Run to File** for a complete export. |
 | **A look that fits** | System appearance, light **Lager**, dark **Porter**, and importable editor color schemes. |
 
@@ -72,9 +73,19 @@ Real captures of the native macOS development build with demo PostgreSQL data.
 | :--- | :--- | :--- |
 | **PostgreSQL** | 16 / 17 / 18 | SQL |
 | **MySQL** | 8.0 / 8.4 | SQL |
+| **MariaDB** | 10.11.9+ / 11.4.3+ · **unreleased, partial** | SQL |
 | **Apache Cassandra** | 4.1 / 5.0 | CQL |
 | **MongoDB** | 8.0 | JSON find / aggregation requests |
 | **SQLite** | Local files · **unreleased** | SQL |
+
+MariaDB is a separate adapter in the unreleased build, not a MySQL alias. It
+supports native SQL sessions, TLS/SSH, table-grid editing/import, Explain/Analyze,
+monitoring, reviewed tuning, guarded schema/data comparisons and transfer, native
+SQL backup/restore, and ordinary V1/V2/V3 table authoring. SQL-result
+editing, generated/AUTO_INCREMENT authoring, backfill/reconstruction, destructive
+conversion, multi-table migrations, advanced-table authoring and physical
+partition/storage operations remain disabled or manual. See
+[MariaDB scope and requirements](GUIDE.md#mariadb-partial-support).
 
 The packaged macOS release is **0.4.0 · build 13**. SQLite and other work in
 progress are documented in the [guide](GUIDE.md) and
@@ -134,6 +145,7 @@ for read-only policies, production confirmations and their limits.
 | Explore the app | [Using the application](GUIDE.md#using-the-application) |
 | Tune my queries | [Editor tools](GUIDE.md#editor-tools) · [Completion](GUIDE.md#sql-editor-and-completion) |
 | Browse and edit data | [Saved table views](GUIDE.md#table-filters-sorting-and-saved-views) · [Result editing](GUIDE.md#sql-result-source-rows-and-editing) |
+| Compare live and saved schemas | [Schema bundles](GUIDE.md#schema-bundles-for-git) · [Schema comparison](GUIDE.md#schema-comparison) |
 | Keep research together | [Investigations](GUIDE.md#investigation-documents) · [Snapshots](GUIDE.md#result-snapshot-storage) |
 | Connect securely | [SSH tunnels](GUIDE.md#ssh-tunnels) · [Dynamic passwords](GUIDE.md#dynamic-database-passwords) |
 | See what's new | [Changelog](CHANGELOG.md) · [Releases](https://github.com/nullawhale/dbeer/releases) |

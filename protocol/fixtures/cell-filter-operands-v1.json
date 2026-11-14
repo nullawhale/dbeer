@@ -1,0 +1,24 @@
+{
+  "capability": "sqliteCellFilterV1",
+  "valid": [
+    {"column":"v","operator":"eq","value":"9007199254740993.000000000000000001"},
+    {"column":"v","operator":"eq","value":""},
+    {"column":"v","operator":"isNull"},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"integer","value":"9223372036854775807"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"real","value":"3ff8000000000000"}},
+    {"column":"v","operator":"ne","sqliteValue":{"type":"blob","value":"AP+A"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"text","value":"YQBi"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"blob"}}
+  ],
+  "invalid": [
+    {"column":"v","operator":"eq","sqliteValue":null},
+    {"column":"v","operator":"eq","value":null,"sqliteValue":{"type":"blob"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"text","value":null}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"integer","value":"01"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"null"}},
+    {"column":"v","operator":"contains","sqliteValue":{"type":"blob"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"real","value":"7ff8000000000000"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"blob","value":"?"}},
+    {"column":"v","operator":"eq","sqliteValue":{"type":"text","extra":true}}
+  ]
+}

@@ -14,6 +14,10 @@ import (
 )
 
 const Capability = "tableStructureEditorV1"
+const AuthoringCapability = "tableStructureAuthoringV2"
+const IndexAuthoringCapability = "tableStructureIndexAuthoringV1"
+const DestructiveCapability = "tableStructureDestructiveV1"
+const ReconstructionCapability = "tableStructureReconstructionV1"
 const MaxColumns = 128
 const MaxSQLBytes = 1024 * 1024
 
@@ -34,22 +38,51 @@ func Identifier(s string) bool {
 func (t Target) Valid() bool { return Identifier(t.Schema) && Identifier(t.Table) }
 
 type DataType struct {
-	Kind      string `json:"kind"`
-	Length    int    `json:"length,omitempty"`
-	Precision int    `json:"precision,omitempty"`
-	Scale     int    `json:"scale,omitempty"`
+	Kind      string         `json:"kind"`
+	Length    int            `json:"length,omitempty"`
+	Precision int            `json:"precision,omitempty"`
+	Scale     int            `json:"scale,omitempty"`
+	Reference *TypeReference `json:"reference,omitempty"`
 }
 
 func (t DataType) Valid() bool {
+	if t.Kind == "reference" {
+		return t.Reference != nil && t.Reference.Valid() && t.Length == 0 && t.Precision == 0 && t.Scale == 0
+	}
+	if t.Reference != nil {
+		return false
+	}
 	switch t.Kind {
 	case "integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric":
 		return t.Length == 0 && t.Precision == 0 && t.Scale == 0
 	case "varchar":
 		return t.Length > 0 && t.Length <= 16383 && t.Precision == 0 && t.Scale == 0
 	case "numeric":
-		return t.Length == 0 && t.Precision > 0 && t.Precision <= 65 && t.Scale >= 0 && t.Scale <= t.Precision && t.Scale <= 30
+		return t.Length == 0 && t.Precision > 0 && t.Precision <= 65 && t.Scale >= 0 && t.Scale <= t.Precision && t.Scale <= 38
 	}
 	return false
+}
+
+// ValidForEngine retains existing engines' authoring bound; MariaDB has a
+// distinct native DECIMAL scale limit even though the portable shape is shared.
+func (t DataType) ValidForEngine(engine string) bool {
+	return t.Valid() && (engine == "mariadb" || t.Kind != "numeric" || t.Scale <= 30)
+}
+func (d Draft) ValidateForEngine(engine string) error {
+	if err := d.Validate(); err != nil {
+		return err
+	}
+	for _, c := range d.Columns {
+		if !c.Type.ValidForEngine(engine) {
+			return ErrUnsupported
+		}
+	}
+	for _, c := range d.Changes {
+		if c.Type != nil && !c.Type.ValidForEngine(engine) {
+			return ErrUnsupported
+		}
+	}
+	return nil
 }
 
 // Explicit kinds distinguish no DEFAULT, SQL NULL and the text "NULL".
@@ -62,24 +95,34 @@ func (d Default) Valid() bool {
 	switch d.Kind {
 	case "none", "null":
 		return d.Value == nil
-	case "text", "numeric", "boolean":
+	case "text", "numeric", "boolean", "expression":
 		return d.Value != nil && len(*d.Value) <= 4096 && utf8.ValidString(*d.Value) && !strings.ContainsRune(*d.Value, 0)
 	}
 	return false
 }
 
 type Column struct {
-	Name     string   `json:"name"`
-	Type     DataType `json:"type"`
-	Nullable bool     `json:"nullable"`
-	Default  Default  `json:"default"`
+	PrimaryKeyName string      `json:"-"`
+	Resolved       *TypeGuard  `json:"-"`
+	Name           string      `json:"name"`
+	Type           DataType    `json:"type"`
+	Nullable       bool        `json:"nullable"`
+	Default        Default     `json:"default"`
+	Generated      *Generation `json:"generated,omitempty"`
+	Identity       *Identity   `json:"identity,omitempty"`
 }
 
 func (c Column) Valid() bool {
-	return Identifier(c.Name) && c.Type.Valid() && c.Default.Valid() && !(c.Default.Kind == "null" && !c.Nullable)
+	return Identifier(c.Name) && c.Type.Valid() && c.Default.Valid() && !(c.Default.Kind == "null" && !c.Nullable) && columnAuthoredValid(c)
 }
 
 type Draft struct {
+	Backfills        []Backfill     `json:"backfills,omitempty"`
+	ColumnOrder      []string       `json:"columnOrder,omitempty"`
+	Reconstruct      bool           `json:"reconstruct,omitempty"`
+	DropTable        bool           `json:"dropTable,omitempty"`
+	AuthoringVersion int            `json:"authoringVersion,omitempty"`
+	RenameTable      *string        `json:"renameTable,omitempty"`
 	Columns          []Column       `json:"columns"`
 	Changes          []ColumnChange `json:"changes,omitempty"`
 	Indexes          []IndexEdit    `json:"indexes,omitempty"`
@@ -90,40 +133,55 @@ type Draft struct {
 func (d Draft) Valid() bool { return d.Validate() == nil }
 
 type ObservedColumn struct {
-	EditableType      *DataType `json:"editableType,omitempty"`
-	CanModify         bool      `json:"canModify"`
-	Name              string    `json:"name"`
-	NativeType        string    `json:"nativeType"`
-	Nullable          bool      `json:"nullable"`
-	DefaultExpression *string   `json:"defaultExpression,omitempty"`
+	Unsigned          *bool          `json:"unsigned,omitempty"`
+	Charset           *string        `json:"charset,omitempty"`
+	Collation         *TypeReference `json:"collation,omitempty"`
+	EditableType      *DataType      `json:"editableType,omitempty"`
+	CanModify         bool           `json:"canModify"`
+	Name              string         `json:"name"`
+	NativeType        string         `json:"nativeType"`
+	Nullable          bool           `json:"nullable"`
+	DefaultExpression *string        `json:"defaultExpression,omitempty"`
 }
 type Baseline struct {
-	Identity        string                    `json:"-"`
-	Scope           string                    `json:"-"`
-	Guard           string                    `json:"-"`
-	Attributes      map[string]map[string]any `json:"-"`
-	Facts           *Facts                    `json:"-"`
-	Keys            []Key                     `json:"keys"`
-	Indexes         []Index                   `json:"indexes"`
-	DependencyProof bool                      `json:"dependencyProof"`
-	ID              string                    `json:"id"`
-	Target          Target                    `json:"target"`
-	Engine          string                    `json:"engine"`
-	Fingerprint     string                    `json:"fingerprint"`
-	Columns         []ObservedColumn          `json:"columns"`
-	Limitations     []string                  `json:"limitations"`
+	Advanced         *AdvancedKindSupport      `json:"advanced,omitempty"`
+	AdvancedEvidence *AdvancedEvidence         `json:"-"`
+	NativeDefinition string                    `json:"-"`
+	Identity         string                    `json:"-"`
+	Scope            string                    `json:"-"`
+	Guard            string                    `json:"-"`
+	Attributes       map[string]map[string]any `json:"-"`
+	Facts            *Facts                    `json:"-"`
+	Keys             []Key                     `json:"keys"`
+	Indexes          []Index                   `json:"indexes"`
+	DependencyProof  bool                      `json:"dependencyProof"`
+	ID               string                    `json:"id"`
+	Target           Target                    `json:"target"`
+	Engine           string                    `json:"engine"`
+	Fingerprint      string                    `json:"fingerprint"`
+	Columns          []ObservedColumn          `json:"columns"`
+	Limitations      []string                  `json:"limitations"`
 }
 type Plan struct {
-	Conditions  []Condition `json:"-"`
-	References  []Baseline  `json:"-"`
-	Destructive bool        `json:"destructive"`
-	ID          string      `json:"id"`
-	BaselineID  string      `json:"baselineId"`
-	Digest      string      `json:"digest"`
-	Target      Target      `json:"target"`
-	SQL         []string    `json:"sql"`
-	Risks       []string    `json:"risks"`
-	Created     time.Time   `json:"-"`
+	AdvancedProof    *AdvancedEvidence `json:"-"`
+	Reconstruction   *Reconstruction   `json:"-"`
+	DroppedTarget    bool              `json:"droppedTarget,omitempty"`
+	Consequences     []Consequence     `json:"consequences,omitempty"`
+	ValidationChecks []ValidationCheck `json:"validationChecks,omitempty"`
+	IndexGuards      []IndexGuard      `json:"-"`
+	ResultTarget     *Target           `json:"resultTarget,omitempty"`
+	Types            []TypeGuard       `json:"-"`
+	RenamedColumns   map[string]string `json:"-"`
+	Conditions       []Condition       `json:"-"`
+	References       []Baseline        `json:"-"`
+	Destructive      bool              `json:"destructive"`
+	ID               string            `json:"id"`
+	BaselineID       string            `json:"baselineId"`
+	Digest           string            `json:"digest"`
+	Target           Target            `json:"target"`
+	SQL              []string          `json:"sql"`
+	Risks            []string          `json:"risks"`
+	Created          time.Time         `json:"-"`
 }
 type Apply struct {
 	PlanID      string `json:"planId"`
@@ -154,13 +212,34 @@ func IsDigest(s string) bool {
 }
 
 type Request struct {
-	Target     *Target `json:"target,omitempty"`
-	BaselineID string  `json:"baselineId,omitempty"`
-	Draft      *Draft  `json:"draft,omitempty"`
-	Apply      *Apply  `json:"apply,omitempty"`
+	Physical   *PhysicalRequest  `json:"physical,omitempty"`
+	Migration  *MigrationRequest `json:"migration,omitempty"`
+	Validation *Apply            `json:"validation,omitempty"`
+	Target     *Target           `json:"target,omitempty"`
+	BaselineID string            `json:"baselineId,omitempty"`
+	Draft      *Draft            `json:"draft,omitempty"`
+	Apply      *Apply            `json:"apply,omitempty"`
 }
 
 func (r Request) Valid(command string) bool {
+	if strings.HasPrefix(command, "structure.physical.") {
+		return r.Physical != nil && r.Migration == nil && r.Target == nil && r.BaselineID == "" && r.Draft == nil && r.Apply == nil && r.Validation == nil && r.Physical.Valid(command)
+	}
+	if r.Physical != nil {
+		return false
+	}
+	if strings.HasPrefix(command, "structure.migration.") {
+		return r.Migration != nil && r.Target == nil && r.BaselineID == "" && r.Draft == nil && r.Apply == nil && r.Validation == nil && r.Migration.Valid(command)
+	}
+	if r.Migration != nil {
+		return false
+	}
+	if command == "structure.validate" {
+		return r.Target == nil && r.BaselineID == "" && r.Draft == nil && r.Apply == nil && r.Validation != nil && r.Validation.Valid()
+	}
+	if r.Validation != nil {
+		return false
+	}
 	switch command {
 	case "structure.load":
 		return r.Target != nil && r.Target.Valid() && (!r.Target.Reconcile || r.Target.Create) && r.BaselineID == "" && r.Draft == nil && r.Apply == nil
@@ -179,17 +258,21 @@ type StepOutcome struct {
 	Message string `json:"message,omitempty"`
 }
 type Outcome struct {
-	ExecutionID  string        `json:"executionId"`
-	PlanID       string        `json:"planId"`
-	State        string        `json:"state"`
-	Steps        []StepOutcome `json:"steps"`
-	Observed     *Baseline     `json:"observed,omitempty"`
-	RefreshError string        `json:"refreshError,omitempty"`
+	DroppedTarget bool          `json:"droppedTarget,omitempty"`
+	ExecutionID   string        `json:"executionId"`
+	PlanID        string        `json:"planId"`
+	State         string        `json:"state"`
+	Steps         []StepOutcome `json:"steps"`
+	Observed      *Baseline     `json:"observed,omitempty"`
+	RefreshError  string        `json:"refreshError,omitempty"`
 }
 type Reply struct {
-	Baseline *Baseline `json:"baseline,omitempty"`
-	Plan     *Plan     `json:"plan,omitempty"`
-	Outcome  *Outcome  `json:"outcome,omitempty"`
+	Physical   *PhysicalReply     `json:"physical,omitempty"`
+	Migration  *MigrationReply    `json:"migration,omitempty"`
+	Validation *ValidationOutcome `json:"validation,omitempty"`
+	Baseline   *Baseline          `json:"baseline,omitempty"`
+	Plan       *Plan              `json:"plan,omitempty"`
+	Outcome    *Outcome           `json:"outcome,omitempty"`
 }
 
 // Adapters provide positively acknowledged completion separately from observation.
@@ -217,14 +300,16 @@ func Fingerprint(v any) string {
 }
 
 type Store struct {
-	baseline *Baseline
-	plan     *Plan
-	outcome  *Outcome
+	validation *ValidationOutcome
+	baseline   *Baseline
+	plan       *Plan
+	outcome    *Outcome
 }
 
 func (s *Store) Load(ctx context.Context, a Adapter, t Target) (Reply, error) {
 	s.baseline = nil
 	s.plan = nil
+	s.validation = nil
 	b, e := a.StructureLoad(ctx, t)
 	if e != nil {
 		return Reply{}, e
@@ -245,28 +330,45 @@ func (s *Store) Preview(a Adapter, id string, d Draft) (Reply, error) {
 }
 func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draft) (Reply, error) {
 	s.plan = nil
+	s.validation = nil
 	if s.baseline == nil || s.baseline.ID != id {
 		return Reply{}, ErrStale
 	}
-	if err := d.Validate(); err != nil {
+	if err := d.ValidateForEngine(s.baseline.Engine); err != nil {
 		return Reply{}, err
 	}
 	var sql, risks []string
 	var references []Baseline
 	var conditions []Condition
+	var types []TypeGuard
+	var indexGuards []IndexGuard
+	var resultTarget *Target
+	var droppedTarget bool
+	var advancedProof *AdvancedEvidence
+	var reconstruction *Reconstruction
+	var consequences []Consequence
+	var validationChecks []ValidationCheck
 	var err error
 	if advanced, ok := a.(AdvancedAdapter); ok {
 		var prepared Prepared
 		prepared, err = advanced.StructurePrepare(ctx, *s.baseline, d)
 		sql, risks, references, conditions = prepared.SQL, prepared.Risks, prepared.References, prepared.Conditions
+		types, resultTarget = prepared.Types, prepared.ResultTarget
+		indexGuards = prepared.IndexGuards
+		droppedTarget, consequences, validationChecks = prepared.DroppedTarget, prepared.Consequences, prepared.ValidationChecks
+		reconstruction = prepared.Reconstruction
+		advancedProof = prepared.AdvancedProof
 	} else {
-		if len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
+		if d.NeedsAuthoringV2() || d.NeedsAuthoringV3() || d.NeedsAuthoringV4() || d.NeedsAuthoringV5() || len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
 			return Reply{}, ErrUnsupported
 		}
 		sql, risks, err = a.StructureRender(*s.baseline, d)
 	}
 	if err != nil {
 		return Reply{}, err
+	}
+	if d.RenameTable != nil && resultTarget == nil {
+		return Reply{}, ErrUnsupported
 	}
 	if len(sql) == 0 || len(sql) > 64 || (conditions != nil && len(conditions) != len(sql)) {
 		return Reply{}, ErrInvalid
@@ -292,12 +394,21 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	if referenceBytes > 8<<20 {
 		return Reply{}, ErrUnsupported
 	}
-	p := &Plan{ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive(), Conditions: conditions, Created: time.Now()}
+	if !validReview(consequences, validationChecks) || droppedTarget != d.DropTable {
+		return Reply{}, ErrInvalid
+	}
+	p := &Plan{AdvancedProof: advancedProof, Reconstruction: reconstruction, DroppedTarget: droppedTarget, Consequences: consequences, ValidationChecks: validationChecks, ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, IndexGuards: indexGuards, Conditions: conditions, Created: time.Now()}
 	identities := []string{}
 	for _, b := range references {
 		identities = append(identities, b.Fingerprint)
 	}
-	p.Digest = Fingerprint([]any{p, identities, conditions})
+	p.RenamedColumns = map[string]string{}
+	for _, c := range d.Changes {
+		if c.RenameTo != nil {
+			p.RenamedColumns[c.Name] = *c.RenameTo
+		}
+	}
+	p.Digest = Fingerprint([]any{p, identities, conditions, types, indexGuards, p.RenamedColumns, reconstruction, advancedProof})
 	s.plan = p
 	return Reply{Plan: p}, nil
 }
@@ -362,7 +473,14 @@ func (s *Store) Apply(ctx context.Context, a Adapter, r Apply) (Reply, error) {
 	}
 	s.plan = nil
 	s.baseline = nil
+	if p.DroppedTarget && s.outcome.State == "applied" {
+		s.outcome.DroppedTarget = true
+		return Reply{Outcome: s.outcome}, nil
+	}
 	observe := b.Target
+	if p.ResultTarget != nil && s.outcome.State == "applied" {
+		observe = *p.ResultTarget
+	}
 	observe.Create = false
 	if ctx.Err() == nil {
 		fresh, err := a.StructureLoad(ctx, observe)
@@ -377,5 +495,5 @@ func (s *Store) Apply(ctx context.Context, a Adapter, r Apply) (Reply, error) {
 	}
 	return Reply{Outcome: s.outcome}, nil
 }
-func (s *Store) Status() Reply { return Reply{Outcome: s.outcome} }
-func (s *Store) Close()        { s.baseline = nil; s.plan = nil }
+func (s *Store) Status() Reply { return Reply{Outcome: s.outcome, Validation: s.validation} }
+func (s *Store) Close()        { s.baseline = nil; s.plan = nil; s.validation = nil }

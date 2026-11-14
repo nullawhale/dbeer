@@ -18,10 +18,20 @@ extension ApplicationWorkspace {
         typeProfileFingerprints = fingerprints
         typeProfileRevisions = revisions
         for document in documents {
-            if let model = document.erDiagramModel, let context = model.context, revisions[context.profileID] != context.settingsRevision {
-                stopERDiagram(model, reason: "The saved connection or policy changed. Rebuild explicitly with the current connection.")
+            guard let model = document.erDiagramModel else { continue }
+            for source in model.stored.sources {
+                if let current = profiles.first(where: { $0.id == source.profileID }), source.matches(current) {
+                    if let index = model.stored.sources.firstIndex(where: { $0.profileID == source.profileID }),
+                       Data(model.stored.sources[index].name.utf8) != Data(current.name.utf8) {
+                        model.stored.sources[index].name = current.name; model.changed?()
+                    }
+                } else {
+                    stopERDiagramSource(model, profileID: source.profileID, reason: "The saved source is missing or changed. Rebind its objects explicitly before loading.")
+                    Task { await closeERDiagramExports(profileID: source.profileID) }
+                }
             }
         }
+        retireChangedERDiagramExports(profiles: profiles)
         if let model = typeInspection, revisions[model.reference.profileID] != model.reference.settingsRevision {
             invalidatePostgresTypeModel(model, reason: "The saved connection or its policy changed. Reopen the type with the current connection.")
         }

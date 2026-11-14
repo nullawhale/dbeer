@@ -9,6 +9,10 @@ struct OptionalTransportPayload<Value: Codable & Equatable & Sendable>: Codable,
 
     private var storage: Storage?
 
+    // Presence checks must not materialize a large inline payload in debug
+    // transport validation frames. Storage remains immutable and copy-safe.
+    var isPresent: Bool { storage != nil }
+
     var wrappedValue: Value? {
         get { storage?.value }
         set { storage = newValue.map(Storage.init) }

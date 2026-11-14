@@ -84,7 +84,16 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 		failure.Connected, failure.TransactionStatus = !conn.IsClosed(), transactionStatus(conn)
 		return failure
 	}
-	statement, columns, sourceFields, prepareErr := prepareQueryTypes(ctx, conn, sql, oids)
+	// GENERIC_PLAN must reach PostgreSQL without externally bound values. Use
+	// the same collector/owner, with one simple-query message and no pre-Parse.
+	genericExplain := command.Type == "explain.run" && command.Explain != nil && command.Explain.PlanKind == "generic"
+	var statement string
+	var columns []protocol.Column
+	var sourceFields []pgconn.FieldDescription
+	var prepareErr error
+	if !genericExplain {
+		statement, columns, sourceFields, prepareErr = prepareQueryTypes(ctx, conn, sql, oids)
+	}
 	if prepareErr != nil {
 		failure := queryError(command, ctx, conn, prepareErr)
 		// Parse/coercion and catalog deparsing can call user type routines.
@@ -104,7 +113,35 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 	// Reuse the exact Parse/Describe result, including its explicit parameter
 	// OIDs. A second Parse could repeat custom type input routines and change
 	// result metadata before execution.
-	reader := conn.PgConn().ExecPrepared(ctx, statement, values, nil, nil)
+	var resultFormats []int16
+	if command.ResultValues == protocol.NativeResultValuesFormat {
+		resultFormats = make([]int16, len(columns))
+		for i, column := range columns {
+			if column.TypeOID == 700 || column.TypeOID == 701 {
+				resultFormats[i] = 1
+			}
+		}
+	}
+	if command.Type == "explain.run" && !adapter.ExplainWriteContextMatches(command.Explain, transactionStatus(conn)) {
+		failure := protocol.ErrorResponse(command, "conflict", "The DML Analyze transaction context changed before dispatch. Review it again.")
+		failure.Connected, failure.TransactionStatus, failure.SQLNotExecuted = !conn.IsClosed(), transactionStatus(conn), true
+		return failure
+	}
+	var reader *pgconn.ResultReader
+	var simple *pgconn.MultiResultReader
+	if genericExplain {
+		simple = conn.PgConn().Exec(ctx, sql)
+		if !simple.NextResult() {
+			err := simple.Close()
+			if err == nil {
+				err = errors.New("The Explain statement returned no result.")
+			}
+			return queryError(command, ctx, conn, err)
+		}
+		reader = simple.ResultReader()
+	} else {
+		reader = conn.PgConn().ExecPrepared(ctx, statement, values, nil, resultFormats)
+	}
 	collector := newResultCollector(command, reader.FieldDescriptions(), MaxResultBytes)
 	// Explain has its own bounded capture; never retain a duplicate grid result.
 	if command.Type == "explain.run" {
@@ -112,6 +149,13 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 	}
 	if assignQueryTypes(columns, reader.FieldDescriptions()) {
 		collector.response.Columns = columns
+	}
+	actualFormats := make([]int16, len(reader.FieldDescriptions()))
+	for i, field := range reader.FieldDescriptions() {
+		actualFormats[i] = field.Format
+		if field.Format == 1 && command.ResultValues == protocol.NativeResultValuesFormat && (field.DataTypeOID == 700 || field.DataTypeOID == 701) {
+			collector.response.Columns[i].TypeIdentity = strings.TrimPrefix(collector.response.Columns[i].TypeIdentity, "unresolved:")
+		}
 	}
 	if storageProjection {
 		if len(collector.response.Columns) == 0 || collector.response.Columns[len(collector.response.Columns)-1].Name != postgresStorageAlias {
@@ -157,6 +201,14 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 				continue
 			}
 			text := string(value)
+			if actualFormats[index] == 1 {
+				var ok bool
+				_, text, ok = nativePostgresBinaryFloat(collector.response.Columns[index].TypeOID, value)
+				if !ok {
+					binaryError = true
+					continue
+				}
+			}
 			if collector.response.Columns[index].Encoding == "base64" {
 				decoded, err := decodeBytea(value)
 				if err != nil {
@@ -168,15 +220,31 @@ func executeParamsSinkWithStorageOIDs(ctx context.Context, conn *pgx.Conn, comma
 			row[index] = &text
 		}
 		retained := len(collector.response.Rows)
-		collector.addRow(row)
+		var native []protocol.NativeValue
+		if command.ResultValues == protocol.NativeResultValuesFormat {
+			native = nativePostgresRow(collector.response.Columns, values, actualFormats)
+			collector.addRow(row, native)
+		} else {
+			collector.addRow(row)
+		}
 		if storageProjection && len(collector.response.Rows) > retained {
 			collector.response.StorageTokens = append(collector.response.StorageTokens, storageToken)
 		}
-		if sinkOK && sink.Row(0, row) != nil {
-			sinkOK = false
+		if sinkOK {
+			if native != nil && adapter.DeliverNativeRow(sink, 0, native) != nil {
+				sinkOK = false
+			}
+			if sinkOK && sink.Row(0, row) != nil {
+				sinkOK = false
+			}
 		}
 	}
 	tag, err := reader.Close()
+	if simple != nil {
+		if drainErr := simple.Close(); err == nil {
+			err = drainErr
+		}
+	}
 	if err != nil {
 		return queryError(command, ctx, conn, err)
 	}
@@ -230,17 +298,21 @@ func decodeBytea(value []byte) ([]byte, error) {
 }
 
 type resultCollector struct {
-	response protocol.Response
-	limit    int
-	rowBytes int
-	rowSizes []int
-	baseSize int
-	stopped  bool
+	nativeBudget protocol.NativeMatrixBudget
+	response     protocol.Response
+	limit        int
+	rowBytes     int
+	rowSizes     []int
+	baseSize     int
+	stopped      bool
 }
 
 func newResultCollector(command protocol.Command, fields []pgconn.FieldDescription, limit int) *resultCollector {
 	response := protocol.Response{Type: "query.result", RequestID: command.RequestID, SessionID: command.SessionID, QueryID: command.QueryID,
 		TransactionStatus: "idle", Columns: make([]protocol.Column, len(fields)), Rows: make([][]*string, 0)}
+	if command.ResultValues == protocol.NativeResultValuesFormat {
+		response.NativeValues = [][]protocol.NativeValue{}
+	}
 	for index, field := range fields {
 		response.Columns[index] = protocol.Column{Index: index, Name: field.Name, Engine: "postgresql", NativeType: "oid:" + strconv.FormatUint(uint64(field.DataTypeOID), 10), TypeOID: field.DataTypeOID}
 	}
@@ -266,7 +338,7 @@ func (collector *resultCollector) add(values [][]byte) {
 	collector.addRow(row)
 }
 
-func (collector *resultCollector) addRow(row []*string) {
+func (collector *resultCollector) addRow(row []*string, native ...[]protocol.NativeValue) {
 	if collector.stopped {
 		return
 	}
@@ -275,18 +347,39 @@ func (collector *resultCollector) addRow(row []*string) {
 		return
 	}
 	encoded, _ := json.Marshal(row)
+	nativeSize := 0
+	budget := collector.nativeBudget
+	if collector.response.NativeValues != nil {
+		if len(native) != 1 || !budget.Append(native[0], len(row)) {
+			collector.response.Truncated, collector.stopped = true, true
+			return
+		}
+		encodedNative, err := json.Marshal(native[0])
+		if err != nil {
+			collector.response.Truncated, collector.stopped = true, true
+			return
+		}
+		nativeSize = len(encodedNative)
+	}
 	// Reserve a little space for the final tag, timing and truncation notice.
 	// finish still measures the actual complete JSON before emitting it.
-	extra := len(encoded)
+	extra := len(encoded) + nativeSize
 	if len(collector.response.Rows) > 0 {
 		extra++
+		if nativeSize > 0 {
+			extra++
+		}
 	}
 	if collector.baseSize+collector.rowBytes+extra+1024 > collector.limit {
 		collector.response.Truncated, collector.stopped = true, true
 		return
 	}
 	collector.response.Rows = append(collector.response.Rows, row)
-	collector.rowSizes = append(collector.rowSizes, len(encoded))
+	if nativeSize > 0 {
+		collector.response.NativeValues = append(collector.response.NativeValues, native[0])
+		collector.nativeBudget = budget
+	}
+	collector.rowSizes = append(collector.rowSizes, len(encoded)+nativeSize)
 	collector.rowBytes += extra
 }
 
@@ -303,9 +396,14 @@ func (collector *resultCollector) finish(tag pgconn.CommandTag, elapsed time.Dur
 		// The empty rows array contributes its two brackets to base. Each saved
 		// row contributes its exact JSON size, plus the commas between rows.
 		rows := response.Rows
+		native := response.NativeValues
 		response.Rows = nil
+		if native != nil {
+			response.NativeValues = [][]protocol.NativeValue{}
+		}
 		base, _ := json.Marshal(response)
 		response.Rows = rows
+		response.NativeValues = native
 		if len(base)+collector.rowBytes <= collector.limit {
 			return *response
 		}
@@ -316,8 +414,14 @@ func (collector *resultCollector) finish(tag pgconn.CommandTag, elapsed time.Dur
 			collector.rowBytes -= collector.rowSizes[last]
 			if last > 0 {
 				collector.rowBytes--
+				if response.NativeValues != nil {
+					collector.rowBytes--
+				}
 			}
 			response.Rows = rows[:last]
+			if response.NativeValues != nil {
+				response.NativeValues = response.NativeValues[:last]
+			}
 			if len(response.StorageTokens) > last {
 				response.StorageTokens = response.StorageTokens[:last]
 			}

@@ -2,19 +2,88 @@ package postgres
 
 import (
 	"context"
+	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"sort"
 	"strings"
 )
 
 func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d tableedit.Draft) (tableedit.Prepared, error) {
-	ops, refs, e := tableedit.PlanOperations(b, d, "postgresql", func(t tableedit.Target) (tableedit.Baseline, error) { return s.StructureLoad(ctx, t) })
+	return s.prepareMigrationStructure(ctx, b, d, func(t tableedit.Target) (tableedit.Baseline, error) { return s.StructureLoad(ctx, t) }, false)
+}
+func (s *Session) StructurePrepareMigration(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, load func(tableedit.Target) (tableedit.Baseline, error)) (tableedit.Prepared, error) {
+	return s.prepareMigrationStructure(ctx, b, d, load, true)
+}
+func (s *Session) prepareMigrationStructure(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, load func(tableedit.Target) (tableedit.Baseline, error), migration bool) (tableedit.Prepared, error) {
+	if err := pgAdvancedPrepare(b, d); err != nil {
+		return tableedit.Prepared{}, err
+	}
+	if err := pgAdvancedDataDraft(ctx, pgCatalogReader(s.conn), b, d); err != nil {
+		return tableedit.Prepared{}, err
+	}
+	if d.NeedsAuthoringV5() {
+		return s.prepareStructureReconstruction(ctx, b, d, migration, load)
+	}
+	var guards []tableedit.TypeGuard
+	var e error
+	d, guards, e = s.resolveAuthoredTypes(ctx, b, d)
 	if e != nil {
 		return tableedit.Prepared{}, e
 	}
-	out := tableedit.Prepared{References: refs, Risks: []string{"Every displayed statement is an independent execution unit using a dedicated session: BEGIN, SET LOCAL lock_timeout='5s', ordered ACCESS EXCLUSIVE locks, metadata rechecks, the reviewed DDL and COMMIT. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, scan or rewrite tables. No backfill, CASCADE or automatic replay is generated. Catalogs cannot prove the absence of dynamic SQL dependencies."}}
+	for _, c := range d.Columns {
+		if e = validatePGAuthoredColumn(b, c); e != nil {
+			return tableedit.Prepared{}, e
+		}
+	}
+	indexGuards, e := s.prepareAuthoredIndexes(ctx, b, d)
+	if e != nil {
+		return tableedit.Prepared{}, e
+	}
+	planner := tableedit.PlanOperations
+	if migration {
+		planner = tableedit.PlanMigrationOperations
+	}
+	ops, refs, e := planner(b, d, "postgresql", load)
+	if e != nil {
+		return tableedit.Prepared{}, e
+	}
+	refs, e = s.pgAdvancedForeignReferences(ctx, b, d, refs, load)
+	if e != nil {
+		return tableedit.Prepared{}, e
+	}
+	out := tableedit.Prepared{Types: guards, IndexGuards: indexGuards, ResultTarget: tableedit.ResultTarget(b.Target, d), References: refs, Risks: []string{"Every displayed statement is an independent execution unit using a dedicated session: BEGIN, SET LOCAL lock_timeout='5s', ordered ACCESS EXCLUSIVE locks, metadata rechecks, the reviewed DDL and COMMIT. The entire plan is not atomic; earlier acknowledged steps survive later failure or Stop.", "DDL may block, scan or rewrite tables. No backfill, CASCADE or automatic replay is generated. Catalogs cannot prove the absence of dynamic SQL dependencies."}}
+	if pgAdvancedForeignDraft(b, d, refs) {
+		out.AdvancedProof, e = pgAdvancedCombined(ctx, s.conn, b, refs)
+		if e != nil {
+			return out, e
+		}
+		if e = pgAdvancedForeignReview(b, d, out.AdvancedProof, &out); e != nil {
+			return out, e
+		}
+	}
+	if e = s.pgDestructiveReview(ctx, b, d, &out); e != nil {
+		return out, e
+	}
+	if err := pgAdvancedRemovalReview(b, d, &out); err != nil {
+		return out, err
+	}
+	if err := pgAdvancedHierarchyReview(b, d, &out); err != nil {
+		return out, err
+	}
+	if err := pgAdvancedReview(b, d, &out); err != nil {
+		return out, err
+	}
+	if d.HasAuthoredExpressions() || len(guards) > 0 || len(indexGuards) > 0 {
+		out.Risks = append(out.Risks, pgExpressionRisk())
+	}
 	target := pgx.Identifier{b.Target.Schema, b.Target.Table}.Sanitize()
+	alterTarget := target
+	if b.Advanced != nil {
+		alterTarget = "ONLY " + target
+		out.Risks = append(out.Risks, "Advanced local ALTER TABLE uses ONLY; explicitly reviewed recursive column and partition-root identity actions list their complete affected subtree. Local defaults and constraints do not silently modify descendants. Normal indexes on a declarative parent explicitly create native descendant indexes. Traditional inheritance indexes and UNIQUE/PRIMARY constraints cover only the selected table, never descendant rows. RLS policies, FORCE status and ACLs stay unchanged; server DDL enforces NOT NULL and uniqueness without treating policy-filtered SELECT as whole-table proof.")
+	}
 	quote := func(x string) string { return pgx.Identifier{x}.Sanitize() }
 	columns := func(names []string) string {
 		v := []string{}
@@ -23,11 +92,19 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		}
 		return strings.Join(v, ", ")
 	}
-	for _, op := range ops {
+	for operationIndex, op := range ops {
+		alterTarget = target
+		if b.Advanced != nil && !pgAdvancedRecursiveOperation(b, op) && !(b.Facts.Table.Kind.Value != nil && *b.Facts.Table.Kind.Value == "p" && (op.Kind == "addKey" || op.Kind == "dropKey")) {
+			alterTarget = "ONLY " + target
+		}
 		stepStart := len(out.SQL)
 		switch op.Kind {
+		case "dropTable":
+			out.SQL = append(out.SQL, "DROP TABLE "+target+" RESTRICT;")
+		case "dropColumn":
+			out.SQL = append(out.SQL, "ALTER TABLE "+alterTarget+" DROP COLUMN "+quote(op.Change.Name)+" RESTRICT;")
 		case "create":
-			sql, _, e := s.StructureRender(b, tableedit.Draft{Columns: d.Columns})
+			sql, _, e := s.StructureRender(b, tableedit.Draft{AuthoringVersion: d.AuthoringVersion, Columns: d.Columns})
 			if e != nil {
 				return out, e
 			}
@@ -37,9 +114,25 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			if e != nil {
 				return out, e
 			}
-			out.SQL = append(out.SQL, "ALTER TABLE "+target+" ADD COLUMN "+definition+";")
+			out.SQL = append(out.SQL, "ALTER TABLE "+alterTarget+" ADD COLUMN "+definition+";")
 		case "changeColumn":
 			c := op.Change
+			if c.Generated != nil {
+				steps, err := pgGeneratedChange(b, *c, alterTarget)
+				if err != nil {
+					return out, err
+				}
+				out.SQL = append(out.SQL, steps...)
+				break
+			}
+			if c.Identity != nil {
+				steps, err := pgIdentityChange(b, *c, alterTarget)
+				if err != nil {
+					return out, err
+				}
+				out.SQL = append(out.SQL, steps...)
+				break
+			}
 			old, ok := tableedit.FindColumn(b, c.Name)
 			if !ok {
 				return out, tableedit.ErrUnsupported
@@ -48,14 +141,16 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			if !ok {
 				return out, tableedit.ErrUnsupported
 			}
-			prefix := "ALTER TABLE " + target + " ALTER COLUMN " + quote(c.Name)
-			if c.Type != nil {
-				typ = *c.Type
-				definition, e := structureColumn(tableedit.Column{Name: c.Name, Type: typ, Nullable: true, Default: tableedit.Default{Kind: "none"}})
+			prefix := "ALTER TABLE " + alterTarget + " ALTER COLUMN " + quote(c.Name)
+			if c.Conversion() {
+				if c.Type != nil {
+					typ = *c.Type
+				}
+				definition, e := pgConversionChange(b, *c, alterTarget)
 				if e != nil {
 					return out, e
 				}
-				out.SQL = append(out.SQL, prefix+" TYPE "+strings.TrimPrefix(definition, quote(c.Name)+" ")+";")
+				out.SQL = append(out.SQL, definition)
 			}
 			if c.Nullable != nil {
 				action := " SET NOT NULL;"
@@ -83,9 +178,21 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 					out.SQL = append(out.SQL, prefix+" SET DEFAULT "+definition[i+9:]+";")
 				}
 			}
+		case "renameColumn":
+			out.SQL = append(out.SQL, "ALTER TABLE "+alterTarget+" RENAME COLUMN "+quote(op.Change.Name)+" TO "+quote(*op.Change.RenameTo)+";")
+		case "renameTable":
+			out.SQL = append(out.SQL, "ALTER TABLE "+alterTarget+" RENAME TO "+quote(*op.Name)+";")
 		case "dropIndex":
 			out.SQL = append(out.SQL, "DROP INDEX "+pgx.Identifier{b.Target.Schema, op.Index.Name}.Sanitize()+";")
 		case "addIndex":
+			if op.Index.Definition != nil {
+				sql, err := renderPGIndex(ctx, b.Target, *op.Index)
+				if err != nil {
+					return out, err
+				}
+				out.SQL = append(out.SQL, sql)
+				break
+			}
 			x := op.Index
 			unique := ""
 			if x.Unique {
@@ -93,7 +200,7 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			}
 			out.SQL = append(out.SQL, "CREATE "+unique+"INDEX "+quote(x.Name)+" ON "+target+" USING btree ("+columns(x.Columns)+");")
 		case "dropKey":
-			out.SQL = append(out.SQL, "ALTER TABLE "+target+" DROP CONSTRAINT "+quote(op.Key.Name)+";")
+			out.SQL = append(out.SQL, "ALTER TABLE "+alterTarget+" DROP CONSTRAINT "+quote(op.Key.Name)+";")
 		case "addKey":
 			k := op.Key
 			definition := "CONSTRAINT " + quote(k.Name) + " "
@@ -107,20 +214,47 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 			default:
 				return out, tableedit.ErrInvalid
 			}
-			out.SQL = append(out.SQL, "ALTER TABLE "+target+" ADD "+definition+";")
+			out.SQL = append(out.SQL, "ALTER TABLE "+alterTarget+" ADD "+definition+";")
 		default:
 			return out, errors.New("Unsupported structure operation.")
+		}
+		if b.Advanced != nil && op.Kind == "changeColumn" && op.Change != nil && (op.Change.Conversion() || op.Change.Generated != nil && op.Change.Generated.Storage == "stored") {
+			restoration, err := pgAdvancedRestoreAfterOperations(b, ops[:operationIndex])
+			if err != nil {
+				return out, err
+			}
+			ids := map[string]bool{b.Identity: true}
+			if pgAdvancedRecursiveOperation(b, op) {
+				ids = pgAdvancedDescendants(b)
+			}
+			ordered := []string{}
+			for id := range ids {
+				ordered = append(ordered, id)
+			}
+			sort.Strings(ordered)
+			for _, id := range ordered {
+				node := pgAdvancedNode(b, id)
+				if node.Facts == nil {
+					return out, tableedit.ErrUnsupported
+				}
+				var err error
+				out.SQL[stepStart], err = pgAdvancedRestoreUnitSQL(restoration, id, node.Target, out.SQL[stepStart])
+				if err != nil {
+					return out, err
+				}
+			}
+			out.Risks = append(out.Risks, "Native property restoration is included in the displayed ALTER execution unit, using a local fixed-catalog block that restores the exact original search_path. Complete retained index statistics/options, TOAST metadata and every unrelated native property must match before COMMIT.")
 		}
 		for i := stepStart; i < len(out.SQL); i++ {
 			condition := tableedit.Condition{Operation: op}
 			if op.Kind == "create" {
 				condition.Columns = d.Columns
 			}
-			if op.Kind == "changeColumn" {
+			if op.Kind == "changeColumn" && op.Change.Generated == nil && op.Change.Identity == nil {
 				changes := []tableedit.ColumnChange{}
 				c := op.Change
-				if c.Type != nil {
-					changes = append(changes, tableedit.ColumnChange{Name: c.Name, Type: c.Type})
+				if c.Conversion() {
+					changes = append(changes, tableedit.ColumnChange{Name: c.Name, Type: c.Type, UsingExpression: c.UsingExpression, Unsigned: c.Unsigned, Charset: c.Charset, Collation: c.Collation})
 				}
 				if c.Nullable != nil {
 					changes = append(changes, tableedit.ColumnChange{Name: c.Name, Nullable: c.Nullable})
@@ -134,39 +268,75 @@ func (s *Session) StructurePrepare(ctx context.Context, b tableedit.Baseline, d 
 		}
 
 	}
+	if migration && out.AdvancedProof != nil && !pgAdvancedMigrationForeignUnit(out.Conditions) {
+		return out, errors.New("An advanced foreign-key migration unit currently supports one explicit ADD or DROP only. Separate other changes from the selected repair unit before Preview.")
+	}
+	if err := pgAdvancedBindData(ctx, s.conn, b, &out); err != nil {
+		return out, err
+	}
 	return out, nil
 }
 func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline, plan tableedit.Plan) []tableedit.Execution {
+	if plan.Reconstruction != nil {
+		if plan.Reconstruction.Method == "postgresql-advanced-copy" {
+			return s.applyPGAdvancedCopy(ctx, b, plan)
+		}
+		if plan.Reconstruction.Method == "postgresql-native-cluster" {
+			return s.applyPGAdvancedReconstruction(ctx, b, plan)
+		}
+		return s.applyPGRebuild(ctx, b, plan)
+	}
 	if len(plan.Conditions) != len(plan.SQL) {
 		return []tableedit.Execution{{State: "notStarted", Message: "The retained plan conditions are invalid."}}
 	}
 	out := []tableedit.Execution{}
 	current := b
 	refs := append([]tableedit.Baseline(nil), plan.References...)
+	advancedProof := plan.AdvancedProof
 	for i, step := range plan.SQL {
 		if ctx.Err() != nil {
 			return append(out, tableedit.Execution{State: "notStarted", Message: "Cancelled before the next DDL step."})
 		}
-		x := s.applyStructureStep(ctx, current, []string{step}, refs)
+		x := s.applyStructureStep(ctx, current, []string{step}, refs, structureGuards{Types: plan.Types, Indexes: plan.IndexGuards, AdvancedCondition: &plan.Conditions[i], AdvancedProof: advancedProof})
 		out = append(out, x)
 		if x.State != "applied" {
 			break
 		}
-		target := current.Target
-		target.Create = false
+		if plan.Conditions[i].Operation.Kind == "dropTable" {
+			absent := current.Target
+			absent.Create = true
+			fresh, err := s.StructureLoad(ctx, absent)
+			if err != nil || !tableedit.ValidBaseline(fresh) || !fresh.Target.Create {
+				out[len(out)-1].Message = "DROP TABLE was acknowledged, but absence could not be verified. Reconcile before another edit."
+			}
+			break
+		}
+		target := tableedit.StepTarget(current.Target, plan.Conditions[i])
 		fresh, e := s.StructureLoad(ctx, target)
-		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], structureDefaultMatches)
+		verified := e == nil && (pgAdvancedForeignCondition(plan.Conditions[i]) && advancedProof != nil || pgAdvancedPreserved(current, fresh, plan.Conditions[i])) && tableedit.ValidBaseline(fresh) && verifyIndexGuards(ctx, s.conn, plan.IndexGuards) && ((pgAdvancedForeignCondition(plan.Conditions[i]) && advancedProof != nil) || pgAdvancedRecursiveCondition(current, plan.Conditions[i]) || pgAdvancedGenerationTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) }))
 		if !verified {
 			out[len(out)-1].Message = "The DDL step was acknowledged, but observed structure did not match the expected change and preservation conditions. Reconcile before continuing."
 			break
 		}
 		for j, ref := range refs {
+			if ref.Target.Create && plan.Conditions[i].Operation.Kind == "renameTable" && plan.Conditions[i].Operation.Name != nil && ref.Target.Schema == current.Target.Schema && ref.Target.Table == *plan.Conditions[i].Operation.Name {
+				refs[j] = fresh
+				continue
+			}
 			observed, err := s.StructureLoad(ctx, ref.Target)
-			if err != nil || !tableedit.ValidBaseline(observed) || !tableedit.VerifyReference(ref, observed, current, plan.Conditions[i]) {
+			if err != nil || !tableedit.ValidBaseline(observed) || !(pgAdvancedForeignCondition(plan.Conditions[i]) && advancedProof != nil || tableedit.VerifyReference(ref, observed, current, plan.Conditions[i])) {
 				out[len(out)-1].Message = "The DDL step was acknowledged, but referenced metadata changed unexpectedly. Reconcile before continuing."
 				return out
 			}
 			refs[j] = observed
+		}
+		if advancedProof != nil {
+			nextProof, err := pgAdvancedCombined(ctx, s.conn, fresh, refs)
+			if err != nil || pgAdvancedForeignPreservationError(current, fresh, plan.Conditions[i], advancedProof, nextProof) != nil {
+				out[len(out)-1].Message = "The DDL was acknowledged but combined advanced reference preservation could not be reconfirmed. Reconcile explicitly."
+				return out
+			}
+			advancedProof = nextProof
 		}
 		current = fresh
 		if s.afterStructureStep != nil {

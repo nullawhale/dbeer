@@ -41,7 +41,7 @@ struct SchemaComparisonView: View {
         }
         .frame(minWidth: 900, idealWidth: 1120, minHeight: 660, idealHeight: 780)
         .background(AppPalette.panel).foregroundStyle(AppPalette.text).tint(AppPalette.accent)
-        .interactiveDismissDisabled(model.isWorking || model.isExporting)
+        .interactiveDismissDisabled(model.isWorking || model.isExporting || model.isInspecting)
         .sheet(item: Binding(get: { model.planDraft }, set: { if $0 == nil { model.dismissPlan() } })) { draft in
             SynchronizationPlanView(draft: draft, close: { model.dismissPlan() })
         }
@@ -69,11 +69,11 @@ struct SchemaComparisonView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Compare Schema Structure").font(.title2.weight(.semibold))
                 if model.hasStarted {
-                    Text("\(model.sourceProfile?.name ?? "Source") → \(model.targetProfile?.name ?? "Target")")
+                    Text("\(model.sourceTitle) → \(model.targetTitle)")
                         .font(.callout).appSecondaryText().lineLimit(1)
                         .accessibilityIdentifier("schemaCompareDirection")
                 } else {
-                    Text("Choose connections and the schemas to compare.").font(.callout).appSecondaryText()
+                    Text("Choose live connections or historical schema bundles and map their schemas.").font(.callout).appSecondaryText()
                 }
             }
             Spacer()
@@ -90,13 +90,12 @@ struct SchemaComparisonView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 HStack(alignment: .top, spacing: 16) {
-                    profilePicker("Source", selection: $model.sourceID, identifier: "schemaCompareSource")
+                    sourcePicker("Source", target: false)
                     Image(systemName: "arrow.right").appSecondaryText().padding(.top, 36).accessibilityHidden(true)
-                    profilePicker("Target", selection: $model.targetID, identifier: "schemaCompareTarget")
+                    sourcePicker("Target", target: true)
                 }
-                if let source = model.profiles.first(where: { $0.id == model.sourceID }),
-                   let target = model.profiles.first(where: { $0.id == model.targetID }), source.engine != target.engine {
-                    Label("Choose two connections using the same database engine.", systemImage: "exclamationmark.triangle")
+                if let source = model.sourceEngine, let target = model.targetEngine, source != target {
+                    Label("Choose sources using the same database engine.", systemImage: "exclamationmark.triangle")
                         .font(.callout).foregroundStyle(.orange)
                 }
                 VStack(alignment: .leading, spacing: 8) {
@@ -121,6 +120,63 @@ struct SchemaComparisonView: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
             }.padding(24)
+        }
+    }
+
+    private func sourcePicker(_ title: String, target: Bool) -> some View {
+        let mode = target ? $model.targetMode : $model.sourceMode
+        let imported = target ? model.targetBundle : model.sourceBundle
+        let inspecting = target ? model.inspectingTarget : model.inspectingSource
+        let error = target ? model.targetImportError : model.sourceImportError
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.headline)
+            Picker("\(title) source", selection: mode) {
+                Text("Connection").tag(SchemaComparisonSourceMode.connection)
+                Text("Schema Bundle").tag(SchemaComparisonSourceMode.bundle)
+            }.pickerStyle(.segmented).disabled(inspecting)
+            if mode.wrappedValue == .connection {
+                profilePicker(title, selection: target ? $model.targetID : $model.sourceID,
+                    identifier: target ? "schemaCompareTarget" : "schemaCompareSource")
+            } else {
+                HStack {
+                    Button("Inspect Bundle…") { chooseBundle(target: target, modified: false) }.disabled(inspecting)
+                    Menu("Import Modified SQL…") {
+                        Button("Choose Bundle with Supported SQL Edits…") { chooseBundle(target: target, modified: true) }
+                    }.disabled(inspecting)
+                    if inspecting {
+                        ProgressView().controlSize(.small)
+                        Button("Stop") { Task { await model.cancelInspection(target: target) } }
+                    }
+                }
+                if let imported {
+                    Text(imported.title).font(.callout).textSelection(.enabled)
+                    Text("Schemas: " + imported.schemas.joined(separator: ", ")).font(.caption).textSelection(.enabled)
+                    Text("\(imported.modifiedSQL) edited SQL files · \(imported.manualObjects) objects require manual review")
+                        .font(.caption).appSecondaryText()
+                    Text("Historical source · server version unavailable").font(.caption).appSecondaryText()
+                    if !imported.complete { Label("Partial or unsupported coverage", systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
+                    DisclosureGroup("Source identity") {
+                        Text("Original manifest: " + (imported.source.manifestSha256 ?? "") + "\nCurrent SQL: " + (imported.source.contentSha256 ?? ""))
+                            .font(.caption.monospaced()).textSelection(.enabled)
+                    }
+                } else if !inspecting {
+                    Text("Select a DBeer schema bundle folder. Inspection reads files without opening a database connection.")
+                        .font(.caption).appSecondaryText()
+                }
+                if let error { Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled) }
+            }
+        }.padding(16).frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+            .background(AppPalette.background, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func chooseBundle(target: Bool, modified: Bool) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.allowsMultipleSelection = false
+        panel.prompt = modified ? "Import Modified SQL" : "Inspect Bundle"
+        panel.message = modified ? "Select a DBeer schema bundle. Supported SQL edits and added or removed object files are validated before comparison." : "Select an exported DBeer schema bundle folder."
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            Task { await model.inspectBundle(at: url, target: target, allowSQLChanges: modified) }
         }
     }
 
@@ -348,7 +404,7 @@ struct SchemaComparisonView: View {
                 if model.isLoadingDiff {
                     ProgressView("Loading difference…").frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let diff = model.diff {
-                    ComparisonDiffView(diff: diff, syntaxEngine: model.sourceProfile?.engine,
+                    ComparisonDiffView(diff: diff, syntaxEngine: model.comparisonEngine,
                         limitedMessage: "SQL preview is incomplete. See technical details for the captured metadata.")
                 } else {
                     Text(model.diffError ?? "Select a difference to inspect its SQL definition.")
@@ -473,8 +529,12 @@ struct SchemaComparisonView: View {
         }.font(.caption)
     }
 
-    private func capture(_ title: String, _ context: SchemaCaptureContext) -> some View {
-        Text("\(title): \(context.database) · \(context.version)\n\(context.startedAt) → \(context.finishedAt) · \(context.consistency) · visibility: \(context.visibility)")
+    @ViewBuilder private func capture(_ title: String, _ context: SchemaCaptureContext) -> some View {
+        if let origin = context.origin {
+            Text("\(title): \(origin.label) · historical \(origin.kind == "editedBundle" ? "edited " : "")schema bundle\nOriginal manifest: \(origin.manifestSha256)\nCurrent SQL: \(origin.contentSha256)\n\(origin.modifiedSQL) edited files · \(origin.manualObjects) manual objects · visibility: \(context.visibility)\nServer version and capture time are unavailable in portable bundles.")
+        } else {
+            Text("\(title): \(context.database) · \(context.version)\n\(context.startedAt) → \(context.finishedAt) · \(context.consistency) · visibility: \(context.visibility)")
+        }
     }
 
     private var pagination: some View {
@@ -495,7 +555,7 @@ struct SchemaComparisonView: View {
                 Button("Compare") { Task { await model.start() } }.keyboardShortcut(.defaultAction)
                     .disabled(!model.canStart).accessibilityIdentifier("schemaCompareStart")
             } else {
-                if model.targetProfile.map({ [.postgresql, .mysql, .sqlite].contains($0.engine) }) == true {
+                if model.comparisonEngine.map({ [.postgresql, .mysql, .mariadb, .sqlite].contains($0) }) == true {
                     Button(model.isGeneratingPlan ? "Generating SQL…" : "Generate SQL Plan") { Task { await model.generatePlan() } }
                         .disabled(!model.canGeneratePlan).controlHover().accessibilityIdentifier("schemaComparePlan")
                 }

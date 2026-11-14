@@ -3,11 +3,13 @@ import SwiftUI
 
 struct TableStructureIntentEditors: View {
     @ObservedObject var model: TableStructureEditorModel
-    private var names: [String] { (model.baseline?.columns.map(\.name) ?? []) + model.draft.columns.map(\.name).filter { !$0.isEmpty } }
+    var allowCrossDatabase = false
+    private var names: [String] { (model.baseline?.columns.map(\.name) ?? []).filter { name in !(model.draft.changes ?? []).contains { $0.drop && StructureTarget.sameIdentifier($0.name, name) } } + model.draft.columns.map(\.name).filter { !$0.isEmpty } }
     private var changes: [StructureColumnChange] { model.draft.changes ?? [] }
     private var indexes: [StructureIndexEdit] { model.draft.indexes ?? [] }
     private var keys: [StructureKeyEdit] { model.draft.keys ?? [] }
     private var canEdit: Bool { !model.isBusy && !model.closing && !model.invalidated && model.baseline != nil && model.outcome == nil }
+    private var columnLimitReached: Bool { (model.baseline?.columns.count ?? 0) + model.draft.columns.count >= 128 }
     private var operationLimitReached: Bool { changes.count + indexes.count + keys.count >= 64 }
 
     var body: some View {
@@ -15,33 +17,40 @@ struct TableStructureIntentEditors: View {
             HStack {
                 if !model.create {
                     Button("Append Column") {
-                        guard canEdit, model.draft.columns.isEmpty else { return }
+                        guard canEdit, (model.authoringAvailable || model.draft.columns.isEmpty), !columnLimitReached, model.permitsAdvanced("addColumn") else { return }
                         model.draft.columns.append(TableStructureEditorModel.emptyColumn)
-                    }.controlHover().disabled(!model.draft.columns.isEmpty)
+                    }.controlHover().disabled((!model.authoringAvailable && !model.draft.columns.isEmpty) || columnLimitReached || !model.permitsAdvanced("addColumn"))
+                    if model.destructiveAvailable && model.permitsAdvanced("dropColumn") {
+                        Button("Drop Column") {
+                            guard canEdit, !operationLimitReached else { return }
+                            model.draft.changes = changes + [.init(name: "", drop: true)]
+                            model.draft.allowDestructive = nil
+                        }.controlHover().disabled(operationLimitReached)
+                    }
                     Button("Change Column") {
                         guard canEdit, !operationLimitReached else { return }
                         model.draft.changes = changes + [.init(name: "")]
-                    }.controlHover().disabled(operationLimitReached || model.baseline?.columns.contains { $0.canModify == true } != true)
+                    }.controlHover().disabled(operationLimitReached || model.baseline?.columns.contains { model.authoringAvailable || $0.canModify == true } != true)
                 }
                 Button("Add Index Operation") {
                     guard canEdit, !operationLimitReached else { return }
                     model.draft.indexes = indexes + [.init(action: "add", name: "", columns: [])]
-                }.controlHover().disabled(operationLimitReached)
+                }.controlHover().disabled(operationLimitReached || !model.permitsAdvanced("index"))
                 Button("Add Key Operation") {
                     guard canEdit, !operationLimitReached else { return }
                     model.draft.keys = keys + [.init(action: "add", kind: "unique", name: "", columns: [])]
-                }.controlHover().disabled(operationLimitReached)
+                }.controlHover().disabled(operationLimitReached || !model.permitsAdvanced("key"))
             }
             ForEach(changes.indices, id: \.self) { i in
                 StructureColumnChangeEditor(change: changeBinding(i), columns: model.baseline?.columns ?? [],
-                    engine: model.profile.engine, wideningAllowed: model.baseline?.dependencyProof == true) {
+                    engine: model.profile.engine, wideningAllowed: model.baseline?.dependencyProof == true, authoringAvailable: model.authoringAvailable, destructiveAvailable: model.conversionAvailable, kindSupport: model.baseline?.advanced) {
                     guard canEdit, changes.indices.contains(i) else { return }
                     model.draft.changes?.remove(at: i)
                 }
             }
             ForEach(indexes.indices, id: \.self) { i in
                 StructureIndexIntentEditor(edit: indexBinding(i), existing: model.baseline?.indexes ?? [], names: names,
-                    engine: model.profile.engine) {
+                    engine: model.profile.engine, advancedAvailable: model.indexAuthoringAvailable) {
                     guard canEdit, indexes.indices.contains(i) else { return }
                     model.draft.indexes?.remove(at: i)
                     model.draft.allowDestructive = nil
@@ -49,19 +58,22 @@ struct TableStructureIntentEditors: View {
             }
             ForEach(keys.indices, id: \.self) { i in
                 StructureKeyIntentEditor(edit: keyBinding(i), existing: model.baseline?.keys ?? [], names: names,
-                    engine: model.profile.engine, schema: model.schema) {
+                    engine: model.profile.engine, schema: model.schema, allowCrossDatabase: allowCrossDatabase, foreignKeyAvailable: model.permitsAdvanced("foreignKey")) {
                     guard canEdit, keys.indices.contains(i) else { return }
                     model.draft.keys?.remove(at: i)
                     model.draft.allowDestructive = nil
                 }
             }
             if model.draft.destructive {
-                Toggle("Include these removals/replacements in Preview", isOn: Binding(get: { model.draft.allowDestructive == true }, set: {
+                Toggle("Include destructive changes in Preview", isOn: Binding(get: { model.draft.allowDestructive == true }, set: {
                     guard canEdit else { return }
                     model.draft.allowDestructive = $0
                 })).controlHover()
-                Text("Removals and replacements also require confirmation of the generated SQL. Changing a selected key or index clears this opt-in.")
+                Text("Removals, replacements, conversions, backfills and physical layout changes require confirmation of the exact generated SQL. Editing the selected operation clears this opt-in.")
                     .font(.caption).foregroundStyle(.orange)
+            }
+            if model.draft.requiresDestructiveAuthoring && !model.destructiveAvailable {
+                Text("The destructive intent is retained. Reconnect with a helper advertising destructive structure authoring before Preview.").font(.caption).appSecondaryText()
             }
             if model.profile.engine != .sqlite && model.baseline?.dependencyProof != true {
                 Text("Complete dependency visibility is unavailable. Type widening and referenced-key removal are blocked; Preview reports the reason.")
@@ -73,7 +85,11 @@ struct TableStructureIntentEditors: View {
     private func changeBinding(_ i: Int) -> Binding<StructureColumnChange> {
         Binding(get: { changes.indices.contains(i) ? changes[i] : .init(name: "") }, set: {
             guard canEdit, changes.indices.contains(i) else { return }
-            model.draft.changes?[i] = $0
+            var updated = model.draft
+            updated.changes?[i] = $0
+            if model.conversionAvailable, $0.type != nil { updated.authoringVersion = 4 }
+            updated.allowDestructive = nil
+            model.draft = updated
         })
     }
     private func indexBinding(_ i: Int) -> Binding<StructureIndexEdit> {
@@ -99,22 +115,28 @@ private struct StructureColumnChangeEditor: View {
     let columns: [StructureObservedColumn]
     let engine: DatabaseEngine
     let wideningAllowed: Bool
+    var authoringAvailable = false
+    var destructiveAvailable = false
+    var kindSupport: StructureAdvancedKindSupport? = nil
+    private func permits(_ kind: String) -> Bool { kindSupport?.permits(kind) ?? true }
     let remove: () -> Void
     private var old: StructureObservedColumn? { columns.first { StructureTarget.sameIdentifier($0.name, change.name) } }
 
     var body: some View {
-        GroupBox("Existing Column Change") {
+        GroupBox(change.drop ? "Drop Existing Column" : "Existing Column Change") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
-                    StructureExactNamePicker(title: "Column", placeholder: "Choose column", names: columns.filter { $0.canModify == true }.map(\.name),
-                        selection: Binding(get: { change.name }, set: { change = .init(name: $0) }))
-                    Picker("Nullability", selection: Binding(get: { change.nullable.map { $0 ? "nullable" : "required" } ?? "keep" }, set: {
-                        change.nullable = $0 == "keep" ? nil : $0 == "nullable"
-                    })) {
-                        Text("Keep nullability").tag("keep")
-                        Text("Allow NULL").tag("nullable")
-                        Text("Require NOT NULL").tag("required")
-                    }.controlHover()
+                    StructureExactNamePicker(title: "Column", placeholder: "Choose column", names: columns.filter { change.drop || authoringAvailable || $0.canModify == true }.map(\.name),
+                        selection: Binding(get: { change.name }, set: { change = .init(name: $0, drop: change.drop) }))
+                    if !change.drop {
+                        Picker("Nullability", selection: Binding(get: { change.nullable.map { $0 ? "nullable" : "required" } ?? "keep" }, set: {
+                            change.nullable = $0 == "keep" ? nil : $0 == "nullable"
+                        })) {
+                            Text("Keep nullability").tag("keep")
+                            Text("Allow NULL").tag("nullable")
+                            Text("Require NOT NULL").tag("required")
+                        }.controlHover().disabled(!permits("nullable") || old?.canModify != true || change.generated != nil || change.identity != nil)
+                    }
                     ControlIconButton(systemName: "minus.circle", action: remove).help("Remove this local column change").accessibilityLabel("Remove column change")
                 }
                 if let old {
@@ -122,43 +144,97 @@ private struct StructureColumnChangeEditor: View {
                         .font(.caption).textSelection(.enabled)
                     Text("Current default: " + (old.defaultExpression ?? "No explicit default reported"))
                         .font(.caption).textSelection(.enabled)
-                    HStack {
-                        Picker("Type", selection: Binding(get: { change.type?.kind ?? "keep" }, set: { kind in
-                            if engine == .sqlite {
-                                change.type = ["integer", "real", "text", "blob", "sqliteNumeric", "any"].contains(kind) ? .init(kind: kind) : nil
-                                return
-                            }
-                            switch kind {
-                            case "bigint": change.type = .init(kind: "bigint")
-                            case "varchar": change.type = .init(kind: "varchar", length: (old.editableType?.length ?? 0) + 1)
-                            default: change.type = nil
-                            }
-                        })) {
-                            Text("Keep type").tag("keep")
-                            if engine == .sqlite {
-                                Text("INTEGER").tag("integer")
-                                Text("REAL").tag("real")
-                                Text("TEXT").tag("text")
-                                Text("BLOB").tag("blob")
-                                Text("NUMERIC").tag("sqliteNumeric")
-                                Text("ANY").tag("any")
-                            } else if old.editableType?.kind == "integer" { Text("Widen to BIGINT").tag("bigint") }
-                            if old.editableType?.kind == "varchar", (old.editableType?.length ?? 16_383) < 16_383 { Text("Increase VARCHAR length").tag("varchar") }
-                        }.controlHover().disabled(engine != .sqlite && !wideningAllowed)
-                        if change.type?.kind == "varchar" {
-                            TextField("New length", value: Binding(get: { change.type?.length ?? 0 }, set: { change.type?.length = $0 }), format: .number)
-                                .textFieldStyle(.roundedBorder).frame(width: 95).accessibilityLabel("New VARCHAR length")
+                    if change.drop {
+                        Text("DROP permanently removes this column and its stored values. Preview lists known affected dependencies and refuses unproven or implicit external removals.").font(.caption).foregroundStyle(.orange)
+                    } else {
+                    if authoringAvailable && permits("renameColumn") {
+                        Toggle("Rename column", isOn: Binding(get: { change.renameTo != nil }, set: { change.renameTo = $0 ? "" : nil })).controlHover()
+                        if change.renameTo != nil {
+                            TextField("Exact resulting column name", text: Binding(get: { change.renameTo ?? "" }, set: { change.renameTo = $0 })).textFieldStyle(.roundedBorder)
                         }
                     }
-                    TableStructureDefaultEditor(selection: $change.default, engine: engine, allowsKeep: true)
-                    Text(engine == .sqlite ? "Keep preserves that attribute and its original definition. Preview prepares the rebuild; Apply rejects changes that alter stored values or their storage classes." : "Keep leaves that attribute unchanged. Widening requires a column without dependencies; Preview verifies support and lock/rebuild risks.")
+                        typeFields(old).disabled(!permits("type"))
+                    TableStructureDefaultEditor(selection: $change.default, engine: engine, allowsKeep: true, authoringAvailable: authoringAvailable && kindSupport == nil)
+                        .disabled(old.canModify != true || change.generated != nil || change.identity != nil)
+                    if authoringAvailable && engine != .sqlite && permits("generation") {
+                        TableStructureGenerationEditor(selection: Binding(get: { change.generated }, set: {
+                            change.generated = $0
+                            if $0 != nil { change.identity = nil; change.type = nil; change.nullable = nil; change.default = nil }
+                        }), allowsKeep: true)
+                        TableStructureIdentityEditor(selection: Binding(get: { change.identity }, set: {
+                            change.identity = $0
+                            if $0 != nil { change.generated = nil; change.type = nil; change.nullable = nil; change.default = nil }
+                        }), engine: engine, allowsKeep: true)
+                        Text("Generation and identity are separate attribute changes. Keep preserves existing settings; Preview checks the server version and prerequisites.").font(.caption).appSecondaryText()
+                    }
+                    }
+                    Text(engine == .sqlite ? "SQLite native DROP requires version 3.35 or later and complete dependency proof. Type, USING, encoding and collation conversions require a separately reviewed table reconstruction, which is unavailable in this direct-DDL editor." : "Keep leaves that attribute unchanged. Widening requires a column without dependencies; Preview verifies support and lock/rebuild risks.")
                         .font(.caption).appSecondaryText()
                 } else {
-                    Text("Choose an editable ordinary column. Generated, identity and unsupported columns remain read-only.").font(.caption).appSecondaryText()
+                    Text("Choose a column. Preview checks dependencies and the selected operation’s engine support.").font(.caption).appSecondaryText()
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+    @ViewBuilder private func typeFields(_ old: StructureObservedColumn) -> some View {
+    HStack {
+        Picker("Type", selection: Binding(get: { change.type?.kind ?? "keep" }, set: { kind in
+            if engine == .sqlite {
+                change.type = ["integer", "real", "text", "blob", "sqliteNumeric", "any"].contains(kind) ? .init(kind: kind) : nil
+                return
+            }
+            if destructiveAvailable {
+                change.type = kind == "keep" ? nil : .init(kind: kind,
+                    length: kind == "varchar" ? old.editableType?.length ?? 255 : nil,
+                    precision: kind == "numeric" ? old.editableType?.precision ?? 10 : nil,
+                    scale: kind == "numeric" ? old.editableType?.scale ?? 0 : nil,
+                    reference: kind == "reference" ? .init(schema: "", name: "") : nil)
+                return
+            }
+            switch kind {
+            case "bigint": change.type = .init(kind: "bigint")
+            case "varchar": change.type = .init(kind: "varchar", length: (old.editableType?.length ?? 0) + 1)
+            default: change.type = nil
+            }
+        })) {
+            Text("Keep type").tag("keep")
+            if engine == .sqlite {
+                Text("INTEGER").tag("integer")
+                Text("REAL").tag("real")
+                Text("TEXT").tag("text")
+                Text("BLOB").tag("blob")
+                Text("NUMERIC").tag("sqliteNumeric")
+                Text("ANY").tag("any")
+            } else if destructiveAvailable {
+                ForEach(engine == .postgresql ? ["integer", "bigint", "boolean", "numeric", "varchar", "text"] : ["integer", "bigint", "numeric", "varchar", "text"], id: \.self) { Text($0).tag($0) }
+            } else if old.editableType?.kind == "integer" { Text("Widen to BIGINT").tag("bigint") }
+            if change.type?.kind == "reference" { Text("Custom conversion · requires migration").tag("reference") }
+            if !destructiveAvailable, old.editableType?.kind == "varchar", (old.editableType?.length ?? 16_383) < 16_383 { Text("Increase VARCHAR length").tag("varchar") }
+        }.controlHover().disabled(engine == .sqlite || old.canModify != true || change.generated != nil || change.identity != nil || !destructiveAvailable && !wideningAllowed)
+        if change.type?.kind == "varchar" {
+            TextField("New length", value: Binding(get: { change.type?.length ?? 0 }, set: { change.type?.length = $0 }), format: .number)
+                .textFieldStyle(.roundedBorder).frame(width: 95).accessibilityLabel("New VARCHAR length")
+        }
+    }
+    if change.type?.kind == "numeric" {
+        HStack {
+            TextField("Precision", value: Binding(get: { change.type?.precision ?? 10 }, set: { change.type?.precision = $0 }), format: .number)
+            TextField("Scale", value: Binding(get: { change.type?.scale ?? 0 }, set: { change.type?.scale = $0 }), format: .number)
+        }.textFieldStyle(.roundedBorder).frame(width: 250)
+    }
+    if change.type?.kind == "reference" {
+        Text("The custom type conversion is retained, but this direct-DDL editor supports only built-in conversion targets. Preserve custom casts and support code through a separately reviewed migration.").font(.caption).foregroundStyle(.orange)
+        HStack {
+            TextField("Exact type schema", text: Binding(get: { change.type?.reference?.schema ?? "" }, set: { change.type?.reference?.schema = $0 }))
+            TextField("Exact type name", text: Binding(get: { change.type?.reference?.name ?? "" }, set: { change.type?.reference?.name = $0 }))
+        }.textFieldStyle(.roundedBorder)
+    }
+    if destructiveAvailable || change.usingExpression != nil || change.unsigned != nil || change.charset != nil || change.collation != nil {
+        TableStructureConversionEditor(change: $change, engine: engine).disabled(!destructiveAvailable)
+        if !destructiveAvailable { Text("The conversion intent is retained. Reconnect with a helper advertising destructive structure authoring before Preview.").font(.caption).appSecondaryText() }
+    }
+    }
+
 }
 
 private struct StructureIndexIntentEditor: View {
@@ -166,11 +242,12 @@ private struct StructureIndexIntentEditor: View {
     let existing: [StructureIndex]
     let names: [String]
     let engine: DatabaseEngine
+    let advancedAvailable: Bool
     let remove: () -> Void
-    private var available: [StructureIndex] { existing.filter { $0.supported && $0.owner == nil } }
+    private var available: [StructureIndex] { existing.filter { $0.editIntent(action: "replace", engine: engine, advancedAllowed: advancedAvailable) != nil } }
 
     var body: some View {
-        GroupBox("Ordinary BTREE Index") {
+        GroupBox(engine == .sqlite ? "Ordinary BTREE Index" : "Index") {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     StructureActionPicker(action: Binding(get: { edit.action }, set: {
@@ -189,22 +266,33 @@ private struct StructureIndexIntentEditor: View {
                     if engine == .postgresql {
                         Toggle("Unique index", isOn: Binding(get: { edit.unique == true }, set: { edit.unique = $0 ? true : nil })).controlHover()
                     }
-                    StructureOrderedColumnsEditor(title: "Columns in index order", options: names,
-                        columns: Binding(get: { edit.columns ?? [] }, set: { edit.columns = $0 }))
+                    if advancedAvailable || edit.definition != nil {
+                        Toggle("Advanced definition", isOn: Binding(get: { edit.definition != nil }, set: { enabled in
+                            if enabled { edit.definition = .init(method: "btree", terms: (edit.columns ?? []).map { .init(column: $0) }); edit.columns = nil }
+                            else { edit.columns = edit.definition?.terms.compactMap(\.column) ?? []; edit.definition = nil }
+                        })).controlHover().disabled(!advancedAvailable)
+                    }
+                    if edit.definition != nil {
+                        StructureIndexDefinitionEditor(definition: Binding(get: { edit.definition ?? .init(method: "btree", terms: []) }, set: { edit.definition = $0 }), names: names, engine: engine)
+                            .disabled(!advancedAvailable)
+                        if !advancedAvailable { Text("This helper does not advertise advanced index authoring. The definition is retained; reconnect with a compatible helper before Preview.").font(.caption).appSecondaryText() }
+                    } else {
+                        StructureOrderedColumnsEditor(title: "Columns in index order", options: names,
+                            columns: Binding(get: { edit.columns ?? [] }, set: { edit.columns = $0 }))
+                    }
                 }
                 if edit.action != "add", available.isEmpty {
                     Text("There are no supported standalone indexes to select. Indexes owned by a key must be changed through that key.").font(.caption).appSecondaryText()
                 }
-                if engine == .mysql { Text("Use a Unique key operation for MySQL uniqueness.").font(.caption).appSecondaryText() }
+                if engine.usesMySQLSyntax { Text("Use a Unique key operation for this engine’s uniqueness.").font(.caption).appSecondaryText() }
             }
         }
     }
     private func selectExisting(_ name: String) {
         if name.isEmpty { edit = .init(action: edit.action, name: "", columns: edit.action == "drop" ? nil : []); return }
-        guard let index = available.first(where: { StructureTarget.sameIdentifier($0.name, name) }) else { return }
-        edit.name = index.name
-        edit.columns = edit.action == "drop" ? nil : index.columns
-        edit.unique = edit.action == "replace" && engine == .postgresql && index.unique ? true : nil
+        guard let index = available.first(where: { StructureTarget.sameIdentifier($0.name, name) }),
+              let intent = index.editIntent(action: edit.action, engine: engine, advancedAllowed: advancedAvailable) else { return }
+        edit = intent
     }
 }
 
@@ -214,6 +302,8 @@ private struct StructureKeyIntentEditor: View {
     let names: [String]
     let engine: DatabaseEngine
     let schema: String
+    var allowCrossDatabase = false
+    var foreignKeyAvailable = true
     let remove: () -> Void
     private var available: [StructureKey] { existing.filter { $0.supported && $0.kind == edit.kind } }
 
@@ -223,13 +313,13 @@ private struct StructureKeyIntentEditor: View {
                 HStack {
                     StructureActionPicker(action: Binding(get: { edit.action }, set: { reset(action: $0, kind: edit.kind) }))
                     Picker("Kind", selection: Binding(get: { edit.kind }, set: { reset(action: edit.action, kind: $0) })) {
-                        Text("Primary").tag("primary"); Text("Unique").tag("unique"); Text("Foreign").tag("foreign")
+                        Text("Primary").tag("primary"); Text("Unique").tag("unique"); Text("Foreign").tag("foreign").disabled(!foreignKeyAvailable)
                     }.controlHover()
                     ControlIconButton(systemName: "minus.circle", action: remove).help("Remove this local key operation").accessibilityLabel("Remove key operation")
                 }
                 if edit.action == "add" {
                     TextField("Exact constraint name", text: $edit.name).textFieldStyle(.roundedBorder)
-                        .disabled(engine == .mysql && edit.kind == "primary")
+                        .disabled(engine.usesMySQLSyntax && edit.kind == "primary")
                 } else {
                     StructureExactNamePicker(title: "Key", placeholder: "Choose key", names: available.map(\.name),
                         selection: Binding(get: { edit.name }, set: selectExisting))
@@ -251,7 +341,7 @@ private struct StructureKeyIntentEditor: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 TextField("Referenced schema/database", text: Binding(get: { edit.reference?.schema ?? schema }, set: { ensureReference(); edit.reference?.schema = $0 }))
-                    .textFieldStyle(.roundedBorder).disabled(engine == .mysql)
+                    .textFieldStyle(.roundedBorder).disabled(engine.usesMySQLSyntax && !allowCrossDatabase)
                 TextField("Exact referenced table name", text: Binding(get: { edit.reference?.table ?? "" }, set: { ensureReference(); edit.reference?.table = $0 }))
                     .textFieldStyle(.roundedBorder)
             }
@@ -267,13 +357,13 @@ private struct StructureKeyIntentEditor: View {
             }
             Text("Source and referenced columns must have the same count and matching order. Enter each identifier as one name, including any dots or commas. Preview verifies the referenced key, types and collation; SET NULL requires nullable source columns.")
                 .font(.caption).appSecondaryText()
-            if engine == .mysql { Text("The referenced table must be in this database.").font(.caption).appSecondaryText() }
+            if engine.usesMySQLSyntax { Text(allowCrossDatabase ? "Preview proves references within this connected server; another profile cannot become an executable target." : "The referenced table must be in this database.").font(.caption).appSecondaryText() }
         }
     }
     private func reset(action: String, kind: String) {
         guard action != edit.action || kind != edit.kind else { return }
         let foreign = action != "drop" && kind == "foreign"
-        edit = .init(action: action, kind: kind, name: action == "add" && kind == "primary" && engine == .mysql ? "PRIMARY" : "",
+        edit = .init(action: action, kind: kind, name: action == "add" && kind == "primary" && engine.usesMySQLSyntax ? "PRIMARY" : "",
             columns: action == "drop" ? nil : [], reference: foreign ? .init(schema: schema, table: "", create: false) : nil,
             referenceColumns: foreign ? [] : nil, onUpdate: foreign ? "NO ACTION" : nil, onDelete: foreign ? "NO ACTION" : nil)
     }
@@ -310,7 +400,7 @@ private struct StructureActionPicker: View {
 
 /// Data tags distinguish canonical-equivalent Unicode identifiers. Strings are
 /// never split or normalized before they reach the typed draft.
-private struct StructureExactNamePicker: View {
+struct StructureExactNamePicker: View {
     let title: String
     let placeholder: String
     let names: [String]
@@ -333,7 +423,7 @@ private struct StructureExactNamePicker: View {
     }
 }
 
-private struct StructureOrderedColumnsEditor: View {
+struct StructureOrderedColumnsEditor: View {
     let title: String
     let options: [String]?
     @Binding var columns: [String]

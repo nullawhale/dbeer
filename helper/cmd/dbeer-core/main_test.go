@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +37,9 @@ func TestHandshakeAndShutdown(t *testing.T) {
 	responses := runMessages(t, "{\"type\":\"hello\",\"requestId\":\"h1\",\"protocolVersion\":6}\n{\"type\":\"shutdown\",\"requestId\":\"s1\"}\n{\"type\":\"shutdown\",\"requestId\":\"ignored\"}\n")
 	if len(responses) != 2 || responses[0].Type != "hello.ack" || responses[0].RequestID != "h1" || responses[0].ProtocolVersion != protocol.Version || responses[1].Type != "shutdown.ack" || responses[1].RequestID != "s1" {
 		t.Fatalf("unexpected handshake/shutdown responses: %+v", responses)
+	}
+	if !slices.Contains(responses[0].Capabilities, protocol.StructureMigrationsCapability) || !slices.Contains(responses[0].Capabilities, protocol.ExplainMetricsCapability) || !slices.Contains(responses[0].Capabilities, protocol.ExplainOptionsCapability) || !slices.Contains(responses[0].Capabilities, protocol.StructureReconstructionCapability) || !slices.Contains(responses[0].Capabilities, protocol.StructureDestructiveCapability) || !slices.Contains(responses[0].Capabilities, protocol.StructureIndexAuthoringCapability) || !slices.Contains(responses[0].Capabilities, protocol.StructureAuthoringCapability) || !slices.Contains(responses[0].Capabilities, protocol.NativeResultValuesCapability) {
+		t.Fatal("hello capability admission does not match completed consumers")
 	}
 }
 

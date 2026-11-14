@@ -8,6 +8,7 @@ struct StoredTableDocument: Codable, Equatable, Sendable {
     var page: Int
     var filterExpression: CatalogFilterExpression?
     var sort: [CatalogSort]
+    var relationshipScope: SQLiteRelationshipScope?
     var filters: [CatalogFilter] {
         get { filterExpression?.flattenedConjunction ?? [] }
         set { filterExpression = .conjunction(newValue) }
@@ -17,23 +18,25 @@ struct StoredTableDocument: Codable, Equatable, Sendable {
         self.init(reference: reference, page: page, filterExpression: .conjunction(filters), sort: sort)
     }
 
-    init(reference: TableReference, page: Int = 0, filterExpression: CatalogFilterExpression?, sort: [CatalogSort] = []) {
+    init(reference: TableReference, page: Int = 0, filterExpression: CatalogFilterExpression?, sort: [CatalogSort] = [], relationshipScope: SQLiteRelationshipScope? = nil) {
         self.reference = reference
         self.page = page
         self.filterExpression = filterExpression
         self.sort = sort
+        self.relationshipScope = relationshipScope
     }
 
     var isValid: Bool {
         validBrowseName(reference.schema) && validBrowseName(reference.name) &&
             ["table", "view"].contains(reference.kind) && (0...1_000_000).contains(page) &&
-            TableBrowseConfiguration(filterExpression: filterExpression, sort: sort).isValid
+            TableBrowseConfiguration(filterExpression: filterExpression, sort: sort, relationshipScope: relationshipScope).isValid &&
+            (relationshipScope == nil || relationshipScope?.matches(reference) == true)
     }
 
-    private enum CodingKeys: String, CodingKey { case reference, page, filters, filterExpression, sort }
+    private enum CodingKeys: String, CodingKey { case reference, page, filters, filterExpression, sort, relationshipScope }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["reference", "page", "filters", "filterExpression", "sort"])
+        try requireWorkspaceKeys(decoder, allowed: ["reference", "page", "filters", "filterExpression", "sort", "relationshipScope"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let referenceDecoder = try values.superDecoder(forKey: .reference)
         try requireWorkspaceKeys(referenceDecoder, allowed: ["schema", "name", "kind"])
@@ -51,6 +54,7 @@ struct StoredTableDocument: Codable, Equatable, Sendable {
             filterExpression = try values.decodeIfPresent(CatalogFilterExpression.self, forKey: .filterExpression)
         }
         sort = try values.decode([CatalogSort].self, forKey: .sort)
+        relationshipScope = values.contains(.relationshipScope) ? try values.decode(SQLiteRelationshipScope.self, forKey: .relationshipScope) : nil
         var sortValues = try values.nestedUnkeyedContainer(forKey: .sort)
         while !sortValues.isAtEnd { try requireWorkspaceKeys(sortValues.superDecoder(), allowed: ["column", "direction"]) }
         guard isValid else { throw SQLDocumentStoreError.read }
@@ -62,6 +66,7 @@ struct StoredTableDocument: Codable, Equatable, Sendable {
         try values.encode(page, forKey: .page)
         try values.encodeIfPresent(filterExpression, forKey: .filterExpression)
         try values.encode(sort, forKey: .sort)
+        try values.encodeIfPresent(relationshipScope, forKey: .relationshipScope)
     }
 }
 
@@ -81,12 +86,14 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     var fileRecoveryURL: URL?
     var sqlLibraryEntryID: UUID?
     var queryParameters: [SQLParameterDefinition]?
+    var explainCollectorConfiguration: ExplainCollectorConfiguration? = nil
 
     init(id: UUID = UUID(), title: String, text: String, profileID: UUID? = nil,
          kind: StoredWorkspaceDocumentKind = .sql, table: StoredTableDocument? = nil,
          snapshotID: UUID? = nil, investigationID: UUID? = nil, erDiagram: StoredERDiagram? = nil,
          fileURL: URL? = nil, fileContentSHA256: String? = nil, fileDocumentID: UUID? = nil, fileRecoveryURL: URL? = nil,
-         sqlLibraryEntryID: UUID? = nil, queryParameters: [SQLParameterDefinition]? = nil) {
+         sqlLibraryEntryID: UUID? = nil, queryParameters: [SQLParameterDefinition]? = nil,
+         explainCollectorConfiguration: ExplainCollectorConfiguration? = nil) {
         self.id = id
         self.title = title
         self.text = text
@@ -102,9 +109,11 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         self.fileRecoveryURL = fileRecoveryURL
         self.sqlLibraryEntryID = sqlLibraryEntryID
         self.queryParameters = queryParameters
+        self.explainCollectorConfiguration = explainCollectorConfiguration
     }
 
     var isValid: Bool {
+        guard explainCollectorConfiguration == nil || kind == .sql && explainCollectorConfiguration?.valid == true else { return false }
         guard (queryParameters == nil || kind == .sql),
               (try? SQLParameterDefinition.validate(queryParameters ?? [])) != nil else { return false }
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
@@ -151,11 +160,11 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, profileID, kind, table, snapshotID, investigationID, erDiagram, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID, queryParameters
+        case id, title, text, profileID, kind, table, snapshotID, investigationID, erDiagram, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID, queryParameters, explainCollectorConfiguration
     }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "investigationID", "erDiagram", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID", "queryParameters"])
+        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "investigationID", "erDiagram", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID", "queryParameters", "explainCollectorConfiguration"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         title = try values.decode(String.self, forKey: .title)
@@ -182,6 +191,8 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         sqlLibraryEntryID = try values.decodeIfPresent(UUID.self, forKey: .sqlLibraryEntryID)
         queryParameters = values.contains(.queryParameters) ? try values.decode([SQLParameterDefinition].self, forKey: .queryParameters) : nil
         guard queryParameters == nil || kind == .sql else { throw SQLDocumentStoreError.read }
+        explainCollectorConfiguration = values.contains(.explainCollectorConfiguration) ? try values.decode(ExplainCollectorConfiguration.self, forKey: .explainCollectorConfiguration) : nil
+        guard explainCollectorConfiguration == nil || kind == .sql else { throw SQLDocumentStoreError.read }
         try SQLParameterDefinition.validate(queryParameters ?? [])
     }
 
@@ -212,6 +223,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         try values.encodeIfPresent(fileRecoveryURL, forKey: .fileRecoveryURL)
         try values.encodeIfPresent(sqlLibraryEntryID, forKey: .sqlLibraryEntryID)
         try values.encodeIfPresent(queryParameters, forKey: .queryParameters)
+        try values.encodeIfPresent(explainCollectorConfiguration, forKey: .explainCollectorConfiguration)
     }
 }
 
@@ -245,7 +257,7 @@ private func requireWorkspaceKeys(_ decoder: Decoder, allowed: Set<String>) thro
 /// results and passwords never enter the format; restoring the snapshot cannot
 /// reconnect or execute SQL.
 struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
-    static let currentVersion = 12
+    static let currentVersion = 15
     static let historyLimit = 1_000
     static let historyRetention: TimeInterval = 30 * 24 * 60 * 60
 
@@ -312,6 +324,9 @@ struct SQLWorkspaceSnapshot: Codable, Equatable, Sendable {
             guard !documents.contains(where: { $0.kind == .investigation }) else { throw SQLDocumentStoreError.read }
         }
         if version < 12, documents.contains(where: { $0.kind == .erDiagram }) { throw SQLDocumentStoreError.read }
+        if version < 13, documents.contains(where: { $0.table?.relationshipScope != nil }) { throw SQLDocumentStoreError.read }
+        if version < 14, documents.contains(where: { $0.table?.filterExpression?.hasNativeOperands == true }) { throw SQLDocumentStoreError.read }
+        if version < 15, documents.contains(where: { $0.erDiagram?.sources.isEmpty == false }) { throw SQLDocumentStoreError.read }
         let investigationIDs = documents.compactMap(\.investigationID)
         guard Set(investigationIDs).count == investigationIDs.count else { throw SQLDocumentStoreError.read }
         selectedDocumentID = try values.decodeIfPresent(UUID.self, forKey: .selectedDocumentID)
@@ -452,6 +467,7 @@ actor FileSQLDocumentStore: SQLDocumentStore {
     }
 
     private func decode(_ data: Data) throws -> SQLWorkspaceSnapshot {
+        try ExactJSONKeys.validate(data, maximumBytes: data.count)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .millisecondsSince1970
         let snapshot = try decoder.decode(SQLWorkspaceSnapshot.self, from: data)

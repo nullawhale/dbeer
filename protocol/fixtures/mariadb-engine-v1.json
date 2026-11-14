@@ -1,0 +1,219 @@
+{
+  "version": 1,
+  "engine": "mariadb",
+  "defaultPort": 3306,
+  "connections": [
+    {
+      "engine": "mariadb",
+      "host": "fixture.invalid",
+      "port": 3306,
+      "database": "fixture",
+      "user": "fixture",
+      "password": "",
+      "sslMode": "verify-full",
+      "sessionPurpose": "structure"
+    },
+    {
+      "engine": "mariadb",
+      "host": "fixture.invalid",
+      "port": 3306,
+      "database": "fixture",
+      "user": "fixture",
+      "password": "",
+      "sslMode": "verify-full",
+      "sessionPurpose": "import"
+    },
+    {
+      "engine": "mariadb",
+      "host": "fixture.invalid",
+      "port": 3306,
+      "database": "fixture",
+      "user": "fixture",
+      "password": "",
+      "sslMode": "verify-full",
+      "sessionPurpose": "monitor"
+    }
+  ],
+  "nativeValues": [
+    {
+      "kind": "null",
+      "engine": "mariadb",
+      "nativeType": "VARCHAR"
+    },
+    {
+      "kind": "text",
+      "value": "",
+      "engine": "mariadb",
+      "nativeType": "VARCHAR",
+      "typeIdentity": "mariadb:fixture:VARCHAR"
+    },
+    {
+      "kind": "text",
+      "value": "NULL",
+      "engine": "mariadb",
+      "nativeType": "VARCHAR",
+      "typeIdentity": "mariadb:fixture:VARCHAR"
+    },
+    {
+      "kind": "text",
+      "value": "{\"a\":1,\"a\":2}",
+      "engine": "mariadb",
+      "nativeType": "LONGTEXT",
+      "typeIdentity": "mariadb:fixture:LONGTEXT"
+    },
+    {
+      "kind": "decimal",
+      "value": "0.11111111111111111111111111111111111111",
+      "engine": "mariadb",
+      "nativeType": "DECIMAL(39,38)",
+      "typeIdentity": "mariadb:fixture:DECIMAL(39,38)"
+    },
+    {
+      "kind": "integer",
+      "value": "18446744073709551615",
+      "engine": "mariadb",
+      "nativeType": "BIGINT UNSIGNED",
+      "typeIdentity": "mariadb:fixture:BIGINT UNSIGNED"
+    },
+    {
+      "kind": "binary",
+      "value": "AP8=",
+      "engine": "mariadb",
+      "nativeType": "VARBINARY",
+      "typeIdentity": "mariadb:fixture:VARBINARY"
+    }
+  ],
+  "invalidNativeValues": [
+    {
+      "kind": "text",
+      "value": "retained",
+      "engine": "unknown-mariadb-fork"
+    },
+    {
+      "kind": "null",
+      "value": ""
+    }
+  ],
+  "explainSupport": {
+    "engine": "mariadb",
+    "serverVersion": "11.4.3-MariaDB",
+    "format": "json",
+    "modes": [
+      "plan",
+      "analyze"
+    ],
+    "dml": {
+      "estimated": true,
+      "estimatedForms": [
+        "update",
+        "delete"
+      ],
+      "analyze": [
+        "update",
+        "delete"
+      ],
+      "analyzeTargetExecution": "executes"
+    }
+  },
+  "dmlOutcomes": [
+    {
+      "targetExecution": "executed",
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "completed",
+      "persistence": "committed",
+      "transactionBefore": "idle",
+      "transactionAfter": "idle",
+      "affectedRowsUnavailableReason": "notReported"
+    },
+    {
+      "targetExecution": "executed",
+      "target": {
+        "statement": "update",
+        "dataModifyingCTE": false,
+        "mysqlMultiTable": false
+      },
+      "execution": "completed",
+      "persistence": "transactionPending",
+      "transactionBefore": "transaction",
+      "transactionAfter": "transaction",
+      "affectedRowsUnavailableReason": "notReported"
+    }
+  ],
+  "metrics": {
+    "actualRows": {
+      "value": "2.5",
+      "unit": "rows",
+      "basis": "perInvocation"
+    },
+    "loops": {
+      "value": "4",
+      "unit": "count",
+      "basis": "total"
+    },
+    "totalTime": {
+      "value": "3.25",
+      "unit": "ms",
+      "basis": "inclusiveTotal"
+    },
+    "exclusiveTime": {
+      "unit": "ms",
+      "basis": "exclusivePerInvocation",
+      "unavailableReason": "inclusiveOnly"
+    }
+  },
+  "optimizerObservation": {
+    "indexConditionPushdown": true,
+    "nativeSwitch": "index_merge=on,index_condition_pushdown=on,future_native_flag=off"
+  },
+  "optimizerVariant": {
+    "expectedNativeSwitch": "index_merge=on,index_condition_pushdown=on,future_native_flag=off",
+    "indexConditionPushdown": false
+  },
+  "nodeMetrics": {
+    "version": 1,
+    "executionScope": "unknown",
+    "rowComparison": "unknownScope",
+    "exclusiveTime": {
+      "unit": "ms",
+      "basis": "exclusivePerInvocation",
+      "unavailableReason": "inclusiveOnly"
+    },
+    "counters": {
+      "mariaDBPagesAccessed": {
+        "value": "9007199254740993",
+        "unit": "count",
+        "basis": "total"
+      },
+      "mariaDBPagesUpdated": {
+        "value": "0",
+        "unit": "count",
+        "basis": "total"
+      },
+      "mariaDBPagesRead": {
+        "value": "1",
+        "unit": "count",
+        "basis": "total"
+      },
+      "mariaDBPagesPrefetched": {
+        "value": "0",
+        "unit": "count",
+        "basis": "total"
+      },
+      "mariaDBPagesReadTime": {
+        "value": "1.2300",
+        "unit": "ms",
+        "basis": "total"
+      },
+      "mariaDBOldRowsRead": {
+        "value": "0",
+        "unit": "rows",
+        "basis": "total"
+      }
+    },
+    "workers": []
+  }
+}

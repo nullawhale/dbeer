@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"unicode/utf8"
 
+	"dbeer/helper/internal/nativevalue"
 	"dbeer/helper/internal/protocol"
 )
 
@@ -29,25 +30,30 @@ var ErrInvalidRequest = errors.New("Invalid export settings.")
 var ErrCancelled = errors.New("Export was cancelled before publishing.")
 
 type Writer struct {
-	sqliteRow     []protocol.SQLiteValue
-	file          *os.File
-	csv           *csv.Writer
-	request       protocol.ExportRequest
-	columns       []protocol.Column
-	current       int
-	sets          int
-	rows          int64
-	total         int64
-	open          bool
-	published     atomic.Bool
-	failure       error
-	destination   *destination
-	temporaryInfo os.FileInfo
-	digest        hash.Hash
-	publishMu     sync.Mutex
+	sqliteRow       []protocol.SQLiteValue
+	nativeRow       []protocol.NativeValue
+	nativeRequested bool
+	nativePending   bool
+	file            *os.File
+	csv             *csv.Writer
+	request         protocol.ExportRequest
+	columns         []protocol.Column
+	current         int
+	sets            int
+	rows            int64
+	total           int64
+	open            bool
+	published       atomic.Bool
+	failure         error
+	destination     *destination
+	temporaryInfo   os.FileInfo
+	digest          hash.Hash
+	publishMu       sync.Mutex
 }
 
-func New(request protocol.ExportRequest) (*Writer, error) {
+func New(request protocol.ExportRequest) (*Writer, error) { return NewWithNative(request, false) }
+
+func NewWithNative(request protocol.ExportRequest, native bool) (*Writer, error) {
 	if !request.Valid() {
 		return nil, ErrInvalidRequest
 	}
@@ -71,16 +77,22 @@ func New(request protocol.ExportRequest) (*Writer, error) {
 		destination.close()
 		return nil, ErrIO
 	}
-	writer := &Writer{file: file, request: request, current: -1, destination: destination, temporaryInfo: temporaryInfo, digest: sha256.New()}
+	writer := &Writer{nativeRequested: native, file: file, request: request, current: -1, destination: destination, temporaryInfo: temporaryInfo, digest: sha256.New()}
 	if err := destination.lock(); err != nil {
 		writer.Abort()
 		return nil, ErrIO
 	}
 	if request.Format == "csv" {
 		writer.csv = csv.NewWriter(output{writer})
-	} else if err = writer.write([]byte(`{"version":1,"resultSets":[`)); err != nil {
-		writer.Abort()
-		return nil, ErrIO
+	} else {
+		header := `{"version":1,"resultSets":[`
+		if native {
+			header = `{"version":2,"nativeValuesFormat":"nativeV1","resultSets":[`
+		}
+		if err = writer.write([]byte(header)); err != nil {
+			writer.Abort()
+			return nil, ErrIO
+		}
 	}
 	return writer, nil
 }
@@ -143,8 +155,24 @@ func (writer *Writer) Begin(index int, columns []protocol.Column) error {
 	return writer.write([]byte(`{"rows":[`))
 }
 
-func (writer *Writer) SQLiteRow(_ int, row []protocol.SQLiteValue) error {
+func (writer *Writer) SQLiteRow(index int, row []protocol.SQLiteValue) error {
+	if !writer.open || index != writer.current || writer.sqliteRow != nil || len(row) != len(writer.columns) {
+		return writer.fail(ErrIO)
+	}
+	for _, value := range row {
+		if !value.Valid() {
+			return writer.fail(ErrIO)
+		}
+	}
 	writer.sqliteRow = row
+	return nil
+}
+
+func (writer *Writer) NativeRow(index int, row []protocol.NativeValue) error {
+	if !writer.open || index != writer.current || !writer.nativeRequested || writer.nativePending || !protocol.NativeMatrixValid([][]protocol.NativeValue{row}, 1, len(writer.columns)) {
+		return writer.fail(ErrIO)
+	}
+	writer.nativeRow, writer.nativePending = row, true
 	return nil
 }
 
@@ -155,10 +183,30 @@ func (writer *Writer) Row(index int, values []*string) error {
 	if !writer.open || index != writer.current || len(values) != len(writer.columns) {
 		return writer.fail(ErrIO)
 	}
+	native, pending := writer.nativeRow, writer.nativePending
+	writer.nativeRow, writer.nativePending = nil, false
+	if writer.nativeRequested != pending {
+		return writer.fail(ErrIO)
+	}
 	typed := writer.sqliteRow
 	writer.sqliteRow = nil
 	if typed != nil && len(typed) != len(values) {
 		return writer.fail(ErrIO)
+	}
+	for _, column := range writer.columns {
+		if column.Engine == "sqlite" && typed == nil {
+			return writer.fail(ErrIO)
+		}
+	}
+	if writer.nativeRequested {
+		for i, cell := range native {
+			if cell.Engine == "sqlite" && (typed == nil || !nativevalue.MatchesSQLite(cell, typed[i])) {
+				return writer.fail(ErrIO)
+			}
+			if typed != nil && !nativevalue.MatchesSQLite(cell, typed[i]) {
+				return writer.fail(ErrIO)
+			}
+		}
 	}
 	if writer.csv != nil {
 		for _, cell := range typed {
@@ -194,7 +242,19 @@ func (writer *Writer) Row(index int, values []*string) error {
 		}
 		var encoded []byte
 		var err error
-		if typed != nil {
+		if writer.nativeRequested {
+			if native == nil {
+				native = []protocol.NativeValue{}
+			}
+			if values == nil {
+				values = []*string{}
+			}
+			encoded, err = json.Marshal(struct {
+				Values       []*string              `json:"values"`
+				NativeValues []protocol.NativeValue `json:"nativeValues"`
+				SQLiteValues []protocol.SQLiteValue `json:"sqliteValues,omitempty"`
+			}{values, native, typed})
+		} else if typed != nil {
 			encoded, err = json.Marshal(typed)
 		} else {
 			encoded, err = json.Marshal(values)
@@ -215,7 +275,7 @@ func (writer *Writer) End(index int, summary protocol.ResultSet) error {
 	if writer.failure != nil {
 		return writer.failure
 	}
-	if !writer.open || index != writer.current {
+	if !writer.open || index != writer.current || writer.nativePending || writer.sqliteRow != nil {
 		return writer.fail(ErrIO)
 	}
 	writer.open = false

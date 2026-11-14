@@ -2,6 +2,7 @@ package resultcompare
 
 import (
 	"context"
+	"dbeer/helper/internal/nativevalue"
 	"dbeer/helper/internal/sqlitevalue"
 	"dbeer/helper/internal/textdiff"
 	"encoding/base64"
@@ -40,6 +41,20 @@ func (r *Result) TextDiff(ctx context.Context, report int64, mapping int) (textd
 		}
 		if row[column] == nil {
 			return textdiff.Input{Kind: "null"}, nil
+		}
+		if source.Metadata().Columns[column].Encoding == "nativeValue" {
+			var value nativevalue.NativeValue
+			if json.Unmarshal([]byte(*row[column]), &value) != nil {
+				return textdiff.Input{}, ErrSource
+			}
+			if value.Kind == "binary" || value.Kind == "opaque" {
+				raw, _ := base64.StdEncoding.DecodeString(*value.Value)
+				return textdiff.Input{Kind: "binary", TotalBytes: int64(len(raw))}, nil
+			}
+			if value.Kind == "text" {
+				return textdiff.Text(*value.Value), nil
+			}
+			return textdiff.Text(*row[column]), nil
 		}
 		if source.Metadata().Columns[column].Encoding == "sqliteValue" {
 			var v sqlitevalue.Value

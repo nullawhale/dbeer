@@ -45,7 +45,7 @@ func FormatEditor(text, engine string, options FormatOptions) (string, error) {
 	if engine == "mongodb" {
 		return formatJSONEditor(text, indent)
 	}
-	if engine != "postgresql" && engine != "mysql" && engine != "cassandra" && engine != "sqlite" {
+	if engine != "postgresql" && !mysqlLexicalEngine(engine) && engine != "cassandra" && engine != "sqlite" {
 		return "", errors.New("Unsupported editor language.")
 	}
 	tokens, diagnostics := lex(text, engine)
@@ -189,7 +189,7 @@ func AnalyzeEditor(text string, offset int, context Context) EditorAnalysis {
 	all, _ := lex(text, context.Engine)
 	opaque := false
 	for i, t := range all {
-		if context.Engine == "mysql" && word(t, "DELIMITER") {
+		if mysqlLexicalEngine(context.Engine) && word(t, "DELIMITER") {
 			opaque = true
 		}
 		if context.Engine == "postgresql" && word(t, "BEGIN") && i+1 < len(all) && word(all[i+1], "ATOMIC") {
@@ -404,7 +404,7 @@ func AnalyzeEditor(text string, offset int, context Context) EditorAnalysis {
 				}
 				for _, entry := range src.entries {
 					detail := "Type unavailable in loaded metadata"
-					if value := entry.ColumnTypes[columnName]; value != "" {
+					if value := entry.nativeType(columnName); value != "" {
 						detail = value
 					}
 					result.Definitions = append(result.Definitions, EditorDefinition{Schema: entry.Schema, Name: entry.Name, Kind: entry.Kind, Detail: "Column " + columnName + " · " + detail})

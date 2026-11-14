@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "artifacts": [
+    {
+      "version": 1,
+      "title": "Synthetic saved evidence",
+      "savedAt": 1794528000123,
+      "engine": "postgresql",
+      "profileName": "Synthetic profile",
+      "environment": "unspecified",
+      "sourceWasStale": false,
+      "id": "11111111-1111-4111-8111-111111111111",
+      "kind": "structure",
+      "structure": {
+        "historicalPlanID": "historical-plan",
+        "historicalExecutionID": "historical-execution",
+        "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "target": {
+          "schema": "public",
+          "table": "samples",
+          "create": false
+        },
+        "sql": [
+          "ALTER TABLE public.samples ADD COLUMN note text"
+        ],
+        "risks": [
+          "Synthetic outcome is unknown."
+        ],
+        "draft": {
+          "columns": [
+            {
+              "name": "note",
+              "type": {
+                "kind": "text"
+              },
+              "nullable": true,
+              "default": {
+                "kind": "none"
+              }
+            }
+          ]
+        },
+        "state": "outcomeUnknown",
+        "steps": [
+          {
+            "state": "unknown",
+            "message": "No completion acknowledgement"
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "title": "Synthetic saved evidence",
+      "savedAt": 1794528000123,
+      "engine": "postgresql",
+      "profileName": "Synthetic profile",
+      "environment": "unspecified",
+      "sourceWasStale": false,
+      "id": "22222222-2222-4222-8222-222222222222",
+      "kind": "diagnostic",
+      "diagnostic": {
+        "engine": "postgresql",
+        "collectionStartedAt": "2026-11-13T00:00:00.123456789Z",
+        "collectedAt": "2026-11-13T00:00:01.123456789Z",
+        "sessions": [
+          {
+            "id": "4",
+            "user": "synthetic",
+            "state": "idle",
+            "query": "SELECT synthetic_observation",
+            "queryAgeMs": "9007199254740993",
+            "isMonitor": false,
+            "queryTruncated": false
+          }
+        ],
+        "waits": [],
+        "sessionsComplete": true,
+        "waitsComplete": false,
+        "notices": [
+          "Wait visibility is partial."
+        ]
+      }
+    }
+  ]
+}
