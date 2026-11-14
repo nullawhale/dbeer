@@ -138,6 +138,7 @@ actor BackendClient {
     private var indexAuthoringSupported = false
     private var reconstructionSupported = false
     private var migrationsSupported = false
+    private var advancedKindsSupported = false
     private var physicalStructureSupported = false
     // One admission bit per logical owner, independent of preview count or plan IDs.
     private var reconstructionSessions: [String: Bool] = [:]
@@ -892,6 +893,7 @@ actor BackendClient {
             nativeCommandsSupported = reply.capabilities?.contains(NativeCommand.capability) == true
             nativeResultValuesSupported = reply.capabilities?.contains(NativeValue.capability) == true
             destructiveStructureSupported = reply.capabilities?.contains("tableStructureDestructiveV1") == true
+            advancedKindsSupported = reply.capabilities?.contains("tableStructureAdvancedKindsV1") == true
             indexAuthoringSupported = reply.capabilities?.contains("tableStructureIndexAuthoringV1") == true
             reconstructionSupported = reply.capabilities?.contains("tableStructureReconstructionV1") == true
             migrationsSupported = reply.capabilities?.contains(structureMigrationsCapability) == true
@@ -920,7 +922,7 @@ actor BackendClient {
                  capabilities: Set(reply.capabilities ?? []), helperSupports: explainOptionsSupported) {
                 sessionExplainOptionSupport[session] = support
             } else { sessionExplainOptionSupport.removeValue(forKey: session) }
-            let structureCapabilities = Set(reply.capabilities ?? []).intersection(["tableStructureIndexAuthoringV1", "tableStructureDestructiveV1", "tableStructureReconstructionV1", structureMigrationsCapability, structurePhysicalCapability])
+            let structureCapabilities = Set(reply.capabilities ?? []).intersection(["tableStructureAdvancedKindsV1", "tableStructureIndexAuthoringV1", "tableStructureDestructiveV1", "tableStructureReconstructionV1", structureMigrationsCapability, structurePhysicalCapability])
             if !structureCapabilities.isEmpty { retainedStructureCapabilities[session] = structureCapabilities }
             else { retainedStructureCapabilities.removeValue(forKey: session) }
             if reply.transactionStatus == .unsupported, let support = reply.explainSupport, support.engine.hasEngineDiagnostics {
@@ -1002,6 +1004,9 @@ actor BackendClient {
             } else if reply.type != "error", command.type.hasPrefix("structure.") {
                 guard request.started, reply.structure?.valid(for: reply.type) == true,
                       !reconstructionRequired || reconstructionAdmitted else { throw BackendTransportError(.invalidMessage) }
+                if reply.structure?.baseline?.advanced != nil || reply.structure?.outcome?.observed?.advanced != nil {
+                    guard advancedKindsSupported, command.sessionId.flatMap({ (command.type == "structure.status" ? retainedStructureCapabilities[$0] : sessionCapabilities[$0]) })?.contains("tableStructureAdvancedKindsV1") == true else { throw BackendTransportError(.invalidMessage) }
+                }
                 if reply.structure?.baseline?.requiresIndexAuthoring == true || reply.structure?.outcome?.observed?.requiresIndexAuthoring == true {
                     guard indexAuthoringAdmitted else { throw BackendTransportError(.invalidMessage) }
                 }

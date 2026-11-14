@@ -23,6 +23,7 @@ type Session struct {
 	explainIdentity            string
 	afterStructureStep         func(int)
 	structureCommitOverride    func(func() error) error
+	advancedCopyCheckpoint     *pgAdvancedCopyCheckpoint
 }
 
 func Open(ctx context.Context, connection protocol.Connection) (adapter.Session, error) {

@@ -979,6 +979,56 @@ and USAGE checks before execution. Identity sequences retain exact start,
 increment, minimum, maximum, cache and cycle settings. PostgreSQL generated
 expression replacement requires version 17+; virtual generation requires 18+.
 
+The structure editor also reports explicit operation capabilities for PostgreSQL
+14–18 inheritance, declarative partitions, RLS/FORCE, typed and unlogged tables,
+and Oracle MySQL 8.0.30+/8.4 partitioned InnoDB and MyISAM tables. The advanced
+facts show the complete connected family, parents, native persistence/engine,
+type binding, and policy names, commands and roles. A displayed capability is
+observation; a fresh exact Preview and the existing Apply authorization are
+still required. Imported/restored intent remains disconnected and carries no
+catalog or execution authority.
+
+PostgreSQL table renames, literal defaults, applicable nullability changes,
+lossless integer/varchar widening and native index/key operations retain raw
+policies, FORCE, ACLs, roles, type bindings and all unaffected native properties.
+Local column/default operations name `ONLY`. Recursive parent column edits show
+every affected descendant; inherited child columns must be altered through their
+declaring parent. Partition parent normal indexes and primary/unique keys show
+native child creation or attachment and exact removal effects. A partitioned
+unique key must include every direct partition key in the affected tree; an
+expression partition key cannot meet that requirement. Concurrent parent-index
+creation remains unavailable in PostgreSQL; use the separate physical workflow
+for supported concurrent leaf/ordinary indexes and partition management.
+
+Advanced PostgreSQL foreign keys retain exact source/reference column mappings,
+backing indexes, native cloned constraints and RI trigger bindings, including
+partitioned and self references. Traditional-inheritance foreign keys are local
+to the selected relation. A policy dependency can prevent column type/removal
+changes; policies are never rewritten or disabled implicitly. Policy-filtered
+SELECT results are not proof of whole-table representability or NULL absence.
+The server validates reviewed DDL before transactional preservation checks and
+COMMIT. Typed-table shape belongs to its composite type; the editor never emits
+an implicit ALTER TYPE affecting other bound tables.
+
+MySQL advanced edits retain the complete native partition/table suffix,
+unaffected full column definitions, constraints/indexes, triggers and engine
+properties. Applicable table/column rename, nullable append, literal defaults,
+nullability, widening, indexes and primary/unique keys still need concrete
+engine and partition-key checks. Already strict SQL mode is required; a rebuild
+of existing AUTO_INCREMENT rows also requires already-present
+NO_AUTO_VALUE_ON_ZERO. MySQL DDL implicitly commits, and MyISAM row writes are
+nontransactional. The helper never changes SQL mode, silently removes a foreign
+key, changes an engine or repartitions a table as a side effect of an ordinary
+edit. Oracle MySQL partitioned InnoDB and MyISAM do not support foreign keys.
+
+UNLOGGED persistence is retained explicitly: its data is not WAL-logged, can be
+truncated after an unclean shutdown and is not replicated to standbys. Temporary
+tables remain with their original physical SQL-tab session; the dedicated
+structure connection cannot attach to another tab's temporary relation. Run
+explicit SQL in the original tab when that session-local scope is needed.
+Tuning inspection and result validation retain their stricter ordinary-table
+boundary even when the structure editor can safely author an advanced kind.
+
 Index drafts can use ordered column or expression terms. PostgreSQL supports
 expression and partial indexes, INCLUDE columns, qualified collations and
 operator classes with parameters, direction and NULL placement, and storage
@@ -986,7 +1036,8 @@ options for BTREE, HASH, GiST, SP-GiST, GIN and BRIN. Installed access methods c
 be selected when their bounded catalog metadata is available. Uniqueness uses
 BTREE; NULLS NOT DISTINCT requires PostgreSQL 15+. Preview checks method-specific
 constraints and binds referenced method/operator-class/collation metadata before
-Apply, without invoking their handlers or evaluating indexed expressions.
+Apply. Preview does not evaluate authored index expressions. Legitimate native
+planning and introspection callbacks remain supported.
 
 For ordinary InnoDB tables, MySQL supports BTREE prefixes, ASC/DESC order,
 functional terms, visibility and exact index comments, plus FULLTEXT and SPATIAL

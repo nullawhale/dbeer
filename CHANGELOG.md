@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add operation-specific structure authoring for PostgreSQL inheritance,
+  declarative partitions, RLS/FORCE, typed and unlogged tables and MySQL
+  partitioned InnoDB and MyISAM tables. Review complete hierarchy, security,
+  type-binding and storage facts; retain native properties through transactional
+  PostgreSQL checks and explicit MySQL acknowledgement checks. Disclose recursive
+  column and partition-index/key effects, keep temporary tables with their
+  original SQL-tab session, and retain the stricter ordinary-table tuning guard.
+
 - Add explainable tuning candidates from captured plans and fresh complete
   relational metadata, explicit query variants and offline baseline comparison.
   Route index changes through fresh structure previews; separately review bounded

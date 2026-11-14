@@ -17,6 +17,12 @@ func (s *Session) StructurePrepareMigration(ctx context.Context, b tableedit.Bas
 	return s.prepareMigrationStructure(ctx, b, d, load, true)
 }
 func (s *Session) prepareMigrationStructure(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, load func(tableedit.Target) (tableedit.Baseline, error), migration bool) (tableedit.Prepared, error) {
+	if err := myAdvancedPrepare(b, d); err != nil {
+		return tableedit.Prepared{}, err
+	}
+	if err := myAdvancedDataDraft(ctx, b, d); err != nil {
+		return tableedit.Prepared{}, err
+	}
 	if d.NeedsAuthoringV5() {
 		return s.prepareStructureReconstruction(ctx, b, d)
 	}
@@ -261,9 +267,9 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		if ctx.Err() != nil {
 			return append(out, tableedit.Execution{State: "notStarted", Message: "Cancelled before the next DDL step."})
 		}
-		x := s.applyStructureStep(ctx, current, []string{step}, refs)
+		x := s.applyStructureStep(ctx, current, []string{step}, refs, plan.Conditions[i])
 		out = append(out, x)
-		if x.State != "applied" {
+		if x.State != "applied" || x.Message != "" {
 			break
 		}
 		if plan.Conditions[i].Operation.Kind == "dropTable" {
@@ -277,9 +283,19 @@ func (s *Session) StructureApplySteps(ctx context.Context, b tableedit.Baseline,
 		}
 		target := tableedit.StepTarget(current.Target, plan.Conditions[i])
 		fresh, e := s.StructureLoad(ctx, target)
-		verified := e == nil && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) })
+		verified := e == nil && myAdvancedPreserved(current, fresh, plan.Conditions[i]) && tableedit.ValidBaseline(fresh) && tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) })
 		if plan.Conditions[i].Operation.Kind == "reorder" {
 			verified = verified && mysqlReconstructionPreserved(current, fresh)
+		}
+		if !verified && current.Advanced != nil {
+			if e != nil {
+				out[len(out)-1].Message = "DDL was acknowledged but advanced metadata could not be observed."
+			} else if !tableedit.VerifyTransition(current, fresh, plan.Conditions[i], func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, fresh.Facts) }) {
+				out[len(out)-1].Message = "DDL was acknowledged but the advanced typed transition did not match."
+			} else {
+				out[len(out)-1].Message = "DDL was acknowledged but complete native suffix/column/partition preservation did not match."
+			}
+			break
 		}
 		if !verified {
 			out[len(out)-1].Message = "The DDL step was acknowledged, but observed structure did not match the expected change and preservation conditions. Reconcile before continuing."

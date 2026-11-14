@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 func resolveIndexGuard(ctx context.Context, q structureReader, kind string, ref tableedit.TypeReference, method string) (tableedit.IndexGuard, error) {
+	q = pgCatalogReader(q)
 	g := tableedit.IndexGuard{Kind: kind, Reference: ref, Method: method}
 	limits := sc.Limits{Nodes: 128, Members: 4096, Bytes: 2 << 20, Scalar: 65536}
 	r := &schemaCapture{ctx: ctx, tx: q, sink: sc.NewCollector(ctx, limits), spec: sc.CaptureSpec{Limits: limits}, skipCustomTypeFormatting: true, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}}
@@ -30,10 +33,11 @@ func resolveIndexGuard(ctx context.Context, q structureReader, kind string, ref 
 		}
 		var defaults []any
 		if !builtinCatalogIdentity(g.Identity) {
-			classes, err := r.rows(`SELECT oid::pg_catalog.text FROM pg_catalog.pg_opclass WHERE opcmethod=$1::pg_catalog.oid AND opcdefault ORDER BY oid`, g.Identity)
+			classes, err := r.rows(`SELECT oid::pg_catalog.text FROM pg_catalog.pg_opclass WHERE pg_catalog.oideq(opcmethod,$1::pg_catalog.oid) AND opcdefault`, g.Identity)
 			if err != nil || len(classes) > 64 {
 				return g, tableedit.ErrUnsupported
 			}
+			sort.Slice(classes, func(i, j int) bool { return pgInt(classes[i][0]) < pgInt(classes[j][0]) })
 			for _, class := range classes {
 				value, err := r.typeOperatorClass(class[0])
 				if err != nil {
@@ -85,20 +89,26 @@ func builtinCatalogIdentity(raw string) bool {
 	return err == nil && n < 16384
 }
 func captureIndexGuards(ctx context.Context, q structureReader, oid string) (map[string][]tableedit.IndexGuard, error) {
-	rows, err := q.Query(ctx, `SELECT DISTINCT c.relname,a.oid::pg_catalog.text,a.amname,o.oid::pg_catalog.text,onsp.nspname,o.opcname,COALESCE(co.oid::pg_catalog.text,''),COALESCE(cn.nspname,''),COALESCE(co.collname,'') FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am a ON a.oid=c.relam CROSS JOIN LATERAL pg_catalog.unnest(i.indclass) WITH ORDINALITY k(opclass,ord) JOIN pg_catalog.pg_opclass o ON o.oid=k.opclass JOIN pg_catalog.pg_namespace onsp ON onsp.oid=o.opcnamespace LEFT JOIN pg_catalog.pg_collation co ON co.oid=i.indcollation[k.ord::pg_catalog.int4-1] LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=co.collnamespace WHERE i.indrelid=$1::pg_catalog.oid ORDER BY c.relname,a.oid::pg_catalog.text,a.amname,o.oid::pg_catalog.text,onsp.nspname,o.opcname,COALESCE(co.oid::pg_catalog.text,''),COALESCE(cn.nspname,''),COALESCE(co.collname,'')`, oid)
+	rows, err := q.Query(ctx, `SELECT c.relname,a.oid::pg_catalog.text,a.amname,o.oid::pg_catalog.text,onsp.nspname,o.opcname,COALESCE(co.oid::pg_catalog.text,''),COALESCE(cn.nspname,''),COALESCE(co.collname,'') FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am a ON a.oid=c.relam CROSS JOIN LATERAL pg_catalog.unnest(i.indclass) WITH ORDINALITY k(opclass,ord) JOIN pg_catalog.pg_opclass o ON o.oid=k.opclass JOIN pg_catalog.pg_namespace onsp ON onsp.oid=o.opcnamespace LEFT JOIN pg_catalog.pg_collation co ON co.oid=i.indcollation[k.ord::pg_catalog.int4-1] LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=co.collnamespace WHERE i.indrelid=$1::pg_catalog.oid`, oid)
 	if err != nil {
 		return nil, err
 	}
 	type entry struct{ name, amID, method, opID, opSchema, opName, collID, collSchema, collName string }
 	var all []entry
+	unique := map[entry]bool{}
+	rawCount := 0
 	for rows.Next() {
 		var e entry
 		if rows.Scan(&e.name, &e.amID, &e.method, &e.opID, &e.opSchema, &e.opName, &e.collID, &e.collSchema, &e.collName) != nil {
 			rows.Close()
 			return nil, tableedit.ErrUnsupported
 		}
-		all = append(all, e)
-		if len(all) > 1024 {
+		rawCount++
+		if !unique[e] {
+			unique[e] = true
+			all = append(all, e)
+		}
+		if len(all) > 1024 || rawCount > 16384 {
 			rows.Close()
 			return nil, tableedit.ErrUnsupported
 		}
@@ -108,6 +118,12 @@ func captureIndexGuards(ctx context.Context, q structureReader, oid string) (map
 	if err != nil {
 		return nil, err
 	}
+	// SQL DISTINCT/text ordering can consult extension AMs during planning.
+	// Keep the same bounded records without invoking their handler callbacks.
+	key := func(e entry) string {
+		return strings.Join([]string{e.name, e.amID, e.method, e.opID, e.opSchema, e.opName, e.collID, e.collSchema, e.collName}, "\x00")
+	}
+	sort.Slice(all, func(i, j int) bool { return key(all[i]) < key(all[j]) })
 	var out map[string][]tableedit.IndexGuard
 	seen := map[string]bool{}
 	for _, e := range all {

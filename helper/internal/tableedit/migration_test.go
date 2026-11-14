@@ -41,8 +41,7 @@ func (a *migrationFake) StructureLoad(_ context.Context, t Target) (Baseline, er
 		return b, ErrInvalid
 	}
 	loaded := migrationClone(b)
-	// Real adapter loads publish empty collections as arrays; the clone helper
-	// deliberately uses nil slices internally, so restore this fake wire boundary.
+	// Real adapter loads publish the required public collections as arrays.
 	loaded.Columns = append([]ObservedColumn{}, loaded.Columns...)
 	loaded.Keys = append([]Key{}, loaded.Keys...)
 	loaded.Indexes = append([]Index{}, loaded.Indexes...)

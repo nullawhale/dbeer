@@ -5,10 +5,12 @@ import (
 	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 	"encoding/json"
+	"sort"
 	"strconv"
 )
 
-func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Target, oid uint32) (*tableedit.Facts, error) {
+func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Target, oid uint32, advanced ...bool) (*tableedit.Facts, error) {
+	q = pgCatalogReader(q)
 	limits := sc.Limits{Nodes: 256, Members: 2048, Bytes: 2 << 20, Scalar: 65536}
 	sink := sc.NewCollector(ctx, limits)
 	var version int
@@ -16,7 +18,9 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 		return nil, tableedit.ErrUnsupported
 	}
 	r := &schemaCapture{ctx: ctx, tx: q, sink: sink, spec: sc.CaptureSpec{Schemas: []string{t.Schema}, Limits: limits}, version: version, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}, skipCustomTypeFormatting: true}
-	keywords, keywordErr := r.rows(`SELECT word FROM pg_catalog.pg_get_keywords() WHERE catcode<>'U' ORDER BY word COLLATE pg_catalog."C"`)
+	// PostgreSQL18 can consult extension AMs while planning a metadata sort.
+	// Filter and order this bounded core-function result locally.
+	keywords, keywordErr := r.rows(`SELECT word,catcode FROM pg_catalog.pg_get_keywords()`)
 	if keywordErr != nil {
 		return nil, tableedit.ErrUnsupported
 	}
@@ -78,8 +82,14 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 	f.RawExpressions = r.rawExpressions
 	f.ExpressionKeywords = []string{}
 	for _, keyword := range keywords {
-		f.ExpressionKeywords = append(f.ExpressionKeywords, keyword[0])
+		if len(keyword) != 2 {
+			return nil, tableedit.ErrUnsupported
+		}
+		if keyword[1] != "U" {
+			f.ExpressionKeywords = append(f.ExpressionKeywords, keyword[0])
+		}
 	}
+	sort.Strings(f.ExpressionKeywords)
 	incoming, e := q.Query(ctx, `SELECT n.nspname,c.relname,k.conname,COALESCE((SELECT pg_catalog.json_agg(a.attname ORDER BY x.ord)::pg_catalog.text FROM pg_catalog.unnest(k.confkey) WITH ORDINALITY x(num,ord) JOIN pg_catalog.pg_attribute a ON a.attrelid=k.confrelid AND a.attnum=x.num),'[]') FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_class c ON c.oid=k.conrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE k.confrelid=$1 AND k.contype='f' ORDER BY n.nspname,c.relname,k.conname LIMIT 257`, oid)
 	if e != nil {
 		return nil, tableedit.ErrUnsupported
@@ -100,7 +110,7 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 	if e != nil || len(f.Incoming) > 256 {
 		return nil, tableedit.ErrUnsupported
 	}
-	rows, e := q.Query(ctx, `SELECT COALESCE(a.attname,''),pg_catalog.pg_describe_object(d.classid,d.objid,d.objsubid) FROM pg_catalog.pg_depend d LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid WHERE d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND d.refobjid=$1 AND d.deptype<>'i' AND NOT (d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND d.objid IN (SELECT indexrelid FROM pg_catalog.pg_index WHERE indrelid=$1)) AND NOT (d.classid='pg_catalog.pg_constraint'::pg_catalog.regclass AND d.objid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE conrelid=$1 OR confrelid=$1)) AND NOT (d.classid='pg_catalog.pg_attrdef'::pg_catalog.regclass AND d.objid IN (SELECT oid FROM pg_catalog.pg_attrdef WHERE adrelid=$1)) ORDER BY d.classid,d.objid,d.objsubid LIMIT 2049`, oid)
+	rows, e := q.Query(ctx, `SELECT COALESCE(a.attname,''),pg_catalog.pg_describe_object(d.classid,d.objid,d.objsubid) FROM pg_catalog.pg_depend d LEFT JOIN pg_catalog.pg_attribute a ON pg_catalog.oideq(a.attrelid,d.refobjid) AND pg_catalog.int4eq(a.attnum::pg_catalog.int4,d.refobjsubid) WHERE d.refclassid OPERATOR(pg_catalog.=) ANY(ARRAY['pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid]) AND d.refobjid OPERATOR(pg_catalog.=) ANY(ARRAY[$1::pg_catalog.oid]) AND pg_catalog.charne(d.deptype,'i') AND NOT ($2::pg_catalog.bool AND ((d.classid='pg_catalog.pg_policy'::pg_catalog.regclass AND d.objid IN (SELECT oid FROM pg_catalog.pg_policy WHERE polrelid=$1)) OR (d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND d.objid IN (SELECT inhrelid FROM pg_catalog.pg_inherits WHERE inhparent=$1)))) AND NOT (d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND d.objid IN (SELECT indexrelid FROM pg_catalog.pg_index WHERE indrelid=$1)) AND NOT (d.classid='pg_catalog.pg_constraint'::pg_catalog.regclass AND d.objid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE conrelid=$1 OR confrelid=$1)) AND NOT (d.classid='pg_catalog.pg_attrdef'::pg_catalog.regclass AND d.objid IN (SELECT oid FROM pg_catalog.pg_attrdef WHERE adrelid=$1)) LIMIT 2049`, oid, len(advanced) > 0 && advanced[0])
 	if e != nil {
 		return nil, tableedit.ErrUnsupported
 	}
@@ -118,6 +128,9 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 	if e != nil || count > 2048 {
 		return nil, tableedit.ErrUnsupported
 	}
+	for _, labels := range f.Dependents {
+		sort.Strings(labels)
+	}
 	// A trigger may refer dynamically to fields, so any user trigger blocks widening.
 	var triggers int
 	if q.QueryRow(ctx, "SELECT count(*) FROM pg_catalog.pg_trigger WHERE tgrelid=$1 AND NOT tgisinternal", oid).Scan(&triggers) != nil {
@@ -134,6 +147,7 @@ func readStructureFacts(ctx context.Context, q structureReader, t tableedit.Targ
 }
 
 func readStructureDefaults(ctx context.Context, q structureReader, t tableedit.Target) (*tableedit.Facts, error) {
+	q = pgCatalogReader(q)
 	limits := sc.Limits{Nodes: 32, Members: 128, Bytes: 65536, Scalar: 4096}
 	r := &schemaCapture{ctx: ctx, tx: q, sink: sc.NewCollector(ctx, limits), spec: sc.CaptureSpec{Limits: limits}, types: map[string]sc.TypeUse{}, loading: map[string]bool{}, sequences: map[string]bool{}, skipCustomTypeFormatting: true}
 	if q.QueryRow(ctx, "SELECT pg_catalog.current_setting('server_version_num')::pg_catalog.int4").Scan(&r.version) != nil {

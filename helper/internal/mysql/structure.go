@@ -33,7 +33,11 @@ func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tablee
 	return b, nil
 }
 func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) {
-	return s.readStructurePhysical(t, false)
+	b, err := s.readStructurePhysical(t, true)
+	if err == nil {
+		err = s.myAdvancedCapture(&b)
+	}
+	return b, err
 }
 func (s *Session) readStructurePhysical(t tableedit.Target, physical bool) (tableedit.Baseline, error) {
 	observe := t.Reconcile
@@ -305,9 +309,10 @@ func (s *Session) StructureRender(b tableedit.Baseline, d tableedit.Draft) ([]st
 func (s *Session) StructureApply(ctx context.Context, b tableedit.Baseline, sql []string) tableedit.Execution {
 	return s.applyStructureStep(ctx, b, sql, nil)
 }
-func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline) tableedit.Execution {
+func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline, conditions ...tableedit.Condition) tableedit.Execution {
 	dispatched := false
 	applied := false
+	preservationMessage := ""
 	response := s.executeWith(ctx, protocol.Command{Type: "structure.apply"}, func(_ *collector, _ *wire.Result) error {
 		if len(sql) != 1 {
 			return &adapter.ConnectionError{Category: "validation", Message: tableedit.ErrInvalid.Error()}
@@ -333,6 +338,16 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 		if fresh.Fingerprint != b.Fingerprint {
 			return &adapter.ConnectionError{Category: "conflict", Message: tableedit.ErrStale.Error()}
 		}
+		var dataProof *myAdvancedDataProof
+		if b.Advanced != nil {
+			if len(conditions) != 1 {
+				return &adapter.ConnectionError{Category: "validation", Message: "The advanced preservation condition is missing."}
+			}
+			dataProof, e = s.myAdvancedDataCapture(b, conditions[0])
+			if e != nil {
+				return e
+			}
+		}
 		if ctx.Err() != nil {
 			return &adapter.ConnectionError{Category: "cancelled", Message: "Cancelled before DDL dispatch."}
 		}
@@ -354,10 +369,13 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 			return execErr
 		}
 		applied = true
+		if err := s.myAdvancedDataVerify(dataProof, b.Target); err != nil {
+			preservationMessage = err.Error()
+		}
 		return nil
 	})
 	if applied {
-		return tableedit.Execution{State: "applied"}
+		return tableedit.Execution{State: "applied", Message: preservationMessage}
 	}
 	if !dispatched {
 		return tableedit.Execution{State: "notStarted", Message: "No DDL was sent. Reconcile the table and prepare a new preview."}

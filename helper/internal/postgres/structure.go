@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	sc "dbeer/helper/internal/schemacompare"
 	"dbeer/helper/internal/tableedit"
 	"encoding/json"
 	"errors"
@@ -49,6 +50,7 @@ func structureRollback(tx pgx.Tx) {
 	_ = tx.Rollback(ctx)
 }
 func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (tableedit.Baseline, error) {
+	q = pgCatalogReader(q)
 	observe := t.Reconcile
 	t.Reconcile = false
 	b := tableedit.Baseline{Target: t, Engine: "postgresql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary permanent tables are supported. Appended columns are nullable; required-column backfills and physical reconstruction require a separate reviewed plan.", "DDL acquires locks. Apply uses BEGIN, a bounded lock wait, metadata recheck, DDL and COMMIT; Discard cannot undo acknowledged changes."}}
@@ -56,6 +58,9 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	var schemaOID uint32
 	var schemaAllowed bool
 	e := q.QueryRow(ctx, `SELECT n.oid, pg_catalog.has_schema_privilege(n.oid, 'USAGE') AND pg_catalog.has_schema_privilege(n.oid, 'CREATE'), pg_catalog.current_database() || ':' || pg_catalog.current_setting('server_version_num') || ':' || pg_catalog.current_setting('server_encoding') || ':' || current_user || ':' || pg_catalog.current_setting('search_path') || ':' || pg_catalog.current_setting('standard_conforming_strings') FROM pg_catalog.pg_namespace n WHERE n.nspname=$1`, t.Schema).Scan(&schemaOID, &schemaAllowed, &environment)
+	if strings.HasPrefix(t.Schema, "pg_temp_") {
+		return b, errors.New("Temporary tables belong to their original owning physical SQL-tab session. This dedicated structure session cannot attach to or author another session's temporary relation; use raw SQL in the original tab.")
+	}
 	if e != nil || !schemaAllowed || strings.HasPrefix(t.Schema, "pg_") || t.Schema == "information_schema" {
 		return b, tableedit.ErrUnsupported
 	}
@@ -63,7 +68,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	var oid uint32
 	var eligible bool
 	var facts string
-	e = q.QueryRow(ctx, `SELECT c.oid, c.relkind='r' AND c.relpersistence='p' AND NOT c.relrowsecurity AND NOT c.relforcerowsecurity AND c.reloftype=0 AND NOT c.relispartition AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid=c.oid OR i.inhparent=c.oid), pg_catalog.row_to_json(c)::pg_catalog.text FROM pg_catalog.pg_class c WHERE c.relnamespace=$1 AND c.relname=$2`, schemaOID, t.Table).Scan(&oid, &eligible, &facts)
+	e = q.QueryRow(ctx, `SELECT c.oid, (pg_catalog.chareq(c.relkind,'r') OR pg_catalog.chareq(c.relkind,'p')) AND (pg_catalog.chareq(c.relpersistence,'p') OR pg_catalog.chareq(c.relpersistence,'u')), pg_catalog.row_to_json(c)::pg_catalog.text FROM pg_catalog.pg_class c WHERE c.relnamespace=$1 AND c.relname=$2`, schemaOID, t.Table).Scan(&oid, &eligible, &facts)
 	if errors.Is(e, pgx.ErrNoRows) {
 		if !t.Create {
 			return b, tableedit.ErrUnsupported
@@ -80,6 +85,12 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 		t.Create = false
 		b.Target.Create = false
 	}
+	if e == nil && !eligible && !t.Create {
+		var kind map[string]any
+		if json.Unmarshal([]byte(facts), &kind) == nil && kind["relpersistence"] == "t" {
+			return b, errors.New("Temporary tables belong to their original owning physical SQL-tab session. The dedicated structure operation never reconnects or attaches to a different tab's temporary relation.")
+		}
+	}
 	if e != nil || t.Create || !eligible {
 		return b, tableedit.ErrUnsupported
 	}
@@ -90,6 +101,17 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	}
 	for _, k := range []string{"relpages", "reltuples", "relallvisible", "relallfrozen", "relfrozenxid", "relminmxid", "relhasindex"} {
 		delete(class, k)
+	}
+	advanced, evidence, advancedErr := pgAdvancedCapture(ctx, q, oid, class)
+	if advancedErr != nil {
+		return b, advancedErr
+	}
+	b.Advanced, b.AdvancedEvidence = advanced, evidence
+	if class["relpersistence"] == "u" {
+		b.Limitations = append(b.Limitations, "This is an UNLOGGED table. Its native persistence is retained: row data is not WAL-logged, can be truncated after an unclean shutdown and is not replicated to standbys. Authoring does not silently convert durability.")
+	}
+	if advanced != nil {
+		b.Limitations[0] = "Advanced local edits use explicit ONLY scope; reviewed recursive column/index/key operations disclose their native descendant effects. Every connected ancestor/descendant and security/type/native property is retained and checked. Policy-filtered rows are never whole-table validation proof."
 	}
 	// row_to_json(pg_attribute) describes attmissingval, which can call a
 	// custom element output routine even when expression deparsing is disabled.
@@ -130,7 +152,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	if rows.Err() != nil {
 		return b, tableedit.ErrUnsupported
 	}
-	factsCapture, e := readStructureFacts(ctx, q, t, oid)
+	factsCapture, e := readStructureFacts(ctx, q, t, oid, advanced != nil)
 	if e != nil {
 		return b, e
 	}
@@ -141,6 +163,9 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 	}
 	b.Guard = tableedit.Fingerprint(guard)
 	b.Facts = factsCapture
+	if advanced != nil {
+		b.Facts.Table.Kind = sc.Known(fmt.Sprint(class["relkind"]))
+	}
 	if len(factsCapture.RawExpressions) > 0 {
 		b.Limitations = append(b.Limitations, "Some expressions require custom type support code to describe. Raw catalog proof is retained; affected attribute changes and dependent renames require an explicit reviewed migration. Untouched raw proof is compared without invoking those routines.")
 	}
@@ -165,7 +190,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 			}
 		}
 	}
-	b.Fingerprint = tableedit.Fingerprint([]any{environment, schemaOID, oid, class, attributes, b.Columns, b.Facts})
+	b.Fingerprint = tableedit.Fingerprint([]any{environment, schemaOID, oid, class, attributes, b.Columns, b.Facts, b.AdvancedEvidence})
 	return b, nil
 }
 
@@ -270,8 +295,10 @@ func (s *Session) StructureApply(ctx context.Context, b tableedit.Baseline, sql 
 }
 
 type structureGuards struct {
-	Types   []tableedit.TypeGuard
-	Indexes []tableedit.IndexGuard
+	Types             []tableedit.TypeGuard
+	Indexes           []tableedit.IndexGuard
+	AdvancedCondition *tableedit.Condition
+	AdvancedProof     *tableedit.AdvancedEvidence
 }
 
 func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, sql []string, refs []tableedit.Baseline, guardSets ...structureGuards) tableedit.Execution {
@@ -298,13 +325,29 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 	if _, e = tx.Exec(ctx, "SET LOCAL lock_timeout = '5s'"); e != nil {
 		return fail("notStarted", "Cannot set the declared lock timeout.")
 	}
-	if !b.Target.Create {
+	var combinedProof *tableedit.AdvancedEvidence
+	if len(guardSets) == 1 {
+		combinedProof = guardSets[0].AdvancedProof
+	}
+	if combinedProof != nil {
+		for _, target := range combinedProof.Targets {
+			if _, e = tx.Exec(ctx, "LOCK TABLE ONLY "+pgx.Identifier{target.Schema, target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
+				return fail("notStarted", "A complete source/reference hierarchy lock could not be acquired.")
+			}
+		}
+	} else if b.Advanced != nil {
+		for _, target := range b.AdvancedEvidence.Targets {
+			if _, e = tx.Exec(ctx, "LOCK TABLE ONLY "+pgx.Identifier{target.Schema, target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
+				return fail("notStarted", "A complete hierarchy lock could not be acquired. No DDL was sent.")
+			}
+		}
+	} else if !b.Target.Create {
 		if _, e = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{b.Target.Schema, b.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
 			return fail("notStarted", "The table lock could not be acquired. No DDL was sent.")
 		}
 	}
 	for _, ref := range refs {
-		if !ref.Target.Create {
+		if !ref.Target.Create && combinedProof == nil {
 			if _, e = tx.Exec(ctx, "LOCK TABLE "+pgx.Identifier{ref.Target.Schema, ref.Target.Table}.Sanitize()+" IN ACCESS EXCLUSIVE MODE"); e != nil {
 				return fail("notStarted", "Referenced table lock could not be acquired.")
 			}
@@ -323,6 +366,22 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 			return fail("notStarted", "A referenced type, index method, operator class, collation or its privileges changed. Prepare a fresh preview.")
 		}
 	}
+	if combinedProof != nil {
+		currentProof, err := pgAdvancedCombined(ctx, tx, fresh, refs)
+		if err != nil || tableedit.Fingerprint(currentProof) != tableedit.Fingerprint(combinedProof) {
+			return fail("notStarted", "The complete advanced source/reference native proof changed before dispatch.")
+		}
+	}
+	var dataProof *pgAdvancedDataProof
+	if b.Advanced != nil {
+		if len(guardSets) != 1 || guardSets[0].AdvancedCondition == nil {
+			return fail("notStarted", "The advanced preservation condition is missing.")
+		}
+		dataProof, e = pgAdvancedBoundDataCapture(ctx, tx, b, *guardSets[0].AdvancedCondition)
+		if e != nil {
+			return fail("notStarted", e.Error())
+		}
+	}
 	if ctx.Err() != nil {
 		return fail("notStarted", "Cancelled before DDL dispatch.")
 	}
@@ -332,6 +391,44 @@ func (s *Session) applyStructureStep(ctx context.Context, b tableedit.Baseline, 
 			return fail("failed", "PostgreSQL rejected the DDL. No commit was sent.")
 		}
 		return fail("unknown", "DDL completion could not be confirmed. Reconcile before another edit.")
+	}
+	if b.Advanced != nil || combinedProof != nil {
+		if len(guardSets) != 1 || guardSets[0].AdvancedCondition == nil {
+			return fail("failed", "The advanced preservation condition is missing; the transaction was rolled back.")
+		}
+		condition := *guardSets[0].AdvancedCondition
+		next, err := readStructure(ctx, tx, tableedit.StepTarget(b.Target, condition))
+		if err != nil {
+			return fail("failed", "Advanced metadata could not be captured. The DDL transaction was rolled back.")
+		}
+		if !(combinedProof != nil && pgAdvancedForeignCondition(condition)) && !pgAdvancedRecursiveCondition(b, condition) && !pgAdvancedGenerationTransition(b, next, condition, func(c sc.Column, w tableedit.Default) bool { return structureDefaultMatchesFacts(c, w, next.Facts) }) {
+			return fail("failed", "Advanced typed transition did not match. The DDL transaction was rolled back.")
+		}
+		if combinedProof != nil && pgAdvancedForeignCondition(condition) {
+			observedRefs := []tableedit.Baseline{}
+			for _, ref := range refs {
+				observed, err := readStructure(ctx, tx, ref.Target)
+				if err != nil {
+					return fail("failed", "Referenced typed properties changed unexpectedly; the transaction was rolled back.")
+				}
+				observedRefs = append(observedRefs, observed)
+			}
+			nextProof, err := pgAdvancedCombined(ctx, tx, next, observedRefs)
+			if err != nil {
+				return fail("failed", "The complete advanced foreign-key proof could not be observed; transaction rolled back.")
+			}
+			if err = pgAdvancedForeignPreservationError(b, next, condition, combinedProof, nextProof); err != nil {
+				return fail("failed", err.Error()+" The DDL transaction was rolled back.")
+			}
+		} else if err := pgAdvancedPreservationError(b, next, condition); err != nil {
+			return fail("failed", err.Error()+" The DDL transaction was rolled back.")
+		}
+
+	}
+	if dataProof != nil {
+		if err := dataProof.Verify(ctx, tx); err != nil {
+			return fail("failed", err.Error()+" The DDL transaction was rolled back.")
+		}
 	}
 	commit := func() error { return tx.Commit(ctx) }
 	if s.structureCommitOverride != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	sc "dbeer/helper/internal/schemacompare"
@@ -12,6 +13,7 @@ import (
 )
 
 func resolveStructureType(ctx context.Context, q structureReader, ref tableedit.TypeReference) (tableedit.TypeGuard, error) {
+	q = pgCatalogReader(q)
 	guard := tableedit.TypeGuard{Reference: ref, Collation: sc.Absent[sc.Ref]()}
 	if !ref.Valid() {
 		return guard, tableedit.ErrInvalid
@@ -187,7 +189,7 @@ func pgIdentityChange(b tableedit.Baseline, c tableedit.ColumnChange, target str
 }
 
 func readStructureSequences(ctx context.Context, q structureReader, t tableedit.Target, oid uint32) ([]sc.Sequence, error) {
-	rows, err := q.Query(ctx, `SELECT n.nspname,s.relname,a.attname,q.seqtypid::pg_catalog.text,q.seqstart::pg_catalog.text,q.seqincrement::pg_catalog.text,q.seqmin::pg_catalog.text,q.seqmax::pg_catalog.text,q.seqcache::pg_catalog.text,q.seqcycle FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class s ON d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND s.oid=d.objid AND s.relkind='S' JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace JOIN pg_catalog.pg_sequence q ON q.seqrelid=s.oid JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid WHERE d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND d.refobjid=$1 AND d.deptype IN ('a','i') ORDER BY n.nspname,s.relname`, oid)
+	rows, err := q.Query(ctx, `SELECT n.nspname,s.relname,a.attname,q.seqtypid::pg_catalog.text,q.seqstart::pg_catalog.text,q.seqincrement::pg_catalog.text,q.seqmin::pg_catalog.text,q.seqmax::pg_catalog.text,q.seqcache::pg_catalog.text,q.seqcycle FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class s ON pg_catalog.oideq(d.classid,'pg_catalog.pg_class'::pg_catalog.regclass) AND pg_catalog.oideq(s.oid,d.objid) AND pg_catalog.chareq(s.relkind,'S') JOIN pg_catalog.pg_namespace n ON pg_catalog.oideq(n.oid,s.relnamespace) JOIN pg_catalog.pg_sequence q ON pg_catalog.oideq(q.seqrelid,s.oid) JOIN pg_catalog.pg_attribute a ON pg_catalog.oideq(a.attrelid,d.refobjid) AND pg_catalog.int4eq(a.attnum::pg_catalog.int4,d.refobjsubid) WHERE d.refclassid OPERATOR(pg_catalog.=) ANY(ARRAY['pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid]) AND d.refobjid OPERATOR(pg_catalog.=) ANY(ARRAY[$1::pg_catalog.oid]) AND (pg_catalog.chareq(d.deptype,'a') OR pg_catalog.chareq(d.deptype,'i'))`, oid)
 	if err != nil {
 		return nil, tableedit.ErrUnsupported
 	}
@@ -212,6 +214,13 @@ func readStructureSequences(ctx context.Context, q structureReader, t tableedit.
 			return nil, tableedit.ErrUnsupported
 		}
 	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Ref, out[j].Ref
+		if a.Schema != b.Schema {
+			return a.Schema < b.Schema
+		}
+		return a.Name < b.Name
+	})
 	return out, rows.Err()
 }
 

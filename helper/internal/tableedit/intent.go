@@ -85,6 +85,7 @@ type Facts struct {
 	Proof                      bool
 }
 type Prepared struct {
+	AdvancedProof    *AdvancedEvidence
 	Reconstruction   *Reconstruction
 	DroppedTarget    bool
 	Consequences     []Consequence

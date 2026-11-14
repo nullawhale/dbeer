@@ -122,6 +122,8 @@ type ObservedColumn struct {
 	DefaultExpression *string        `json:"defaultExpression,omitempty"`
 }
 type Baseline struct {
+	Advanced         *AdvancedKindSupport      `json:"advanced,omitempty"`
+	AdvancedEvidence *AdvancedEvidence         `json:"-"`
 	NativeDefinition string                    `json:"-"`
 	Identity         string                    `json:"-"`
 	Scope            string                    `json:"-"`
@@ -139,6 +141,7 @@ type Baseline struct {
 	Limitations      []string                  `json:"limitations"`
 }
 type Plan struct {
+	AdvancedProof    *AdvancedEvidence `json:"-"`
 	Reconstruction   *Reconstruction   `json:"-"`
 	DroppedTarget    bool              `json:"droppedTarget,omitempty"`
 	Consequences     []Consequence     `json:"consequences,omitempty"`
@@ -319,6 +322,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	var indexGuards []IndexGuard
 	var resultTarget *Target
 	var droppedTarget bool
+	var advancedProof *AdvancedEvidence
 	var reconstruction *Reconstruction
 	var consequences []Consequence
 	var validationChecks []ValidationCheck
@@ -331,6 +335,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 		indexGuards = prepared.IndexGuards
 		droppedTarget, consequences, validationChecks = prepared.DroppedTarget, prepared.Consequences, prepared.ValidationChecks
 		reconstruction = prepared.Reconstruction
+		advancedProof = prepared.AdvancedProof
 	} else {
 		if d.NeedsAuthoringV2() || d.NeedsAuthoringV3() || d.NeedsAuthoringV4() || d.NeedsAuthoringV5() || len(d.Changes)+len(d.Keys)+len(d.Indexes) > 0 || !s.baseline.Target.Create && (len(d.Columns) != 1 || !d.Columns[0].Nullable) {
 			return Reply{}, ErrUnsupported
@@ -370,7 +375,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	if !validReview(consequences, validationChecks) || droppedTarget != d.DropTable {
 		return Reply{}, ErrInvalid
 	}
-	p := &Plan{Reconstruction: reconstruction, DroppedTarget: droppedTarget, Consequences: consequences, ValidationChecks: validationChecks, ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, IndexGuards: indexGuards, Conditions: conditions, Created: time.Now()}
+	p := &Plan{AdvancedProof: advancedProof, Reconstruction: reconstruction, DroppedTarget: droppedTarget, Consequences: consequences, ValidationChecks: validationChecks, ID: Token(), BaselineID: id, Target: s.baseline.Target, SQL: sql, Risks: risks, References: references, Destructive: d.Destructive() || d.RequiresEffectConfirmation(), ResultTarget: resultTarget, Types: types, IndexGuards: indexGuards, Conditions: conditions, Created: time.Now()}
 	identities := []string{}
 	for _, b := range references {
 		identities = append(identities, b.Fingerprint)
@@ -381,7 +386,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 			p.RenamedColumns[c.Name] = *c.RenameTo
 		}
 	}
-	p.Digest = Fingerprint([]any{p, identities, conditions, types, indexGuards, p.RenamedColumns, reconstruction})
+	p.Digest = Fingerprint([]any{p, identities, conditions, types, indexGuards, p.RenamedColumns, reconstruction, advancedProof})
 	s.plan = p
 	return Reply{Plan: p}, nil
 }

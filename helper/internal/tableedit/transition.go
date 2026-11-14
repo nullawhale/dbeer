@@ -7,9 +7,11 @@ import (
 )
 
 type Condition struct {
-	Operation   Operation
-	ColumnOrder []string
-	Columns     []Column
+	AdvancedDataTypes []uint32
+	AdvancedDataProof string
+	Operation         Operation
+	ColumnOrder       []string
+	Columns           []Column
 }
 
 func cloneFacts(f *Facts) *Facts {

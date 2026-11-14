@@ -12,13 +12,35 @@ import (
 	"time"
 )
 
-func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, migration ...bool) (tableedit.Prepared, error) {
+func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedit.Baseline, d tableedit.Draft, migration bool, load func(tableedit.Target) (tableedit.Baseline, error)) (tableedit.Prepared, error) {
 	order, err := tableedit.ReconstructionOrder(b, d)
 	if err != nil {
 		return tableedit.Prepared{}, err
 	}
 	if d.Reconstruct || len(d.ColumnOrder) > 0 {
-		return s.preparePGRebuild(ctx, b, d, order, len(migration) > 0 && migration[0])
+		if b.Advanced != nil {
+			if len(d.Columns) > 0 || len(d.Backfills) > 0 {
+				return tableedit.Prepared{}, errors.New("Review advanced physical reconstruction separately from append and backfill.")
+			}
+			sameOrder := len(order) == len(b.Columns)
+			for i, name := range order {
+				if i >= len(b.Columns) || b.Columns[i].Name != name {
+					sameOrder = false
+				}
+			}
+			if !sameOrder {
+				if migration {
+					return s.preparePGAdvancedCopyMigration(ctx, b, order, load)
+				}
+				return s.preparePGAdvancedCopy(ctx, b, order)
+			}
+			p, err := preparePGAdvancedReconstruction(b, d, order)
+			if err == nil {
+				err = pgAdvancedBindData(ctx, s.conn, b, &p)
+			}
+			return p, err
+		}
+		return s.preparePGRebuild(ctx, b, d, order, migration)
 	}
 	relaxed := tableedit.Draft{AuthoringVersion: 2, Columns: append([]tableedit.Column(nil), d.Columns...)}
 	for i := range relaxed.Columns {
@@ -37,10 +59,19 @@ func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedi
 		name := pgx.Identifier{x.Column}.Sanitize()
 		p.SQL = append(p.SQL, "UPDATE "+target+" SET "+name+" = "+expression+" WHERE "+name+" IS NULL;", "ALTER TABLE "+target+" ALTER COLUMN "+name+" SET NOT NULL;")
 		required := false
-		p.Conditions = append(p.Conditions, tableedit.Condition{Operation: tableedit.Operation{Kind: "backfill"}}, tableedit.Condition{Operation: tableedit.Operation{Kind: "changeColumn", Change: &tableedit.ColumnChange{Name: x.Column, Nullable: &required}}})
+		p.Conditions = append(p.Conditions, tableedit.Condition{Operation: tableedit.Operation{Kind: "backfill", Name: &x.Column}}, tableedit.Condition{Operation: tableedit.Operation{Kind: "changeColumn", Change: &tableedit.ColumnChange{Name: x.Column, Nullable: &required}}})
 	}
-	p.Consequences, p.ValidationChecks = tableedit.ReconstructionReview(b, d)
+	review, checks := tableedit.ReconstructionReview(b, d)
+	if b.Advanced != nil {
+		p.Consequences = append(p.Consequences, review...)
+	} else {
+		p.Consequences = review
+	}
+	p.ValidationChecks = checks
 	p.Risks = []string{"The displayed ADD, UPDATE and SET NOT NULL statements commit independently, each under the existing dedicated-session ACCESS EXCLUSIVE lock, metadata recheck and five-second lock wait. Earlier acknowledged steps survive later failure or Stop; no implicit replay occurs.", "Preview is catalog-only. Backfill reads and writes rows only during Apply. Expressions, triggers and constraints may run user code, change other values or external state, block or fail. Concurrent inserts between steps can make NOT NULL fail. Review every displayed statement and consequence."}
+	if err := pgAdvancedBindData(ctx, s.conn, b, &p); err != nil {
+		return p, err
+	}
 	return p, nil
 }
 

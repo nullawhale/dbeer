@@ -142,6 +142,9 @@ func (owner *owner) tuningOperationValid(op protocol.OperationRequest, physical 
 	return a && b
 }
 func tuningCatalogSafe(b tableedit.Baseline, q tuningQuery) bool {
+	if b.Advanced != nil {
+		return false
+	}
 	if !b.DependencyProof || b.Facts == nil || !b.Facts.Proof || !b.Facts.Table.Columns.Complete || !b.Facts.Table.Indexes.Complete || !b.Facts.Table.Constraints.Complete || !tableedit.IsDigest(b.Fingerprint) {
 		return false
 	}
@@ -311,6 +314,9 @@ func (owner *owner) runTuning(ctx context.Context, physical adapter.Session, c p
 		if b.Engine != engine || b.Target != r.Target || !tableedit.IsDigest(b.Fingerprint) {
 			return reject("validation", "Current metadata does not identify the exact requested table.")
 		}
+		if b.Advanced != nil {
+			return reject("validation", "Tuning requires the ordinary table model. Advanced security, hierarchy, type binding, persistence and storage-engine operations require their separate structure proof; no candidate or result query was prepared.")
+		}
 		if engine == "postgresql" && !adapter.PostgresTuningSearchPathSafe(child, physical, c) {
 			return reject("validation", "Tuning requires pg_catalog first in the effective PostgreSQL search path; custom operator resolution is unsupported.")
 		}
@@ -334,6 +340,9 @@ func (owner *owner) runTuning(ctx context.Context, physical adapter.Session, c p
 		b, err := physical.(tableedit.Adapter).StructureLoad(child, r.Target)
 		if err != nil || b.Fingerprint != r.MetadataFingerprint {
 			return reject("conflict", "Table metadata changed or is incomplete. Inspect and review validation again.")
+		}
+		if b.Advanced != nil {
+			return reject("validation", "Tuning requires the ordinary table model. Advanced security, hierarchy, type binding, persistence and storage-engine operations require their separate structure proof; no candidate or result query was prepared.")
 		}
 		if engine == "postgresql" && !adapter.PostgresTuningSearchPathSafe(child, physical, c) {
 			return reject("validation", "Validation requires pg_catalog first in the effective PostgreSQL search path; custom operator resolution is unsupported.")

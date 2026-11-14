@@ -96,7 +96,7 @@ func (s *Session) ReadSchema(ctx context.Context, spec sc.CaptureSpec, sink sc.S
 				return e
 			}
 		}
-		tables, e := r.rows("SELECT c.oid::pg_catalog.text,c.relname,c.relkind::pg_catalog.text,c.relpersistence::pg_catalog.text,c.relispartition::pg_catalog.text,(c.reloftype<>0)::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid)::pg_catalog.text,COALESCE(pg_catalog.array_to_json(c.reloptions)::pg_catalog.text,'[]'),pg_catalog.has_table_privilege(c.oid,'SELECT')::pg_catalog.text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relkind IN ('r','p','f') ORDER BY c.relname COLLATE pg_catalog.\"C\"", schema)
+		tables, e := r.rows("SELECT c.oid::pg_catalog.text,c.relname,c.relkind::pg_catalog.text,c.relpersistence::pg_catalog.text,c.relispartition::pg_catalog.text,(c.reloftype<>0)::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid)::pg_catalog.text,COALESCE(pg_catalog.array_to_json(c.reloptions)::pg_catalog.text,'[]'),pg_catalog.has_table_privilege(c.oid,'SELECT')::pg_catalog.text FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND (pg_catalog.chareq(c.relkind,'r') OR pg_catalog.chareq(c.relkind,'p') OR pg_catalog.chareq(c.relkind,'f')) ORDER BY c.relname COLLATE pg_catalog.\"C\"", schema)
 		if e != nil {
 			return e
 		}
@@ -110,7 +110,7 @@ func (s *Session) ReadSchema(ctx context.Context, spec sc.CaptureSpec, sink sc.S
 				return e
 			}
 		}
-		types, e := r.rows("SELECT t.oid::pg_catalog.text,t.typname FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typtype IN ('b','e','d','c','r','m') AND NOT (EXISTS(SELECT 1 FROM pg_catalog.pg_type element WHERE element.oid=t.typelem AND element.typarray=t.oid)) AND (t.typrelid=0 OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=t.typrelid AND c.relkind='c')) ORDER BY t.typname COLLATE pg_catalog.\"C\"", schema)
+		types, e := r.rows("SELECT t.oid::pg_catalog.text,t.typname FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND (pg_catalog.chareq(t.typtype,'b') OR pg_catalog.chareq(t.typtype,'e') OR pg_catalog.chareq(t.typtype,'d') OR pg_catalog.chareq(t.typtype,'c') OR pg_catalog.chareq(t.typtype,'r') OR pg_catalog.chareq(t.typtype,'m')) AND NOT (EXISTS(SELECT 1 FROM pg_catalog.pg_type element WHERE element.oid=t.typelem AND element.typarray=t.oid)) AND (t.typrelid=0 OR EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=t.typrelid AND c.relkind='c')) ORDER BY t.typname COLLATE pg_catalog.\"C\"", schema)
 		if e != nil {
 			return e
 		}
@@ -183,7 +183,7 @@ func (r *schemaCapture) typeUse(oid string, mod int64, dimensions int) (sc.TypeU
 	if cached, ok := r.types[oid]; ok {
 		return r.modifiers(oid, cached, mod, dimensions)
 	}
-	rows, e := r.rows("SELECT n.nspname,t.typname,t.typtype::pg_catalog.text,t.typelem::pg_catalog.text,t.typbasetype::pg_catalog.text,t.typtypmod::pg_catalog.text,t.typnotnull::pg_catalog.text,t.typrelid::pg_catalog.text,"+r.expressionProjection("t.typdefaultbin", "0")+",(EXISTS(SELECT 1 FROM pg_catalog.pg_type element WHERE element.oid=t.typelem AND element.typarray=t.oid))::pg_catalog.text,t.typisdefined::pg_catalog.text,COALESCE(cn.nspname,''),COALESCE(c.collname,''),t.typndims::pg_catalog.text,COALESCE(pg_catalog.obj_description(t.oid,'pg_type'),''),(t.oid<16384)::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_class rowtype WHERE rowtype.oid=t.typrelid AND rowtype.relkind<>'c')::pg_catalog.text,t.typcollation::pg_catalog.text FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace LEFT JOIN pg_catalog.pg_collation c ON c.oid=t.typcollation LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=c.collnamespace WHERE t.oid=$1::pg_catalog.oid", oid)
+	rows, e := r.rows("SELECT n.nspname,t.typname,t.typtype::pg_catalog.text,t.typelem::pg_catalog.text,t.typbasetype::pg_catalog.text,t.typtypmod::pg_catalog.text,t.typnotnull::pg_catalog.text,t.typrelid::pg_catalog.text,"+r.expressionProjection("t.typdefaultbin", "0")+",(EXISTS(SELECT 1 FROM pg_catalog.pg_type element WHERE element.oid=t.typelem AND element.typarray=t.oid))::pg_catalog.text,t.typisdefined::pg_catalog.text,COALESCE(cn.nspname,''),COALESCE(c.collname,''),t.typndims::pg_catalog.text,COALESCE((SELECT td.description FROM pg_catalog.pg_description td WHERE td.objoid OPERATOR(pg_catalog.=) ANY(ARRAY[t.oid]) AND pg_catalog.oideq(td.classoid,'pg_catalog.pg_type'::pg_catalog.regclass) AND pg_catalog.int4eq(td.objsubid,0::pg_catalog.int4)),''),(t.oid<16384)::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_class rowtype WHERE rowtype.oid=t.typrelid AND rowtype.relkind<>'c')::pg_catalog.text,t.typcollation::pg_catalog.text FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace LEFT JOIN pg_catalog.pg_collation c ON c.oid=t.typcollation LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=c.collnamespace WHERE t.oid=$1::pg_catalog.oid", oid)
 	if e != nil || len(rows) != 1 {
 		return sc.TypeUse{}, sc.ErrInvalid
 	}
@@ -340,10 +340,11 @@ func (r *schemaCapture) expression(text, class, oid string) (sc.Expression, erro
 		class = "pg_catalog." + class
 	}
 	expr := sc.Expression{Text: text, Dependencies: sc.Complete[sc.Ref](nil)}
-	rows, e := r.rows("SELECT rc.relname::pg_catalog.text,COALESCE(n.nspname,tn.nspname,''),COALESCE(c.relname,t.typname,''),d.refobjsubid::pg_catalog.text,COALESCE(a.attname,''),COALESCE(c.relkind::pg_catalog.text,''),d.refobjid::pg_catalog.text FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class rc ON rc.oid=d.refclassid LEFT JOIN pg_catalog.pg_class c ON d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND c.oid=d.refobjid LEFT JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=d.refobjsubid LEFT JOIN pg_catalog.pg_type t ON d.refclassid='pg_catalog.pg_type'::pg_catalog.regclass AND t.oid=d.refobjid LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=t.typnamespace WHERE d.classid=$1::pg_catalog.regclass AND d.objid=$2::pg_catalog.oid ORDER BY 1,2,3,4", class, oid)
+	rows, e := r.rows("SELECT rc.relname::pg_catalog.text,COALESCE(n.nspname,tn.nspname,''),COALESCE(c.relname,t.typname,''),d.refobjsubid::pg_catalog.text,COALESCE(a.attname,''),COALESCE(c.relkind::pg_catalog.text,''),d.refobjid::pg_catalog.text FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class rc ON rc.oid=d.refclassid LEFT JOIN pg_catalog.pg_class c ON d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND c.oid=d.refobjid LEFT JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid AND a.attnum=d.refobjsubid LEFT JOIN pg_catalog.pg_type t ON d.refclassid='pg_catalog.pg_type'::pg_catalog.regclass AND t.oid=d.refobjid LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=t.typnamespace WHERE d.classid=$1::pg_catalog.regclass AND d.objid=$2::pg_catalog.oid", class, oid)
 	if e != nil {
 		return expr, e
 	}
+	sort.Slice(rows, func(i, j int) bool { return strings.Join(rows[i][:4], "\x00") < strings.Join(rows[j][:4], "\x00") })
 	for _, d := range rows {
 		ref := sc.Ref{Schema: d[1], Name: d[2]}
 		switch d[0] {
@@ -404,10 +405,12 @@ func (r *schemaCapture) expression(text, class, oid string) (sc.Expression, erro
 	return expr, nil
 }
 func (r *schemaCapture) columns(table sc.Ref, oid string) ([]sc.Column, error) {
-	rows, e := r.rows("SELECT a.attname,a.atttypid::pg_catalog.text,a.atttypmod::pg_catalog.text,a.attndims::pg_catalog.text,a.attnotnull::pg_catalog.text,a.attidentity::pg_catalog.text,a.attgenerated::pg_catalog.text,"+r.expressionProjection("d.adbin", "d.adrelid")+",COALESCE(d.oid::pg_catalog.text,''),COALESCE(cn.nspname,''),COALESCE(co.collname,''),COALESCE(pg_catalog.col_description(a.attrelid,a.attnum),''),a.attnum::pg_catalog.text,a.attcollation::pg_catalog.text FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum LEFT JOIN pg_catalog.pg_collation co ON co.oid=a.attcollation LEFT JOIN pg_catalog.pg_namespace cn ON cn.oid=co.collnamespace WHERE a.attrelid=$1::pg_catalog.oid AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum", oid)
+	rows, e := r.rows("SELECT a.attname,a.atttypid::pg_catalog.text,a.atttypmod::pg_catalog.text,a.attndims::pg_catalog.text,a.attnotnull::pg_catalog.text,a.attidentity::pg_catalog.text,a.attgenerated::pg_catalog.text,"+r.expressionProjection("d.adbin", "d.adrelid")+",COALESCE(d.oid::pg_catalog.text,''),COALESCE(cn.nspname,''),COALESCE(co.collname,''),COALESCE((SELECT cd.description FROM pg_catalog.pg_description cd WHERE cd.objoid OPERATOR(pg_catalog.=) ANY(ARRAY[a.attrelid]) AND pg_catalog.oideq(cd.classoid,'pg_catalog.pg_class'::pg_catalog.regclass) AND pg_catalog.int4eq(cd.objsubid,a.attnum::pg_catalog.int4)),''),a.attnum::pg_catalog.text,a.attcollation::pg_catalog.text FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid OPERATOR(pg_catalog.=) ANY(ARRAY[a.attrelid]) AND pg_catalog.int2eq(d.adnum,a.attnum) LEFT JOIN pg_catalog.pg_collation co ON pg_catalog.oideq(co.oid,a.attcollation) LEFT JOIN pg_catalog.pg_namespace cn ON pg_catalog.oideq(cn.oid,co.collnamespace) WHERE a.attrelid OPERATOR(pg_catalog.=) ANY(ARRAY[$1::pg_catalog.oid]) AND pg_catalog.int2gt(a.attnum,0::pg_catalog.int2) AND NOT a.attisdropped ", oid)
 	if e != nil {
 		return nil, e
 	}
+	// Preserve native ordinal order without planner access-method inspection.
+	sort.Slice(rows, func(i, j int) bool { return pgInt(rows[i][12]) < pgInt(rows[j][12]) })
 	out := []sc.Column{}
 	for i, v := range rows {
 		r.members++
@@ -483,10 +486,16 @@ func (r *schemaCapture) table(ref sc.Ref, v []string) error {
 		return e
 	}
 	t.Indexes.Items = indexes
-	seqs, e := r.rows("SELECT s.oid::pg_catalog.text,n.nspname,s.relname,a.attname,q.seqtypid::pg_catalog.text,q.seqstart::pg_catalog.text,q.seqincrement::pg_catalog.text,q.seqmin::pg_catalog.text,q.seqmax::pg_catalog.text,q.seqcache::pg_catalog.text,q.seqcycle::pg_catalog.text FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class s ON d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND s.oid=d.objid AND s.relkind='S' JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace JOIN pg_catalog.pg_sequence q ON q.seqrelid=s.oid JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid WHERE d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND d.refobjid=$1::pg_catalog.oid AND d.deptype IN ('a','i') ORDER BY n.nspname,s.relname", v[0])
+	seqs, e := r.rows("SELECT s.oid::pg_catalog.text,n.nspname,s.relname,a.attname,q.seqtypid::pg_catalog.text,q.seqstart::pg_catalog.text,q.seqincrement::pg_catalog.text,q.seqmin::pg_catalog.text,q.seqmax::pg_catalog.text,q.seqcache::pg_catalog.text,q.seqcycle::pg_catalog.text FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class s ON pg_catalog.oideq(d.classid,'pg_catalog.pg_class'::pg_catalog.regclass) AND pg_catalog.oideq(s.oid,d.objid) AND pg_catalog.chareq(s.relkind,'S') JOIN pg_catalog.pg_namespace n ON pg_catalog.oideq(n.oid,s.relnamespace) JOIN pg_catalog.pg_sequence q ON pg_catalog.oideq(q.seqrelid,s.oid) JOIN pg_catalog.pg_attribute a ON pg_catalog.oideq(a.attrelid,d.refobjid) AND pg_catalog.int4eq(a.attnum::pg_catalog.int4,d.refobjsubid) WHERE d.refclassid OPERATOR(pg_catalog.=) ANY(ARRAY['pg_catalog.pg_class'::pg_catalog.regclass::pg_catalog.oid]) AND d.refobjid OPERATOR(pg_catalog.=) ANY(ARRAY[$1::pg_catalog.oid]) AND (pg_catalog.chareq(d.deptype,'a') OR pg_catalog.chareq(d.deptype,'i'))", v[0])
 	if e != nil {
 		return e
 	}
+	sort.Slice(seqs, func(i, j int) bool {
+		if seqs[i][1] != seqs[j][1] {
+			return seqs[i][1] < seqs[j][1]
+		}
+		return seqs[i][2] < seqs[j][2]
+	})
 	for _, s := range seqs {
 		u, e := r.typeUse(s[4], -1, 0)
 		if e != nil {
@@ -514,7 +523,7 @@ func (r *schemaCapture) sequence(oid string) error {
 		return nil
 	}
 	r.sequences[oid] = true
-	rows, e := r.rows("SELECT n.nspname,s.relname,q.seqtypid::pg_catalog.text,q.seqstart::pg_catalog.text,q.seqincrement::pg_catalog.text,q.seqmin::pg_catalog.text,q.seqmax::pg_catalog.text,q.seqcache::pg_catalog.text,q.seqcycle::pg_catalog.text,COALESCE(tn.nspname,''),COALESCE(t.relname,''),COALESCE(a.attname,'') FROM pg_catalog.pg_sequence q JOIN pg_catalog.pg_class s ON s.oid=q.seqrelid JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace LEFT JOIN pg_catalog.pg_depend d ON d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND d.objid=s.oid AND d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND d.deptype IN ('a','i') LEFT JOIN pg_catalog.pg_class t ON t.oid=d.refobjid LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=t.relnamespace LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=d.refobjsubid WHERE s.oid=$1::pg_catalog.oid", oid)
+	rows, e := r.rows("SELECT n.nspname,s.relname,q.seqtypid::pg_catalog.text,q.seqstart::pg_catalog.text,q.seqincrement::pg_catalog.text,q.seqmin::pg_catalog.text,q.seqmax::pg_catalog.text,q.seqcache::pg_catalog.text,q.seqcycle::pg_catalog.text,COALESCE(tn.nspname,''),COALESCE(t.relname,''),COALESCE(a.attname,'') FROM pg_catalog.pg_sequence q JOIN pg_catalog.pg_class s ON s.oid=q.seqrelid JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace LEFT JOIN pg_catalog.pg_depend d ON d.classid='pg_catalog.pg_class'::pg_catalog.regclass AND d.objid=s.oid AND d.refclassid='pg_catalog.pg_class'::pg_catalog.regclass AND (pg_catalog.chareq(d.deptype,'a') OR pg_catalog.chareq(d.deptype,'i')) LEFT JOIN pg_catalog.pg_class t ON t.oid=d.refobjid LEFT JOIN pg_catalog.pg_namespace tn ON tn.oid=t.relnamespace LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum=d.refobjsubid WHERE s.oid=$1::pg_catalog.oid", oid)
 	if e != nil {
 		return e
 	}
@@ -609,7 +618,7 @@ func (r *schemaCapture) indexes(table sc.Ref, oid string) ([]sc.Index, error) {
 	if r.version >= 150000 {
 		nulls = "i.indnullsnotdistinct"
 	}
-	rows, e := r.rows("SELECT c.oid::pg_catalog.text,c.relname,am.amname,i.indisunique::pg_catalog.text,"+nulls+"::pg_catalog.text,i.indisvalid::pg_catalog.text,i.indisready::pg_catalog.text,"+r.expressionProjection("i.indpred", "i.indrelid")+",COALESCE(pg_catalog.array_to_json(c.reloptions)::pg_catalog.text,'[]'),COALESCE(con.conname,''),i.indnkeyatts::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_depend WHERE classid='pg_catalog.pg_class'::pg_catalog.regclass AND objid=c.oid AND deptype='e')::pg_catalog.text,"+r.expressionProjection("i.indexprs", "i.indrelid")+",COALESCE(i.indexprs::pg_catalog.text,''),COALESCE(pg_catalog.obj_description(c.oid,'pg_class'),''),c.reltablespace::pg_catalog.text,i.indisclustered::pg_catalog.text,i.indisreplident::pg_catalog.text,COALESCE((SELECT pg_catalog.json_agg(pg_catalog.json_build_array(a.attnum,a.attstattarget) ORDER BY a.attnum)::pg_catalog.text FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND a.attstattarget<>-1),'[]') FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am am ON am.oid=c.relam LEFT JOIN pg_catalog.pg_constraint con ON con.conindid=c.oid AND con.conrelid=i.indrelid AND con.contype IN ('p','u','x') WHERE i.indrelid=$1::pg_catalog.oid ORDER BY c.relname COLLATE pg_catalog.\"C\"", oid)
+	rows, e := r.rows("SELECT c.oid::pg_catalog.text,c.relname,am.amname,i.indisunique::pg_catalog.text,"+nulls+"::pg_catalog.text,i.indisvalid::pg_catalog.text,i.indisready::pg_catalog.text,"+r.expressionProjection("i.indpred", "i.indrelid")+",COALESCE(pg_catalog.array_to_json(c.reloptions)::pg_catalog.text,'[]'),COALESCE(con.conname,''),i.indnkeyatts::pg_catalog.text,EXISTS(SELECT 1 FROM pg_catalog.pg_depend WHERE classid='pg_catalog.pg_class'::pg_catalog.regclass AND objid=c.oid AND deptype='e')::pg_catalog.text,"+r.expressionProjection("i.indexprs", "i.indrelid")+",COALESCE(i.indexprs::pg_catalog.text,''),COALESCE((SELECT ic.description FROM pg_catalog.pg_description ic WHERE ic.objoid OPERATOR(pg_catalog.=) ANY(ARRAY[c.oid]) AND pg_catalog.oideq(ic.classoid,'pg_catalog.pg_class'::pg_catalog.regclass) AND pg_catalog.int4eq(ic.objsubid,0::pg_catalog.int4)),''),c.reltablespace::pg_catalog.text,i.indisclustered::pg_catalog.text,i.indisreplident::pg_catalog.text,COALESCE((SELECT pg_catalog.json_agg(pg_catalog.json_build_array(a.attnum,a.attstattarget) ORDER BY a.attnum)::pg_catalog.text FROM pg_catalog.pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND a.attstattarget<>-1),'[]') FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid JOIN pg_catalog.pg_am am ON am.oid=c.relam LEFT JOIN pg_catalog.pg_constraint con ON con.conindid=c.oid AND con.conrelid=i.indrelid AND (pg_catalog.chareq(con.contype,'p') OR pg_catalog.chareq(con.contype,'u') OR pg_catalog.chareq(con.contype,'x')) WHERE i.indrelid=$1::pg_catalog.oid ORDER BY c.relname COLLATE pg_catalog.\"C\"", oid)
 	if e != nil {
 		return nil, e
 	}

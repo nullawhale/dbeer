@@ -16,6 +16,8 @@ type Backfill struct {
 
 // Reconstruction is private exact-plan evidence; portable drafts never carry it.
 type Reconstruction struct {
+	AdvancedDataTypes  []uint32
+	AdvancedDataProof  string
 	TemporaryTable     string
 	Method             string
 	ColumnOrder        []string

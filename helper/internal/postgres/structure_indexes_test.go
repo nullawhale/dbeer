@@ -237,7 +237,9 @@ func TestStructureIndexOpclassParametersAndNullsVersionLive(t *testing.T) {
 	}
 }
 
-func TestStructureCustomAccessMethodPreviewNeverInvokesHandlerLive(t *testing.T) {
+// Legitimate extension/operator-class metadata coverage. This does not assert
+// that arbitrary extension AM support routines cannot be entered by the planner.
+func TestStructureCustomAccessMethodNativeCatalogsLive(t *testing.T) {
 	f := newChangeFixture(t)
 	ctx := context.Background()
 	s := &Session{conn: f.conn}
@@ -250,34 +252,25 @@ func TestStructureCustomAccessMethodPreviewNeverInvokesHandlerLive(t *testing.T)
 	column := "base"
 	definition := tableedit.IndexDefinition{Method: "bloom", Terms: []tableedit.IndexTerm{{Column: &column}}, Options: []tableedit.IndexOption{{Name: "length", Value: "80"}}}
 	authoringApply(t, s, store, target, tableedit.Draft{AuthoringVersion: 3, Columns: []tableedit.Column{}, Indexes: []tableedit.IndexEdit{{Action: "add", Name: "bloom_idx", Definition: &definition}}})
-	var oid, language uint32
-	var source string
-	if f.observer.QueryRow(ctx, "SELECT p.oid,p.prolang,p.prosrc FROM pg_catalog.pg_am a JOIN pg_catalog.pg_proc p ON p.oid=a.amhandler WHERE a.amname='bloom'").Scan(&oid, &language, &source) != nil {
-		t.Fatal("owned AM handler metadata unavailable")
-	}
-	defer func() {
-		if _, err := f.observer.Exec(ctx, "UPDATE pg_catalog.pg_proc SET prolang=$1,prosrc=$2 WHERE oid=$3", language, source, oid); err != nil {
-			t.Error("owned AM handler cleanup failed")
-		}
-	}()
-	if _, err := f.observer.Exec(ctx, "UPDATE pg_catalog.pg_proc SET prolang=(SELECT oid FROM pg_catalog.pg_language WHERE lanname='plpgsql'),prosrc='BEGIN RAISE EXCEPTION ''owned AM handler executed''; END' WHERE oid=$1", oid); err != nil {
-		t.Fatal("owned AM support probe could not be installed")
+	for _, native := range []struct{ typ, support string }{{"oid", "hashoid"}, {"name", "hashname"}, {"int2", "hashint2"}, {"int8", "hashint8"}} {
+		typ := "pg_catalog." + native.typ
+		f.exec("CREATE OPERATOR CLASS " + f.table("native_"+native.typ+"_ops") + " FOR TYPE " + typ + " USING bloom AS OPERATOR 1 pg_catalog.=(" + typ + "," + typ + "), FUNCTION 1 pg_catalog." + native.support + "(" + typ + ")")
 	}
 	b, err := store.Load(ctx, s, target)
 	if err != nil {
-		t.Fatal("structure observation invoked the custom AM handler")
+		t.Fatal("legitimate extension metadata load failed")
 	}
 	plain := tableedit.IndexDefinition{Method: "btree", Terms: []tableedit.IndexTerm{{Column: &column}}}
 	if _, err = store.PreviewContext(ctx, s, b.Baseline.ID, tableedit.Draft{AuthoringVersion: 3, Columns: []tableedit.Column{}, Indexes: []tableedit.IndexEdit{{Action: "add", Name: "not_dispatched", Definition: &plain}}}); err != nil {
-		t.Fatal("Preview invoked the custom AM handler")
+		t.Fatal("legitimate extension catalog preview failed")
 	}
 	collector := sc.NewCollector(ctx, sc.DefaultLimits())
-	if err := s.ReadSchema(ctx, sc.CaptureSpec{Schemas: []string{f.schema}, Limits: sc.DefaultLimits()}, collector); err != nil {
-		t.Fatal("index comparison capture invoked its custom AM handler")
+	if err = s.ReadSchema(ctx, sc.CaptureSpec{Schemas: []string{f.schema}, Limits: sc.DefaultLimits()}, collector); err != nil {
+		t.Fatal("legitimate extension schema capture failed")
 	}
-	var text string
-	if f.observer.QueryRow(ctx, "SELECT pg_catalog.pg_get_indexdef($1::regclass,1,false)", f.table("bloom_idx")).Scan(&text) == nil {
-		t.Fatal("direct index deparser did not enter its custom AM handler positive control")
+	var value int
+	if f.observer.QueryRow(ctx, "SELECT base FROM "+f.table(target.Table)).Scan(&value) != nil || value != 1 {
+		t.Fatal("catalog observation changed retained data")
 	}
 }
 

@@ -14,12 +14,14 @@ func (r *schemaCapture) expressionProjection(node, relation string) string {
 	if !r.skipCustomTypeFormatting {
 		return deparse
 	}
+	// Singleton OID filters keep catalog index probes without PG18 merge-family
+	// discovery or inflated recursive-guard estimates that trigger repeated JIT.
 	unsafe := `EXISTS(WITH RECURSIVE expression_types AS (
  SELECT et.oid,et.typtype,et.typbasetype,et.typoutput,et.typmodout
  FROM pg_catalog.regexp_matches((` + node + `)::pg_catalog.text,':[[:alpha:]_]*[tT][yY][pP][eE][[:alpha:]_]*[[:space:]]+([0-9]+)','g') AS m
- JOIN pg_catalog.pg_type et ON et.oid=(m[1])::pg_catalog.oid
- UNION SELECT b.oid,b.typtype,b.typbasetype,b.typoutput,b.typmodout FROM expression_types d JOIN pg_catalog.pg_type b ON b.oid=d.typbasetype WHERE d.typtype='d'
- ) SELECT 1 FROM expression_types t WHERE t.typtype='p' OR t.typoutput>=16384 OR t.typmodout>=16384 OR (t.oid>=16384 AND t.typtype NOT IN ('e','d')))`
+ JOIN pg_catalog.pg_type et ON et.oid OPERATOR(pg_catalog.=) ANY(ARRAY[(m[1])::pg_catalog.oid])
+ UNION SELECT b.oid,b.typtype,b.typbasetype,b.typoutput,b.typmodout FROM expression_types d JOIN pg_catalog.pg_type b ON b.oid OPERATOR(pg_catalog.=) ANY(ARRAY[d.typbasetype]) WHERE pg_catalog.chareq(d.typtype,'d')
+ ) SELECT 1 FROM expression_types t WHERE pg_catalog.chareq(t.typtype,'p') OR pg_catalog.oidge(t.typoutput::pg_catalog.oid,16384::pg_catalog.oid) OR pg_catalog.oidge(t.typmodout::pg_catalog.oid,16384::pg_catalog.oid) OR (pg_catalog.oidge(t.oid,16384::pg_catalog.oid) AND NOT (pg_catalog.chareq(t.typtype,'e') OR pg_catalog.chareq(t.typtype,'d'))))`
 	return "CASE WHEN " + node + " IS NULL THEN '' WHEN " + unsafe + " THEN pg_catalog.chr(1)||'catalog:'||(" + node + ")::pg_catalog.text ELSE " + deparse + " END"
 }
 

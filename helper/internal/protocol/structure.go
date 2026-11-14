@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const StructureAdvancedKindsCapability = tableedit.AdvancedKindsCapability
+
 const StructureAuthoringCapability = tableedit.AuthoringCapability
 const StructureIndexAuthoringCapability = tableedit.IndexAuthoringCapability
 const StructureDestructiveCapability = tableedit.DestructiveCapability

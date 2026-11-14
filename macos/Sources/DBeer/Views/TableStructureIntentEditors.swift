@@ -17,10 +17,10 @@ struct TableStructureIntentEditors: View {
             HStack {
                 if !model.create {
                     Button("Append Column") {
-                        guard canEdit, (model.authoringAvailable || model.draft.columns.isEmpty), !columnLimitReached else { return }
+                        guard canEdit, (model.authoringAvailable || model.draft.columns.isEmpty), !columnLimitReached, model.permitsAdvanced("addColumn") else { return }
                         model.draft.columns.append(TableStructureEditorModel.emptyColumn)
-                    }.controlHover().disabled((!model.authoringAvailable && !model.draft.columns.isEmpty) || columnLimitReached)
-                    if model.destructiveAvailable {
+                    }.controlHover().disabled((!model.authoringAvailable && !model.draft.columns.isEmpty) || columnLimitReached || !model.permitsAdvanced("addColumn"))
+                    if model.destructiveAvailable && model.permitsAdvanced("dropColumn") {
                         Button("Drop Column") {
                             guard canEdit, !operationLimitReached else { return }
                             model.draft.changes = changes + [.init(name: "", drop: true)]
@@ -35,15 +35,15 @@ struct TableStructureIntentEditors: View {
                 Button("Add Index Operation") {
                     guard canEdit, !operationLimitReached else { return }
                     model.draft.indexes = indexes + [.init(action: "add", name: "", columns: [])]
-                }.controlHover().disabled(operationLimitReached)
+                }.controlHover().disabled(operationLimitReached || !model.permitsAdvanced("index"))
                 Button("Add Key Operation") {
                     guard canEdit, !operationLimitReached else { return }
                     model.draft.keys = keys + [.init(action: "add", kind: "unique", name: "", columns: [])]
-                }.controlHover().disabled(operationLimitReached)
+                }.controlHover().disabled(operationLimitReached || !model.permitsAdvanced("key"))
             }
             ForEach(changes.indices, id: \.self) { i in
                 StructureColumnChangeEditor(change: changeBinding(i), columns: model.baseline?.columns ?? [],
-                    engine: model.profile.engine, wideningAllowed: model.baseline?.dependencyProof == true, authoringAvailable: model.authoringAvailable, destructiveAvailable: model.conversionAvailable) {
+                    engine: model.profile.engine, wideningAllowed: model.baseline?.dependencyProof == true, authoringAvailable: model.authoringAvailable, destructiveAvailable: model.conversionAvailable, kindSupport: model.baseline?.advanced) {
                     guard canEdit, changes.indices.contains(i) else { return }
                     model.draft.changes?.remove(at: i)
                 }
@@ -58,7 +58,7 @@ struct TableStructureIntentEditors: View {
             }
             ForEach(keys.indices, id: \.self) { i in
                 StructureKeyIntentEditor(edit: keyBinding(i), existing: model.baseline?.keys ?? [], names: names,
-                    engine: model.profile.engine, schema: model.schema, allowCrossDatabase: allowCrossDatabase) {
+                    engine: model.profile.engine, schema: model.schema, allowCrossDatabase: allowCrossDatabase, foreignKeyAvailable: model.permitsAdvanced("foreignKey")) {
                     guard canEdit, keys.indices.contains(i) else { return }
                     model.draft.keys?.remove(at: i)
                     model.draft.allowDestructive = nil
@@ -117,6 +117,8 @@ private struct StructureColumnChangeEditor: View {
     let wideningAllowed: Bool
     var authoringAvailable = false
     var destructiveAvailable = false
+    var kindSupport: StructureAdvancedKindSupport? = nil
+    private func permits(_ kind: String) -> Bool { kindSupport?.permits(kind) ?? true }
     let remove: () -> Void
     private var old: StructureObservedColumn? { columns.first { StructureTarget.sameIdentifier($0.name, change.name) } }
 
@@ -133,7 +135,7 @@ private struct StructureColumnChangeEditor: View {
                             Text("Keep nullability").tag("keep")
                             Text("Allow NULL").tag("nullable")
                             Text("Require NOT NULL").tag("required")
-                        }.controlHover().disabled(old?.canModify != true || change.generated != nil || change.identity != nil)
+                        }.controlHover().disabled(!permits("nullable") || old?.canModify != true || change.generated != nil || change.identity != nil)
                     }
                     ControlIconButton(systemName: "minus.circle", action: remove).help("Remove this local column change").accessibilityLabel("Remove column change")
                 }
@@ -145,16 +147,16 @@ private struct StructureColumnChangeEditor: View {
                     if change.drop {
                         Text("DROP permanently removes this column and its stored values. Preview lists known affected dependencies and refuses unproven or implicit external removals.").font(.caption).foregroundStyle(.orange)
                     } else {
-                    if authoringAvailable {
+                    if authoringAvailable && permits("renameColumn") {
                         Toggle("Rename column", isOn: Binding(get: { change.renameTo != nil }, set: { change.renameTo = $0 ? "" : nil })).controlHover()
                         if change.renameTo != nil {
                             TextField("Exact resulting column name", text: Binding(get: { change.renameTo ?? "" }, set: { change.renameTo = $0 })).textFieldStyle(.roundedBorder)
                         }
                     }
-                        typeFields(old)
-                    TableStructureDefaultEditor(selection: $change.default, engine: engine, allowsKeep: true, authoringAvailable: authoringAvailable)
+                        typeFields(old).disabled(!permits("type"))
+                    TableStructureDefaultEditor(selection: $change.default, engine: engine, allowsKeep: true, authoringAvailable: authoringAvailable && kindSupport == nil)
                         .disabled(old.canModify != true || change.generated != nil || change.identity != nil)
-                    if authoringAvailable && engine != .sqlite {
+                    if authoringAvailable && engine != .sqlite && permits("generation") {
                         TableStructureGenerationEditor(selection: Binding(get: { change.generated }, set: {
                             change.generated = $0
                             if $0 != nil { change.identity = nil; change.type = nil; change.nullable = nil; change.default = nil }
@@ -301,6 +303,7 @@ private struct StructureKeyIntentEditor: View {
     let engine: DatabaseEngine
     let schema: String
     var allowCrossDatabase = false
+    var foreignKeyAvailable = true
     let remove: () -> Void
     private var available: [StructureKey] { existing.filter { $0.supported && $0.kind == edit.kind } }
 
@@ -310,7 +313,7 @@ private struct StructureKeyIntentEditor: View {
                 HStack {
                     StructureActionPicker(action: Binding(get: { edit.action }, set: { reset(action: $0, kind: edit.kind) }))
                     Picker("Kind", selection: Binding(get: { edit.kind }, set: { reset(action: edit.action, kind: $0) })) {
-                        Text("Primary").tag("primary"); Text("Unique").tag("unique"); Text("Foreign").tag("foreign")
+                        Text("Primary").tag("primary"); Text("Unique").tag("unique"); Text("Foreign").tag("foreign").disabled(!foreignKeyAvailable)
                     }.controlHover()
                     ControlIconButton(systemName: "minus.circle", action: remove).help("Remove this local key operation").accessibilityLabel("Remove key operation")
                 }

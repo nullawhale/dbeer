@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -165,6 +166,36 @@ type MigrationAdapter interface {
 	AdvancedAdapter
 	StructurePrepareMigration(context.Context, Baseline, Draft, func(Target) (Baseline, error)) (Prepared, error)
 }
+
+// A private acknowledged-unit observation, never portable execution authority.
+type MigrationCheckpoint struct {
+	Plan   Plan
+	Target Target
+	Draft  Draft
+	Before []Baseline
+	After  []Baseline
+}
+type MigrationCheckpointAdapter interface {
+	StructureMigrationCheckpoint(context.Context, MigrationCheckpoint) ([]Target, error)
+	StructureBindMigrationCheckpoint(context.Context, Baseline, Plan, Draft, func(Target) (Baseline, error)) (Plan, error)
+}
+
+func migrationCheckpointBindingMatches(original, bound Plan) bool {
+	if original.AdvancedProof == nil || bound.AdvancedProof == nil || !reflect.DeepEqual(original.AdvancedProof.Targets, bound.AdvancedProof.Targets) {
+		return false
+	}
+	unchanged := bound
+	unchanged.AdvancedProof = original.AdvancedProof
+	return reflect.DeepEqual(unchanged, original)
+}
+func migrationCheckpointBaselines(values map[string]Baseline) []Baseline {
+	out := []Baseline{}
+	for _, key := range migrationKeys(values) {
+		out = append(out, migrationClone(values[key]))
+	}
+	return out
+}
+
 type MigrationStore struct {
 	targets   map[string]Target
 	plan      *MigrationPlan
@@ -177,15 +208,15 @@ func migrationTarget(t Target) string { return t.Schema + "\x00" + t.Table }
 func migrationClone(b Baseline) Baseline {
 	b.Facts = cloneFacts(b.Facts)
 	b.Attributes = copyAttrs(b.Attributes)
-	b.Columns = append([]ObservedColumn(nil), b.Columns...)
-	b.Keys = append([]Key(nil), b.Keys...)
+	b.Columns = slices.Clone(b.Columns)
+	b.Keys = slices.Clone(b.Keys)
 	for i := range b.Keys {
-		b.Keys[i].Columns = append([]string(nil), b.Keys[i].Columns...)
-		b.Keys[i].ReferenceColumns = append([]string(nil), b.Keys[i].ReferenceColumns...)
+		b.Keys[i].Columns = slices.Clone(b.Keys[i].Columns)
+		b.Keys[i].ReferenceColumns = slices.Clone(b.Keys[i].ReferenceColumns)
 	}
-	b.Indexes = append([]Index(nil), b.Indexes...)
+	b.Indexes = slices.Clone(b.Indexes)
 	for i := range b.Indexes {
-		b.Indexes[i].Columns = append([]string(nil), b.Indexes[i].Columns...)
+		b.Indexes[i].Columns = slices.Clone(b.Indexes[i].Columns)
 	}
 	return b
 }
@@ -580,7 +611,7 @@ func (s *MigrationStore) Preview(ctx context.Context, a MigrationAdapter, d Migr
 	}
 	for _, o := range d.Objects {
 		b := initial[migrationTarget(o.Target)]
-		if b.Engine == "postgresql" && (o.Draft.Reconstruct || len(o.Draft.ColumnOrder) > 0) {
+		if b.Engine == "postgresql" && b.Advanced == nil && (o.Draft.Reconstruct || len(o.Draft.ColumnOrder) > 0) {
 			temp := Target{Schema: b.Target.Schema, Table: "__dbeer_rebuild_" + b.Fingerprint[:12], Create: true}
 			if _, err := migrationCapture(ctx, a, temp, initial); err != nil {
 				return s.Status(), errors.New("The reviewed reconstruction temporary destination is occupied or unprovable.")
@@ -652,7 +683,14 @@ func (s *MigrationStore) Preview(ctx context.Context, a MigrationAdapter, d Migr
 		}
 		before := expectation()
 		checkpoints = append(checkpoints, id)
-		step := MigrationStep{ID: id, ObjectID: object, Phase: phase, Target: t, Draft: draft, SQL: prepared.SQL, Before: before, After: expectation(), Risks: prepared.Risks, Consequences: prepared.Consequences, Atomic: prepared.Reconstruction != nil && prepared.Reconstruction.Method == "postgresql-copy" || p.Engine == "sqlite"}
+		atomic := p.Engine == "sqlite"
+		if reconstruction := prepared.Reconstruction; reconstruction != nil && p.Engine == "postgresql" {
+			switch reconstruction.Method {
+			case "postgresql-copy", "postgresql-native-cluster", "postgresql-advanced-copy":
+				atomic = true
+			}
+		}
+		step := MigrationStep{ID: id, ObjectID: object, Phase: phase, Target: t, Draft: draft, SQL: prepared.SQL, Before: before, After: expectation(), Risks: prepared.Risks, Consequences: prepared.Consequences, Atomic: atomic}
 		step.Digest = Fingerprint([]any{step, prepared.Conditions, prepared.Reconstruction, prepared.Types, prepared.IndexGuards})
 		p.Destructive = p.Destructive || prepared.Destructive
 		p.Steps = append(p.Steps, step)
@@ -776,7 +814,7 @@ func (s *MigrationStore) Export(r Apply) (MigrationReply, error) {
 }
 
 func migrationReference(before, after, source Baseline, d Draft) bool {
-	if before.Target != after.Target || before.Scope != after.Scope || before.Identity != after.Identity || before.Guard != after.Guard || !reflect.DeepEqual(before.Attributes, after.Attributes) {
+	if before.Target != after.Target || before.Scope != after.Scope || before.Identity != after.Identity || before.Guard != after.Guard || !reflect.DeepEqual(before.Attributes, after.Attributes) || !reflect.DeepEqual(before.AdvancedEvidence, after.AdvancedEvidence) {
 		return false
 	}
 	if before.Engine == "sqlite" {
@@ -845,6 +883,8 @@ func (s *MigrationStore) Apply(ctx context.Context, a MigrationAdapter, r Apply)
 	}
 	current := p.initial
 	acknowledged := 0
+	checkpointAdapter, hasCheckpointAdapter := a.(MigrationCheckpointAdapter)
+	checkpointVerified := false
 	stop := func(state string) MigrationReply { outcome.State = state; return s.Status() }
 	for i, step := range p.Steps {
 		if ctx.Err() != nil {
@@ -865,11 +905,41 @@ func (s *MigrationStore) Apply(ctx context.Context, a MigrationAdapter, r Apply)
 		key := migrationTarget(step.Target)
 		before := current[key]
 		prepared := p.prepared[i]
+		originalReferences := prepared.References
 		prepared.References = nil
-		for _, other := range migrationKeys(current) {
-			if other != key {
-				prepared.References = append(prepared.References, current[other])
+		if prepared.AdvancedProof != nil {
+			for _, ref := range originalReferences {
+				observed, exists := current[migrationTarget(ref.Target)]
+				if !exists || observed.Target != ref.Target {
+					outcome.Steps[i].Message = "An originally captured advanced reference is unavailable; no next unit was dispatched."
+					if acknowledged == 0 {
+						return stop("failed"), nil
+					}
+					return stop("partiallyApplied"), nil
+				}
+				prepared.References = append(prepared.References, observed)
 			}
+		} else {
+			for _, other := range migrationKeys(current) {
+				if other != key {
+					prepared.References = append(prepared.References, current[other])
+				}
+			}
+		}
+		if prepared.AdvancedProof != nil && len(prepared.Conditions) == 1 && (prepared.Conditions[0].Operation.Kind == "addKey" || prepared.Conditions[0].Operation.Kind == "dropKey") && prepared.Conditions[0].Operation.Key != nil && prepared.Conditions[0].Operation.Key.Kind == "foreign" && checkpointVerified && hasCheckpointAdapter {
+			load := func(t Target) (Baseline, error) {
+				b, exists := current[migrationTarget(t)]
+				if !exists || b.Target != t {
+					return Baseline{}, ErrStale
+				}
+				return migrationClone(b), nil
+			}
+			bound, err := checkpointAdapter.StructureBindMigrationCheckpoint(ctx, before, prepared, step.Draft, load)
+			if err != nil || !migrationCheckpointBindingMatches(prepared, bound) {
+				outcome.Steps[i].Message = "The acknowledged native checkpoint no longer matches this exact reviewed foreign-key restoration; no next unit was dispatched."
+				return stop("partiallyApplied"), nil
+			}
+			prepared = bound
 		}
 		xs := a.StructureApplySteps(ctx, before, prepared)
 		unit := &outcome.Steps[i]
@@ -939,7 +1009,7 @@ func (s *MigrationStore) Apply(ctx context.Context, a MigrationAdapter, r Apply)
 				}
 			}
 			observed, readErr := a.StructureLoad(ctx, target)
-			if readErr != nil || !ValidBaseline(observed) || other != key && !renamedDestination && !migrationReference(old, observed, before, step.Draft) {
+			if readErr != nil || !ValidBaseline(observed) {
 				unit.Message = fmt.Sprintf("The SQL unit was acknowledged, but expected intermediate metadata for %s.%s could not be confirmed. Reconcile before continuing.", target.Schema, target.Table)
 				return stop("partiallyApplied"), nil
 			}
@@ -961,6 +1031,40 @@ func (s *MigrationStore) Apply(ctx context.Context, a MigrationAdapter, r Apply)
 				next[other] = observed
 			}
 			unit.Observed = append(unit.Observed, MigrationObservation{Target: observed.Target, Fingerprint: observed.Fingerprint, IdentityDigest: Fingerprint([]string{observed.Scope, observed.Identity, observed.Guard})})
+		}
+		covered := map[string]bool{}
+		special := prepared.AdvancedProof != nil || prepared.Reconstruction != nil && (prepared.Reconstruction.Method == "postgresql-advanced-copy" || prepared.Reconstruction.Method == "postgresql-native-cluster")
+		if special && hasCheckpointAdapter {
+			verified, err := checkpointAdapter.StructureMigrationCheckpoint(ctx, MigrationCheckpoint{Plan: prepared, Target: step.Target, Draft: step.Draft, Before: migrationCheckpointBaselines(current), After: migrationCheckpointBaselines(next)})
+			if err != nil {
+				unit.Message = "The acknowledged unit's complete native checkpoint could not be confirmed. Reconcile before continuing."
+				return stop("partiallyApplied"), nil
+			}
+			for _, target := range verified {
+				k := migrationTarget(target)
+				if !target.Valid() || target.Create || current[k].Target != target || next[k].Target != target || covered[k] {
+					unit.Message = "The engine returned an invalid native checkpoint scope."
+					return stop("partiallyApplied"), nil
+				}
+				covered[k] = true
+			}
+			if !covered[key] {
+				unit.Message = "The engine did not prove the acknowledged source checkpoint."
+				return stop("partiallyApplied"), nil
+			}
+			checkpointVerified = true
+		}
+		for _, other := range migrationKeys(current) {
+			if other == key || covered[other] {
+				continue
+			}
+			if prepared.ResultTarget != nil && other == migrationTarget(*prepared.ResultTarget) && other != key {
+				continue
+			}
+			if !migrationReference(current[other], next[other], before, step.Draft) {
+				unit.Message = "The acknowledged unit changed unselected captured metadata. Reconcile before continuing."
+				return stop("partiallyApplied"), nil
+			}
 		}
 		current = next
 	}

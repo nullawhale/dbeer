@@ -98,15 +98,17 @@ final class TableStructureEditorModel: ObservableObject, Identifiable {
     }
 
     var destructiveAvailable: Bool { [.postgresql, .mysql, .sqlite].contains(profile.engine) && destructiveSupported() }
-    var reconstructionAvailable: Bool { [.postgresql, .mysql, .sqlite].contains(profile.engine) && reconstructionSupported() }
-    var conversionAvailable: Bool { [.postgresql, .mysql].contains(profile.engine) && destructiveAvailable }
+    func permitsAdvanced(_ kind: String) -> Bool { baseline?.advanced?.permits(kind) ?? true }
+    var advancedDraftPermitted: Bool { baseline?.advanced?.permits(draft) ?? true }
+    var reconstructionAvailable: Bool { permitsAdvanced("reconstruction") && [.postgresql, .mysql, .sqlite].contains(profile.engine) && reconstructionSupported() }
+    var conversionAvailable: Bool { baseline?.advanced == nil && [.postgresql, .mysql].contains(profile.engine) && destructiveAvailable }
     var targetWasDropped: Bool { outcomeReview?.plan.droppedTarget == true && outcome?.state == "applied" }
     var indexAuthoringAvailable: Bool { profile.engine != .sqlite && indexAuthoringSupported() }
     private var authoringPermitted: Bool { (!needsAuthoring || authoringAvailable) && (!draft.requiresIndexAuthoring || indexAuthoringAvailable) && (!draft.requiresDestructiveAuthoring || destructiveAvailable) && (!draft.requiresReconstructionAuthoring || reconstructionAvailable) }
     var authoringAvailable: Bool { authoringSupported() }
     private var needsAuthoring: Bool { draft.requiresAuthoringV2 || !create && draft.columns.count > 1 }
     var canReconcileRenamedTarget: Bool { outcomeReview?.plan.resultTarget != nil && outcome?.state == "outcomeUnknown" }
-    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && draft.valid && hasExactReconstructionOrder && authoringPermitted && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
+    var canPreview: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && baseline != nil && advancedDraftPermitted && draft.valid && hasExactReconstructionOrder && authoringPermitted && outcome == nil && (operationSupport?.permits("structure.preview", legacyAllowed: true) ?? true) }
     var canApply: Bool { !isBusy && !closing && operationsAllowed() && !invalidated && preview != nil && authoringPermitted && outcome == nil && !profile.policy.readOnly && (operationSupport?.availability("structure.apply").map { $0.state == .available } ?? true) }
     var canValidateData: Bool {
         !isBusy && !closing && operationsAllowed() && !invalidated && destructiveAvailable &&

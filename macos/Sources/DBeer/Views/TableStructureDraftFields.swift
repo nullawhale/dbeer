@@ -6,16 +6,17 @@ struct TableStructureDraftFields: View {
     private var canEdit: Bool { !model.isBusy && !model.closing && !model.invalidated && model.baseline != nil && model.outcome == nil }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if let support = model.baseline?.advanced { TableStructureAdvancedKindDetails(support: support) }
             if !model.create && (model.destructiveAvailable || model.draft.dropTable) {
                 Toggle("Drop table and all its stored data", isOn: Binding(get: { model.draft.dropTable }, set: {
                     model.draft.dropTable = $0; model.draft.allowDestructive = nil
-                })).controlHover().disabled(!model.destructiveAvailable)
+                })).controlHover().disabled(!model.destructiveAvailable || model.baseline?.advanced != nil)
                 if model.draft.dropTable {
                     Text("Table deletion must be the only operation in this draft. Other authored edits are retained; remove them or turn off Drop table before Preview. Dependencies and data-loss consequences are reviewed before Apply.").font(.caption).foregroundStyle(.orange)
                 }
             }
             Group {
-            if !model.create && model.authoringAvailable {
+            if !model.create && model.authoringAvailable && model.permitsAdvanced("renameTable") {
                 Toggle("Rename table", isOn: Binding(get: { model.draft.renameTable != nil }, set: { model.draft.renameTable = $0 ? "" : nil })).controlHover()
                 if model.draft.renameTable != nil {
                     TextField("Exact resulting table name", text: Binding(get: { model.draft.renameTable ?? "" }, set: { model.draft.renameTable = $0 })).textFieldStyle(.roundedBorder)
@@ -40,7 +41,7 @@ struct TableStructureDraftFields: View {
                 }.controlHover().disabled(!canEdit || model.draft.columns.count >= 128)
             }
             TableStructureIntentEditors(model: model, allowCrossDatabase: allowCrossDatabase)
-            if !model.create { TableStructureReconstructionEditor(model: model) }
+            if !model.create && model.permitsAdvanced("reconstruction") { TableStructureReconstructionEditor(model: model) }
             }.disabled(model.draft.dropTable)
             if model.draft.dropTable {
                 Toggle("Include table deletion in Preview", isOn: Binding(get: { model.draft.allowDestructive == true }, set: { model.draft.allowDestructive = $0 })).controlHover()

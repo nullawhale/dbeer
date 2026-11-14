@@ -201,12 +201,13 @@ struct StructureBaseline: Codable, Equatable, Sendable {
     var keys: [StructureKey]?
     var indexes: [StructureIndex]?
     var dependencyProof: Bool?
+    var advanced: StructureAdvancedKindSupport? = nil
 }
 extension StructureBaseline {
-    private enum CodingKeys: String, CodingKey { case id, target, engine, fingerprint, columns, limitations, keys, indexes, dependencyProof }
+    private enum CodingKeys: String, CodingKey { case id, target, engine, fingerprint, columns, limitations, keys, indexes, dependencyProof, advanced }
     init(from decoder: any Decoder) throws {
         let all = try decoder.container(keyedBy: StructureCodingKey.self)
-        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["id", "target", "engine", "fingerprint", "columns", "limitations", "keys", "indexes", "dependencyProof"]) else { throw BackendTransportError(.invalidMessage) }
+        guard Set(all.allKeys.map(\.stringValue)).isSubset(of: ["id", "target", "engine", "fingerprint", "columns", "limitations", "keys", "indexes", "dependencyProof", "advanced"]) else { throw BackendTransportError(.invalidMessage) }
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         target = try c.decode(StructureTarget.self, forKey: .target)
@@ -220,6 +221,8 @@ extension StructureBaseline {
         indexes = try c.decodeIfPresent([StructureIndex].self, forKey: .indexes)
         if c.contains(.dependencyProof), try c.decodeNil(forKey: .dependencyProof) { throw BackendTransportError(.invalidMessage) }
         dependencyProof = try c.decodeIfPresent(Bool.self, forKey: .dependencyProof)
+        if c.contains(.advanced), try c.decodeNil(forKey: .advanced) { throw BackendTransportError(.invalidMessage) }
+        advanced = try c.decodeIfPresent(StructureAdvancedKindSupport.self, forKey: .advanced)
     }
 }
 
@@ -634,7 +637,7 @@ extension StructureBaseline {
     var requiresIndexAuthoring: Bool { (indexes ?? []).contains { $0.definition != nil } }
     static func digest(_ s: String) -> Bool { s.utf8.count == 64 && s.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
     var valid: Bool {
-        BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql", "sqlite"].contains(engine) && (engine != "sqlite" || !requiresIndexAuthoring) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
+        (advanced?.valid(engine: engine) ?? true) && BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql", "sqlite"].contains(engine) && (engine != "sqlite" || !requiresIndexAuthoring) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
             StructureTarget.identifier($0.name) && $0.nativeType.utf8.count <= 4096 && ($0.defaultExpression?.utf8.count ?? 0) <= 65_536 && ($0.editableType?.valid ?? true) && ($0.charset.map(StructureTarget.identifier) ?? true) && ($0.collation.map { StructureTarget.identifier($0.name) && ($0.schema.isEmpty || StructureTarget.identifier($0.schema)) } ?? true)
         } && (keys?.count ?? 0) <= 256 && (indexes?.count ?? 0) <= 256 && (keys ?? []).allSatisfy {
             StructureTarget.identifier($0.name) && ["primary", "unique", "foreign", "unsupported"].contains($0.kind) && $0.columns.count <= 32 && $0.columns.allSatisfy(StructureTarget.identifier) && ($0.reference?.valid ?? true) && ($0.referenceColumns?.count ?? 0) <= 32

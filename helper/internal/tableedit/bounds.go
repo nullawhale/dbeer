@@ -6,14 +6,14 @@ import (
 )
 
 func ValidBaseline(b Baseline) bool {
-	if !b.Target.Valid() || b.Target.Reconcile || !IsDigest(b.Fingerprint) || b.Engine != "postgresql" && b.Engine != "mysql" && b.Engine != "sqlite" || len(b.Columns) > MaxColumns || len(b.Keys) > 256 || len(b.Indexes) > 256 || len(b.Limitations) > 64 {
+	if !b.Advanced.Valid(b.Engine) || !b.Target.Valid() || b.Target.Reconcile || !IsDigest(b.Fingerprint) || b.Engine != "postgresql" && b.Engine != "mysql" && b.Engine != "sqlite" || len(b.Columns) > MaxColumns || len(b.Keys) > 256 || len(b.Indexes) > 256 || len(b.Limitations) > 64 {
 		return false
 	}
 	raw, e := json.Marshal(b)
 	if e != nil || len(raw) > 4<<20 {
 		return false
 	}
-	private, e := json.Marshal([]any{b.Facts, b.Attributes})
+	private, e := json.Marshal([]any{b.Facts, b.Attributes, b.AdvancedEvidence})
 	if e != nil || len(private) > 4<<20 {
 		return false
 	}

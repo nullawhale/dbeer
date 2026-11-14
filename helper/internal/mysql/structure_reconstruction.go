@@ -13,6 +13,9 @@ func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedi
 	if err != nil {
 		return tableedit.Prepared{}, err
 	}
+	if b.Advanced != nil && len(d.Backfills) == 0 {
+		return myAdvancedReconstructionPrepare(b, d)
+	}
 	p := tableedit.Prepared{}
 	target := QuoteIdentifier(b.Target.Schema) + "." + QuoteIdentifier(b.Target.Table)
 	if len(d.Backfills) > 0 {
@@ -47,7 +50,7 @@ func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedi
 			}
 			name := QuoteIdentifier(x.Column)
 			p.SQL = append(p.SQL, "UPDATE "+target+" SET "+name+" = "+expression+" WHERE "+name+" IS NULL;")
-			p.Conditions = append(p.Conditions, tableedit.Condition{Operation: tableedit.Operation{Kind: "backfill"}})
+			p.Conditions = append(p.Conditions, tableedit.Condition{Operation: tableedit.Operation{Kind: "backfill", Name: &x.Column}})
 			for _, c := range d.Columns {
 				if c.Name == x.Column {
 					definition, e := structureColumn(c)
@@ -56,7 +59,7 @@ func (s *Session) prepareStructureReconstruction(ctx context.Context, b tableedi
 					}
 					p.SQL = append(p.SQL, "ALTER TABLE "+target+" MODIFY COLUMN "+definition+";")
 					required := false
-					p.Conditions = append(p.Conditions, tableedit.Condition{Operation: tableedit.Operation{Kind: "changeColumn", Change: &tableedit.ColumnChange{Name: x.Column, Nullable: &required}}})
+					p.Conditions = append(p.Conditions, tableedit.Condition{Operation: tableedit.Operation{Kind: "changeColumn", Name: &x.Column, Change: &tableedit.ColumnChange{Name: x.Column, Nullable: &required}}})
 				}
 			}
 		}
