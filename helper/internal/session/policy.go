@@ -28,6 +28,14 @@ func (owner *owner) invalidateGrant() {
 
 func assessOperation(engine string, operation protocol.OperationRequest) protocol.AssessedOperation {
 	result := protocol.AssessedOperation{Kind: "read", Statements: []protocol.StatementAssessment{}}
+	if operation.Type == "tuning.setting" {
+		result.Kind = "write"
+		result.TuningSetting = adapter.PostgresTuningSettingPreview(*operation.TuningSetting)
+		return result
+	}
+	if operation.Type == "tuning.validate" {
+		return result
+	}
 	if operation.Type == "structure.validate" {
 		return result
 	}
@@ -149,6 +157,11 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 				return protocol.ErrorResponse(command, "conflict", err.Error())
 			}
 		}
+		if operation.Type == "tuning.validate" || operation.Type == "tuning.setting" {
+			if len(sessions) == 0 || !owner.tuningOperationValid(operation, sessions[0]) {
+				return rejectedCommand(command, "validation", "Tuning requires the supported current owner, exact context and a supported readonly query or transaction-local setting.")
+			}
+		}
 		item := owner.assessRetainedOperation(engine, operation, policy, sessions...)
 		if operation.Type == "explain.run" {
 			if len(sessions) == 0 {
@@ -174,7 +187,7 @@ func (owner *owner) assess(command protocol.Command, engine string, policy proto
 		preparedSQL = append(preparedSQL, sql)
 		assessment.Operations = append(assessment.Operations, item)
 		decision := policyDecision(policy, item)
-		if (operation.Type == "explain.run" && (operation.Explain.Mode == "analyze" || item.Kind != "read") || operation.Type == "structure.validate") && decision == "allow" {
+		if (operation.Type == "tuning.validate" || operation.Type == "tuning.setting" || operation.Type == "explain.run" && (operation.Explain.Mode == "analyze" || item.Kind != "read") || operation.Type == "structure.validate") && decision == "allow" {
 			decision = "confirm"
 		}
 		if decision == "deny" || decision == "confirm" && assessment.Decision == "allow" {
@@ -202,7 +215,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 	if owner.monitorOnly {
 		return command.Type == "monitor.snapshot" || command.Type == "monitor.schema"
 	}
-	if command.Type != "execute" && command.Type != "command.execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "structure.physical.apply" && command.Type != "structure.migration.apply" && command.Type != "structure.validate" && command.Type != "import.apply" {
+	if command.Type != "tuning.validate" && command.Type != "tuning.setting" && command.Type != "execute" && command.Type != "command.execute" && command.Type != "explain.run" && command.Type != "changes.apply" && command.Type != "structure.apply" && command.Type != "structure.physical.apply" && command.Type != "structure.migration.apply" && command.Type != "structure.validate" && command.Type != "import.apply" {
 		return true
 	}
 	if owner.structureOnly && command.Type != "structure.apply" && command.Type != "structure.physical.apply" && command.Type != "structure.migration.apply" && command.Type != "structure.validate" || command.Type != "structure.apply" && command.Type != "structure.physical.apply" && command.Type != "structure.migration.apply" && command.Type != "structure.validate" && command.Structure != nil {
@@ -220,7 +233,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 			return false
 		}
 	}
-	operation := protocol.OperationRequest{NativeCommand: command.NativeCommand, TableImport: command.TableImport, Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
+	operation := protocol.OperationRequest{TuningValidation: command.TuningValidation, TuningSetting: command.TuningSetting, NativeCommand: command.NativeCommand, TableImport: command.TableImport, Type: command.Type, SQL: command.SQL, Parameters: command.Parameters, Export: command.Export, Changes: command.Changes, Explain: command.Explain}
 	if command.Type == "command.execute" {
 		if command.SessionID != owner.id {
 			owner.invalidateGrant()
@@ -268,6 +281,10 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 			return false
 		}
 	}
+	if (operation.Type == "tuning.validate" || operation.Type == "tuning.setting") && (len(sessions) == 0 || !owner.tuningOperationValid(operation, sessions[0])) {
+		owner.invalidateGrant()
+		return false
+	}
 	if !operation.Valid() {
 		owner.invalidateGrant()
 		return false
@@ -279,7 +296,7 @@ func (owner *owner) authorize(command protocol.Command, engine string, policy pr
 		return false
 	}
 	if command.Authorization == "" {
-		if command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" {
+		if command.Type == "tuning.validate" || command.Type == "tuning.setting" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" {
 			owner.grant = nil
 			return false
 		}

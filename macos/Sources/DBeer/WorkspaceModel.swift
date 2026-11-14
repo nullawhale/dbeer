@@ -97,6 +97,7 @@ final class WorkspaceModel: ObservableObject {
     @Published private(set) var currentKeyspace: String?
     @Published private(set) var capabilities: Set<String> = []
     @Published private(set) var explainSupport: ExplainSupport?
+    @Published private(set) var tuningOperationEpoch = UUID()
     @Published private(set) var operationSupport: OperationSupport?
     @Published var sql = "SELECT 1 AS id, 'hello'::text AS name;"
 
@@ -605,12 +606,16 @@ final class WorkspaceModel: ObservableObject {
     @discardableResult
     func run(sql commandSQL: String? = nil, catalog: CatalogRequest? = nil, export: ExportRequest? = nil,
              authorization: String? = nil, explain: ExplainRequest? = nil,
-             parameters: [QueryParameterBinding]? = nil) async -> QueryCompletion? {
+             parameters: [QueryParameterBinding]? = nil, tuning: BackendCommand? = nil, collectedExplain: Bool = false, ownedQueryID: String? = nil, captureAdmission: ExplainCollectorAdmission? = nil) async -> QueryCompletion? {
         guard canRun, let sessionId, let helper else { return nil }
-        let queryId = UUID().uuidString
+        if tuning == nil && !collectedExplain { tuningOperationEpoch = UUID() }
+        let queryId = tuning?.queryId ?? ownedQueryID ?? UUID().uuidString
         let generation = helperGeneration
         var command: BackendCommand
-        if let explain { command = .explain(sessionId: sessionId, queryId: queryId, request: explain) }
+        if let tuning {
+            guard tuning.type.hasPrefix("tuning."), tuning.sessionId == sessionId, tuning.queryId == queryId else { return nil }
+            command = tuning
+        } else if let explain { command = .explain(sessionId: sessionId, queryId: queryId, request: explain) }
         else if let catalog { command = .catalog(sessionId: sessionId, queryId: queryId, request: catalog) }
         else if let export { command = .runToFile(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql, export: export) }
         else { command = .execute(sessionId: sessionId, queryId: queryId, sql: commandSQL ?? sql) }
@@ -618,7 +623,7 @@ final class WorkspaceModel: ObservableObject {
         command.parameters = parameters
         let previousResult = result
         clearQueryFeedback()
-        if explain != nil { result = previousResult }
+        if explain != nil || tuning != nil { result = previousResult }
         latestQueryId = queryId
         activeQueryId = queryId
         let startedAt = Date.now
@@ -633,7 +638,7 @@ final class WorkspaceModel: ObservableObject {
         queryStartedAt = startedAt
         queryPhase = .starting
         do {
-            let reply = try await helper.request(command) { [weak self] event in
+            let reply = try await helper.request(command, captureAdmission: captureAdmission) { [weak self] event in
                 Task { @MainActor in
                     guard let self, !self.stopping, self.helperGeneration == generation,
                           self.activeQueryId == queryId, event.type == "query.started",
@@ -643,7 +648,7 @@ final class WorkspaceModel: ObservableObject {
             }
             let terminal = completion(reply: reply)
             guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
-            if explain == nil { result = reply }
+            if explain == nil && tuning == nil { result = reply }
             if let keyspace = reply.currentKeyspace { currentKeyspace = keyspace }
             queryFailure = nil
             if case .ready = state { transactionStatus = reply.transactionStatus }
@@ -669,7 +674,7 @@ final class WorkspaceModel: ObservableObject {
             guard !stopping, helperGeneration == generation, latestQueryId == queryId else { return terminal }
             if let keyspace = error.reply.currentKeyspace { currentKeyspace = keyspace }
             queryErrorPosition = error.reply.errorPosition
-            if explain == nil && error.reply.resultSets?.isEmpty == false { result = error.reply }
+            if explain == nil && tuning == nil && error.reply.resultSets?.isEmpty == false { result = error.reply }
             queryDurationMs = error.reply.durationMs ?? elapsedMilliseconds()
             queryFailure = failure
             showRemoteFailure(error)
@@ -759,6 +764,7 @@ final class WorkspaceModel: ObservableObject {
 
     private func clearSession() {
         sessionId = nil
+        tuningOperationEpoch = UUID()
         activeConnectionId = nil
         transactionStatus = nil
         currentKeyspace = nil

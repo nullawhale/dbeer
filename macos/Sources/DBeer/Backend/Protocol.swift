@@ -367,6 +367,27 @@ struct BackendCommand: Codable, Sendable, Equatable {
     var transfer: DataTransferRequest?
     var schemaObservation: SchemaObservationRequest?
     var nativeCommand: NativeCommand? = nil
+    @OptionalTransportPayload var tuningInspect: TuningInspectRequest? = nil
+    @OptionalTransportPayload var tuningValidation: TuningValidationRequest? = nil
+    @OptionalTransportPayload var tuningSettingObservation: TuningSettingObservationRequest? = nil
+    @OptionalTransportPayload var tuningSetting: TuningSettingRequest? = nil
+
+    static func tuningInspect(sessionId: String, request: TuningInspectRequest) -> Self {
+        Self(type: "tuning.inspect", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningInspect: request)
+    }
+    static func tuningValidate(sessionId: String, request: TuningValidationRequest) -> Self {
+        Self(type: "tuning.validate", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningValidation: request)
+    }
+    static func tuningObserveSetting(sessionId: String, request: TuningSettingObservationRequest) -> Self {
+        Self(type: "tuning.setting.observe", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningSettingObservation: request)
+    }
+    static func tuningSet(sessionId: String, request: TuningSettingRequest) -> Self {
+        Self(type: "tuning.setting", requestId: UUID().uuidString, sessionId: sessionId,
+             queryId: UUID().uuidString, tuningSetting: request)
+    }
 
     static func hello() -> Self {
         Self(type: "hello", requestId: UUID().uuidString, protocolVersion: BackendProtocol.version)
@@ -482,6 +503,10 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "execute", "command.execute", "catalog", "changes.preview", "changes.apply": "query.result"
         case "catalog.page", "catalog.batch", "catalog.close": type + ".result"
         case "explain.run": "explain.result"
+        case "tuning.inspect": "tuning.inspect.result"
+        case "tuning.validate": "tuning.validate.result"
+        case "tuning.setting.observe": "tuning.setting.observe.result"
+        case "tuning.setting": "tuning.setting.result"
         case "monitor.snapshot": "monitor.result"
         case "monitor.schema": "monitor.schema.result"
         case "structure.load", "structure.preview", "structure.validate", "structure.apply", "structure.status", "structure.close",
@@ -613,6 +638,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @OptionalTransportPayload var schemaObservation: SchemaObservation? = nil
     var databaseTools: DatabaseToolsReply?
     var transfer: DataTransferReply?
+    @OptionalTransportPayload var tuningInspection: TuningInspection? = nil
+    @OptionalTransportPayload var tuningValidation: TuningValidation? = nil
+    @OptionalTransportPayload var tuningSettingObservation: TuningSettingObservation? = nil
+    @OptionalTransportPayload var tuningSetting: TuningSettingResult? = nil
 
     func validate() throws {
         // Keep phase frames separate from receive/hydrate on the worker stack.
@@ -740,6 +769,8 @@ struct BackendMessage: Codable, Sendable, Equatable {
     @inline(never)
     private func validServiceMessageShape() -> Bool {
         switch type {
+        case "tuning.inspect.result", "tuning.validate.result", "tuning.setting.observe.result", "tuning.setting.result":
+            return validTuningMessageShape
         case "hello.ack": return protocolVersion != nil
         case "dbtools.preview.result", "dbtools.start.result", "dbtools.status.result", "dbtools.cancel.result", "dbtools.close.result":
             return sessionId == nil && queryId == nil && columns == nil && rows == nil && resultSets == nil &&
@@ -785,6 +816,10 @@ struct BackendMessage: Codable, Sendable, Equatable {
               databaseTools == nil || type.hasPrefix("dbtools."),
               transfer == nil || type.hasPrefix("transfer."),
               monitor == nil || type == "monitor.result",
+              !_tuningInspection.isPresent || type == "tuning.inspect.result",
+              !_tuningValidation.isPresent || type == "tuning.validate.result",
+              !_tuningSettingObservation.isPresent || type == "tuning.setting.observe.result",
+              !_tuningSetting.isPresent || type == "tuning.setting.result",
               !_schemaObservation.isPresent || type == "monitor.schema.result",
               !_catalogMetadata.isPresent || ["catalog.page.result", "catalog.batch.result", "catalog.close.result"].contains(type),
               structure == nil || type.hasPrefix("structure."),
@@ -794,6 +829,19 @@ struct BackendMessage: Codable, Sendable, Equatable {
               !_dataComparison.isPresent || type.hasPrefix("data."),
               !_schemaComparison.isPresent || type.hasPrefix("schema."),
               !_comparison.isPresent || type.hasPrefix("compare.") else { throw BackendTransportError(.invalidMessage) }
+    }
+
+    private var validTuningMessageShape: Bool {
+        guard sessionId != nil, queryId != nil, transactionStatus != nil,
+              columns == nil, rows == nil, resultSets == nil, streamed == nil, source == nil,
+              sqlCompleted == nil, sqlNotExecuted == nil, outcomeUnknown == nil else { return false }
+        switch type {
+        case "tuning.inspect.result": return transactionStatus == .idle && tuningInspection?.valid == true
+        case "tuning.validate.result": return tuningValidation?.valid == true
+        case "tuning.setting.observe.result": return transactionStatus == .transaction && tuningSettingObservation?.valid == true
+        case "tuning.setting.result": return transactionStatus == .transaction && tuningSetting?.valid == true
+        default: return false
+        }
     }
 
     @inline(never)
@@ -927,6 +975,7 @@ struct NDJSONFramer: Sendable {
         reply.buildIdentity = identity
         try SchemaBundleSummary.validateFrame(frame)
         try SchemaBundleSourceFrame.validate(frame)
+        try TuningTransportAdmission.validateFrame(frame)
         try reply.validate()
         return reply
     }

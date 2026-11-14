@@ -40,7 +40,9 @@ struct PlanComparison {
         }
         var sameDefinition: Bool {
             guard let before, let after else { return false }
-            return PlanComparison.sameBytes(before.unit, after.unit) && PlanComparison.sameBytes(before.basis, after.basis)
+            return before.value != nil && after.value != nil && before.valid && after.valid &&
+                PlanComparison.sameBytes(before.unit, after.unit) && PlanComparison.sameBytes(before.basis, after.basis) &&
+                PlanComparison.sameBytes(before.unavailableReason, after.unavailableReason)
         }
     }
 
@@ -79,6 +81,21 @@ struct PlanComparison {
     let incomplete: Bool
     let diagnosticMessage: String?
 
+    func metricComparisonReason(_ match: Match) -> String? {
+        guard metricsComparable else { return "Unavailable: engine/version/format, exact query/bindings/options or captured transaction scope differs, or evidence is incomplete." }
+        guard !match.isAmbiguous, let before = match.before.first, let after = match.after.first else { return "Unavailable: structural path is absent or ambiguous." }
+        guard let left = before.advancedMetrics, let right = after.advancedMetrics else { return "Unavailable: captures lack execution-scope evidence." }
+        guard left.executionScope == "serial", right.executionScope == "serial" else { return "Unavailable: parallel, logical or unknown execution scope." }
+        guard !["partialInput", "notExecuted", "unknownScope"].contains(left.rowComparison),
+              !["partialInput", "notExecuted", "unknownScope"].contains(right.rowComparison) else { return "Unavailable: partial input or unexecuted operations." }
+        if before.metrics["totalTime"]?.value != nil || after.metrics["totalTime"]?.value != nil {
+            guard let leftLoops = before.metrics["loops"]?.value, let rightLoops = after.metrics["loops"]?.value,
+                  !ExplainNodeMetrics.isZero(leftLoops), !ExplainNodeMetrics.isZero(rightLoops) else { return "Unavailable: timings lack nonzero loop evidence." }
+        }
+        guard Self.sameBytes(before.metrics["loops"]?.value, after.metrics["loops"]?.value) else { return "Unavailable: loop counts differ; per-invocation and inclusive work cannot be combined." }
+        return nil
+    }
+
     init(before: PlanArtifact, after: PlanArtifact) {
         let sameEngine = before.result.support.engine == after.result.support.engine
         if before.result.engineDiagnostic != nil || after.result.engineDiagnostic != nil {
@@ -95,7 +112,13 @@ struct PlanComparison {
         }
         diagnosticMessage = nil
         comparableEngine = sameEngine
-        metricsComparable = sameEngine && Self.sameBytes(before.result.support.serverVersion, after.result.support.serverVersion) &&
+        let knownTransactionScopes: Set<String> = ["idle", "transaction", "failedTransaction", "unsupported"]
+        let beforeScope = before.source?.transactionStatus, afterScope = after.source?.transactionStatus
+        let knownScopes = beforeScope.map { knownTransactionScopes.contains($0) } == true &&
+            afterScope.map { knownTransactionScopes.contains($0) } == true
+        metricsComparable = knownScopes && before.result.complete && after.result.complete && beforeScope == afterScope &&
+            TuningTransportAdmission.exact(before.request.portable) == TuningTransportAdmission.exact(after.request.portable) &&
+            sameEngine && Self.sameBytes(before.result.support.serverVersion, after.result.support.serverVersion) &&
             Self.sameBytes(before.result.support.format, after.result.support.format) && before.request.mode == after.request.mode && before.request.planKind == after.request.planKind &&
             before.request.options == after.request.options && before.result.format == after.result.format &&
             before.result.dml?.target == after.result.dml?.target &&
@@ -111,8 +134,20 @@ struct PlanComparison {
             // colliding with a different set of native identity properties.
             return Data(components.map { "\($0.utf8.count)#\($0)" }.joined().utf8)
         }
-        let left = Dictionary(grouping: before.result.nodes, by: signature)
-        let right = Dictionary(grouping: after.result.nodes, by: signature)
+        func structuralPaths(_ result: ExplainResult) -> [Data: [ExplainNode]] {
+            let nodes = Dictionary(uniqueKeysWithValues: result.nodes.map { ($0.id, $0) })
+            var paths: [Data: [ExplainNode]] = [:]
+            var pending = result.roots.map { ($0, Data()) }
+            while let (id, parent) = pending.popLast(), let node = nodes[id] {
+                let identity = signature(node)
+                let path = parent + Data("\(identity.count):".utf8) + identity
+                paths[path, default: []].append(node)
+                pending.append(contentsOf: node.children.map { ($0, path) })
+            }
+            return paths
+        }
+        let left = structuralPaths(before.result)
+        let right = structuralPaths(after.result)
         let ordered = (sameEngine ? Set(left.keys).union(right.keys) : Set(left.keys)).sorted { $0.lexicographicallyPrecedes($1) }
         matches = ordered.enumerated().map { index, key in
             Match(id: index, before: left[key] ?? [], after: sameEngine ? right[key] ?? [] : [])

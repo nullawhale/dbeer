@@ -49,36 +49,40 @@ func (connection Connection) DatabaseEngine() string {
 }
 
 type Command struct {
-	NativeCommand      *NativeCommand            `json:"nativeCommand,omitempty"`
-	SchemaObservation  *SchemaObservationRequest `json:"schemaObservation,omitempty"`
-	CatalogMetadata    *CatalogMetadataRequest   `json:"catalogMetadata,omitempty"`
-	Transfer           *TransferRequest          `json:"transfer,omitempty"`
-	DatabaseTools      *DatabaseToolsRequest     `json:"databaseTools,omitempty"`
-	TableImport        *TableImportRequest       `json:"tableImport,omitempty"`
-	Structure          *tableedit.Request        `json:"structure,omitempty"`
-	PreparedExplainSQL string                    `json:"-"`
-	Explain            *ExplainRequest           `json:"explain,omitempty"`
-	DataComparison     *DataComparisonRequest    `json:"dataComparison,omitempty"`
-	SchemaComparison   *SchemaComparisonRequest  `json:"schemaComparison,omitempty"`
-	Comparison         *ComparisonRequest        `json:"comparison,omitempty"`
-	SSHTrust           *SSHTrust                 `json:"sshTrust,omitempty"`
-	Insert             *InsertFormatRequest      `json:"insert,omitempty"`
-	Type               string                    `json:"type"`
-	RequestID          string                    `json:"requestId"`
-	ProtocolVersion    int                       `json:"protocolVersion,omitempty"`
-	Connection         *Connection               `json:"connection,omitempty"`
-	SessionID          string                    `json:"sessionId,omitempty"`
-	QueryID            string                    `json:"queryId,omitempty"`
-	SQL                string                    `json:"sql,omitempty"`
-	Parameters         []QueryParameter          `json:"parameters,omitempty"`
-	Catalog            *CatalogRequest           `json:"catalog,omitempty"`
-	Stream             bool                      `json:"stream,omitempty"`
-	ResultValues       string                    `json:"resultValues,omitempty"`
-	Export             *ExportRequest            `json:"export,omitempty"`
-	Sequence           int                       `json:"sequence,omitempty"`
-	Changes            *ChangesRequest           `json:"changes,omitempty"`
-	Operations         []OperationRequest        `json:"operations,omitempty"`
-	Authorization      string                    `json:"authorization,omitempty"`
+	TuningSettingObservation *TuningSettingObservationRequest `json:"tuningSettingObservation,omitempty"`
+	TuningInspect            *TuningInspectRequest            `json:"tuningInspect,omitempty"`
+	TuningValidation         *TuningValidationRequest         `json:"tuningValidation,omitempty"`
+	TuningSetting            *TuningSettingRequest            `json:"tuningSetting,omitempty"`
+	NativeCommand            *NativeCommand                   `json:"nativeCommand,omitempty"`
+	SchemaObservation        *SchemaObservationRequest        `json:"schemaObservation,omitempty"`
+	CatalogMetadata          *CatalogMetadataRequest          `json:"catalogMetadata,omitempty"`
+	Transfer                 *TransferRequest                 `json:"transfer,omitempty"`
+	DatabaseTools            *DatabaseToolsRequest            `json:"databaseTools,omitempty"`
+	TableImport              *TableImportRequest              `json:"tableImport,omitempty"`
+	Structure                *tableedit.Request               `json:"structure,omitempty"`
+	PreparedExplainSQL       string                           `json:"-"`
+	Explain                  *ExplainRequest                  `json:"explain,omitempty"`
+	DataComparison           *DataComparisonRequest           `json:"dataComparison,omitempty"`
+	SchemaComparison         *SchemaComparisonRequest         `json:"schemaComparison,omitempty"`
+	Comparison               *ComparisonRequest               `json:"comparison,omitempty"`
+	SSHTrust                 *SSHTrust                        `json:"sshTrust,omitempty"`
+	Insert                   *InsertFormatRequest             `json:"insert,omitempty"`
+	Type                     string                           `json:"type"`
+	RequestID                string                           `json:"requestId"`
+	ProtocolVersion          int                              `json:"protocolVersion,omitempty"`
+	Connection               *Connection                      `json:"connection,omitempty"`
+	SessionID                string                           `json:"sessionId,omitempty"`
+	QueryID                  string                           `json:"queryId,omitempty"`
+	SQL                      string                           `json:"sql,omitempty"`
+	Parameters               []QueryParameter                 `json:"parameters,omitempty"`
+	Catalog                  *CatalogRequest                  `json:"catalog,omitempty"`
+	Stream                   bool                             `json:"stream,omitempty"`
+	ResultValues             string                           `json:"resultValues,omitempty"`
+	Export                   *ExportRequest                   `json:"export,omitempty"`
+	Sequence                 int                              `json:"sequence,omitempty"`
+	Changes                  *ChangesRequest                  `json:"changes,omitempty"`
+	Operations               []OperationRequest               `json:"operations,omitempty"`
+	Authorization            string                           `json:"authorization,omitempty"`
 }
 
 type ExportRequest struct {
@@ -415,7 +419,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			return command, failure
 		}
 		command.Insert = &request
-	case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.status", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
+	case "tuning.setting.observe", "tuning.inspect", "tuning.validate", "tuning.setting", "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.status", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "cancel", "disconnect", "stream.ack", "changes.preview", "changes.apply", "operation.assess":
 		allowed["sessionId"] = true
 		if !stringField(fields, "sessionId", &command.SessionID) || !ValidID(command.SessionID) {
 			return command, failure
@@ -430,6 +434,24 @@ func ParseCommand(frame []byte) (Command, error) {
 			allowed["sequence"] = true
 			if !required(fields, "sequence") || json.Unmarshal(fields["sequence"], &command.Sequence) != nil || command.Sequence < 1 {
 				return command, failure
+			}
+		}
+		if strings.HasPrefix(command.Type, "tuning.") {
+			key := map[string]string{"tuning.setting.observe": "tuningSettingObservation", "tuning.inspect": "tuningInspect", "tuning.validate": "tuningValidation", "tuning.setting": "tuningSetting"}[command.Type]
+			allowed[key] = true
+			request, ok := parseTuning(fields[key], command.Type)
+			if !ok {
+				return command, failure
+			}
+			switch v := request.(type) {
+			case *TuningSettingObservationRequest:
+				command.TuningSettingObservation = v
+			case *TuningInspectRequest:
+				command.TuningInspect = v
+			case *TuningValidationRequest:
+				command.TuningValidation = v
+			case *TuningSettingRequest:
+				command.TuningSetting = v
 			}
 		}
 		if command.Type == "monitor.schema" {
@@ -464,7 +486,7 @@ func ParseCommand(frame []byte) (Command, error) {
 			}
 			command.Changes = &request
 		}
-		if command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || command.Type == "import.apply" {
+		if command.Type == "tuning.validate" || command.Type == "tuning.setting" || command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "changes.apply" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || command.Type == "import.apply" {
 			allowed["authorization"] = true
 			if _, exists := fields["authorization"]; exists && (!stringField(fields, "authorization", &command.Authorization) || !ValidID(command.Authorization)) {
 				return command, failure
@@ -852,17 +874,21 @@ func (result ResultSet) MarshalJSON() ([]byte, error) {
 }
 
 type Response struct {
-	NativeValues      [][]NativeValue
-	SchemaObservation *SchemaObservation
-	CatalogMetadata   *CatalogMetadataReply
-	MetadataStale     bool
-	MetadataTarget    *CatalogRelationTarget // Internal adapter proof; only the metadata store serializes it.
-	Transfer          *TransferReply
-	DatabaseTools     *DatabaseToolsReply
-	Monitor           *SessionMonitorSnapshot
-	SQLiteValues      [][]SQLiteValue
-	TableImport       *TableImportReply
-	Structure         *tableedit.Reply
+	TuningSettingObservation *TuningSettingObservation
+	TuningInspection         *TuningInspection
+	TuningValidation         *TuningValidation
+	TuningSetting            *TuningSettingResult
+	NativeValues             [][]NativeValue
+	SchemaObservation        *SchemaObservation
+	CatalogMetadata          *CatalogMetadataReply
+	MetadataStale            bool
+	MetadataTarget           *CatalogRelationTarget // Internal adapter proof; only the metadata store serializes it.
+	Transfer                 *TransferReply
+	DatabaseTools            *DatabaseToolsReply
+	Monitor                  *SessionMonitorSnapshot
+	SQLiteValues             [][]SQLiteValue
+	TableImport              *TableImportReply
+	Structure                *tableedit.Reply
 	// AcknowledgedTransactionStatus is private driver evidence, never serialized.
 	// It survives cleanup failure after the final SQL/transaction acknowledgement.
 	AcknowledgedTransactionStatus string
@@ -1013,6 +1039,30 @@ func (response Response) MarshalJSON() ([]byte, error) {
 		if response.Capabilities != nil {
 			fields["capabilities"] = response.Capabilities
 		}
+	case "tuning.setting.observe.result":
+		if response.TuningSettingObservation == nil || !response.TuningSettingObservation.Valid() {
+			return nil, errors.New("invalid tuning setting observation")
+		}
+		fields["tuningSettingObservation"] = response.TuningSettingObservation
+		fields["transactionStatus"] = response.TransactionStatus
+	case "tuning.inspect.result":
+		if response.TuningInspection == nil || !response.TuningInspection.Valid() {
+			return nil, errors.New("invalid tuning inspection")
+		}
+		fields["tuningInspection"] = response.TuningInspection
+		fields["transactionStatus"] = response.TransactionStatus
+	case "tuning.validate.result":
+		if response.TuningValidation == nil || !response.TuningValidation.Valid() {
+			return nil, errors.New("invalid tuning validation")
+		}
+		fields["tuningValidation"] = response.TuningValidation
+		fields["transactionStatus"] = response.TransactionStatus
+	case "tuning.setting.result":
+		if response.TuningSetting == nil || !response.TuningSetting.Valid() {
+			return nil, errors.New("invalid tuning setting")
+		}
+		fields["tuningSetting"] = response.TuningSetting
+		fields["transactionStatus"] = response.TransactionStatus
 	case "explain.result":
 		if response.Explain != nil && response.Explain.DML != nil {
 			fields["connected"] = response.Connected

@@ -10,9 +10,13 @@ extension ApplicationWorkspace {
               zip(operations, assessment.operations).allSatisfy({ operation, assessed in
                   if let explain = operation.explain { return assessed.explain?.mode == explain.mode && assessed.explain?.valid == true && assessed.explain?.support.engine == profile.engine && assessed.explain?.options == explain.options &&
                       (explain.writeIntent == nil || assessed.explain?.dml != nil && assessed.kind != "read") }
-                  return assessed.explain == nil
+                  if let setting = operation.tuningSetting {
+                      return assessed.explain == nil && assessed.tuningSetting?.sql == TuningTransportAdmission.settingSQL(setting.valueKiB) &&
+                          assessed.tuningSetting?.restoreSQL == TuningTransportAdmission.settingSQL(setting.expectedValueKiB)
+                  }
+                  return assessed.explain == nil && assessed.tuningSetting == nil
               }),
-              !operations.contains(where: { $0.explain?.mode == .analyze }) || assessment.decision != "allow" else {
+              !operations.contains(where: { $0.explain?.mode == .analyze || $0.tuningValidation != nil || $0.tuningSetting != nil }) || assessment.decision != "allow" else {
             throw ExecutionPolicyError(message: "The execution context changed. Review the operation again.")
         }
         if assessment.decision == "deny" {

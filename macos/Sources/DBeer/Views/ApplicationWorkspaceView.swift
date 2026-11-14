@@ -721,7 +721,9 @@ struct SQLDocumentPane: View {
                         } else if document.showsExecutionPlan, let plan = document.explainPlan {
                             ExplainPlanView(plan: plan, stale: plan.isStaleSource(text: document.text, profileID: document.profileID, profile: workspace.library.savedConnections.first { $0.id == document.profileID }),
                                 planLibrary: workspace.planArtifacts, saveTitle: document.title,
-                                canSave: { workspace.canManageWorkspace }, openLibrary: { workspace.isPlansPresented = true }).id(plan.id)
+                                canSave: { workspace.canManageWorkspace }, openLibrary: { workspace.isPlansPresented = true },
+                                makeTuning: { workspace.makeTuningPanel(document, plan: plan) },
+                                tuningUnavailableReason: workspace.tuningUnavailableReason(document, plan: plan)).id(plan.id)
                         } else { result }
                     }.frame(minHeight: 180, maxHeight: .infinity)
                 }

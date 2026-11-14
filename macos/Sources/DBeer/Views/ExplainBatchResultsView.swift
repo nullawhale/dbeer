@@ -22,7 +22,9 @@ struct ExplainBatchResultsView: View {
                         stale: plan.isStaleSource(text: document.text, profileID: document.profileID, profile: sourceProfile) ||
                             plan.profileBinding?.matches(targetProfile) == false,
                         planLibrary: workspace.planArtifacts, saveTitle: document.title,
-                        canSave: { workspace.canManageWorkspace }, openLibrary: { workspace.isPlansPresented = true }).id(plan.id)
+                        canSave: { workspace.canManageWorkspace }, openLibrary: { workspace.isPlansPresented = true },
+                                makeTuning: { workspace.makeTuningPanel(document, plan: plan) },
+                                tuningUnavailableReason: workspace.tuningUnavailableReason(document, plan: plan)).id(plan.id)
                 } else {
                     Text(execution.status).font(.headline)
                     if let profile = execution.targetProfile {

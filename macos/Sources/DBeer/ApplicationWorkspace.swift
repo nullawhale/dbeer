@@ -14,6 +14,7 @@ final class SQLDocument: ObservableObject, Identifiable {
         didSet {
             if !SQLFileDocument.sameBytes(text, oldValue) {
                 clearExecutionSuccess()
+                explainCollector?.stop("Stopped — source text changed")
                 if !isSynchronizingFile, let fileDocument, !SQLFileDocument.sameBytes(fileDocument.text, text) {
                     fileDocument.text = text
                 }
@@ -23,6 +24,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var profileID: UUID? {
         didSet {
             if profileID != oldValue {
+                explainCollector?.stop("Stopped — profile changed")
                 invalidateSQLiteCompletion()
                 clearExecutionSuccess()
                 incomingRelationships?.stop()
@@ -49,6 +51,7 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published var runtime: WorkspaceModel? {
         didSet {
             if runtime !== oldValue {
+                explainCollector?.stop("Stopped — SQL owner changed")
                 sqliteSessionObservation = nil
                 invalidateSQLiteCompletion()
             }
@@ -134,7 +137,11 @@ final class SQLDocument: ObservableObject, Identifiable {
     @Published private(set) var fileDocument: SQLFileDocument?
     @Published var sqlLibraryEntryID: UUID?
     /// Standalone history drafts retain definitions only; entered values are never restored.
-    @Published var queryParameters: [SQLParameterDefinition] = []
+    @Published var queryParameters: [SQLParameterDefinition] = [] {
+        didSet { if queryParameters != oldValue { explainCollector?.stop("Stopped — typed parameter definitions changed") } }
+    }
+    @Published var explainCollectorConfiguration: ExplainCollectorConfiguration?
+    @Published var explainCollector: ExplainCollector?
     private var restoredFileDocumentID: UUID?
     private var fileObservations: [AnyCancellable] = []
     private var isSynchronizingFile = false
@@ -257,6 +264,7 @@ final class SQLDocument: ObservableObject, Identifiable {
             fileRecoveryURL = stored.fileRecoveryURL
             sqlLibraryEntryID = stored.sqlLibraryEntryID
             queryParameters = stored.queryParameters ?? []
+            explainCollectorConfiguration = stored.explainCollectorConfiguration
             restoredFileBinding = stored.fileURL != nil
         }
     }
@@ -281,7 +289,8 @@ final class SQLDocument: ObservableObject, Identifiable {
             fileDocumentID: table == nil ? (fileDocument?.id ?? restoredFileDocumentID) : nil,
             fileRecoveryURL: table == nil ? fileRecoveryURL : nil,
             sqlLibraryEntryID: table == nil ? sqlLibraryEntryID : nil,
-            queryParameters: table == nil && !queryParameters.isEmpty ? queryParameters : nil)
+            queryParameters: table == nil && !queryParameters.isEmpty ? queryParameters : nil,
+            explainCollectorConfiguration: table == nil ? explainCollectorConfiguration : nil)
     }
 
     func attachFileDocument(_ file: SQLFileDocument) {
@@ -544,6 +553,7 @@ final class ApplicationWorkspace: ObservableObject {
     private let connectionStore: any ConnectionLibraryStore
     private let credentialStore: any ConnectionCredentialStore
     private let helperFactory: () -> BackendClient
+    let explainCollectorFactory: @MainActor (UUID) -> ExplainCollector
     private let documentStore: any SQLDocumentStore
     private let closeDecision: @MainActor (WorkspaceCloseIssue) async -> WorkspaceCloseDecision
     let executionDecision: @MainActor (OperationConfirmation) async -> Bool
@@ -616,10 +626,16 @@ final class ApplicationWorkspace: ObservableObject {
          executionDecision: @escaping @MainActor (OperationConfirmation) async -> Bool = ExecutionConfirmation.present,
          queryParameterDecision: (@MainActor ([SQLParameterDefinition], SavedConnection) async -> [QueryParameterBinding]?)? = nil,
          explainOptionsDecision: (@MainActor (ExplainOptionsConfiguration) async -> ExplainOptionsDecision?)? = nil,
-         helperFactory: @escaping () -> BackendClient = { BackendClient() }) {
+         helperFactory: @escaping () -> BackendClient = { BackendClient() },
+         explainCollectorFactory: @escaping @MainActor (UUID) -> ExplainCollector = { documentID in
+             let root = PlanArtifactStore.defaultRootURL.deletingLastPathComponent()
+                 .appendingPathComponent("CollectedPlans", isDirectory: true).appendingPathComponent(documentID.uuidString, isDirectory: true)
+             return ExplainCollector(store: PlanArtifactStore(rootURL: root))
+         }) {
         self.connectionStore = connectionStore
         self.credentialStore = credentialStore
         self.helperFactory = helperFactory
+        self.explainCollectorFactory = explainCollectorFactory
         self.documentStore = documentStore
         self.commandShortcuts = commandShortcuts ?? AppShortcutStore()
         self.copySettings = copySettings ?? .shared
@@ -1651,12 +1667,14 @@ final class ApplicationWorkspace: ObservableObject {
 
     @discardableResult
     private func closeDocumentImmediately(_ document: SQLDocument, remember: Bool = false) async -> Bool {
+        document.explainCollector?.stop("Stopped — document closed")
         if let model = document.erDiagramModel { stopERDiagram(model, reason: "This diagram was closed.") }
         document.incomingRelationships?.stop()
         let runtimeDocuments = runtimeDocuments(in: document)
         await closeGridProfileServers(documentIDs: Set(([document] + runtimeDocuments).map(\.id)))
         await closeERDiagramExports(documentIDs: [document.id])
         for child in runtimeDocuments {
+            child.explainCollector?.stop("Stopped — document closed")
             await child.runtime?.shutdown()
             child.runtime = nil
             child.attachGrid(nil)
@@ -2465,6 +2483,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func stop(_ document: SQLDocument) async {
+        document.explainCollector?.stop("Stopped explicitly")
         guard ownedSQLContext(for: document) != nil else { return }
         if let read = document.logicalRelationshipRead { await read.stop(); return }
         if let model = document.erDiagramModel { stopERDiagram(model); return }
@@ -2967,6 +2986,7 @@ final class ApplicationWorkspace: ObservableObject {
             document.$fileURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$sqlLibraryEntryID.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$queryParameters.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
+            document.$explainCollectorConfiguration.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileContentSHA256.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.$fileRecoveryURL.dropFirst().sink { [weak self] _ in self?.scheduleSave() },
             document.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
@@ -3032,6 +3052,29 @@ final class ApplicationWorkspace: ObservableObject {
         else { group = nil }
         return SQLLibraryExecutionBinding(entryID: entry.id, fileURL: entry.fileURL, scope: entry.scope, group: group,
             parameters: entry.parameters)
+    }
+
+    func tuningLibrarySnapshotFence(_ document: SQLDocument) -> @MainActor (SQLLibrarySnapshot) -> Bool {
+        let expected = sqlLibraryExecutionBinding(document)
+        let fileURL = document.fileURL
+        let definitions = document.queryParameters
+        return { snapshot in
+            let entry = snapshot.entries.first { $0.id == expected?.entryID || fileURL != nil && $0.fileURL == fileURL }
+            guard let entry else { return expected?.entryID == nil }
+            let group: SQLProfileGroup?
+            if case .group(let id) = entry.scope { group = snapshot.groups.first { $0.id == id } } else { group = nil }
+            let candidate = SQLLibraryExecutionBinding(entryID: entry.id, fileURL: entry.fileURL, scope: entry.scope,
+                group: group, parameters: entry.parameters)
+            return candidate == expected && definitions == document.queryParameters
+        }
+    }
+
+    func tuningSourceFence(_ document: SQLDocument) -> @MainActor () -> Bool {
+        let captured = sqlLibraryExecutionBinding(document)
+        return { [weak self, weak document] in
+            guard let self, let document else { return false }
+            return self.hasSQLLibraryExecutionBinding(document, captured)
+        }
     }
 
     private func hasSQLLibraryExecutionBinding(_ document: SQLDocument, _ expected: SQLLibraryExecutionBinding?) -> Bool {
@@ -4366,6 +4409,7 @@ final class ApplicationWorkspace: ObservableObject {
         // This is permanent teardown, separate from cancellable close decisions.
         // Fence new owners before any cleanup operation can suspend.
         hasBegunShutdown = true
+        for document in allOwnedRuntimeDocuments { document.explainCollector?.stop("Stopped — workspace shutdown") }
         let task = Task { @MainActor [self] in await finishShutdown() }
         shutdownLifecycleTask = task
         await task.value

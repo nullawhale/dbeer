@@ -483,3 +483,40 @@ extension PlanArtifactStore {
         }
     }
 }
+
+extension PlanArtifactStore {
+    /// Dedicated collector roots have no attachments and never prune user-saved plans.
+    func pruneCollected(configuration: ExplainCollectorConfiguration, now: Date, lease: ExplainCollectorLease) throws {
+        try withRoot {
+            try lease.whileActive { try pruneCollectedFiles(configuration: configuration, now: now, reserving: 0) }
+        }
+    }
+    func saveCollected(_ artifact: PlanArtifact, configuration: ExplainCollectorConfiguration, now: Date, lease: ExplainCollectorLease) throws -> PlanArtifact {
+        try withRoot {
+            let text = try artifact.encoded()
+            guard configuration.valid, text.utf8.count <= configuration.maximumStorageBytes else { throw PlanArtifactError.quota }
+            return try lease.whileActive {
+                try pruneCollectedFiles(configuration: configuration, now: now, reserving: text.utf8.count)
+                _ = try SQLFileBinding.write(text, to: file(artifact.id), expectedVersion: nil,
+                    expectedParent: lockedRootIdentity, maximumBytes: PlanArtifact.maximumBytes)
+                return artifact
+            }
+        }
+    }
+    private func pruneCollectedFiles(configuration: ExplainCollectorConfiguration, now: Date, reserving: Int) throws {
+        guard configuration.valid, reserving <= configuration.maximumStorageBytes,
+              (try readLinks()).links.isEmpty, (try readLinks()).evidenceLinks.isEmpty else { throw PlanArtifactError.invalid }
+        var retained: [(id: UUID, date: Date, bytes: Int)] = []
+        for url in try artifactFiles() {
+            guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent) else { throw PlanArtifactError.invalid }
+            let loaded = try read(id)
+            retained.append((id, loaded.artifact.capturedAt, loaded.byteCount))
+        }
+        retained.sort { $0.date < $1.date }
+        let cutoff = now.addingTimeInterval(-Double(configuration.retentionDays) * 86_400)
+        var used = retained.reduce(0) { $0 + $1.bytes }
+        while let first = retained.first, first.date < cutoff || retained.count + (reserving > 0 ? 1 : 0) > configuration.maximumCaptures || used > configuration.maximumStorageBytes - reserving {
+            try deleteReviewedFile(file(first.id)); retained.removeFirst(); used -= first.bytes
+        }
+    }
+}

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Add explainable tuning candidates from captured plans and fresh complete
+  relational metadata, explicit query variants and offline baseline comparison.
+  Route index changes through fresh structure previews; separately review bounded
+  native-value result observations and PostgreSQL transaction-local work_mem
+  experiments and restores. Keep opt-in collection bounded, scoped to the current
+  owner and stopped after restoration, without automatic connections, DML,
+  Analyze grants, hidden setting changes or invented performance gains.
+
 - Review PostgreSQL RANGE/LIST/HASH partition create, attach, detach, interrupted
   detach finalization, drop and truncate, and concurrent index creation/removal.
   Add MySQL partition creation/removal, RANGE/LIST reorganization and loss actions,

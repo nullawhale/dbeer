@@ -4,11 +4,12 @@ import Foundation
 /// Local command rejection before a request is registered or written to stdin.
 /// Keep this distinct from a malformed or oversized reply from the helper.
 enum BackendRequestError: LocalizedError, Sendable, Equatable {
-    case invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand, unsupportedQueryParameters, unsupportedTableImport, unsupportedSessionMonitor
+    case cancelledBeforeDispatch, invalidCommand, duplicateRequest, frameTooLarge, encodingFailed, unsupportedSSHConfiguration, unsupportedPasswordCommand, unsupportedQueryParameters, unsupportedTableImport, unsupportedSessionMonitor
 
     var errorDescription: String? {
         let explanation: String
         switch self {
+        case .cancelledBeforeDispatch: explanation = "The capture was stopped before dispatch."
         case .invalidCommand: explanation = "The command is invalid."
         case .duplicateRequest: explanation = "A command identifier was reused."
         case .frameTooLarge: explanation = "The command exceeds the 16 MiB transport limit."
@@ -36,12 +37,21 @@ private final class PipeWriter: @unchecked Sendable {
     }
 
     func write(_ data: Data, completion: @escaping @Sendable (Bool) -> Void) {
+        write(data, captureAdmission: nil) { success, _ in completion(success) }
+    }
+
+    func write(_ data: Data, captureAdmission: ExplainCollectorAdmission?, completion: @escaping @Sendable (Bool, Bool) -> Void) {
         queue.async {
             do {
+                // Admission is rechecked on the actual writer queue; this hop
+                // is not a Swift task and cannot inherit Task cancellation.
+                if let captureAdmission, !captureAdmission.beginDispatch() {
+                    completion(false, true); return
+                }
                 try self.handle.write(contentsOf: data)
-                completion(true)
+                completion(true, false)
             } catch {
-                completion(false)
+                completion(false, false)
             }
         }
     }
@@ -103,6 +113,12 @@ actor BackendClient {
     }
     private var explainDMLGrants: [String: ExplainDMLGrant] = [:]
     private var explainDMLExecutionTargets: [String: ExplainDMLTarget] = [:]
+    private var tuningSupported = false
+    private var sessionTuningSupport: [String: ExplainSupport] = [:]
+    private var sessionTuningTransaction: [String: TransactionStatus] = [:]
+    private var tuningGrants = TuningGrantLedger()
+    private var tuningAssessmentGenerations: [String: UUID] = [:]
+    private var currentAssessmentRequests: [String: String] = [:]
     private var explainMetricsSupported = false
     private var sessionExplainMetricsSupport: [String: ExplainSupport] = [:]
     private var explainOptionsSupported = false
@@ -257,6 +273,7 @@ actor BackendClient {
     func supportsCapturedExport() -> Bool { capturedExportSupported }
     func supportsInsertFormatting() -> Bool { insertFormattingSupported }
     func supportsResultComparison() -> Bool { resultComparisonSupported }
+    func supportsTuning() -> Bool { tuningSupported }
     func supportsExplainDML() -> Bool { explainDMLSupported }
     func supportsExplainMetrics() -> Bool { explainMetricsSupported }
     func supportsExplainOptions() -> Bool { explainOptionsSupported }
@@ -269,9 +286,43 @@ actor BackendClient {
     func supportsDatabaseTools() -> Bool { databaseToolsSupported }
     func supportsDataTransfer() -> Bool { dataTransferSupported }
 
-    func request(_ command: BackendCommand,
+    /// Check on the transport actor immediately before writing a cancel frame.
+    /// A retired capture cannot cancel a later query or invalidate its grant.
+    func cancelPendingCapture(sessionID: String, queryID: String) async {
+        guard pending.values.contains(where: { $0.command.type == "explain.run" &&
+            $0.command.sessionId == sessionID && $0.command.queryId == queryID }) else { return }
+        _ = try? await request(.cancel(sessionId: sessionID, queryId: queryID))
+    }
+
+    /// A late assessment is retired only while it is still this owner's latest
+    /// operation. A newer operation has already retired it at the helper.
+    func discardAssessmentIfCurrent(_ reply: BackendMessage) async {
+        guard reply.type == "operation.assessment", let session = reply.sessionId, let query = reply.queryId,
+              currentAssessmentRequests[session] == reply.requestId else { return }
+        currentAssessmentRequests.removeValue(forKey: session)
+        _ = try? await request(.cancel(sessionId: session, queryId: query))
+    }
+
+    func request(_ command: BackendCommand, captureAdmission: ExplainCollectorAdmission? = nil,
                  onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
+        if captureAdmission != nil {
+            guard command.type == "explain.run" else { throw BackendRequestError.invalidCommand }
+            try checkCaptureAdmission(captureAdmission)
+        }
         var command = command
+        let hasTuningPayload = command.tuningInspect != nil || command.tuningValidation != nil || command.tuningSetting != nil || command.tuningSettingObservation != nil
+        if hasTuningPayload || command.type.hasPrefix("tuning.") {
+            guard let session = command.sessionId, let owner = sessionTuningSupport[session],
+                  TuningTransportAdmission.validOwner(support: owner, engine: owner.engine,
+                      capabilities: sessionCapabilities[session] ?? [], helperSupports: tuningSupported) else { throw BackendRequestError.invalidCommand }
+            try TuningTransportAdmission.validateCommand(command, owner: owner, transaction: sessionTuningTransaction[session])
+        }
+        let tuningOperations = (command.operations ?? []).filter { $0.tuningValidation != nil || $0.tuningSetting != nil || $0.type.hasPrefix("tuning.") }
+        if !tuningOperations.isEmpty {
+            guard command.type == "operation.assess", command.operations?.count == 1,
+                  let session = command.sessionId, let owner = sessionTuningSupport[session] else { throw BackendRequestError.invalidCommand }
+            try TuningTransportAdmission.validateOperation(tuningOperations[0], session: session, owner: owner, transaction: sessionTuningTransaction[session])
+        }
         if nativeResultValuesSupported,
            let session = command.sessionId, sessionCapabilities[session]?.contains(NativeValue.capability) == true,
            command.type == "execute" || command.type == "command.execute" || (command.type == "catalog" && command.catalog?.kind == "browse") {
@@ -551,8 +602,21 @@ actor BackendClient {
                   grant.session == command.sessionId, grant.request == request.exactBindingData else { throw BackendRequestError.invalidCommand }
             explainDMLExecutionTargets[command.requestId] = grant.target
         }
-        defer { explainDMLExecutionTargets.removeValue(forKey: command.requestId) }
-        return try await send(command, onEvent: onEvent)
+        if let session = command.sessionId {
+            if command.type == "tuning.validate" || command.type == "tuning.setting" {
+                let operation = OperationRequest(type: command.type, tuningValidation: command.tuningValidation, tuningSetting: command.tuningSetting)
+                guard tuningGrants.consume(command.authorization, session: session, operation: operation) else { throw BackendRequestError.invalidCommand }
+            }
+            if command.type == "operation.assess" { currentAssessmentRequests[session] = command.requestId }
+            else if captureAdmission == nil { currentAssessmentRequests.removeValue(forKey: session) }
+            let generation = tuningGrants.begin(session)
+            if !tuningOperations.isEmpty { tuningAssessmentGenerations[command.requestId] = generation }
+        }
+        defer {
+            explainDMLExecutionTargets.removeValue(forKey: command.requestId)
+            tuningAssessmentGenerations.removeValue(forKey: command.requestId)
+        }
+        return try await send(command, captureAdmission: captureAdmission, onEvent: onEvent)
     }
 
     func waitForFailure() async -> BackendTransportError {
@@ -604,7 +668,7 @@ actor BackendClient {
         return Shutdown(acknowledged: acknowledged, forced: wasForced)
     }
 
-    private func send(_ command: BackendCommand, lifecycle: Bool = false,
+    private func send(_ command: BackendCommand, lifecycle: Bool = false, captureAdmission: ExplainCollectorAdmission? = nil,
                       onEvent: (@Sendable (BackendMessage) -> Void)? = nil) async throws -> BackendMessage {
         if let failure { throw failure }
         guard lifecycle || (ready && !shuttingDown), let writer else {
@@ -621,16 +685,33 @@ actor BackendClient {
         catch { throw BackendRequestError.encodingFailed }
         guard data.count <= BackendProtocol.maxFrameBytes else { throw BackendRequestError.frameTooLarge }
         data.append(0x0A)
-        usedRequestIDs.insert(command.requestId)
         let frame = data
+        if captureAdmission != nil { try checkCaptureAdmission(captureAdmission) }
         return try await withCheckedThrowingContinuation { continuation in
-            pending[command.requestId] = Pending(command: command, continuation: continuation, onEvent: onEvent)
-            writer.write(frame) { [weak self] success in
-                if !success {
-                    Task { await self?.fail(BackendTransportError(.writeFailed)) }
+            do {
+                let enqueue = {
+                    self.usedRequestIDs.insert(command.requestId)
+                    self.pending[command.requestId] = Pending(command: command, continuation: continuation, onEvent: onEvent)
+                    writer.write(frame, captureAdmission: captureAdmission) { [weak self] success, cancelled in
+                        if cancelled { Task { await self?.captureWasNotDispatched(command.requestId) } }
+                        else if !success { Task { await self?.fail(BackendTransportError(.writeFailed)) } }
+                    }
                 }
-            }
+                if let captureAdmission {
+                    try captureAdmission.whileWaiting { try Task.checkCancellation(); enqueue() }
+                } else { enqueue() }
+            } catch { continuation.resume(throwing: BackendRequestError.cancelledBeforeDispatch) }
         }
+    }
+
+    private func checkCaptureAdmission(_ admission: ExplainCollectorAdmission?) throws {
+        do { try Task.checkCancellation(); try admission?.whileWaiting {} }
+        catch { throw BackendRequestError.cancelledBeforeDispatch }
+    }
+
+    private func captureWasNotDispatched(_ requestID: String) {
+        guard let request = pending.removeValue(forKey: requestID) else { return }
+        request.continuation.resume(throwing: BackendRequestError.cancelledBeforeDispatch)
     }
 
     private func receive(_ reply: BackendMessage) {
@@ -655,7 +736,7 @@ actor BackendClient {
             fail(BackendTransportError(.invalidMessage))
             return
         }
-        if reply.type == "query.started", (["execute", "command.execute", "explain.run", "monitor.snapshot", "monitor.schema", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.")), !request.started {
+        if reply.type == "query.started", (["execute", "command.execute", "explain.run", "monitor.snapshot", "monitor.schema", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply"].contains(command.type) || command.type.hasPrefix("structure.") || command.type.hasPrefix("import.") || command.type.hasPrefix("tuning.")), !request.started {
             request.started = true
             pending[reply.requestId] = request
             request.onEvent?(reply)
@@ -681,6 +762,21 @@ actor BackendClient {
         guard reply.type == command.terminalType || reply.type == "error" else {
             fail(BackendTransportError(.invalidMessage))
             return
+        }
+        if command.type.hasPrefix("tuning."), reply.type != "error" {
+            guard request.started, let session = command.sessionId, let owner = sessionTuningSupport[session] else { fail(BackendTransportError(.invalidMessage)); return }
+            do { try TuningTransportAdmission.validateReply(reply, command: command, owner: owner) }
+            catch { fail(BackendTransportError(.invalidMessage)); return }
+        }
+        if command.type == "operation.assess", reply.type != "error", let operation = command.operations?.first,
+           operation.tuningValidation != nil || operation.tuningSetting != nil {
+            guard let assessment = reply.assessment, assessment.operations.count == 1, assessment.operations[0].explain == nil,
+                  ["confirm", "deny"].contains(assessment.decision), let session = command.sessionId else { fail(BackendTransportError(.invalidMessage)); return }
+            if let setting = operation.tuningSetting {
+                guard assessment.decision == "deny" || assessment.operations[0].tuningSetting?.sql == TuningTransportAdmission.settingSQL(setting.valueKiB) &&
+                    assessment.operations[0].tuningSetting?.restoreSQL == TuningTransportAdmission.settingSQL(setting.expectedValueKiB) else { fail(BackendTransportError(.invalidMessage)); return }
+            } else if assessment.operations[0].tuningSetting != nil { fail(BackendTransportError(.invalidMessage)); return }
+            if let authorization = assessment.authorization { tuningGrants.record(authorization, session: session, operation: operation, assessedGeneration: tuningAssessmentGenerations[command.requestId]) }
         }
         // Validate against the live physical owner before a terminal frame can
         // retire its capabilities or disconnect the tab.
@@ -739,6 +835,7 @@ actor BackendClient {
             }
         }
         if command.type == "operation.assess", let operations = command.operations, let assessment = reply.assessment {
+            guard zip(operations, assessment.operations).allSatisfy({ $0.0.tuningSetting != nil || $0.1.tuningSetting == nil }) else { fail(BackendTransportError(.invalidMessage)); return }
             for (operation, assessed) in zip(operations, assessment.operations) {
                 guard let requested = operation.explain, let preview = assessed.explain else { continue }
                 if requested.writeIntent != nil || preview.dml != nil || preview.support.dml != nil {
@@ -780,6 +877,7 @@ actor BackendClient {
             schemaBundleSourceSupported = reply.capabilities?.contains("schemaBundleSourceV1") == true
             dataComparisonSupported = reply.capabilities?.contains("dataComparisonV1") == true
             synchronizationPlanSupported = reply.capabilities?.contains("synchronizationPlanV1") == true
+            tuningSupported = reply.capabilities?.contains(TuningInspectRequest.capability) == true
             explainDMLSupported = reply.capabilities?.contains(ExplainDMLSupport.capability) == true
             explainMetricsSupported = reply.capabilities?.contains(ExplainNodeMetrics.capability) == true
             explainOptionsSupported = reply.capabilities?.contains("explainOptionsV1") == true
@@ -801,6 +899,11 @@ actor BackendClient {
         }
         if reply.type == "connect.result", let session = reply.sessionId {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
+            if command.connection?.sessionPurpose == nil,
+               TuningTransportAdmission.validOwner(support: reply.explainSupport, engine: reply.engine,
+                   capabilities: Set(reply.capabilities ?? []), helperSupports: tuningSupported) {
+                sessionTuningSupport[session] = reply.explainSupport
+            } else { sessionTuningSupport.removeValue(forKey: session) }
             reconstructionSessions[session] = false
             if let support = reply.explainSupport,
                ExplainDMLAdmission.validOwner(support: support, engine: reply.engine,
@@ -828,7 +931,12 @@ actor BackendClient {
             retainedStructureCapabilities.removeValue(forKey: session)
             reconstructionSessions.removeValue(forKey: session)
         }
+        if let session = reply.sessionId, let transaction = reply.transactionStatus { sessionTuningTransaction[session] = transaction }
         if reply.type == "disconnect.ack" || reply.connected == false, let session = reply.sessionId {
+            sessionTuningSupport.removeValue(forKey: session)
+            sessionTuningTransaction.removeValue(forKey: session)
+            currentAssessmentRequests.removeValue(forKey: session)
+            tuningGrants.retire(session)
             sessionCapabilities.removeValue(forKey: session)
             sessionExplainDMLSupport.removeValue(forKey: session)
             explainDMLGrants = explainDMLGrants.filter { $0.value.session != session }

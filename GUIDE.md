@@ -774,6 +774,64 @@ engine/diagnostic kind has no relational tree comparison; missing measurements
 never become zero. Trace session IDs identify captured trace evidence rather
 than live application sessions.
 
+### Tuning recommendations and experiments
+
+Tuning inspection uses a captured plan, its original SQL and typed bindings, and
+fresh metadata for one explicitly qualified PostgreSQL14+ or Oracle MySQL8.0.30+ table.
+A supplied or imported capture is evidence for discussion, never execution
+permission. A complete supported numeric equality scan can suggest one
+nonunique B-tree index; existing leading indexes and key ownership suppress
+redundant advice. Incomplete catalogs, custom index/operator semantics and
+ambiguous scans remain explicit limitations. MySQL uses the existing structure
+editor's complete global SELECT/TRIGGER metadata visibility proof. No latency,
+selectivity threshold or performance gain is invented from node counters.
+
+Repeated numeric equalities on the same column can propose an IN-list variant.
+The original SQL and typed bindings remain intact. A proposal is unvalidated;
+the optimizer may already produce the same plan. Adopting or editing a variant
+does not execute it. Index changes open a new dedicated structure-editor
+baseline and follow its fresh SQL preview and reviewed apply workflow.
+
+Result validation is a separate, freshly reviewed operation. It accepts only
+bounded simple column-projection reads from an idle session of one ordinary qualified table with
+proven built-in types and operators. Functions, CTEs, joins, views, temporary
+tables, locking, ORDER BY and LIMIT are outside this validator. It compares two
+sequential observations in the same physical session, retaining exact native
+SQL NULL, empty/text NULL distinctions, numeric spelling, binary bytes and
+duplicate multiplicity while ignoring row order. Column/type changes differ.
+An observed match proves only those captured observations, not logical
+equivalence, a shared snapshot or improved performance. Open user transactions, uncommitted context and temporary tables are refused;
+session state and concurrent changes remain relevant. Errors, incomplete
+acknowledgements, cancellation or a row/byte/deadline bound are inconclusive.
+Limits are at most 10,000 rows per observation, 4 MiB combined encoded native
+rows and a 30-second execution deadline; adapter cancellation recovery can extend
+the response interval. E2 metadata may use its own internal read-only observation transaction. No
+transaction wraps the compared SELECTs, and there is no reconnect or retry.
+
+PostgreSQL work_mem experiments require an already open transaction and an
+exact reviewed SET LOCAL operation. A separate fixed read observes the current
+work_mem inside that transaction without loading structure metadata or changing
+transaction boundaries. The current value is rechecked before the
+change. Values are explicit KiB within 64...1,048,576; they are per sort/hash
+operation and worker, not a total query memory cap. Restoring the captured prior
+value is another freshly reviewed operation. COMMIT/ROLLBACK ends the local
+value, and rollback to an earlier savepoint can revert it. No automatic restore
+or transaction commands are issued; a lost acknowledgement stays uncertain.
+Other engine settings remain unavailable through this controlled experiment.
+
+Saved-baseline comparison remains offline and labels incompatible request,
+format, unit, invocation, partial-input, worker and parallel scopes. A plan
+shape alone does not establish comparable timing or a result match. Background
+collection requires explicit opt-in with bounded interval, executions, runtime,
+retention and storage. Saved configuration restores stopped and disconnected;
+starting binds the current profile, physical owner, exact SQL, typed values and
+options. Editing that scope, stopping, deleting it or closing the workspace
+retires collection and fences late replies. Default collection uses estimated
+read-only admitted sources; it cannot reuse a blanket Analyze confirmation,
+collect DML, change settings or connect on restoration. Captured files do not
+carry live grants or credential/connection settings. SQL and query results are
+not logged for the collector.
+
 ### Saved execution plans
 
 Choose **Query → Saved Execution Plans…** to open the local plan library. Search

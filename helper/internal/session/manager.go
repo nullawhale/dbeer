@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,7 +83,7 @@ func (manager *Manager) Submit(command protocol.Command) bool {
 }
 
 func (manager *Manager) markPending(command protocol.Command) {
-	if (command.Type == "monitor.snapshot" || command.Type == "monitor.schema") || command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "catalog" || isCatalogMetadata(command.Type) || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
+	if strings.HasPrefix(command.Type, "tuning.") || (command.Type == "monitor.snapshot" || command.Type == "monitor.schema") || command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "catalog" || isCatalogMetadata(command.Type) || command.Type == "changes.preview" || command.Type == "changes.apply" || isStructure(command.Type) || isImport(command.Type) {
 		manager.controlMu.Lock()
 		manager.pendingQueries[command.QueryID] = pendingQuery{sessionID: command.SessionID}
 		manager.controlMu.Unlock()
@@ -116,7 +117,7 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 // Keep them distinct from terminal failures of dispatched database commands.
 func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
 	response := protocol.ErrorResponse(command, category, message)
-	response.SQLNotExecuted = command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || isImport(command.Type)
+	response.SQLNotExecuted = strings.HasPrefix(command.Type, "tuning.") || command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || isImport(command.Type)
 	return response
 }
 
@@ -615,6 +616,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					if explain, ok := physical.(adapter.ExplainSession); ok {
 						support := explain.ExplainSupport()
 						response.ExplainSupport = &support
+						if !owner.structureOnly && !owner.importOnly && !owner.monitorOnly && tuningAvailable(physical) {
+							response.Capabilities = append(response.Capabilities, protocol.TuningCapability)
+						}
 						response.Capabilities = append(response.Capabilities, protocol.VisualExplainCapability)
 						if support.DML != nil {
 							response.Capabilities = append(response.Capabilities, protocol.ExplainDMLCapability)
@@ -683,7 +687,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else {
 					response = owner.assess(command, engine, policy, physical)
 				}
-			case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
+			case "tuning.setting.observe", "tuning.inspect", "tuning.validate", "tuning.setting", "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
@@ -751,7 +755,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						case <-begin:
 						case <-ctx.Done():
 						}
-						if isCatalogMetadata(command.Type) {
+						if strings.HasPrefix(command.Type, "tuning.") {
+							result <- operation{response: owner.runTuning(ctx, physical, command, engine)}
+						} else if isCatalogMetadata(command.Type) {
 							result <- operation{response: owner.runCatalogMetadata(ctx, physical, command)}
 						} else if command.Type == "monitor.schema" {
 							result <- operation{response: runSchemaObservation(ctx, physical, command, engine)}
@@ -767,7 +773,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				}
 			case "cancel":
 				status := "alreadyFinished"
-				if active != nil && ((pending.Type == "monitor.snapshot" || pending.Type == "monitor.schema") || pending.Type == "execute" || pending.Type == "command.execute" || pending.Type == "explain.run" || pending.Type == "catalog" || isCatalogMetadata(pending.Type) || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
+				if active != nil && (strings.HasPrefix(pending.Type, "tuning.") || (pending.Type == "monitor.snapshot" || pending.Type == "monitor.schema") || pending.Type == "execute" || pending.Type == "command.execute" || pending.Type == "explain.run" || pending.Type == "catalog" || isCatalogMetadata(pending.Type) || pending.Type == "changes.preview" || pending.Type == "changes.apply" || isStructure(pending.Type) || isImport(pending.Type)) && pending.QueryID == command.QueryID {
 					cancel()
 					status = "accepted"
 				}

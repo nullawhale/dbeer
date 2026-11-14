@@ -7,6 +7,9 @@ struct ExplainPlanView: View {
     var saveTitle = "Execution Plan"
     var canSave: () -> Bool = { true }
     var openLibrary: (() -> Void)? = nil
+    var makeTuning: (() -> TuningPanelModel?)? = nil
+    var tuningUnavailableReason: String? = nil
+    private var tuning = SwiftUI.State<TuningPanelModel?>(initialValue: nil)
     private var saving = SwiftUI.State(initialValue: false)
     private var display = SwiftUI.State(initialValue: ExplainPlanDisplay.tree)
     private var selected = SwiftUI.State<String?>(initialValue: nil)
@@ -36,6 +39,9 @@ struct ExplainPlanView: View {
                         .disabled(plan.result == nil || planLibrary.isBusy || !canSave())
                 }
                 if let openLibrary { Button("Saved Plans…", action: openLibrary).controlHover().disabled(!canSave()) }
+                if let makeTuning {
+                    Button("Tuning…") { tuning.wrappedValue = makeTuning() }.controlHover().disabled(stale || tuningUnavailableReason != nil || plan.result == nil || !canSave()).help(tuningUnavailableReason ?? "Open explicit tuning advice, experiments and bounded collection")
+                }
                 Picker("Plan display", selection: display.projectedValue) {
                     if engine.hasEngineDiagnostics {
                         Text("Diagnostic").tag(ExplainPlanDisplay.tree)
@@ -164,6 +170,9 @@ struct ExplainPlanView: View {
                 selected.wrappedValue = nil
                 collapsed.wrappedValue = []
                 display.wrappedValue = .tree
+            }
+            .sheet(item: tuning.projectedValue) { model in
+                TuningPanelView(model: model, planLibrary: planLibrary, openLibrary: openLibrary)
             }
             .sheet(isPresented: saving.projectedValue) {
                 if let planLibrary {

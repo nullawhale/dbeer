@@ -220,7 +220,7 @@ private struct SavedPlanComparisonView: View {
                         Text(comparison.shapeAvailable ? (comparison.shapeChanged ? "Plan shape changed" : "Same recorded plan shape") : "Plan shape unavailable from captured evidence").font(.caption)
                         if !comparison.comparableEngine { Text("Different engines — operations are shown independently.").foregroundStyle(.orange) }
                         if comparison.incomplete { Text("Captured evidence limits node comparison.").foregroundStyle(.orange) }
-                        Text("Node matching uses operation and native relation/index identity. Duplicate candidates stay ambiguous. Inclusive metrics overlap.")
+                        Text("Node matching uses structural paths and native operation/relation/index identity. Duplicate paths stay ambiguous. Inclusive metrics overlap.")
                             .font(.caption).appSecondaryText()
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 10) {
@@ -232,8 +232,9 @@ private struct SavedPlanComparisonView: View {
                                             if !match.isAmbiguous {
                                                 let left = match.before.first
                                                 let right = match.after.first
+                                                if let reason = comparison.metricComparisonReason(match) { Text(reason).font(.caption).foregroundStyle(.orange) }
                                                 ForEach(PlanComparison.metricPairs(before: left?.metrics ?? [:], after: right?.metrics ?? [:])) { metric in
-                                                    let comparable = comparison.metricsComparable && metric.sameDefinition
+                                                    let comparable = comparison.metricComparisonReason(match) == nil && metric.sameDefinition
                                                     Text("\(metric.name) · Before \(metric.before?.label ?? "Absent")" + (comparable ? " → " : " | After ") + (metric.after?.label ?? "Absent"))
                                                         .font(.caption).textSelection(.enabled)
                                                 }

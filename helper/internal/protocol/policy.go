@@ -13,7 +13,7 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 	}
 	operations := make([]OperationRequest, 0, len(raws))
 	for _, item := range raws {
-		fields, ok := changesObject(item, "type|sql|parameters|export|changes|explain|structure|tableImport|nativeCommand|queryId", "type")
+		fields, ok := changesObject(item, "type|sql|parameters|export|changes|explain|structure|tableImport|nativeCommand|queryId|tuningValidation|tuningSetting", "type")
 		if !ok {
 			return nil, false
 		}
@@ -43,7 +43,28 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 		if operation.Type != "command.execute" && (fields["nativeCommand"] != nil || fields["queryId"] != nil) {
 			return nil, false
 		}
+		if fields["tuningValidation"] != nil && operation.Type != "tuning.validate" || fields["tuningSetting"] != nil && operation.Type != "tuning.setting" {
+			return nil, false
+		}
 		switch operation.Type {
+		case "tuning.validate", "tuning.setting":
+			if len(fields) != 2 {
+				return nil, false
+			}
+			key := "tuningValidation"
+			if operation.Type == "tuning.setting" {
+				key = "tuningSetting"
+			}
+			value, ok := parseTuning(fields[key], operation.Type)
+			if !ok {
+				return nil, false
+			}
+			switch v := value.(type) {
+			case *TuningValidationRequest:
+				operation.TuningValidation = v
+			case *TuningSettingRequest:
+				operation.TuningSetting = v
+			}
 		case "command.execute":
 			if len(fields) != 3 || !stringField(fields, "queryId", &operation.QueryID) {
 				return nil, false
@@ -142,19 +163,27 @@ func (policy ExecutionPolicy) Valid() bool {
 }
 
 type OperationRequest struct {
-	NativeCommand *NativeCommand      `json:"nativeCommand,omitempty"`
-	QueryID       string              `json:"queryId,omitempty"`
-	TableImport   *TableImportRequest `json:"tableImport,omitempty"`
-	Type          string              `json:"type"`
-	Parameters    []QueryParameter    `json:"parameters,omitempty"`
-	SQL           string              `json:"sql,omitempty"`
-	Export        *ExportRequest      `json:"export,omitempty"`
-	Changes       *ChangesRequest     `json:"changes,omitempty"`
-	Explain       *ExplainRequest     `json:"explain,omitempty"`
-	Structure     *tableedit.Apply    `json:"structure,omitempty"`
+	TuningValidation *TuningValidationRequest `json:"tuningValidation,omitempty"`
+	TuningSetting    *TuningSettingRequest    `json:"tuningSetting,omitempty"`
+	NativeCommand    *NativeCommand           `json:"nativeCommand,omitempty"`
+	QueryID          string                   `json:"queryId,omitempty"`
+	TableImport      *TableImportRequest      `json:"tableImport,omitempty"`
+	Type             string                   `json:"type"`
+	Parameters       []QueryParameter         `json:"parameters,omitempty"`
+	SQL              string                   `json:"sql,omitempty"`
+	Export           *ExportRequest           `json:"export,omitempty"`
+	Changes          *ChangesRequest          `json:"changes,omitempty"`
+	Explain          *ExplainRequest          `json:"explain,omitempty"`
+	Structure        *tableedit.Apply         `json:"structure,omitempty"`
 }
 
 func (operation OperationRequest) Valid() bool {
+	if operation.Type == "tuning.validate" || operation.Type == "tuning.setting" {
+		return operation.NativeCommand == nil && operation.QueryID == "" && operation.TableImport == nil && operation.Parameters == nil && operation.Explain == nil && operation.Structure == nil && operation.SQL == "" && operation.Export == nil && operation.Changes == nil && (operation.Type == "tuning.validate" && operation.TuningValidation != nil && operation.TuningValidation.Valid() && operation.TuningSetting == nil || operation.Type == "tuning.setting" && operation.TuningSetting != nil && operation.TuningSetting.Valid() && operation.TuningValidation == nil)
+	}
+	if operation.TuningValidation != nil || operation.TuningSetting != nil {
+		return false
+	}
 	if operation.Type == "command.execute" {
 		return operation.NativeCommand != nil && operation.NativeCommand.Valid() && ValidID(operation.QueryID) && operation.SQL == "" && operation.Parameters == nil && operation.TableImport == nil && operation.Explain == nil && operation.Structure == nil && operation.Export == nil && operation.Changes == nil
 	}
@@ -191,9 +220,10 @@ type StatementAssessment struct {
 }
 
 type AssessedOperation struct {
-	Explain    *ExplainPreview       `json:"explain,omitempty"`
-	Kind       string                `json:"kind"`
-	Statements []StatementAssessment `json:"statements"`
+	TuningSetting *TuningSettingPreview `json:"tuningSetting,omitempty"`
+	Explain       *ExplainPreview       `json:"explain,omitempty"`
+	Kind          string                `json:"kind"`
+	Statements    []StatementAssessment `json:"statements"`
 }
 
 type OperationAssessment struct {

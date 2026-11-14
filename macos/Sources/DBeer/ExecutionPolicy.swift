@@ -48,6 +48,8 @@ struct OperationRequest: Codable, Equatable, Sendable {
     var tableImport: TableImportRequest?
     var nativeCommand: NativeCommand? = nil
     var queryId: String? = nil
+    @OptionalTransportPayload var tuningValidation: TuningValidationRequest? = nil
+    @OptionalTransportPayload var tuningSetting: TuningSettingRequest? = nil
 }
 
 struct StatementAssessment: Codable, Equatable, Sendable {
@@ -61,6 +63,7 @@ struct AssessedOperation: Codable, Equatable, Sendable {
     var kind: String
     var statements: [StatementAssessment]
     var explain: ExplainPreview?
+    var tuningSetting: TuningSettingPreview? = nil
 }
 
 struct OperationAssessment: Codable, Equatable, Sendable {
@@ -75,6 +78,7 @@ struct OperationAssessment: Codable, Equatable, Sendable {
             operations.allSatisfy { operation in
                 ["read", "write", "destructive", "unknown"].contains(operation.kind) &&
                 (operation.explain == nil || operation.explain?.valid == true) &&
+                (operation.tuningSetting == nil || operation.tuningSetting?.valid == true) &&
                 operation.statements.allSatisfy { $0.start >= 0 && $0.end >= $0.start &&
                     ["read", "write", "destructive", "unknown"].contains($0.kind) }
             } && (decision == "deny" ? authorization == nil : authorization.map(BackendMessage.validID) == true)
@@ -201,13 +205,17 @@ enum ExecutionConfirmation {
                 }
             }
             content.append(displayed)
+            if let setting = assessed.tuningSetting {
+                content.append(NSAttributedString(string: "\n" + setting.sql + "\nSeparate restore candidate: " + setting.restoreSQL + "\n" + setting.risks.joined(separator: "\n") + "\n",
+                    attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))
+            }
             content.append(NSAttributedString(string: "\n"))
             if let context = operation.explain?.context, operation.explain?.writeIntent != nil {
                 content.append(NSAttributedString(string: "\nPhysical SQL tab: " + context.targetDocumentId +
                     "\nTransaction before execution: " + context.transactionStatus + "\n",
                     attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.systemRed]))
             }
-            if let parameters = operation.explain?.parameters ?? operation.parameters, !parameters.isEmpty,
+            if let parameters = operation.tuningValidation?.original.parameters ?? operation.explain?.parameters ?? operation.parameters, !parameters.isEmpty,
                let data = try? encoder.encode(parameters), let preview = String(data: data, encoding: .utf8) {
                 content.append(NSAttributedString(string: "Bound parameters\n" + preview + "\n",
                     attributes: [.font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.labelColor]))

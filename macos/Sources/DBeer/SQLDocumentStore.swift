@@ -86,12 +86,14 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     var fileRecoveryURL: URL?
     var sqlLibraryEntryID: UUID?
     var queryParameters: [SQLParameterDefinition]?
+    var explainCollectorConfiguration: ExplainCollectorConfiguration? = nil
 
     init(id: UUID = UUID(), title: String, text: String, profileID: UUID? = nil,
          kind: StoredWorkspaceDocumentKind = .sql, table: StoredTableDocument? = nil,
          snapshotID: UUID? = nil, investigationID: UUID? = nil, erDiagram: StoredERDiagram? = nil,
          fileURL: URL? = nil, fileContentSHA256: String? = nil, fileDocumentID: UUID? = nil, fileRecoveryURL: URL? = nil,
-         sqlLibraryEntryID: UUID? = nil, queryParameters: [SQLParameterDefinition]? = nil) {
+         sqlLibraryEntryID: UUID? = nil, queryParameters: [SQLParameterDefinition]? = nil,
+         explainCollectorConfiguration: ExplainCollectorConfiguration? = nil) {
         self.id = id
         self.title = title
         self.text = text
@@ -107,9 +109,11 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         self.fileRecoveryURL = fileRecoveryURL
         self.sqlLibraryEntryID = sqlLibraryEntryID
         self.queryParameters = queryParameters
+        self.explainCollectorConfiguration = explainCollectorConfiguration
     }
 
     var isValid: Bool {
+        guard explainCollectorConfiguration == nil || kind == .sql && explainCollectorConfiguration?.valid == true else { return false }
         guard (queryParameters == nil || kind == .sql),
               (try? SQLParameterDefinition.validate(queryParameters ?? [])) != nil else { return false }
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
@@ -156,11 +160,11 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, title, text, profileID, kind, table, snapshotID, investigationID, erDiagram, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID, queryParameters
+        case id, title, text, profileID, kind, table, snapshotID, investigationID, erDiagram, fileURL, fileContentSHA256, fileDocumentID, fileRecoveryURL, sqlLibraryEntryID, queryParameters, explainCollectorConfiguration
     }
 
     init(from decoder: Decoder) throws {
-        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "investigationID", "erDiagram", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID", "queryParameters"])
+        try requireWorkspaceKeys(decoder, allowed: ["id", "title", "text", "profileID", "kind", "table", "snapshotID", "investigationID", "erDiagram", "fileURL", "fileContentSHA256", "fileDocumentID", "fileRecoveryURL", "sqlLibraryEntryID", "queryParameters", "explainCollectorConfiguration"])
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(UUID.self, forKey: .id)
         title = try values.decode(String.self, forKey: .title)
@@ -187,6 +191,8 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         sqlLibraryEntryID = try values.decodeIfPresent(UUID.self, forKey: .sqlLibraryEntryID)
         queryParameters = values.contains(.queryParameters) ? try values.decode([SQLParameterDefinition].self, forKey: .queryParameters) : nil
         guard queryParameters == nil || kind == .sql else { throw SQLDocumentStoreError.read }
+        explainCollectorConfiguration = values.contains(.explainCollectorConfiguration) ? try values.decode(ExplainCollectorConfiguration.self, forKey: .explainCollectorConfiguration) : nil
+        guard explainCollectorConfiguration == nil || kind == .sql else { throw SQLDocumentStoreError.read }
         try SQLParameterDefinition.validate(queryParameters ?? [])
     }
 
@@ -217,6 +223,7 @@ struct StoredSQLDocument: Identifiable, Codable, Equatable, Sendable {
         try values.encodeIfPresent(fileRecoveryURL, forKey: .fileRecoveryURL)
         try values.encodeIfPresent(sqlLibraryEntryID, forKey: .sqlLibraryEntryID)
         try values.encodeIfPresent(queryParameters, forKey: .queryParameters)
+        try values.encodeIfPresent(explainCollectorConfiguration, forKey: .explainCollectorConfiguration)
     }
 }
 

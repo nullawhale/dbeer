@@ -16,6 +16,7 @@ private func planTestModel() throws -> ExplainPlanModel {
     var plan = ExplainPlanModel(request: .init(sql: "SELECT 'captured 🍺'", mode: .plan),
         sourceText: "SELECT 'unrelated document text'", sourceRange: NSRange(location: 0, length: 10), profileID: UUID())
     plan.result = result
+    plan.sourceEvidence = ExplainSourceEvidence(rangeLocation: 0, rangeLength: plan.request.sql.utf16.count, transactionStatus: "idle")
     plan.sessionID = "private-runtime-session"
     return plan
 }
