@@ -11,7 +11,7 @@ struct ExplainOptionsAdmission {
 
     static func validOwner(support: ExplainSupport?, engine: DatabaseEngine?, capabilities: Set<String>, helperSupports: Bool) -> Bool {
         guard helperSupports, capabilities.contains(capability), let support, support.valid,
-              support.engine == engine, [.postgresql, .mysql].contains(support.engine),
+              support.engine == engine, [.postgresql, .mysql, .mariadb].contains(support.engine),
               support.options?.valid(engine: support.engine) == true else { return false }
         return true
     }

@@ -24,6 +24,7 @@ final class TuningPanelModel: ObservableObject, Identifiable {
     private let current: @MainActor () -> Bool
     private var observedEpoch: UUID?
     private var settingEpoch: UUID?
+    private var optimizerInspectionEpoch: UUID?
     private let operationEpoch: @MainActor () -> UUID
     private let transaction: @MainActor () -> TransactionStatus?
     private let send: @MainActor (BackendCommand) async throws -> BackendMessage
@@ -57,6 +58,11 @@ final class TuningPanelModel: ObservableObject, Identifiable {
         currentReason ?? (plan.result?.support.engine != .postgresql ? "Transaction-local work_mem is PostgreSQL only." : transaction() != .transaction ? "Begin a transaction explicitly in the SQL editor before observing or changing work_mem." : nil)
     }
     var settingChangeReason: String? { settingReason ?? (readOnly() ? "Readonly policy permits observation and denies setting changes or restore." : nil) }
+    var optimizerReason: String? {
+        inspectReason ?? (readOnly() ? "Readonly policy denies optimizer setting trials." :
+            plan.result?.support.engine != .mariadb || plan.request.mode != .plan ? "Optimizer trials need an estimated MariaDB read plan." :
+            inspection?.mariaDBOptimizer == nil || optimizerInspectionEpoch != operationEpoch() ? "Inspect current metadata and optimizer state before a trial." : nil)
+    }
     var collectorReason: String? {
         inspectReason ?? (plan.request.mode != .plan || plan.request.writeIntent != nil || ExplainDMLAdmission.possibleDML(plan.request.sql, engine: plan.result?.support.engine ?? .postgresql) ? "Background collection accepts estimated read plans only. Each capture needs a fresh allow assessment; writes and review-required queries stop collection." : nil)
     }
@@ -82,10 +88,38 @@ final class TuningPanelModel: ObservableObject, Identifiable {
             let target = StructureTarget(schema: schema, table: table, create: false)
             let request = TuningInspectRequest(version: 1, source: source, capture: capture, target: target)
             guard request.valid else { throw ExecutionPolicyError(message: "Enter one qualified ordinary table. This source is not eligible for tuning inspection.") }
-            inspection = nil; validation = nil
+            inspection = nil; validation = nil; optimizerInspectionEpoch = nil
             let reply = try await send(.tuningInspect(sessionId: source.context!.sessionId, request: request))
             try valid(token); inspection = reply.tuningInspection
+            if inspection?.mariaDBOptimizer != nil { optimizerInspectionEpoch = operationEpoch() }
             status = "Metadata inspected. Recommendations predict neither equivalence nor speedup."
+        }
+    }
+    func validateOptimizer() async {
+        await perform { token in
+            guard optimizerReason == nil, let inspection, let observed = inspection.mariaDBOptimizer else {
+                throw ExecutionPolicyError(message: optimizerReason ?? "Inspect optimizer state before a trial.")
+            }
+            var original = plan.request; original.context = try context()
+            let setting = MariaDBOptimizerVariant(expectedNativeSwitch: observed.nativeSwitch,
+                indexConditionPushdown: !observed.indexConditionPushdown)
+            let request = TuningValidationRequest(version: 1, original: original, variant: original,
+                target: inspection.target, metadataFingerprint: inspection.metadataFingerprint,
+                maxRows: 1_000, maxBytes: 1_048_576, timeoutMs: 5_000, comparison: "multiset", mariaDBOptimizer: setting)
+            guard request.valid else { throw ExecutionPolicyError(message: "The optimizer trial is unavailable for this unchanged query and context.") }
+            let preview = "Run two sequential SELECT observations on this existing idle MariaDB owner?\n\nOriginal:\n" + original.sql +
+                "\n\nCandidate with a statement-scoped optimizer setting:\n" + TuningTransportAdmission.optimizerSQL(setting, sql: original.sql) +
+                "\n\nAt most 1,000 rows each, 1 MiB combined native values and 5 seconds including metadata. The server restores the optimizer setting after this candidate statement. Current settings and transaction context are checked before and after acknowledged reads. Observed equality does not prove equivalence or speed; no retry or automatic recovery operation is issued."
+            guard let grant = try await authorize(.init(type: "tuning.validate", tuningValidation: request), preview) else {
+                status = "Optimizer trial review cancelled"; return
+            }
+            try valid(token); guard transaction() == .idle else { throw CancellationError() }
+            var command = BackendCommand.tuningValidate(sessionId: original.context!.sessionId, request: request)
+            command.authorization = grant
+            validation = nil; optimizerInspectionEpoch = nil
+            let reply = try await send(command)
+            try valid(token); validation = reply.tuningValidation
+            status = "Optimizer trial completed. Inspect again before another trial; result equality does not establish equivalence or speed."
         }
     }
     func validate(_ variant: TuningVariant) async {

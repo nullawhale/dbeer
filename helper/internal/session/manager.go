@@ -212,7 +212,7 @@ func (manager *Manager) run() {
 					}
 					continue
 				}
-				if command.Connection.SessionPurpose == "monitor" && command.Connection.DatabaseEngine() != "postgresql" && command.Connection.DatabaseEngine() != "mysql" {
+				if command.Connection.SessionPurpose == "monitor" && command.Connection.DatabaseEngine() != "postgresql" && command.Connection.DatabaseEngine() != "mysql" && command.Connection.DatabaseEngine() != "mariadb" {
 					if !emit(protocol.ErrorResponse(command, "capability", "Session monitoring is available only for PostgreSQL and MySQL.")) {
 						return
 					}
@@ -595,7 +595,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					outgoing = append(outgoing, protocol.ErrorResponse(pending, "cancelled", "Connection attempt was cancelled."))
 				} else {
 					response := protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id, Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus}
-					if support, ok := physical.(tableedit.AdvancedKindsAdapter); !ok || !support.SupportsAdvancedKinds() { response.Capabilities = slices.DeleteFunc(response.Capabilities,func(c string)bool{return c == protocol.StructureAdvancedKindsCapability}) }
+					if support, ok := physical.(tableedit.AdvancedKindsAdapter); !ok || !support.SupportsAdvancedKinds() {
+						response.Capabilities = slices.DeleteFunc(response.Capabilities, func(c string) bool { return c == protocol.StructureAdvancedKindsCapability })
+					}
 					if _, ok := physical.(tableedit.PhysicalAdapter); !ok {
 						response.Capabilities = slices.DeleteFunc(response.Capabilities, func(c string) bool { return c == protocol.StructurePhysicalCapability })
 					}
@@ -624,7 +626,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 						if support.DML != nil {
 							response.Capabilities = append(response.Capabilities, protocol.ExplainDMLCapability)
 						}
-						if support.Engine == "postgresql" || support.Engine == "mysql" {
+						if support.Engine == "postgresql" || support.Engine == "mysql" || support.Engine == "mariadb" {
 							response.Capabilities = append(response.Capabilities, protocol.ExplainMetricsCapability)
 						}
 						if support.DiagnosticModel != "" {

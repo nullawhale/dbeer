@@ -8,8 +8,9 @@ import (
 
 const ExplainMetricsCapability = "explainMetricsV1"
 
-// Counters include child work and all loops. They must not be multiplied by
-// loops or added across ancestors. Worker evidence overlaps node evidence.
+// PostgreSQL counters include child work and all loops; MariaDB counters are
+// native table-access totals with no inferred child inclusion. Neither is
+// multiplied by loops. Worker evidence overlaps PostgreSQL node evidence.
 type ExplainNodeMetrics struct {
 	Version        int                      `json:"version"`
 	ExecutionScope string                   `json:"executionScope"`
@@ -128,6 +129,28 @@ func validExplainCounters(metrics map[string]ExplainMetric, worker bool) bool {
 	}
 	return true
 }
+
+func validMariaDBExplainCounters(metrics map[string]ExplainMetric) bool {
+	if metrics == nil || len(metrics) > 6 {
+		return false
+	}
+	for key, metric := range metrics {
+		unit := "count"
+		switch key {
+		case "mariaDBPagesAccessed", "mariaDBPagesUpdated", "mariaDBPagesRead", "mariaDBPagesPrefetched":
+		case "mariaDBPagesReadTime":
+			unit = "ms"
+		case "mariaDBOldRowsRead":
+			unit = "rows"
+		default:
+			return false
+		}
+		if metric.Unit != unit || metric.Basis != "total" || !metric.Valid() {
+			return false
+		}
+	}
+	return true
+}
 func (v ExplainJITMetrics) Valid(scope string) bool {
 	if v.Scope != scope || v.Metrics == nil || len(v.Metrics) > 7 {
 		return false
@@ -151,7 +174,11 @@ func (v ExplainNodeMetrics) Valid(engine string, node ExplainNode, mode string) 
 	if v.JIT != nil && (engine != "postgresql" || !v.JIT.Valid("queryAggregate")) {
 		return false
 	}
-	if v.Version != 1 || (engine != "postgresql" && engine != "mysql") || !validExplainCounters(v.Counters, false) || v.Workers == nil || len(v.Workers) > 256 {
+	countersValid := validExplainCounters(v.Counters, false)
+	if engine == "mariadb" {
+		countersValid = validMariaDBExplainCounters(v.Counters)
+	}
+	if v.Version != 1 || (engine != "postgresql" && engine != "mysql" && engine != "mariadb") || !countersValid || v.Workers == nil || len(v.Workers) > 256 {
 		return false
 	}
 	if v.ExecutionScope != "serial" && v.ExecutionScope != "parallel" && v.ExecutionScope != "unknown" && v.ExecutionScope != "logical" {
@@ -162,7 +189,7 @@ func (v ExplainNodeMetrics) Valid(engine string, node ExplainNode, mode string) 
 	default:
 		return false
 	}
-	if v.ExecutionScope == "logical" && (engine != "mysql" || v.RowComparison != "logical" || len(v.Counters) != 0 || len(v.Workers) != 0) || v.RowComparison == "logical" && v.ExecutionScope != "logical" || v.RowComparison == "parallel" && v.ExecutionScope != "parallel" || v.RowComparison == "unknownScope" && v.ExecutionScope != "unknown" {
+	if v.ExecutionScope == "logical" && (engine != "mysql" && engine != "mariadb" || v.RowComparison != "logical" || len(v.Counters) != 0 || len(v.Workers) != 0) || v.RowComparison == "logical" && v.ExecutionScope != "logical" || v.RowComparison == "parallel" && v.ExecutionScope != "parallel" || v.RowComparison == "unknownScope" && v.ExecutionScope != "unknown" {
 		return false
 	}
 	if engine == "mysql" && len(v.Counters) != 0 {
@@ -196,7 +223,7 @@ func (v ExplainNodeMetrics) Valid(engine string, node ExplainNode, mode string) 
 	return true
 }
 func (v ExplainPlanMetrics) Valid(engine string) bool {
-	return v.Version == 1 && (engine == "postgresql" || engine == "mysql")
+	return v.Version == 1 && (engine == "postgresql" || engine == "mysql" || engine == "mariadb")
 }
 func explainZero(value string) bool {
 	for _, c := range value {

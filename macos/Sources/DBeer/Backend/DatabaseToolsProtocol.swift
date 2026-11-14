@@ -43,10 +43,10 @@ struct DatabaseToolsRequest: Codable, Equatable, Sendable {
         let noInput = connection == nil && operation == nil && format == nil && path == nil && toolPath == nil
         switch type {
         case "dbtools.preview":
-            guard let connection, connection.sessionPurpose == nil, [.postgresql, .mysql].contains(connection.engine),
+            guard let connection, connection.sessionPurpose == nil, [.postgresql, .mysql, .mariadb].contains(connection.engine),
                   let operation, DatabaseToolsOperation(rawValue: operation) != nil,
                   let format, DatabaseToolsFormat(rawValue: format) != nil,
-                  connection.engine != .mysql || format == "sql" else { return false }
+                  !connection.engine.usesMySQLSyntax || format == "sql" else { return false }
             return Self.absolutePath(path) && Self.absolutePath(toolPath) && planId == nil && approvalToken == nil && jobId == nil && confirmed == nil
         case "dbtools.start":
             return noInput && planId.map(BackendMessage.validID) == true && approvalToken.map(BackendMessage.validID) == true && jobId == nil
@@ -85,7 +85,7 @@ struct DatabaseToolsReply: Codable, Equatable, Sendable {
     func valid(for type: String) -> Bool {
         guard planId.map(BackendMessage.validID) != false, approvalToken.map(BackendMessage.validID) != false,
               jobId.map(BackendMessage.validID) != false,
-              engine == nil || [.postgresql, .mysql].contains(engine!),
+              engine == nil || [.postgresql, .mysql, .mariadb].contains(engine!),
               operation == nil || DatabaseToolsOperation(rawValue: operation!) != nil,
               format == nil || DatabaseToolsFormat(rawValue: format!) != nil,
               DatabaseToolsRequest.text(phase, maximum: 128), DatabaseToolsRequest.text(database, maximum: 4_096),
@@ -98,7 +98,7 @@ struct DatabaseToolsReply: Codable, Equatable, Sendable {
               !outputPublished || state == .completed && operation == "dump" else { return false }
         if let bytesProcessed, let totalBytes, bytesProcessed > totalBytes { return false }
         let summaryValid = engine != nil && operation != nil && format != nil && DatabaseToolsRequest.absolutePath(path) &&
-            (engine != .mysql || format == "sql") &&
+            (engine?.usesMySQLSyntax != true || format == "sql") &&
             DatabaseToolsRequest.text(database, maximum: 4_096, required: true) &&
             DatabaseToolsRequest.text(toolName, maximum: 256, required: true) &&
             DatabaseToolsRequest.text(toolVersion, maximum: 256, required: true) &&
@@ -118,6 +118,7 @@ struct DatabaseToolsReply: Codable, Equatable, Sendable {
         }
     }
     private var expectedToolName: String {
+        if engine == .mariadb { return operation == "dump" ? "mariadb-dump" : "mariadb" }
         if engine == .mysql { return operation == "dump" ? "mysqldump" : "mysql" }
         return operation == "dump" ? "pg_dump" : format == "sql" ? "psql" : "pg_restore"
     }

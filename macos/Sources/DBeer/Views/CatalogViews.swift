@@ -115,11 +115,11 @@ struct ProfileCatalogRow: View {
             }
         }
         menu.addCatalogAction(profile.engine == .mongodb ? "New JSON Script" : "New SQL Tab") { workspace.newDocument(profileID: profile.id) }
-        if [.postgresql, .mysql, .sqlite].contains(profile.engine) {
+        if [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine) {
             menu.addCatalogAction("Export Schema Bundle…", enabled: workspace.canManageWorkspace) { workspace.showSchemaBundle(profile) }
         }
         menu.addCatalogAction("Find Data…", enabled: workspace.canManageWorkspace) { workspace.showDatabaseValueSearch(profile) }
-        if [.postgresql, .mysql].contains(profile.engine) {
+        if [.postgresql, .mysql, .mariadb].contains(profile.engine) {
             menu.addCatalogAction("Create Table from CSV…", enabled: workspace.canManageWorkspace) { workspace.showDataTransfer(profile) }
             menu.addCatalogAction("Copy Table to Connection…", enabled: workspace.canManageWorkspace) { workspace.showDataTransfer(profile, mode: "table") }
             menu.addCatalogAction("Backup Database…", enabled: workspace.canManageWorkspace) { workspace.showDatabaseTools(profile) }
@@ -175,7 +175,7 @@ struct CatalogBranchView: View {
     private var contextMenu: NSMenu {
         let menu = NSMenu()
         if (node.kind == .schema || (node.kind == .object && node.objectKind == "table")),
-           workspace.library.savedConnections.contains(where: { $0.id == node.profileID && [.postgresql, .mysql, .sqlite].contains($0.engine) }) {
+           workspace.library.savedConnections.contains(where: { $0.id == node.profileID && [.postgresql, .mysql, .mariadb, .sqlite].contains($0.engine) }) {
             menu.addCatalogAction("Open ER Diagram…") { workspace.openERDiagram(node) }
         }
         if workspace.canEditTableStructure(node) {
@@ -199,7 +199,7 @@ struct CatalogBranchView: View {
                 Task { await workspace.inspect(node) }
             }
             if ["table", "view"].contains(node.objectKind) {
-                if [.postgresql, .mysql, .sqlite].contains(node.engine) {
+                if [.postgresql, .mysql, .mariadb, .sqlite].contains(node.engine) {
                     menu.addCatalogAction("New Local Relationship…") {
                         workspace.editLogicalRelationship(sourceProfileID: node.profileID,
                             reference: .init(schema: node.schema, name: node.name, kind: node.objectKind))

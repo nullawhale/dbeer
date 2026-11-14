@@ -45,10 +45,16 @@ func (t token) identifier() bool          { return t.kind == 'i' || t.kind == 'q
 // executable comments are refused rather than interpreted optimistically.
 func Parse(sql, engine string) (Selection, string) {
 	fail := func() (Selection, string) { return Selection{}, Unsupported }
+	// The provenance grammar shares MariaDB's conservative MySQL quoting rules;
+	// this selects a lexer only, not a database adapter or source authority.
+	mariaDB := engine == "mariadb"
+	if mariaDB {
+		engine = "mysql"
+	}
 	if engine != "postgresql" && engine != "mysql" || len(sql) > maxSQLBytes || !utf8.ValidString(sql) {
 		return fail()
 	}
-	tokens, ok := lex(sql, engine)
+	tokens, ok := lex(sql, engine, mariaDB)
 	if !ok || len(tokens) < 4 || !tokens[0].keyword("SELECT") {
 		return fail()
 	}
@@ -238,7 +244,7 @@ func forbidden(t token) bool {
 	return false
 }
 
-func lex(sql, engine string) ([]token, bool) {
+func lex(sql, engine string, mariaDB bool) ([]token, bool) {
 	var tokens []token
 	for i := 0; i < len(sql); {
 		r, n := utf8.DecodeRuneInString(sql[i:])
@@ -264,7 +270,7 @@ func lex(sql, engine string) ([]token, bool) {
 			continue
 		}
 		if strings.HasPrefix(sql[i:], "/*") {
-			if i+2 < len(sql) && (sql[i+2] == '!' || sql[i+2] == '+') {
+			if i+2 < len(sql) && (sql[i+2] == '!' || sql[i+2] == '+' || mariaDB && (sql[i+2] == 'M' || sql[i+2] == 'm') && i+3 < len(sql) && sql[i+3] == '!') {
 				return nil, false
 			}
 			i += 2

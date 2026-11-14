@@ -134,7 +134,7 @@ func numericSource(engine, native string) (numeric bool, floatBits int) {
 	if i := strings.IndexByte(kind, '('); i >= 0 {
 		kind = strings.TrimSpace(kind[:i])
 	}
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
 		for {
 			previous := kind
 			kind = strings.TrimSuffix(strings.TrimSuffix(kind, " unsigned"), " zerofill")
@@ -147,7 +147,7 @@ func numericSource(engine, native string) (numeric bool, floatBits int) {
 	case "smallint", "integer", "bigint", "int2", "int4", "int8", "numeric", "decimal":
 		return true, 0
 	case "tinyint", "mediumint", "int":
-		return engine == "mysql", 0
+		return (engine == "mysql" || engine == "mariadb"), 0
 	case "float4", "real":
 		if engine == "postgresql" {
 			return true, 32
@@ -157,11 +157,11 @@ func numericSource(engine, native string) (numeric bool, floatBits int) {
 			return true, 64
 		}
 	case "float":
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			return true, 32
 		}
 	case "double":
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			return true, 64
 		}
 	}

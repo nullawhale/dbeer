@@ -22,7 +22,7 @@ struct SQLResultSource: Codable, Sendable, Equatable {
             return schema.isEmpty && table.isEmpty && columns.isEmpty && readOnlyReason != nil
         }
         guard !columns.isEmpty, columns.count <= 4_096, columns.count == resultColumns.count,
-              resultColumns.allSatisfy({ $0.engine == .postgresql || $0.engine == .mysql }),
+              resultColumns.allSatisfy({ $0.engine == .postgresql || $0.engine.usesMySQLSyntax }),
               Set(resultColumns.map(\.engine)).count == 1,
               Set(columns.map { Data($0.name.utf8) }).count == columns.count,
               Set(columns.map(\.tableIndex)).count == columns.count,

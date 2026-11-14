@@ -114,7 +114,7 @@ func (value NativeValue) valid(depth int, budget *nativeValueBudget) bool {
 			return false
 		}
 	}
-	if value.Engine != "" && value.Engine != "postgresql" && value.Engine != "mysql" && value.Engine != "sqlite" && value.Engine != "mongodb" && value.Engine != "cassandra" {
+	if value.Engine != "" && value.Engine != "postgresql" && value.Engine != "mysql" && value.Engine != "mariadb" && value.Engine != "sqlite" && value.Engine != "mongodb" && value.Engine != "cassandra" {
 		return false
 	}
 	if value.Value != nil {

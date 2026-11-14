@@ -14,7 +14,7 @@ struct ERDiagramSource: Codable, Equatable, Identifiable, Sendable {
         fingerprint = LogicalRelationshipEndpoint.fingerprint(profile); name = profile.name
     }
     var isValid: Bool {
-        [.postgresql, .mysql, .sqlite].contains(engine) && database.utf8.count <= 1_024 && !database.contains("\0") &&
+        [.postgresql, .mysql, .mariadb, .sqlite].contains(engine) && database.utf8.count <= 1_024 && !database.contains("\0") &&
             name.utf8.count <= 1_024 && fingerprint.utf8.count == 64 &&
             fingerprint.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }

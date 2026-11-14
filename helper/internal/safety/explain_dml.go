@@ -15,6 +15,8 @@ func (t ExplainTarget) DML() bool { return t.Statement != "select" || t.DataModi
 func ClassifyExplainTarget(engine, sql string) (ExplainTarget, bool) {
 	if engine == "postgresql" {
 		engine = "postgres"
+	} else if engine == "mariadb" {
+		engine = "mysql"
 	}
 	if engine != "postgres" && engine != "mysql" && engine != "sqlite" {
 		return ExplainTarget{}, false
@@ -183,6 +185,8 @@ func ClassifyEstimatedExplain(engine, sql string) []Statement {
 	}
 	if engine == "postgresql" {
 		engine = "postgres"
+	} else if engine == "mariadb" {
+		engine = "mysql"
 	}
 	l := lexer{sql: sql, engine: engine}
 	ts, ok := l.scan(0, 0)

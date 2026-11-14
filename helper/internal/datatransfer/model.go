@@ -150,7 +150,7 @@ func Normalize(value protocol.CellValue, column protocol.TransferColumn, engine 
 		if canonical == "0" {
 			whole = 0
 		}
-		if err != nil || s > column.Scale || whole > column.Precision-column.Scale || engine == "mysql" && (column.Precision > 65 || column.Scale > 30) {
+		if err != nil || s > column.Scale || whole > column.Precision-column.Scale || !transferDecimalFits(engine, column.Precision, column.Scale) {
 			return value, ErrInvalid
 		}
 		text = canonical
@@ -179,19 +179,19 @@ func Normalize(value protocol.CellValue, column protocol.TransferColumn, engine 
 		}
 	case "date":
 		parsed, err := time.Parse("2006-01-02", text)
-		if err != nil || parsed.Year() < 1 || engine == "mysql" && parsed.Year() < 1000 {
+		if err != nil || parsed.Year() < 1 || (engine == "mysql" || engine == "mariadb") && parsed.Year() < 1000 {
 			return value, ErrInvalid
 		}
 	case "timestamp":
 		parsed, err := time.Parse("2006-01-02 15:04:05.999999999", strings.Replace(text, "T", " ", 1))
-		if err != nil || parsed.Year() < 1 || parsed.Nanosecond()%1000 != 0 || engine == "mysql" && parsed.Year() < 1000 {
+		if err != nil || parsed.Year() < 1 || parsed.Nanosecond()%1000 != 0 || (engine == "mysql" || engine == "mariadb") && parsed.Year() < 1000 {
 			return value, ErrInvalid
 		}
 		text = parsed.Format("2006-01-02 15:04:05.999999999")
 	case "timestampTZ":
 		parsed, err := time.Parse(time.RFC3339Nano, text)
 		utc := parsed.UTC()
-		if err != nil || utc.Year() < 1 || utc.Year() > 9999 || parsed.Nanosecond()%1000 != 0 || engine == "mysql" && utc.Year() < 1000 {
+		if err != nil || utc.Year() < 1 || utc.Year() > 9999 || parsed.Nanosecond()%1000 != 0 || (engine == "mysql" || engine == "mariadb") && utc.Year() < 1000 {
 			return value, ErrInvalid
 		}
 		text = utc.Format(time.RFC3339Nano)
@@ -214,10 +214,10 @@ func Infer(headers []string, rows [][]protocol.CellValue, engine string) ([]prot
 			name = "column_" + strconv.Itoa(index+1)
 		}
 		limit := 63
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			limit = 64
 		}
-		for len(name) > limit && engine != "mysql" || engine == "mysql" && utf8.RuneCountInString(name) > limit {
+		for len(name) > limit && engine != "mysql" && engine != "mariadb" || (engine == "mysql" || engine == "mariadb") && utf8.RuneCountInString(name) > limit {
 			_, size := utf8.DecodeLastRuneInString(name)
 			name = name[:len(name)-size]
 		}
@@ -226,7 +226,7 @@ func Infer(headers []string, rows [][]protocol.CellValue, engine string) ([]prot
 		for {
 			duplicate := false
 			for _, prior := range columns[:index] {
-				if prior.Name == name || engine == "mysql" && strings.EqualFold(prior.Name, name) {
+				if prior.Name == name || (engine == "mysql" || engine == "mariadb") && strings.EqualFold(prior.Name, name) {
 					duplicate = true
 					break
 				}
@@ -236,7 +236,7 @@ func Infer(headers []string, rows [][]protocol.CellValue, engine string) ([]prot
 			}
 			tail := "_" + strconv.Itoa(suffix)
 			name = base
-			for len(name)+len(tail) > limit {
+			for (engine != "mariadb" && len(name)+len(tail) > limit) || (engine == "mariadb" && utf8.RuneCountInString(name)+len(tail) > limit) {
 				_, size := utf8.DecodeLastRuneInString(name)
 				name = name[:len(name)-size]
 			}
@@ -272,7 +272,7 @@ func Infer(headers []string, rows [][]protocol.CellValue, engine string) ([]prot
 				}
 				candidate.Precision = max(1, whole+scale)
 				candidate.Scale = scale
-				if engine == "mysql" && (candidate.Precision > 65 || scale > 30) {
+				if !transferDecimalFits(engine, candidate.Precision, scale) {
 					continue
 				}
 			}
@@ -319,17 +319,21 @@ func ValidateColumns(columns []protocol.TransferColumn, engine string) error {
 	}
 	seen := map[string]bool{}
 	for _, column := range columns {
-		if !column.Valid() || seen[column.Name] || engine == "mysql" && utf8.RuneCountInString(column.Name) > 64 || engine == "postgresql" && len([]byte(column.Name)) > 63 || column.Type == "decimal" && engine == "mysql" && (column.Precision > 65 || column.Scale > 30) {
+		key := column.Name
+		if engine == "mariadb" {
+			key = strings.ToLower(key)
+		}
+		if !column.Valid() || seen[key] || (engine == "mysql" || engine == "mariadb") && utf8.RuneCountInString(column.Name) > 64 || engine == "postgresql" && len([]byte(column.Name)) > 63 || column.Type == "decimal" && !transferDecimalFits(engine, column.Precision, column.Scale) {
 			return ErrInvalid
 		}
-		seen[column.Name] = true
+		seen[key] = true
 	}
 	return nil
 }
 
 func ValidateTarget(engine, schema, table string) error {
 	for _, name := range []string{schema, table} {
-		if name == "" || !utf8.ValidString(name) || strings.ContainsRune(name, 0) || engine == "postgresql" && len(name) > 63 || engine == "mysql" && utf8.RuneCountInString(name) > 64 {
+		if name == "" || !utf8.ValidString(name) || strings.ContainsRune(name, 0) || engine == "postgresql" && len(name) > 63 || (engine == "mysql" || engine == "mariadb") && utf8.RuneCountInString(name) > 64 {
 			return ErrInvalid
 		}
 	}
@@ -349,4 +353,14 @@ func MapRow(row []protocol.CellValue, columns []protocol.TransferColumn, engine 
 		mapped[index] = value
 	}
 	return mapped, -1, nil
+}
+
+func transferDecimalFits(engine string, precision, scale int) bool {
+	switch engine {
+	case "mysql":
+		return precision <= 65 && scale <= 30
+	case "mariadb":
+		return precision <= 65 && scale <= 38
+	}
+	return true
 }

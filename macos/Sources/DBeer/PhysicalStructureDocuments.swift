@@ -7,7 +7,7 @@ struct PhysicalStructureIntentDocument: Codable, Equatable, Sendable {
     let engine: DatabaseEngine
     let draft: StructurePhysicalDraft
     init(engine: DatabaseEngine, draft: StructurePhysicalDraft) { version = 1; self.engine = engine; self.draft = draft }
-    var valid: Bool { version == 1 && [.postgresql, .mysql].contains(engine) && draft.valid }
+    var valid: Bool { version == 1 && [.postgresql, .mysql, .mariadb].contains(engine) && draft.valid(for: engine) }
     func encoded() throws -> String {
         guard valid else { throw StructureDraftFileError.invalidDocument }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]

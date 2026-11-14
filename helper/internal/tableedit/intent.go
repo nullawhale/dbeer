@@ -197,7 +197,7 @@ func (d Draft) Validate() error {
 func ReferentialAction(s string) bool {
 	return s == "NO ACTION" || s == "RESTRICT" || s == "CASCADE" || s == "SET NULL"
 }
-func ColumnType(c sc.Column) (DataType, bool) {
+func ColumnType(c sc.Column, engines ...string) (DataType, bool) {
 	if c.Type.Value == nil || c.Type.Value.Kind != "builtin" || c.Type.Value.Modifiers.Value == nil {
 		return DataType{}, false
 	}
@@ -221,7 +221,11 @@ func ColumnType(c sc.Column) (DataType, bool) {
 		d.Precision = int(*m.Precision)
 		d.Scale = int(*m.Scale)
 	}
-	return d, d.Valid()
+	engine := ""
+	if len(engines) == 1 {
+		engine = engines[0]
+	}
+	return d, d.ValidForEngine(engine)
 }
 func FindColumn(b Baseline, name string) (sc.Column, bool) {
 	if b.Facts != nil {
@@ -286,10 +290,10 @@ func Summarize(b *Baseline) {
 	b.DependencyProof = f.Proof
 	for i := range b.Columns {
 		if c, ok := FindColumn(*b, b.Columns[i].Name); ok {
-			if t, valid := ColumnType(c); valid {
+			if t, valid := ColumnType(c, b.Engine); valid {
 				b.Columns[i].EditableType = &t
 			}
-			if c.Type.Value != nil && c.Type.Value.Modifiers.Value != nil && b.Engine == "mysql" {
+			if c.Type.Value != nil && c.Type.Value.Modifiers.Value != nil && (b.Engine == "mysql" || b.Engine == "mariadb") {
 				unsigned := c.Type.Value.Modifiers.Value.Unsigned
 				b.Columns[i].Unsigned = &unsigned
 			}
@@ -405,7 +409,7 @@ func CheckChange(b Baseline, c ColumnChange) error {
 		return ErrUnsupported
 	}
 	if c.Type != nil {
-		if old.Default.Value == nil || old.Default.Value.Kind != "none" && !(b.Engine == "mysql" && old.Default.Value.Kind == "sqlNull") {
+		if old.Default.Value == nil || old.Default.Value.Kind != "none" && !((b.Engine == "mysql" || b.Engine == "mariadb") && old.Default.Value.Kind == "sqlNull") {
 			return errors.New("Type widening requires a column without a default expression.")
 		}
 		if !CanWiden(old, *c.Type) {
@@ -643,6 +647,13 @@ func ExpectedNewType(engine string, want DataType) sc.TypeUse {
 			}
 			m.Precision = &p
 			m.Scale = &s
+			if engine == "mariadb" {
+				width := int64(11)
+				if want.Kind == "bigint" {
+					width = 20
+				}
+				m.Length = &width
+			}
 		}
 	}
 	if want.Kind == "varchar" {

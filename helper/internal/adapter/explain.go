@@ -40,22 +40,22 @@ func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (Prepa
 		return p, errors.New("Visual Explain is unavailable for this server version or engine fork.")
 	}
 	if target.DML() {
-		if s.DML == nil || !s.DML.Estimated {
+		form := target.Statement
+		if target.DataModifyingCTE {
+			form = "dataModifyingCTE"
+		} else if (s.Engine == "mysql" || s.Engine == "mariadb") && target.MySQLMultiTable {
+			if form == "update" {
+				form = "mysqlMultiTableUpdate"
+			} else {
+				form = "mysqlMultiTableDelete"
+			}
+		}
+		if s.DML == nil || !s.DML.AllowsEstimated(form) {
 			return p, errors.New("Data-changing Explain is unavailable for this server.")
 		}
 		dml := protocol.ExplainDMLTarget{Statement: target.Statement, DataModifyingCTE: target.DataModifyingCTE, MySQLMultiTable: target.MySQLMultiTable}
 		p.Preview.DML = &dml
 		if r.Mode == "analyze" {
-			form := target.Statement
-			if target.DataModifyingCTE {
-				form = "dataModifyingCTE"
-			} else if s.Engine == "mysql" && target.MySQLMultiTable {
-				if form == "update" {
-					form = "mysqlMultiTableUpdate"
-				} else {
-					form = "mysqlMultiTableDelete"
-				}
-			}
 			if !explainContains(s.DML.Analyze, form) {
 				return p, errors.New("Actual DML Analyze is unavailable for this statement form. PostgreSQL supports INSERT, UPDATE, DELETE and data-changing CTEs; MySQL supports only multi-table UPDATE/DELETE from 8.0.18. Choose estimated Explain; the SQL is never rewritten.")
 			}
@@ -154,6 +154,11 @@ func PrepareExplain(s protocol.ExplainSupport, r protocol.ExplainRequest) (Prepa
 			}
 		} else {
 			p.Prefix = "EXPLAIN FORMAT=" + strings.ToUpper(format) + "\n"
+		}
+	} else if s.Engine == "mariadb" {
+		p.Prefix = "EXPLAIN FORMAT=JSON\n"
+		if r.Mode == "analyze" {
+			p.Prefix = "ANALYZE FORMAT=JSON\n"
 		}
 	} else {
 		return p, errors.New("Unsupported relational Explain engine.")

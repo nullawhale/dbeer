@@ -111,7 +111,7 @@ func mapSchemaValue(v reflect.Value, m sc.Mappings) {
 // Unknown facts and transformations outside an adapter's generator stay manual.
 func Schema(ctx context.Context, report sc.Report, render SchemaRenderer) (Plan, error) {
 	plan := New("schema", report.Summary.Engine, report.Summary.ModelDigest)
-	if render == nil || !DigestValid(plan.ModelDigest) || (plan.Engine != "postgresql" && plan.Engine != "mysql" && plan.Engine != "sqlite") || !report.Summary.Mappings.Valid() {
+	if render == nil || !DigestValid(plan.ModelDigest) || (plan.Engine != "postgresql" && plan.Engine != "mysql" && plan.Engine != "mariadb" && plan.Engine != "sqlite") || !report.Summary.Mappings.Valid() {
 		return Plan{}, ErrInvalid
 	}
 	if len(report.Differences) > MaxSteps*16 {
@@ -264,6 +264,18 @@ func Schema(ctx context.Context, report sc.Report, render SchemaRenderer) (Plan,
 				return ref.Name == "default" || ref.Name == "C" || ref.Name == "POSIX" || ref.Name == "ucs_basic"
 			case "opclass":
 				for _, name := range []string{"array_ops", "bit_ops", "bool_ops", "bpchar_ops", "bpchar_pattern_ops", "bytea_ops", "char_ops", "cidr_ops", "date_ops", "enum_ops", "float4_ops", "float8_ops", "inet_ops", "int2_ops", "int4_ops", "int8_ops", "interval_ops", "jsonb_ops", "jsonb_path_ops", "macaddr_ops", "macaddr8_ops", "money_ops", "multirange_ops", "name_ops", "numeric_ops", "oid_ops", "oidvector_ops", "range_ops", "record_ops", "text_ops", "text_pattern_ops", "time_ops", "timestamp_ops", "timestamptz_ops", "timetz_ops", "tsquery_ops", "tsvector_ops", "uuid_ops", "varbit_ops", "varchar_ops", "varchar_pattern_ops", "xid_ops", "xid8_ops"} {
+					if ref.Name == name {
+						return true
+					}
+				}
+			}
+		}
+		if plan.Engine == "mariadb" && ref.Schema == "" {
+			if ref.Kind == "type" {
+				return strings.ToLower(ref.Name) != "vector"
+			}
+			if ref.Kind == "collation" {
+				for _, name := range []string{"binary", "ascii_bin", "ascii_general_ci", "latin1_bin", "latin1_general_ci", "latin1_swedish_ci", "utf8_bin", "utf8_general_ci", "utf8_unicode_ci", "utf8mb3_bin", "utf8mb3_general_ci", "utf8mb3_unicode_ci", "utf8mb4_bin", "utf8mb4_general_ci", "utf8mb4_unicode_ci", "utf8mb4_unicode_520_ci", "utf8mb4_uca1400_ai_ci"} {
 					if ref.Name == name {
 						return true
 					}

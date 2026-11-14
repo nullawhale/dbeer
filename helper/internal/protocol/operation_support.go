@@ -29,7 +29,7 @@ func (s OperationSupport) Valid() bool {
 		return false
 	}
 	switch s.Engine {
-	case "postgresql", "mysql", "sqlite", "cassandra", "mongodb":
+	case "postgresql", "mysql", "mariadb", "sqlite", "cassandra", "mongodb":
 	default:
 		return false
 	}

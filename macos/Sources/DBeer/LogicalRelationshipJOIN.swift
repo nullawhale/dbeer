@@ -58,8 +58,8 @@ enum LogicalRelationshipJOIN {
                 }
                 // MySQL signedness, precision and binary width affect native
                 // conversion; exact declarations avoid introducing SQL casts.
-                if profile.engine == .mysql, Data(a.nativeType.utf8) != Data(b.nativeType.utf8) {
-                    return "MySQL native JOIN columns require identical current declarations. Typed navigation remains available."
+                if profile.engine.usesMySQLSyntax, Data(a.nativeType.utf8) != Data(b.nativeType.utf8) {
+                    return profile.engine.displayName + " native JOIN columns require identical current declarations. Typed navigation remains available."
                 }
             }
         }

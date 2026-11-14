@@ -247,6 +247,45 @@
         "sourceType": "varchar(10)",
         "sqliteStorage": "text"
       }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": ""
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "varchar(20)",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "text",
+          "value": "0.12345678901234567890123456789012345678"
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "decimal(65,38)",
+        "sqliteStorage": "preserve"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "binary",
+          "value": "AP8="
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "varbinary(2)",
+        "sqliteStorage": "preserve"
+      }
     }
   ],
   "invalid": [
@@ -835,6 +874,19 @@
         "sourceEngine": "mysql",
         "sourceType": "blob",
         "sqliteStorage": "blob"
+      }
+    },
+    {
+      "column": "v",
+      "operator": "eq",
+      "nativeValue": {
+        "cell": {
+          "kind": "sqliteInteger",
+          "value": "1"
+        },
+        "sourceEngine": "mariadb",
+        "sourceType": "int",
+        "sqliteStorage": "preserve"
       }
     }
   ],

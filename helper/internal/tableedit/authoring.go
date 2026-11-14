@@ -199,7 +199,7 @@ func ExpressionSlot(engine, raw string) (string, error) {
 	depth, brackets := 0, 0
 	for i := 0; i < len(raw); {
 		c := raw[i]
-		if c == '\\' || c == ';' || c == '-' && i+1 < len(raw) && raw[i+1] == '-' || c == '/' && i+1 < len(raw) && raw[i+1] == '*' || c == '#' && engine == "mysql" {
+		if c == '\\' || c == ';' || c == '-' && i+1 < len(raw) && raw[i+1] == '-' || c == '/' && i+1 < len(raw) && raw[i+1] == '*' || c == '#' && (engine == "mysql" || engine == "mariadb") {
 			return bad()
 		}
 		if engine == "sqlite" && c == '[' {
@@ -210,7 +210,7 @@ func ExpressionSlot(engine, raw string) (string, error) {
 			i += end + 2
 			continue
 		}
-		if (engine == "mysql" || engine == "sqlite") && c == '?' || engine == "sqlite" && (c == ':' || c == '@' || c == '$') {
+		if ((engine == "mysql" || engine == "mariadb") || engine == "sqlite") && c == '?' || engine == "sqlite" && (c == ':' || c == '@' || c == '$') {
 			return bad()
 		}
 		if c == '\'' || c == '"' || c == '`' {

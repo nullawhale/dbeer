@@ -22,7 +22,8 @@ struct TuningPanelView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     sourceSection
                     inspectionSection
-                    settingsSection
+                if model.plan.result?.support.engine == .mariadb { optimizerSection }
+                else { settingsSection }
                     collectorSection
                     GroupBox("Saved baseline comparison · offline") {
                         VStack(alignment: .leading, spacing: 6) {
@@ -109,6 +110,21 @@ struct TuningPanelView: View {
                         Button("Review Separate Restore…") { Task { await model.setWorkMem(0, restoring: true) } }.controlHover().disabled(model.settingObservation == nil || model.settingChangeReason != nil)
                     }
                 }.disabled(model.isBusy || model.settingReason != nil)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+    private var optimizerSection: some View {
+        GroupBox("MariaDB optimizer · one candidate SELECT") {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("A trial compares the original SELECT with the same SELECT using one statement-scoped optimizer change. MariaDB restores the setting after that statement. Sequential observations do not prove result equivalence or a speedup.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let observed = model.inspection?.mariaDBOptimizer {
+                    Text("Index condition pushdown: \(observed.indexConditionPushdown ? "On" : "Off")").font(.caption)
+                    Button("Review Trial with Pushdown \(observed.indexConditionPushdown ? "Off" : "On")…") {
+                        Task { await model.validateOptimizer() }
+                    }.controlHover().disabled(model.isBusy || model.optimizerReason != nil)
+                }
+                if let reason = model.optimizerReason { Text(reason).font(.caption).foregroundStyle(.orange) }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }

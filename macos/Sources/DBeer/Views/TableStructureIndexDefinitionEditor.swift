@@ -32,7 +32,7 @@ struct StructureIndexDefinitionEditor: View {
                 }
                 StructureIndexOptionalBoolPicker(title: "Unique NULL treatment", defaultLabel: "Server default NULL treatment", trueLabel: "NULLS DISTINCT", falseLabel: "NULLS NOT DISTINCT", value: $definition.nullsDistinct)
             } else {
-                StructureIndexOptionalBoolPicker(title: "Visibility", defaultLabel: "Server default visibility", trueLabel: "Visible", falseLabel: "Invisible", value: $definition.visible)
+                StructureIndexOptionalBoolPicker(title: engine == .mariadb ? "Optimizer use" : "Visibility", defaultLabel: "Server default", trueLabel: engine == .mariadb ? "Not ignored" : "Visible", falseLabel: engine == .mariadb ? "Ignored" : "Invisible", value: $definition.visible)
             }
             StructureIndexOptionsEditor(title: "Index options", options: $definition.options)
             Text("Preview checks each option against this engine, access method and server version. Expressions and predicates are retained exactly; Preview does not evaluate them. Apply requires review of the generated SQL.")

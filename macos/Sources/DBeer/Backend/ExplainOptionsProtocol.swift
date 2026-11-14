@@ -90,7 +90,7 @@ struct ExplainOptionSupport: Codable, Sendable, Equatable {
 
 func validExplainSelection(support: ExplainSupport, options: ExplainOptions?, mode: ExplainMode, format: String?, status: String? = nil) -> Bool {
     if let format {
-        guard support.engine == .mysql ? (["tree", "json"].contains(format) || status != nil && ["jsonV1", "jsonV2"].contains(format)) : support.engine == .postgresql && format == "json" else { return false }
+        guard support.engine == .mysql ? (["tree", "json"].contains(format) || status != nil && ["jsonV1", "jsonV2"].contains(format)) : [.postgresql, .mariadb].contains(support.engine) && format == "json" else { return false }
     }
     if let options {
         guard support.options?.accepts(options: options, mode: mode, engine: support.engine) == true, let format else { return false }

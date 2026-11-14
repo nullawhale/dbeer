@@ -29,6 +29,7 @@ func parseExplainWriteIntent(raw json.RawMessage) (*ExplainWriteIntent, bool) {
 type ExplainDMLSupport struct {
 	AnalyzeTargetExecution string   `json:"analyzeTargetExecution"`
 	Estimated              bool     `json:"estimated"`
+	EstimatedForms         []string `json:"estimatedForms,omitempty"`
 	Analyze                []string `json:"analyze"`
 }
 
@@ -36,11 +37,25 @@ func (s ExplainDMLSupport) Valid(engine string) bool {
 	if !s.Estimated || s.Analyze == nil || len(s.Analyze) > 4 {
 		return false
 	}
+	if engine == "mariadb" {
+		if len(s.EstimatedForms) == 0 || len(s.EstimatedForms) > 4 {
+			return false
+		}
+		seen := map[string]bool{}
+		for _, form := range s.EstimatedForms {
+			if !mariaDBDMLForm(form) || seen[form] {
+				return false
+			}
+			seen[form] = true
+		}
+	} else if s.EstimatedForms != nil {
+		return false
+	}
 	if len(s.Analyze) == 0 {
 		if s.AnalyzeTargetExecution != "unavailable" {
 			return false
 		}
-	} else if engine == "postgresql" {
+	} else if engine == "postgresql" || engine == "mariadb" {
 		if s.AnalyzeTargetExecution != "executes" {
 			return false
 		}
@@ -65,11 +80,29 @@ func (s ExplainDMLSupport) Valid(engine string) bool {
 			if form != "mysqlMultiTableUpdate" && form != "mysqlMultiTableDelete" {
 				return false
 			}
+		} else if engine == "mariadb" {
+			if !mariaDBDMLForm(form) || !s.AllowsEstimated(form) {
+				return false
+			}
 		} else {
 			return false
 		}
 	}
-	return engine == "postgresql" || engine == "mysql" || engine == "sqlite" && len(s.Analyze) == 0
+	return engine == "postgresql" || engine == "mysql" || engine == "mariadb" || engine == "sqlite" && len(s.Analyze) == 0
+}
+
+func mariaDBDMLForm(form string) bool {
+	return form == "update" || form == "delete" || form == "mysqlMultiTableUpdate" || form == "mysqlMultiTableDelete"
+}
+
+func (s ExplainDMLSupport) AllowsEstimated(form string) bool {
+	if !s.Estimated {
+		return false
+	}
+	if s.EstimatedForms == nil {
+		return true
+	}
+	return containsExplainString(s.EstimatedForms, form)
 }
 
 type ExplainDMLTarget struct {
@@ -79,7 +112,7 @@ type ExplainDMLTarget struct {
 }
 
 func (t ExplainDMLTarget) Valid(engine string) bool {
-	return (t.Statement == "insert" || t.Statement == "update" || t.Statement == "delete" || t.Statement == "select" && t.DataModifyingCTE) && (!t.DataModifyingCTE || engine == "postgresql") && (!t.MySQLMultiTable || engine == "mysql" && (t.Statement == "update" || t.Statement == "delete")) && (engine == "postgresql" || engine == "mysql" || engine == "sqlite")
+	return (t.Statement == "insert" || t.Statement == "update" || t.Statement == "delete" || t.Statement == "select" && t.DataModifyingCTE) && (!t.DataModifyingCTE || engine == "postgresql") && (!t.MySQLMultiTable || (engine == "mysql" || engine == "mariadb") && (t.Statement == "update" || t.Statement == "delete")) && (engine == "postgresql" || engine == "mysql" || engine == "mariadb" || engine == "sqlite")
 }
 
 type ExplainDMLResult struct {

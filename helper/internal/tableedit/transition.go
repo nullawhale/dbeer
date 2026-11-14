@@ -51,7 +51,7 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 		if !ok || actual.Nullable.Value == nil || *actual.Nullable.Value != column.Nullable {
 			return false
 		}
-		typ, ok := ColumnType(actual)
+		typ, ok := ColumnType(actual, after.Engine)
 		expected := PlanningSource(before, Draft{Columns: []Column{column}}, after.Engine)
 		wanted, exists := FindColumn(expected, column.Name)
 		if !exists || column.Type.Kind != "reference" && (!ok || !SameDataType(typ, column.Type)) || actual.Type.Value == nil || !reflect.DeepEqual(*actual.Type.Value, ExpectedColumnType(after.Engine, column)) || !authoredDefaultMatches(after.Engine, actual, column, defaultMatches) {
@@ -119,10 +119,10 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 					if change.Type != nil || change.Unsigned != nil {
 						col.Type = sc.Fact[sc.TypeUse]{}
 					}
-					if change.Charset != nil || change.Type != nil && before.Engine == "mysql" && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
+					if change.Charset != nil || change.Type != nil && (before.Engine == "mysql" || before.Engine == "mariadb") && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
 						col.Charset = sc.Fact[string]{}
 					}
-					if change.Collation != nil || change.Type != nil && (before.Engine == "postgresql" || before.Engine == "mysql" && change.Type.Kind != "text" && change.Type.Kind != "varchar") {
+					if change.Collation != nil || change.Type != nil && (before.Engine == "postgresql" || (before.Engine == "mysql" || before.Engine == "mariadb") && change.Type.Kind != "text" && change.Type.Kind != "varchar") {
 						col.Collation = sc.Fact[sc.Ref]{}
 						col.CollationProperties = nil
 					}
@@ -133,7 +133,7 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 						}
 					}
 					if change.Generated != nil {
-						if before.Engine == "mysql" && col.Default.Value != nil && (col.Default.Value.Kind == "none" || col.Default.Value.Kind == "sqlNull") {
+						if (before.Engine == "mysql" || before.Engine == "mariadb") && col.Default.Value != nil && (col.Default.Value.Kind == "none" || col.Default.Value.Kind == "sqlNull") {
 							col.Default = sc.Known(sc.Default{Kind: "none"})
 						}
 						col.Generated = sc.Fact[sc.Generated]{}
@@ -289,19 +289,19 @@ func VerifyTransition(before, after Baseline, c Condition, defaultMatches func(s
 				return false
 			}
 			if (change.Type != nil || change.Collation != nil) && before.Engine == "postgresql" && len(after.Attributes[change.Name]) > 0 {
-				want, _ := ColumnType(actual)
+				want, _ := ColumnType(actual, after.Engine)
 				if after.Attributes[change.Name]["attstorage"] != before.Facts.TypeStorage[want.Kind] || after.Attributes[change.Name]["attcompression"] != "" {
 					return false
 				}
 			}
 			if change.Type != nil {
-				typ, ok := ColumnType(actual)
+				typ, ok := ColumnType(actual, after.Engine)
 				if !ok || !SameDataType(typ, *change.Type) {
 					return false
 				}
 			}
 		}
-		if before.Engine == "mysql" && change.Type != nil && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
+		if (before.Engine == "mysql" || before.Engine == "mariadb") && change.Type != nil && change.Type.Kind != "text" && change.Type.Kind != "varchar" {
 			if actual.Charset.Value != nil || actual.Charset.State != "known" || actual.Collation.Value != nil || actual.Collation.State != "known" || actual.CollationProperties != nil {
 				return false
 			}

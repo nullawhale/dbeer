@@ -6,7 +6,7 @@ import (
 )
 
 func ValidBaseline(b Baseline) bool {
-	if !b.Advanced.Valid(b.Engine) || !b.Target.Valid() || b.Target.Reconcile || !IsDigest(b.Fingerprint) || b.Engine != "postgresql" && b.Engine != "mysql" && b.Engine != "sqlite" || len(b.Columns) > MaxColumns || len(b.Keys) > 256 || len(b.Indexes) > 256 || len(b.Limitations) > 64 {
+	if !b.Advanced.Valid(b.Engine) || !b.Target.Valid() || b.Target.Reconcile || !IsDigest(b.Fingerprint) || b.Engine != "postgresql" && b.Engine != "mysql" && b.Engine != "mariadb" && b.Engine != "sqlite" || len(b.Columns) > MaxColumns || len(b.Keys) > 256 || len(b.Indexes) > 256 || len(b.Limitations) > 64 {
 		return false
 	}
 	raw, e := json.Marshal(b)
@@ -18,6 +18,9 @@ func ValidBaseline(b Baseline) bool {
 		return false
 	}
 	for _, c := range b.Columns {
+		if c.EditableType != nil && !c.EditableType.ValidForEngine(b.Engine) {
+			return false
+		}
 		if !Identifier(c.Name) || len(c.NativeType) > 4096 || strings.ContainsRune(c.NativeType, 0) || c.DefaultExpression != nil && len(*c.DefaultExpression) > 65536 {
 			return false
 		}

@@ -45,7 +45,7 @@ struct SchemaBundleManifest: Codable, Equatable, Sendable {
     var formatVersion: Int; var engine: String; var schemas: [String]; var scope: String; var excludedObjectKinds: [String]
     var capture: SchemaBundleFile; var objects: [SchemaBundleObject]; var issues: [SchemaBundleIssue]; var complete: Bool
     static func schemasValid(_ schemas: [String], engine: String) -> Bool {
-        ["postgresql", "mysql", "sqlite"].contains(engine) && (1...32).contains(schemas.count) &&
+        ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine) && (1...32).contains(schemas.count) &&
         schemas.allSatisfy { !$0.isEmpty && $0.utf8.count <= 256 && !$0.contains("\0") } &&
         Set(schemas.map { Data($0.utf8) }).count == schemas.count && (engine != "sqlite" || schemas == ["main"])
     }
@@ -115,7 +115,7 @@ struct SchemaBundleManifest: Codable, Equatable, Sendable {
         let states = Dictionary(uniqueKeysWithValues: objects.map { ($0.ref.key, $0.state) })
         for object in objects { for dependency in object.dependencies {
             switch dependency.state {
-            case "builtin": guard engine == "postgresql" && ["pg_catalog", "information_schema"].contains(dependency.ref.schema) || engine == "mysql" && dependency.ref.schema.isEmpty && ["type", "collation"].contains(dependency.ref.kind) || engine == "sqlite" && dependency.ref.schema == "sqlite" && dependency.ref.kind == "type" else { throw SchemaBundleFailure.invalid }
+            case "builtin": guard engine == "postgresql" && ["pg_catalog", "information_schema"].contains(dependency.ref.schema) || ["mysql", "mariadb"].contains(engine) && dependency.ref.schema.isEmpty && ["type", "collation"].contains(dependency.ref.kind) || engine == "sqlite" && dependency.ref.schema == "sqlite" && dependency.ref.kind == "type" else { throw SchemaBundleFailure.invalid }
             case "external": guard states[dependency.ref.key] == nil else { throw SchemaBundleFailure.invalid }
             default: guard states[dependency.ref.key] == dependency.state else { throw SchemaBundleFailure.invalid }
             }

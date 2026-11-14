@@ -4,7 +4,7 @@ extension ApplicationWorkspace {
     @discardableResult
     func openERDiagram(_ node: CatalogNode) -> SQLDocument? {
         guard canManageWorkspace, let profile = library.savedConnections.first(where: { $0.id == node.profileID }),
-              [.postgresql, .mysql, .sqlite].contains(profile.engine), node.kind == .schema || (node.kind == .object && node.objectKind == "table") else { return nil }
+              [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine), node.kind == .schema || (node.kind == .object && node.objectKind == "table") else { return nil }
         var stored = StoredERDiagram(profileID: profile.id, engine: profile.engine, database: profile.database)
         stored.sources = [.init(profile)]
         if node.kind == .object {
@@ -249,7 +249,7 @@ extension ApplicationWorkspace {
 
     private func makeERSchemaObservation(_ document: SQLDocument, profileID: UUID) -> ERSchemaObservation? {
         guard canStartOperation(document), let model = document.erDiagramModel,
-              let context = erDiagramContext(model, profileID: profileID), [.postgresql, .mysql].contains(context.engine),
+              let context = erDiagramContext(model, profileID: profileID), [.postgresql, .mysql, .mariadb].contains(context.engine),
               let profile = library.savedConnections.first(where: { $0.id == context.profileID }),
               let binding = SessionMonitorProfileBinding(profile) else { return nil }
         let tables = model.stored.tables.filter { $0.profileID == context.profileID }

@@ -209,9 +209,9 @@ func functionSignatures(name, schema token, context Context) []FunctionSignature
 	}
 	// An explicitly qualified user function must never acquire a built-in's
 	// signature just because its name has the same spelling.
-	builtinSchema := context.Engine == "cassandra" && identifierEqual(schema, "system", context.Engine) || context.Engine != "mysql" && context.Engine != "cassandra" && identifierEqual(schema, "pg_catalog", context.Engine)
+	builtinSchema := context.Engine == "cassandra" && identifierEqual(schema, "system", context.Engine) || !mysqlLexicalEngine(context.Engine) && context.Engine != "cassandra" && identifierEqual(schema, "pg_catalog", context.Engine)
 	if schema.value == "" && !catalogMatch || builtinSchema {
-		if name.kind == wordToken || context.Engine == "mysql" || name.value == strings.ToLower(name.value) {
+		if name.kind == wordToken || mysqlLexicalEngine(context.Engine) || name.value == strings.ToLower(name.value) {
 			values = append(values, builtinSignatures(strings.ToUpper(name.value), context.Engine)...)
 		}
 	}
@@ -219,7 +219,7 @@ func functionSignatures(name, schema token, context Context) []FunctionSignature
 }
 
 func argumentName(tokens []token, engine string) (token, bool) {
-	if engine == "mysql" || engine == "cassandra" {
+	if mysqlLexicalEngine(engine) || engine == "cassandra" {
 		return token{}, false
 	}
 	if len(tokens) >= 3 && len(tokens[0].value) <= 1024 && identifier(tokens[0]) && (punct(tokens[1], "=") && punct(tokens[2], ">") || punct(tokens[1], ":") && punct(tokens[2], "=")) {

@@ -47,7 +47,7 @@ struct LogicalRelationshipEndpoint: Codable, Hashable, Sendable {
     var tableID: ERTableID { .init(profileID: profileID, schema: schema, name: name) }
     var label: String { schema + "." + name }
     var isValid: Bool {
-        [.postgresql, .mysql, .sqlite].contains(engine) && ["table", "view"].contains(kind) &&
+        [.postgresql, .mysql, .mariadb, .sqlite].contains(engine) && ["table", "view"].contains(kind) &&
             ERTableID.validName(schema) && ERTableID.validName(name) &&
             profileFingerprint.utf8.count == 64 && profileFingerprint.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }

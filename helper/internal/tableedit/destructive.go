@@ -71,13 +71,13 @@ func changeDestructiveValid(c ColumnChange) bool {
 	return true
 }
 func CheckConversion(b Baseline, c ColumnChange) error {
-	if b.Engine != "postgresql" && b.Engine != "mysql" {
+	if b.Engine != "postgresql" && b.Engine != "mysql" && b.Engine != "mariadb" {
 		return ErrUnsupported
 	}
 	if b.Engine == "postgresql" && (c.Unsigned != nil || c.Charset != nil || c.Collation != nil && c.Collation.Schema == "") {
 		return errors.New("PostgreSQL signedness and per-column encoding cannot be changed; COLLATE requires an exact qualified collation. Database encoding is fixed when the database is created.")
 	}
-	if b.Engine == "mysql" && (c.UsingExpression != nil || c.Collation != nil && c.Collation.Schema != "") {
+	if (b.Engine == "mysql" || b.Engine == "mariadb") && (c.UsingExpression != nil || c.Collation != nil && c.Collation.Schema != "") {
 		return errors.New("MySQL does not support PostgreSQL USING; select an unqualified native collation name.")
 	}
 	if c.Type != nil && c.Type.Reference != nil {
@@ -91,11 +91,11 @@ func CheckConversion(b Baseline, c ColumnChange) error {
 		return errors.New("Conversion and validation require the actual captured PostgreSQL built-in type identity.")
 	}
 
-	oldType, ok := ColumnType(old)
+	oldType, ok := ColumnType(old, b.Engine)
 	if !ok {
 		return errors.New("The selected native source type or modifiers are not supported for typed conversion.")
 	}
-	if old.Default.Value == nil || old.Default.Value.Kind != "none" && !(b.Engine == "mysql" && old.Default.Value.Kind == "sqlNull") {
+	if old.Default.Value == nil || old.Default.Value.Kind != "none" && !((b.Engine == "mysql" || b.Engine == "mariadb") && old.Default.Value.Kind == "sqlNull") {
 		return errors.New("Remove the existing DEFAULT in a separate reviewed plan before converting this column; USING does not convert defaults.")
 	}
 	if c.Default != nil || c.Nullable != nil || c.Generated != nil || c.Identity != nil {
@@ -113,7 +113,7 @@ func CheckConversion(b Baseline, c ColumnChange) error {
 	if c.Type != nil {
 		target = *c.Type
 	}
-	if !map[string]bool{"integer": true, "bigint": true, "numeric": true, "varchar": true, "text": true, "boolean": true}[target.Kind] || b.Engine == "mysql" && target.Kind == "boolean" {
+	if !map[string]bool{"integer": true, "bigint": true, "numeric": true, "varchar": true, "text": true, "boolean": true}[target.Kind] || (b.Engine == "mysql" || b.Engine == "mariadb") && target.Kind == "boolean" {
 		return errors.New("The selected target type is outside this engine's typed conversion support.")
 	}
 	if c.Unsigned != nil && target.Kind != "integer" && target.Kind != "bigint" && target.Kind != "numeric" {
@@ -417,7 +417,7 @@ func ExpectedChangedType(engine string, old sc.TypeUse, c ColumnChange) sc.TypeU
 	result := old
 	if c.Type != nil {
 		result = ExpectedNewType(engine, *c.Type)
-		if engine == "mysql" && result.Modifiers.Value != nil && old.Modifiers.Value != nil {
+		if (engine == "mysql" || engine == "mariadb") && result.Modifiers.Value != nil && old.Modifiers.Value != nil {
 			result.Modifiers.Value.Unsigned = (c.Type.Kind == "integer" || c.Type.Kind == "bigint" || c.Type.Kind == "numeric") && old.Modifiers.Value.Unsigned
 		}
 	}
@@ -427,7 +427,7 @@ func ExpectedChangedType(engine string, old sc.TypeUse, c ColumnChange) sc.TypeU
 		if c.Unsigned != nil {
 			m.Unsigned = *c.Unsigned
 		}
-		if engine == "mysql" && (result.Ref.Name == "int" || result.Ref.Name == "bigint") {
+		if (engine == "mysql" || engine == "mariadb") && (result.Ref.Name == "int" || result.Ref.Name == "bigint") {
 			p := int64(10)
 			if result.Ref.Name == "bigint" {
 				p = 19
@@ -436,6 +436,15 @@ func ExpectedChangedType(engine string, old sc.TypeUse, c ColumnChange) sc.TypeU
 				}
 			}
 			m.Precision = &p
+			if engine == "mariadb" && c.Type != nil {
+				width := int64(11)
+				if result.Ref.Name == "bigint" {
+					width = 20
+				} else if m.Unsigned {
+					width = 10
+				}
+				m.Length = &width
+			}
 		}
 	}
 	return result

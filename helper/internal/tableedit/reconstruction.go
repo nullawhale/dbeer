@@ -69,7 +69,7 @@ func (d Draft) validateReconstruction() error {
 	return nil
 }
 func ReconstructionOrder(b Baseline, d Draft) ([]string, error) {
-	if err := d.Validate(); err != nil {
+	if err := d.ValidateForEngine(b.Engine); err != nil {
 		return nil, err
 	}
 	if b.Target.Create || !d.NeedsAuthoringV5() || len(b.Columns)+len(d.Columns) > MaxColumns {

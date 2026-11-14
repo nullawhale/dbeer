@@ -543,6 +543,7 @@ final class ApplicationWorkspace: ObservableObject {
     let sqlFolders: SQLFolderLibrary
     let sqlLibrary: SQLLibrary
     let tableBrowsePresets: TableBrowsePresetStore
+    let tableImportMappingPresets: TransferMappingPresetStore?
     let logicalRelationships: LogicalRelationshipStore
     let resultSnapshots: ResultSnapshotsModel
     let planArtifacts: PlanArtifactsModel
@@ -617,6 +618,7 @@ final class ApplicationWorkspace: ObservableObject {
          sqlFolders: SQLFolderLibrary? = nil,
          sqlLibrary: SQLLibrary? = nil,
          tableBrowsePresets: TableBrowsePresetStore? = nil,
+         tableImportMappingPresets: TransferMappingPresetStore? = nil,
          logicalRelationships: LogicalRelationshipStore? = nil,
          resultSnapshots: ResultSnapshotsModel? = nil,
          planArtifacts: PlanArtifactsModel? = nil,
@@ -642,6 +644,7 @@ final class ApplicationWorkspace: ObservableObject {
         self.sqlFolders = sqlFolders ?? SQLFolderLibrary()
         self.sqlLibrary = sqlLibrary ?? SQLLibrary()
         self.tableBrowsePresets = tableBrowsePresets ?? TableBrowsePresetStore()
+        self.tableImportMappingPresets = tableImportMappingPresets
         self.logicalRelationships = logicalRelationships ?? LogicalRelationshipStore()
         let snapshots = resultSnapshots ?? ResultSnapshotsModel()
         self.resultSnapshots = snapshots
@@ -1040,7 +1043,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func showDataTransfer(_ profile: SavedConnection, mode: String = "csv", schema: String? = nil, table: String? = nil) {
         guard canManageWorkspace, dataTransfer == nil, databaseTools == nil, tableImporter == nil,
-              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql, .mariadb].contains(profile.engine) else { return }
         let store = credentialStore
         let model = DataTransferModel(profiles: library.savedConnections, resolve: { profile, attempt in
             try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt)
@@ -1059,11 +1062,11 @@ final class ApplicationWorkspace: ObservableObject {
             if self.services[target.id]?.connectionState == .connected { Task { await self.loadSchemas(target.id, refresh: true) } }
         })
         model.targetID = profile.id
-        model.targetSchema = profile.engine == .mysql ? profile.database : "public"
+        model.targetSchema = profile.engine.usesMySQLSyntax ? profile.database : "public"
         model.mode = mode
         if mode == "table" {
             model.sourceID = profile.id
-            model.sourceSchema = schema ?? (profile.engine == .mysql ? profile.database : "public")
+            model.sourceSchema = schema ?? (profile.engine.usesMySQLSyntax ? profile.database : "public")
             model.sourceTable = table ?? ""
             model.targetTable = table.map { $0 + "_copy" } ?? ""
         }
@@ -1077,7 +1080,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func showDatabaseTools(_ profile: SavedConnection, restore: Bool = false) {
         guard canManageWorkspace, databaseTools == nil, dataTransfer == nil, tableImporter == nil,
-              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql, .mariadb].contains(profile.engine) else { return }
         let store = credentialStore
         let model = DatabaseToolsModel(profiles: library.savedConnections, initialProfileID: profile.id,
             resolve: { profile, attempt in try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt) },
@@ -1106,7 +1109,7 @@ final class ApplicationWorkspace: ObservableObject {
     }
 
     func canShowSessionMonitor(_ profile: SavedConnection) -> Bool {
-        canManageWorkspace && [.postgresql, .mysql].contains(profile.engine)
+        canManageWorkspace && [.postgresql, .mysql, .mariadb].contains(profile.engine)
     }
 
     func showSessionMonitor(_ profile: SavedConnection) {
@@ -1249,7 +1252,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     @discardableResult
     func openSynchronizationPlan(_ sql: String, target: SavedConnection) -> Bool {
-        guard shutdownTask == nil, !isClosing, [.postgresql, .mysql, .sqlite].contains(target.engine),
+        guard shutdownTask == nil, !isClosing, [.postgresql, .mysql, .mariadb, .sqlite].contains(target.engine),
               !sql.isEmpty, sql.utf8.count <= SynchronizationSQLPlan.maximumBytes + 1_048_576,
               synchronizationTargetMatches(target) else { return false }
         let document = newDocument(profileID: target.id, text: sql)
@@ -1893,8 +1896,8 @@ final class ApplicationWorkspace: ObservableObject {
             let definitions = libraryBinding?.parameters ?? []
             let parameters: [QueryParameterBinding]?
             if !definitions.isEmpty {
-                guard [.postgresql, .mysql, .sqlite].contains(profile.engine) else {
-                    throw ExecutionPolicyError(message: "Saved query parameters support PostgreSQL, MySQL and SQLite connections.")
+                guard [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine) else {
+                    throw ExecutionPolicyError(message: "Saved query parameters support PostgreSQL, MySQL, MariaDB and SQLite connections.")
                 }
                 guard let values = await requestQueryParameters(definitions, document: document, profile: profile) else { return }
                 try QueryParameterBinding.validate(values)
@@ -3805,6 +3808,7 @@ final class ApplicationWorkspace: ObservableObject {
             var groups = engine == .cassandra ? [("Tables", "table"), ("Materialized Views", "view"), ("User-defined Types", "type")] :
                 [("Tables", "table"), ("Views", "view"), ("Functions", "function"), ("Procedures", "procedure"), ("Triggers", "trigger")]
             if engine == .mongodb { groups = [("Collections", "table"), ("Views", "view")] }
+            if engine == .mariadb { groups += [("Sequences", "sequence")] }
             if engine == .postgresql { groups += [("Enums", "enum"), ("User-defined Types", "type")] }
             node.children = groups.map { title, kind in
                 CatalogNode(profileID: node.profileID, name: title, kind: .group, schema: node.schema, objectKind: kind, engine: engine)

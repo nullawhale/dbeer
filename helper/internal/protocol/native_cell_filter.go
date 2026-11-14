@@ -25,7 +25,7 @@ type NativeCellFilterValue struct {
 }
 
 func (v NativeCellFilterValue) Valid() bool {
-	if v.SourceEngine != "postgresql" && v.SourceEngine != "mysql" && v.SourceEngine != "sqlite" {
+	if v.SourceEngine != "postgresql" && v.SourceEngine != "mysql" && v.SourceEngine != "mariadb" && v.SourceEngine != "sqlite" {
 		return false
 	}
 	if v.SourceType == "" || len(v.SourceType) > 16384 || !utf8.ValidString(v.SourceType) || strings.ContainsRune(v.SourceType, 0) {

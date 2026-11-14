@@ -114,7 +114,7 @@ struct SavedEvidenceArtifact: Codable, Equatable, Sendable, Identifiable {
               (profileName?.utf8.count ?? 0) <= 16_384, profileName?.contains("\0") != true else { return false }
         switch kind {
         case .structure:
-            return diagnostic == nil && structure?.valid == true && [.postgresql, .mysql, .sqlite].contains(engine) &&
+            return diagnostic == nil && structure?.valid == true && [.postgresql, .mysql, .mariadb, .sqlite].contains(engine) &&
                 (structure?.observed.map { $0.engine == engine.rawValue } ?? true)
         case .diagnostic:
             return structure == nil && diagnostic?.valid == true && diagnostic?.engine == engine

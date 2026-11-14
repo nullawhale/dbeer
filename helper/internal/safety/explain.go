@@ -6,6 +6,8 @@ package safety
 func VisualExplainTarget(engine, sql string) bool {
 	if engine == "postgresql" {
 		engine = "postgres"
+	} else if engine == "mariadb" {
+		engine = "mysql"
 	}
 	if engine != "postgres" && engine != "mysql" && engine != "sqlite" {
 		return false

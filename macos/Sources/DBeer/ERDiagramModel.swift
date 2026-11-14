@@ -65,7 +65,7 @@ struct StoredERDiagram: Codable, Equatable, Sendable {
         let profiles = Set(sources.map(\.profileID)).union([profileID])
         let validSources = sources.isEmpty || (sources.count <= ERDiagramLimits.sources && Set(sources.map(\.profileID)).count == sources.count &&
             sources.allSatisfy(\.isValid) && sources.filter { $0.profileID == profileID }.allSatisfy { $0.engine == engine && Data($0.database.utf8) == Data(database.utf8) })
-        return validSources && sourceProfileIDs.count <= ERDiagramLimits.sources && [.postgresql, .mysql, .sqlite].contains(engine) && database.utf8.count <= 1_024 && !database.contains("\0") &&
+        return validSources && sourceProfileIDs.count <= ERDiagramLimits.sources && [.postgresql, .mysql, .mariadb, .sqlite].contains(engine) && database.utf8.count <= 1_024 && !database.contains("\0") &&
             tables.count <= ERDiagramLimits.tables && ids.count == tables.count &&
             tables.allSatisfy { $0.isValid && profiles.contains($0.profileID) } &&
             placements.count <= tables.count && Set(placements.map(\.table)).count == placements.count &&

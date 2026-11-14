@@ -10,7 +10,7 @@ extension ApplicationWorkspace {
         guard canManageWorkspace, canStartTableStructure(node.profileID), tableImporter == nil, structureEditor == nil, migrationComposer == nil, physicalStructure == nil, queryParameterPrompt == nil,
               node.kind == .object, node.objectKind == "table",
               let service = services[node.profileID], service.connectionState == .connected,
-              [.postgresql, .mysql, .sqlite].contains(service.engine), service.capabilities.contains("tableImportV1") else { return false }
+              [.postgresql, .mysql, .mariadb, .sqlite].contains(service.engine), service.capabilities.contains("tableImportV1") else { return false }
         return true
     }
 
@@ -77,6 +77,7 @@ extension ApplicationWorkspace {
                 guard let client = lease.client else { return false }
                 return await client.hasExited()
             },
+            mappingPresets: tableImportMappingPresets,
             changed: { [weak self] in
                 guard let self else { return }
                 // Keep all tab sessions and pending grid edits; the user reloads explicitly.

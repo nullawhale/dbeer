@@ -327,7 +327,7 @@ func (a *analysis) resolve(candidate *source, ctes []*binding) {
 	if len(candidate.entries) == 1 && candidate.schema.value != "" {
 		entry := candidate.entries[0]
 		candidate.logicalIdentityProven = true
-		if a.context.Engine == "mysql" {
+		if mysqlLexicalEngine(a.context.Engine) {
 			candidate.logicalIdentityProven = candidate.name.value == entry.Name && candidate.schema.value == entry.Schema
 		}
 	}

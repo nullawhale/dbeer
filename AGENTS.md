@@ -1,7 +1,8 @@
 # DBeer
 
 DBeer is a native SQL client for macOS 14+ on Apple Silicon, built with
-SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported.
+SwiftUI/AppKit and a bundled Go helper. PostgreSQL and MySQL are supported. Unreleased MariaDB support is a separate,
+partial adapter; its deferred structure/physical workflows must remain gated.
 Current development targets only the native macOS SwiftUI/AppKit client and
 its shared Go helper. Contributions to the experimental Windows/Linux clients
 are welcome; these clients are outside the v0.2.0 roadmap and release scope.
@@ -88,7 +89,7 @@ for development only.
   `swift test` can exit before the suite completes.
 - Run helper-only tests: `./scripts/test-go.sh` (also supported on Linux).
 - Run isolated database integration: `./scripts/test-postgres.sh`,
-  `./scripts/test-mysql.sh` and `./scripts/test-tls.sh` (Docker required).
+  `./scripts/test-mysql.sh`, `./scripts/test-mariadb.sh` and `./scripts/test-tls.sh` (Docker required).
 - Run both databases with the native suite:
   `./scripts/test-postgres.sh ./scripts/test-mysql.sh ./scripts/test.sh --all --require-postgres`.
 - Installed-archive acceptance: `./scripts/test-install-update.sh`; this needs

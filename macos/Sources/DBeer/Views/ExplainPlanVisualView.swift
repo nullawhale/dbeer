@@ -133,7 +133,7 @@ struct ExplainAdvancedMetricsView: View {
             Text("Execution scope: \(advanced.executionScope)").font(.callout).appSecondaryText()
             Text(ExplainMetricPresentation.rowComparison(node)).textSelection(.enabled)
             Text("Proven exclusive time: \(ExplainMetricPresentation.label(advanced.exclusiveTime))").textSelection(.enabled)
-            Text("Rows and time are per invocation; loops are total. Buffer, I/O and WAL counters are inclusive totals across loops. Do not sum ancestor and descendant counters.")
+            Text("Rows are per invocation and loops are total. Each timing metric states whether it is per invocation or an inclusive total across loops. Do not multiply inclusive totals by loops or sum ancestor and descendant counters.")
                 .font(.caption).appSecondaryText()
             if !advanced.counters.isEmpty {
                 DisclosureGroup("Buffers, I/O, WAL and Workers") { metricRows(advanced.counters) }

@@ -6,18 +6,20 @@ enum BackendProtocol {
 }
 
 enum DatabaseEngine: String, Codable, CaseIterable, Identifiable, Sendable {
-    case postgresql, mysql, cassandra, mongodb, sqlite
+    case postgresql, mysql, mariadb, cassandra, mongodb, sqlite
 
-    static let availableCases: [Self] = [.postgresql, .mysql, .cassandra, .mongodb, .sqlite]
+    static let availableCases: [Self] = [.postgresql, .mysql, .mariadb, .cassandra, .mongodb, .sqlite]
     var id: String { rawValue }
-    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .cassandra: "Apache Cassandra"; case .mongodb: "MongoDB"; case .sqlite: "SQLite" } }
-    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql: 3306; case .cassandra: 9042; case .mongodb: 27017; case .sqlite: 0 } }
-    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql: "mysql"; case .cassandra, .mongodb, .sqlite: "" } }
-    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql: "root"; case .cassandra, .mongodb, .sqlite: "" } }
+    /// Shared lexical quoting; engine identity and server capabilities stay distinct.
+    var usesMySQLSyntax: Bool { self == .mysql || self == .mariadb }
+    var displayName: String { switch self { case .postgresql: "PostgreSQL"; case .mysql: "MySQL"; case .mariadb: "MariaDB"; case .cassandra: "Apache Cassandra"; case .mongodb: "MongoDB"; case .sqlite: "SQLite" } }
+    var defaultPort: Int { switch self { case .postgresql: 5432; case .mysql, .mariadb: 3306; case .cassandra: 9042; case .mongodb: 27017; case .sqlite: 0 } }
+    var defaultDatabase: String { switch self { case .postgresql: "postgres"; case .mysql, .mariadb: "mysql"; case .cassandra, .mongodb, .sqlite: "" } }
+    var defaultUser: String { switch self { case .postgresql: "postgres"; case .mysql, .mariadb: "root"; case .cassandra, .mongodb, .sqlite: "" } }
     var sslModes: [String] {
         switch self {
         case .postgresql: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"]
-        case .mysql: ["disable", "require", "verify-ca", "verify-full"]
+        case .mysql, .mariadb: ["disable", "require", "verify-ca", "verify-full"]
         case .cassandra, .mongodb: ["verify-full", "disable"]
         case .sqlite: ["disable"]
         }
@@ -268,7 +270,7 @@ struct InsertFormatRequest: Codable, Sendable, Equatable {
 
     var valid: Bool {
         func validName(_ value: String) -> Bool { !value.isEmpty && value.utf8.count <= 1_024 && !value.contains("\0") }
-        guard [.postgresql, .mysql, .sqlite].contains(engine), (schema.isEmpty || validName(schema)), validName(table),
+        guard [.postgresql, .mysql, .mariadb, .sqlite].contains(engine), (schema.isEmpty || validName(schema)), validName(table),
               !columns.isEmpty, columns.count <= Self.maximumColumns,
               !rows.isEmpty, rows.count <= Self.maximumRows,
               columns.count * rows.count <= Self.maximumCells,
@@ -866,7 +868,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         guard type == "error", let dml = explainDML,
               columns == nil, rows == nil, resultSets == nil, streamed == nil, source == nil, tableImport == nil,
               exportPublication == nil, exportPath == nil, exportFormat == nil, exportRowCount == nil,
-              [DatabaseEngine.postgresql, .mysql].contains(where: { dml.valid(engine: $0, mode: .analyze) }),
+              [DatabaseEngine.postgresql, .mysql, .mariadb].contains(where: { dml.valid(engine: $0, mode: .analyze) }),
               (dml.transactionAfter == "unknown" ? transactionStatus == nil :
                 transactionStatus?.rawValue == dml.transactionAfter || connected == false && transactionStatus == nil) else { return false }
         switch dml.execution {

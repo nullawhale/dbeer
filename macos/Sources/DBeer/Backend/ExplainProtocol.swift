@@ -96,13 +96,13 @@ struct ExplainSupport: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey { case engine, serverVersion, format, modes, unavailableReason, planKinds, diagnosticModel, options, analyzeUnavailableReason, notices, dml }
     var valid: Bool {
         (dml.map { $0.valid(engine: engine) && !modes.isEmpty && ($0.analyze.isEmpty || modes.contains(.analyze)) } ?? true) &&
-        [.postgresql, .mysql, .sqlite, .mongodb, .cassandra].contains(engine) && serverVersion.utf8.count <= 256 &&
-        (engine == .mysql ? ["tree", "json"].contains(format) : format == (engine == .postgresql ? "json" : engine == .sqlite ? "queryPlan" : engine == .mysql ? "tree" : engine == .mongodb ? "mongodbExplain" : "cassandraTrace")) &&
+        [.postgresql, .mysql, .mariadb, .sqlite, .mongodb, .cassandra].contains(engine) && serverVersion.utf8.count <= 256 &&
+        (engine == .mysql ? ["tree", "json"].contains(format) : format == ([.postgresql, .mariadb].contains(engine) ? "json" : engine == .sqlite ? "queryPlan" : engine == .mysql ? "tree" : engine == .mongodb ? "mongodbExplain" : "cassandraTrace")) &&
         (engine == .mongodb ? diagnosticModel == "mongodbExplain" : engine == .cassandra ? diagnosticModel == "cassandraTrace" && modes == [.analyze] : diagnosticModel == nil) && modes.count <= 2 &&
         Set(modes.map(\.rawValue)).count == modes.count &&
-        (notices == nil || [.postgresql, .mysql].contains(engine) && notices!.count <= 8 && notices!.allSatisfy { !$0.isEmpty && $0.utf8.count <= 4096 }) &&
+        (notices == nil || [.postgresql, .mysql, .mariadb].contains(engine) && notices!.count <= 8 && notices!.allSatisfy { !$0.isEmpty && $0.utf8.count <= 4096 }) &&
         (options?.valid(engine: engine) ?? true) &&
-        (analyzeUnavailableReason == nil || engine == .mysql && !modes.contains(.analyze) && analyzeUnavailableReason!.utf8.count <= 4096 && !analyzeUnavailableReason!.isEmpty) &&
+        (analyzeUnavailableReason == nil || [.mysql, .mariadb].contains(engine) && !modes.contains(.analyze) && analyzeUnavailableReason!.utf8.count <= 4096 && !analyzeUnavailableReason!.isEmpty) &&
         (planKinds == nil || engine == .postgresql && planKinds!.count <= 2 && Set(planKinds!.map(\.rawValue)).count == planKinds!.count) &&
         (modes.isEmpty ? unavailableReason?.isEmpty == false : unavailableReason == nil)
     }
@@ -115,7 +115,7 @@ struct ExplainPreview: Codable, Sendable, Equatable {
     var format: String? = nil
     var dml: ExplainDMLTarget? = nil
     private enum CodingKeys: String, CodingKey { case sql, mode, support, options, format, dml }
-    var valid: Bool { (dml.map { $0.valid(engine: support.engine) && support.dml != nil && (mode != .analyze || support.dml!.analyze.contains($0.analyzeForm)) } ?? true) && support.valid && validExplainSelection(support: support, options: options, mode: mode, format: format) && support.modes.contains(mode) && !sql.isEmpty && sql.utf8.count <= 1_049_600 && !sql.contains("\0") }
+    var valid: Bool { (dml.map { $0.valid(engine: support.engine) && support.dml != nil && (mode == .plan ? support.dml!.permitsEstimated($0.analyzeForm, engine: support.engine) : support.dml!.analyze.contains($0.analyzeForm)) } ?? true) && support.valid && validExplainSelection(support: support, options: options, mode: mode, format: format) && support.modes.contains(mode) && !sql.isEmpty && sql.utf8.count <= 1_049_600 && !sql.contains("\0") }
 }
 struct ExplainMetric: Codable, Sendable, Equatable {
     var value: String?
@@ -190,7 +190,7 @@ struct ExplainResult: Codable, Sendable, Equatable {
     var dml: ExplainDMLResult? = nil
     private enum CodingKeys: String, CodingKey { case support, mode, status, raw, complete, diagnostic, roots, nodes, metrics, advancedMetrics, engineDiagnostic, options, format, dml }
     var valid: Bool {
-        guard dml.map({ $0.valid(engine: support.engine, mode: mode) && support.dml != nil && (mode != .analyze || $0.execution == "completed" && support.dml!.analyze.contains($0.target.analyzeForm)) }) ?? true,
+        guard dml.map({ $0.valid(engine: support.engine, mode: mode) && support.dml != nil && (mode == .plan ? support.dml!.permitsEstimated($0.target.analyzeForm, engine: support.engine) : $0.execution == "completed" && support.dml!.analyze.contains($0.target.analyzeForm)) }) ?? true,
               support.valid, support.modes.contains(mode),
               advancedMetrics == nil || status == "tree" && advancedMetrics?.valid(engine: support.engine) == true,
               validExplainSelection(support: support, options: options, mode: mode, format: format, status: status), raw.utf8.count <= Self.maximumRawBytes,

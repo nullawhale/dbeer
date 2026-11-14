@@ -31,12 +31,13 @@ struct TuningValidationRequest: Codable, Sendable, Equatable {
     var maxBytes: Int
     var timeoutMs: Int
     var comparison: String
-    var valid: Bool { version == 1 && original.tuningSourceValid && variant.tuningSourceValid && original.context?.transactionStatus == "idle" && variant.context?.transactionStatus == "idle" && original.mode == .plan && variant.mode == .plan && original.sql != variant.sql && original.planKind != .generic && variant.planKind != .generic && target.tuningTargetValid && tuningDigest(metadataFingerprint) && (1...10_000).contains(maxRows) && (1_024...4_194_304).contains(maxBytes) && (100...30_000).contains(timeoutMs) && comparison == "multiset" && (original.parameters ?? []) == (variant.parameters ?? []) && original.options == variant.options && original.planKind == variant.planKind && tuningSameContext(original.context, variant.context) }
+    var mariaDBOptimizer: MariaDBOptimizerVariant? = nil
+    var valid: Bool { version == 1 && original.tuningSourceValid && variant.tuningSourceValid && original.context?.transactionStatus == "idle" && variant.context?.transactionStatus == "idle" && original.mode == .plan && variant.mode == .plan && (mariaDBOptimizer.map { $0.valid && original.sql.utf8.elementsEqual(variant.sql.utf8) } ?? (original.sql != variant.sql)) && original.planKind != .generic && variant.planKind != .generic && target.tuningTargetValid && tuningDigest(metadataFingerprint) && (1...10_000).contains(maxRows) && (1_024...4_194_304).contains(maxBytes) && (100...30_000).contains(timeoutMs) && comparison == "multiset" && (original.parameters ?? []) == (variant.parameters ?? []) && original.options == variant.options && original.planKind == variant.planKind && tuningSameContext(original.context, variant.context) }
 }
 extension TuningValidationRequest {
-    private enum CodingKeys: String, CodingKey { case version, original, variant, target, metadataFingerprint, maxRows, maxBytes, timeoutMs, comparison }
+    private enum CodingKeys: String, CodingKey { case version, original, variant, target, metadataFingerprint, maxRows, maxBytes, timeoutMs, comparison, mariaDBOptimizer }
     init(from decoder: Decoder) throws {
-        try requireExplainKeys(decoder, required: ["version", "original", "variant", "target", "metadataFingerprint", "maxRows", "maxBytes", "timeoutMs", "comparison"])
+        try requireExplainKeys(decoder, required: ["version", "original", "variant", "target", "metadataFingerprint", "maxRows", "maxBytes", "timeoutMs", "comparison"], optional: ["mariaDBOptimizer"])
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         version = try fields.decode(Int.self, forKey: .version)
         original = try fields.decode(ExplainRequest.self, forKey: .original)
@@ -47,6 +48,7 @@ extension TuningValidationRequest {
         maxBytes = try fields.decode(Int.self, forKey: .maxBytes)
         timeoutMs = try fields.decode(Int.self, forKey: .timeoutMs)
         comparison = try fields.decode(String.self, forKey: .comparison)
+        mariaDBOptimizer = fields.contains(.mariaDBOptimizer) ? try fields.decode(MariaDBOptimizerVariant.self, forKey: .mariaDBOptimizer) : nil
         guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid tuning contract.")) }
     }
 }
@@ -126,12 +128,13 @@ struct TuningInspection: Codable, Sendable, Equatable {
     var variants: [TuningVariant]
     var limitations: [String]
     var workMemKiB: Int? = nil
-    var valid: Bool { version == 1 && ["postgresql", "mysql"].contains(engine) && serverVersion.utf8.count <= 256 && evidenceOrigin == "suppliedCapture" && tuningDigest(metadataFingerprint) && target.tuningTargetValid && indexes.count <= 1 && variants.count <= 1 && indexes.allSatisfy(\.valid) && variants.allSatisfy(\.valid) && tuningTexts(limitations) && (workMemKiB.map { engine == "postgresql" && (64...1_048_576).contains($0) } ?? true) }
+    var mariaDBOptimizer: MariaDBOptimizerObservation? = nil
+    var valid: Bool { version == 1 && ["postgresql", "mysql", "mariadb"].contains(engine) && serverVersion.utf8.count <= 256 && evidenceOrigin == "suppliedCapture" && tuningDigest(metadataFingerprint) && target.tuningTargetValid && indexes.count <= 1 && variants.count <= 1 && indexes.allSatisfy(\.valid) && variants.allSatisfy(\.valid) && tuningTexts(limitations) && (workMemKiB.map { engine == "postgresql" && (64...1_048_576).contains($0) } ?? true) && (mariaDBOptimizer.map { engine == "mariadb" && $0.valid } ?? true) }
 }
 extension TuningInspection {
-    private enum CodingKeys: String, CodingKey { case version, engine, serverVersion, evidenceOrigin, metadataFingerprint, target, indexes, variants, limitations, workMemKiB }
+    private enum CodingKeys: String, CodingKey { case version, engine, serverVersion, evidenceOrigin, metadataFingerprint, target, indexes, variants, limitations, workMemKiB, mariaDBOptimizer }
     init(from decoder: Decoder) throws {
-        try requireExplainKeys(decoder, required: ["version", "engine", "serverVersion", "evidenceOrigin", "metadataFingerprint", "target", "indexes", "variants", "limitations"], optional: ["workMemKiB"])
+        try requireExplainKeys(decoder, required: ["version", "engine", "serverVersion", "evidenceOrigin", "metadataFingerprint", "target", "indexes", "variants", "limitations"], optional: ["workMemKiB", "mariaDBOptimizer"])
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         version = try fields.decode(Int.self, forKey: .version)
         engine = try fields.decode(String.self, forKey: .engine)
@@ -143,7 +146,52 @@ extension TuningInspection {
         variants = try fields.decode([TuningVariant].self, forKey: .variants)
         limitations = try fields.decode([String].self, forKey: .limitations)
         workMemKiB = fields.contains(.workMemKiB) ? try fields.decode(Int.self, forKey: .workMemKiB) : nil
+        mariaDBOptimizer = fields.contains(.mariaDBOptimizer) ? try fields.decode(MariaDBOptimizerObservation.self, forKey: .mariaDBOptimizer) : nil
         guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid tuning contract.")) }
+    }
+}
+
+struct MariaDBOptimizerObservation: Codable, Sendable, Equatable {
+    var indexConditionPushdown: Bool
+    var nativeSwitch: String
+    var valid: Bool { Self.observedValue(nativeSwitch) == indexConditionPushdown }
+    static func observedValue(_ native: String) -> Bool? {
+        guard !native.isEmpty, native.utf8.count <= 4_096,
+              !native.contains(where: { $0 == "\0" || $0 == "\r" || $0 == "\n" }) else { return nil }
+        var value: Bool?
+        for part in native.split(separator: ",", omittingEmptySubsequences: false) {
+            let pair = part.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard pair.count == 2, !pair[0].isEmpty, !pair[1].isEmpty else { return nil }
+            if pair[0] == "index_condition_pushdown" {
+                guard value == nil, pair[1] == "on" || pair[1] == "off" else { return nil }
+                value = pair[1] == "on"
+            }
+        }
+        return value
+    }
+    private enum CodingKeys: String, CodingKey { case indexConditionPushdown, nativeSwitch }
+    init(indexConditionPushdown: Bool, nativeSwitch: String) { self.indexConditionPushdown = indexConditionPushdown; self.nativeSwitch = nativeSwitch }
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["indexConditionPushdown", "nativeSwitch"])
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        indexConditionPushdown = try fields.decode(Bool.self, forKey: .indexConditionPushdown)
+        nativeSwitch = try fields.decode(String.self, forKey: .nativeSwitch)
+        guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid native optimizer observation.")) }
+    }
+}
+
+struct MariaDBOptimizerVariant: Codable, Sendable, Equatable {
+    var expectedNativeSwitch: String
+    var indexConditionPushdown: Bool
+    var valid: Bool { MariaDBOptimizerObservation.observedValue(expectedNativeSwitch).map { $0 != indexConditionPushdown } ?? false }
+    private enum CodingKeys: String, CodingKey { case expectedNativeSwitch, indexConditionPushdown }
+    init(expectedNativeSwitch: String, indexConditionPushdown: Bool) { self.expectedNativeSwitch = expectedNativeSwitch; self.indexConditionPushdown = indexConditionPushdown }
+    init(from decoder: Decoder) throws {
+        try requireExplainKeys(decoder, required: ["expectedNativeSwitch", "indexConditionPushdown"])
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        expectedNativeSwitch = try fields.decode(String.self, forKey: .expectedNativeSwitch)
+        indexConditionPushdown = try fields.decode(Bool.self, forKey: .indexConditionPushdown)
+        guard valid else { throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Invalid native optimizer variant.")) }
     }
 }
 struct TuningValidation: Codable, Sendable, Equatable {

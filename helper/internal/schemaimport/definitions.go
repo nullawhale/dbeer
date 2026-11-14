@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 
 	"dbeer/helper/internal/schemabundle"
@@ -65,12 +67,12 @@ func validateOwnership(c sc.Capture) error {
 				return ErrInvalid
 			}
 			for _, col := range k.Columns.Items {
-				if col.Kind != "column" || col.Schema != table.Ref.Schema || col.Table != table.Ref.Name || !columns[col.Name] {
+				if col.Kind != "column" || col.Schema != table.Ref.Schema || col.Table != table.Ref.Name || (!columns[col.Name] && !(c.Context.Engine == "mariadb" && mariaDBImplicitPeriodAddress(table, col.Name))) {
 					return ErrInvalid
 				}
 			}
 			for _, p := range k.ForeignKeys.Items {
-				if p.Source.Kind != "column" || p.Source.Schema != table.Ref.Schema || p.Source.Table != table.Ref.Name || !columns[p.Source.Name] {
+				if p.Source.Kind != "column" || p.Source.Schema != table.Ref.Schema || p.Source.Table != table.Ref.Name || (!columns[p.Source.Name] && !(c.Context.Engine == "mariadb" && mariaDBImplicitPeriodAddress(table, p.Source.Name))) {
 					return ErrInvalid
 				}
 			}
@@ -86,13 +88,13 @@ func validateOwnership(c sc.Capture) error {
 			for _, key := range index.Keys.Items {
 				if key.Column.Value != nil {
 					r := *key.Column.Value
-					if r.Kind != "column" || r.Schema != table.Ref.Schema || r.Table != table.Ref.Name || !columns[r.Name] {
+					if r.Kind != "column" || r.Schema != table.Ref.Schema || r.Table != table.Ref.Name || (!columns[r.Name] && !(c.Context.Engine == "mariadb" && mariaDBImplicitPeriodAddress(table, r.Name))) {
 						return ErrInvalid
 					}
 				}
 			}
 			for _, r := range index.Includes.Items {
-				if r.Kind != "column" || r.Schema != table.Ref.Schema || r.Table != table.Ref.Name || !columns[r.Name] {
+				if r.Kind != "column" || r.Schema != table.Ref.Schema || r.Table != table.Ref.Name || (!columns[r.Name] && !(c.Context.Engine == "mariadb" && mariaDBImplicitPeriodAddress(table, r.Name))) {
 					return ErrInvalid
 				}
 			}
@@ -125,7 +127,7 @@ func validateOwnership(c sc.Capture) error {
 					if k.BackingIndex.Value == nil || *k.BackingIndex.Value != x.Ref {
 						return ErrInvalid
 					}
-					if len(k.Columns.Items) != len(x.Keys.Items) {
+					if len(k.Columns.Items) != len(x.Keys.Items) && !(c.Context.Engine == "mariadb" && mariaDBImplicitPrimarySuffix(table, k, len(x.Keys.Items))) {
 						return ErrInvalid
 					}
 					for i, key := range x.Keys.Items {
@@ -192,6 +194,15 @@ func defaultMatchesSQL(f sc.Fact[sc.Default], ts []token, engine string) bool {
 	case "literal":
 		if d.Value == nil {
 			return false
+		}
+		if engine == "mariadb" && d.Encoding == "base64" && len(ts) == 2 && ts[0].is("X") && ts[1].kind == 's' {
+			expected, e := base64.StdEncoding.DecodeString(*d.Value)
+			actual, e2 := hex.DecodeString(ts[1].value)
+			return e == nil && e2 == nil && bytes.Equal(expected, actual)
+		}
+		if engine == "mariadb" && d.Encoding == "text" && d.Type != nil && d.Type.Ref.Name == "bit" && len(ts) == 2 && ts[0].is("B") && ts[1].kind == 's' {
+			value, e := strconv.ParseUint(ts[1].value, 2, 64)
+			return e == nil && strconv.FormatUint(value, 10) == *d.Value
 		}
 		if d.Encoding == "base64" {
 			b, e := base64.StdEncoding.DecodeString(*d.Value)
@@ -759,7 +770,7 @@ func oldColumnAST(table *tableAST, name string) *columnAST {
 }
 func applyTableAST(ctx context.Context, ast tableAST, previous *tableAST, original *sc.Table, engine string, changed bool) (sc.Table, bool, error) {
 	table := sc.Table{Ref: ast.ref, Kind: sc.Known("r"), Storage: sc.Known("p"), Charset: sc.Absent[string](), Collation: sc.Absent[sc.Ref](), Options: sc.Complete[sc.Option](nil), Columns: sc.Complete[sc.Column](nil), Constraints: sc.Complete[sc.Constraint](nil), Indexes: sc.Complete[sc.Index](nil), Dependencies: sc.Complete[sc.Dependency](nil)}
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
 		table.Kind = sc.Known("table")
 		table.Storage = sc.Unknown[string]("offlineDefaultEngine")
 		table.Charset = sc.Unknown[string]("offlineDefaultCharset")
@@ -816,6 +827,11 @@ func applyTableAST(ctx context.Context, ast tableAST, previous *tableAST, origin
 		limited = limited || manual
 		table.Columns.Items = append(table.Columns.Items, column)
 	}
+	if engine == "mariadb" && original == nil {
+		if e := mariaDBTableProperties(&table, ast); e != nil {
+			return table, false, e
+		}
+	}
 	if original != nil && previous != nil && termsSame(previous.members, ast.members) {
 		if e := validateCapturedMembers(table, ast.members, engine); e != nil {
 			if e != ErrUnsupported {
@@ -836,6 +852,17 @@ func applyTableAST(ctx context.Context, ast tableAST, previous *tableAST, origin
 			}
 			if index != nil {
 				table.Indexes.Items = append(table.Indexes.Items, *index)
+			}
+		}
+	}
+	if engine == "mariadb" && original == nil {
+		for i := range table.Constraints.Items {
+			k := &table.Constraints.Items[i]
+			for j := range table.Indexes.Items {
+				x := &table.Indexes.Items[j]
+				if k.BackingIndex.Value != nil && x.Ref == *k.BackingIndex.Value {
+					mariaDBImplicitPrimary(&table, k, x)
+				}
 			}
 		}
 	}
@@ -860,6 +887,9 @@ func applyColumnAST(ast columnAST, before *columnAST, old *sc.Column, table sc.R
 	if old != nil {
 		c = *old
 		c.Ordinal = sc.Known(ordinal)
+	}
+	if engine == "mariadb" && before != nil && (!tokensSame(ast.attrs["systemPeriod"], before.attrs["systemPeriod"]) || !tokensSame(ast.attrs["versioning"], before.attrs["versioning"])) {
+		return c, false, ErrUnsupported
 	}
 	limited := false
 	if old != nil && before != nil {
@@ -901,13 +931,26 @@ func applyColumnAST(ast columnAST, before *columnAST, old *sc.Column, table sc.R
 			c.Default = sc.Known(copyDefault)
 		}
 	}
-	for _, name := range []string{"nullable", "default", "charset", "collation", "comment", "identity", "visible"} {
+	for _, name := range []string{"nullable", "default", "charset", "collation", "comment", "identity", "visible", "systemPeriod"} {
 		ts := ast.attrs[name]
 		unchanged := before != nil && tokensSame(ts, before.attrs[name])
 		if unchanged {
 			continue
 		}
 		switch name {
+		case "systemPeriod":
+			if len(ts) == 0 {
+				continue
+			}
+			if engine != "mariadb" {
+				return c, false, ErrUnsupported
+			}
+			if role := mariaDBPeriodRole(ast); role != "" {
+				c.Generated = sc.Known(sc.Generated{Kind: role})
+				if len(ast.attrs["nullable"]) == 0 {
+					c.Nullable = sc.Known(false)
+				}
+			}
 		case "nullable":
 			c.Nullable = sc.Known(len(ts) == 0 || !ts[0].is("NOT"))
 		case "default":
@@ -915,7 +958,7 @@ func applyColumnAST(ast columnAST, before *columnAST, old *sc.Column, table sc.R
 			if e != nil {
 				return c, false, e
 			}
-			if d.Kind == "literal" && engine == "mysql" {
+			if d.Kind == "literal" && (engine == "mysql" || engine == "mariadb") {
 				u := parsedType
 				d.Type = &u
 			}
@@ -952,7 +995,7 @@ func applyColumnAST(ast columnAST, before *columnAST, old *sc.Column, table sc.R
 		case "identity":
 			kind := "none"
 			if len(ts) > 0 {
-				if engine != "mysql" {
+				if engine != "mysql" && engine != "mariadb" {
 					return c, false, ErrUnsupported
 				}
 				kind = "autoIncrement"
@@ -976,10 +1019,27 @@ func applyTableSuffix(t *sc.Table, ts []token, engine string) error {
 		if c.take("ENGINE") {
 			c.take("=")
 			name, e := c.ident()
-			if e != nil || !strings.EqualFold(name, "InnoDB") {
+			if e != nil {
 				return ErrUnsupported
 			}
-			t.Storage = sc.Known("InnoDB")
+			if engine == "mariadb" {
+				switch strings.ToLower(name) {
+				case "innodb":
+					name = "InnoDB"
+				case "aria":
+					name = "Aria"
+				case "myisam":
+					name = "MyISAM"
+				default:
+					return ErrUnsupported
+				}
+				t.Storage = sc.Known(name)
+			} else {
+				if !strings.EqualFold(name, "InnoDB") {
+					return ErrUnsupported
+				}
+				t.Storage = sc.Known("InnoDB")
+			}
 		} else if c.take("DEFAULT") {
 			if !c.take("CHARACTER") || !c.take("SET") {
 				return ErrUnsupported
@@ -1011,6 +1071,11 @@ func applyTableSuffix(t *sc.Table, ts []token, engine string) error {
 			}
 			t.Options.Items = append(t.Options.Items, sc.Option{Name: "comment", Value: ts[c.i].value})
 			c.i++
+		} else if engine == "mariadb" && c.take("WITH") {
+			if !c.take("SYSTEM") || !c.take("VERSIONING") {
+				return ErrUnsupported
+			}
+			t.Kind = sc.Known("systemVersioned")
 		} else if c.take("ROW_FORMAT") {
 			c.take("=")
 			name, e := c.ident()
@@ -1035,6 +1100,9 @@ func validateCapturedMembers(t sc.Table, members [][]token, engine string) error
 		if e != nil {
 			return e
 		}
+		if engine == "mariadb" && constraint != nil && index != nil {
+			mariaDBImplicitPrimary(&t, constraint, index)
+		}
 		if constraint != nil {
 			found := false
 			for _, old := range t.Constraints.Items {
@@ -1049,13 +1117,13 @@ func validateCapturedMembers(t sc.Table, members [][]token, engine string) error
 					a, b := old, *constraint
 					a.BackingIndex = sc.Absent[sc.Ref]()
 					b.BackingIndex = sc.Absent[sc.Ref]()
-					if engine == "mysql" && (b.Kind.Value != nil && (*b.Kind.Value == "p" || *b.Kind.Value == "u")) {
+					if (engine == "mysql" || engine == "mariadb") && (b.Kind.Value != nil && (*b.Kind.Value == "p" || *b.Kind.Value == "u")) {
 						b.NullsDistinct = sc.Known(true)
 					}
 					if !sameJSON(a, b) {
 						return ErrUnsupported
 					}
-					if old.BackingIndex.Value != nil {
+					if old.BackingIndex.Value != nil && !(engine == "mariadb" && index != nil && *old.BackingIndex.Value == index.Ref) {
 						return ErrUnsupported
 					}
 				}
@@ -1194,6 +1262,16 @@ func columnList(c *cursor, table sc.Ref) ([]sc.Ref, error) {
 }
 func parseConstraint(ts []token, table sc.Ref, engine string) (*sc.Constraint, *sc.Index, error) {
 	c := cursor{ts: ts, engine: engine}
+	if engine == "mariadb" && c.take("PERIOD") {
+		if !c.take("FOR") || !c.take("SYSTEM_TIME") {
+			return nil, nil, ErrUnsupported
+		}
+		columns, e := columnList(&c, table)
+		if e != nil || len(columns) != 2 || c.i != len(ts) {
+			return nil, nil, ErrUnsupported
+		}
+		return nil, nil, nil
+	}
 	name := ""
 	if c.take("CONSTRAINT") {
 		var e error
@@ -1210,7 +1288,7 @@ func parseConstraint(ts []token, table sc.Ref, engine string) (*sc.Constraint, *
 		}
 		kind = "p"
 		if name == "" {
-			if engine == "mysql" {
+			if engine == "mysql" || engine == "mariadb" {
 				name = "PRIMARY"
 			} else {
 				return nil, nil, ErrUnsupported
@@ -1253,6 +1331,23 @@ func parseConstraint(ts []token, table sc.Ref, engine string) (*sc.Constraint, *
 		return nil, nil, ErrUnsupported
 	}
 	constraint := sc.NewConstraint(sc.Ref{Kind: "constraint", Schema: table.Schema, Table: table.Name, Name: name}, kind)
+	if engine == "mariadb" && (kind == "p" || kind == "u") {
+		index, e := mariaDBIndex(&c, table, name, true)
+		if e != nil {
+			return nil, nil, e
+		}
+		for _, key := range index.Keys.Items {
+			if key.Column.Value == nil {
+				return nil, nil, ErrUnsupported
+			}
+			constraint.Columns.Items = append(constraint.Columns.Items, *key.Column.Value)
+		}
+		constraint.BackingIndex = sc.Known(index.Ref)
+		constraint.NullsDistinct = sc.Known(true)
+		index.Constraint = sc.Known(constraint.Ref)
+		return &constraint, index, nil
+	}
+
 	columns, e := columnList(&c, table)
 	if e != nil {
 		return nil, nil, e
@@ -1362,7 +1457,7 @@ func parseConstraint(ts []token, table sc.Ref, engine string) (*sc.Constraint, *
 		index := simpleIndex(table, name, columns, true)
 		index.Constraint = sc.Known(constraint.Ref)
 		constraint.BackingIndex = sc.Known(index.Ref)
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			constraint.NullsDistinct = sc.Known(true)
 			for i := range index.Keys.Items {
 				index.Keys.Items[i].NullsFirst = sc.Known(true)
@@ -1378,12 +1473,33 @@ func parseConstraint(ts []token, table sc.Ref, engine string) (*sc.Constraint, *
 	return &constraint, nil, nil
 }
 func parseInlineIndex(c *cursor, table sc.Ref, name string, unique bool) (*sc.Constraint, *sc.Index, error) {
+	if c.engine == "mariadb" {
+		index, e := mariaDBIndex(c, table, name, unique)
+		if e != nil {
+			return nil, nil, e
+		}
+		if unique {
+			constraint := sc.NewConstraint(sc.Ref{Kind: "constraint", Schema: table.Schema, Table: table.Name, Name: name}, "u")
+			for _, key := range index.Keys.Items {
+				if key.Column.Value == nil {
+					return nil, nil, ErrUnsupported
+				}
+				constraint.Columns.Items = append(constraint.Columns.Items, *key.Column.Value)
+			}
+			constraint.BackingIndex = sc.Known(index.Ref)
+			constraint.NullsDistinct = sc.Known(true)
+			index.Constraint = sc.Known(constraint.Ref)
+			return &constraint, index, nil
+		}
+		return nil, index, nil
+	}
+
 	columns, e := columnList(c, table)
 	if e != nil || c.i != len(c.ts) {
 		return nil, nil, ErrUnsupported
 	}
 	index := simpleIndex(table, name, columns, unique)
-	if c.engine == "mysql" {
+	if c.engine == "mysql" || c.engine == "mariadb" {
 		for i := range index.Keys.Items {
 			index.Keys.Items[i].NullsFirst = sc.Known(true)
 		}
@@ -1393,7 +1509,7 @@ func parseInlineIndex(c *cursor, table sc.Ref, name string, unique bool) (*sc.Co
 			index.Keys.Items[i].Opclass = sc.Unknown[sc.Ref]("offlineDefaultOpclass")
 		}
 	}
-	if unique && c.engine == "mysql" {
+	if unique && (c.engine == "mysql" || c.engine == "mariadb") {
 		constraint := sc.NewConstraint(sc.Ref{Kind: "constraint", Schema: table.Schema, Table: table.Name, Name: name}, "u")
 		constraint.Columns = sc.Complete(columns)
 		constraint.BackingIndex = sc.Known(index.Ref)
@@ -1433,12 +1549,19 @@ func parseStandaloneIndex(ts []token, table sc.Ref, engine string) (sc.Index, er
 			return sc.Index{}, ErrUnsupported
 		}
 	}
+	if engine == "mariadb" {
+		index, e := mariaDBIndex(&c, table, name, unique)
+		if e != nil {
+			return sc.Index{}, e
+		}
+		return *index, nil
+	}
 	columns, e := columnList(&c, table)
 	if e != nil || c.i != len(ts) {
 		return sc.Index{}, ErrUnsupported
 	}
 	index := simpleIndex(table, name, columns, unique)
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
 		for i := range index.Keys.Items {
 			index.Keys.Items[i].NullsFirst = sc.Known(true)
 		}
@@ -1453,4 +1576,245 @@ func parseStandaloneIndex(ts []token, table sc.Ref, engine string) (sc.Index, er
 
 func sortCapture(c *sc.Capture) {
 	sort.Slice(c.Tables, func(i, j int) bool { return refKey(c.Tables[i].Ref) < refKey(c.Tables[j].Ref) })
+}
+
+type mariaDBPeriodFact struct {
+	Name, NativeType, DataType, Generated string
+	Implicit                              bool
+}
+
+func mariaDBTableProperties(table *sc.Table, ast tableAST) error {
+	var start, end *columnAST
+	for i := range ast.columns {
+		column := &ast.columns[i]
+		if versioning := column.attrs["versioning"]; len(versioning) > 0 {
+			if versioning[0].is("WITHOUT") {
+				table.Options.Items = append(table.Options.Items, sc.Option{Name: "columnSystemVersioning:" + column.name, Value: "without"})
+			}
+		}
+		switch mariaDBPeriodRole(*column) {
+		case "systemRowStart":
+			if start != nil {
+				return ErrUnsupported
+			}
+			start = column
+		case "systemRowEnd":
+			if end != nil {
+				return ErrUnsupported
+			}
+			end = column
+		}
+	}
+	var declared []sc.Ref
+	for _, term := range ast.members {
+		if len(term) > 0 && term[0].is("PERIOD") {
+			c := cursor{ts: term, engine: "mariadb"}
+			c.take("PERIOD")
+			if !c.take("FOR") || !c.take("SYSTEM_TIME") || declared != nil {
+				return ErrUnsupported
+			}
+			columns, e := columnList(&c, table.Ref)
+			if e != nil || len(columns) != 2 || c.i != len(term) {
+				return ErrUnsupported
+			}
+			declared = columns
+		}
+	}
+	versioned := table.Kind.Value != nil && *table.Kind.Value == "systemVersioned"
+	if !versioned {
+		if start != nil || end != nil || declared != nil {
+			return ErrUnsupported
+		}
+		return nil
+	}
+	periods := []mariaDBPeriodFact{}
+	if start == nil && end == nil && declared == nil {
+		periods = []mariaDBPeriodFact{{Name: "ROW_START", NativeType: "timestamp(6)", DataType: "timestamp", Generated: "ROW START", Implicit: true}, {Name: "ROW_END", NativeType: "timestamp(6)", DataType: "timestamp", Generated: "ROW END", Implicit: true}}
+	} else {
+		if start == nil || end == nil || len(declared) != 2 || declared[0].Name != start.name || declared[1].Name != end.name {
+			return ErrUnsupported
+		}
+		for i, column := range []*columnAST{start, end} {
+			typ, e := builtinType(column.typ, "mariadb")
+			if e != nil || typ.Modifiers.Value == nil {
+				return ErrUnsupported
+			}
+			m := typ.Modifiers.Value
+			native := typ.Ref.Name
+			switch native {
+			case "timestamp":
+				if m.DatetimePrecision == nil || *m.DatetimePrecision != 6 {
+					return ErrUnsupported
+				}
+				native += "(6)"
+			case "bigint":
+				if !m.Unsigned || m.Length == nil {
+					return ErrUnsupported
+				}
+				native += "(" + strconv.FormatInt(*m.Length, 10) + ") unsigned"
+			default:
+				return ErrUnsupported
+			}
+			role := "ROW START"
+			if i == 1 {
+				role = "ROW END"
+			}
+			periods = append(periods, mariaDBPeriodFact{Name: column.name, NativeType: native, DataType: typ.Ref.Name, Generated: role})
+		}
+	}
+	for _, period := range periods {
+		raw, e := json.Marshal(period)
+		if e != nil {
+			return ErrUnsupported
+		}
+		table.Options.Items = append(table.Options.Items, sc.Option{Name: "systemPeriod:" + period.Generated, Value: string(raw)})
+	}
+	return nil
+}
+
+// Native implicit history PK metadata includes row_end in KCU, while
+// STATISTICS omits that automatically maintained term. No visible ordinal exists.
+func mariaDBImplicitPrimary(table *sc.Table, k *sc.Constraint, x *sc.Index) {
+	if k.Kind.Value == nil || *k.Kind.Value != "p" || !mariaDBImplicitPeriodAddress(*table, "row_end") {
+		return
+	}
+	end := sc.Ref{Kind: "column", Schema: table.Ref.Schema, Table: table.Ref.Name, Name: "row_end"}
+	if len(k.Columns.Items) == 0 || !strings.EqualFold(k.Columns.Items[len(k.Columns.Items)-1].Name, end.Name) {
+		k.Columns.Items = append(k.Columns.Items, end)
+	} else {
+		k.Columns.Items[len(k.Columns.Items)-1] = end
+	}
+	if len(x.Keys.Items) > 0 {
+		last := x.Keys.Items[len(x.Keys.Items)-1]
+		if last.Column.Value != nil && mariaDBImplicitPeriodAddress(*table, last.Column.Value.Name) && strings.EqualFold(last.Column.Value.Name, end.Name) {
+			x.Keys.Items = x.Keys.Items[:len(x.Keys.Items)-1]
+		}
+	}
+}
+func mariaDBImplicitPrimarySuffix(table sc.Table, k sc.Constraint, keys int) bool {
+	return k.Kind.Value != nil && *k.Kind.Value == "p" && len(k.Columns.Items) == keys+1 && keys > 0 && strings.EqualFold(k.Columns.Items[keys].Name, "row_end") && mariaDBImplicitPeriodAddress(table, k.Columns.Items[keys].Name)
+}
+
+func mariaDBImplicitPeriodAddress(table sc.Table, name string) bool {
+	if table.Kind.Value == nil || *table.Kind.Value != "systemVersioned" {
+		return false
+	}
+	periods := map[string]mariaDBPeriodFact{}
+	for _, option := range table.Options.Items {
+		if strings.HasPrefix(option.Name, "systemPeriod:") {
+			var period mariaDBPeriodFact
+			decoder := json.NewDecoder(strings.NewReader(option.Value))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(&period) != nil || !period.Implicit || period.NativeType != "timestamp(6)" || period.DataType != "timestamp" || option.Name != "systemPeriod:"+period.Generated {
+				return false
+			}
+			if _, duplicate := periods[period.Generated]; duplicate {
+				return false
+			}
+			periods[period.Generated] = period
+		}
+	}
+	start, startOK := periods["ROW START"]
+	end, endOK := periods["ROW END"]
+	return len(periods) == 2 && startOK && endOK && start.Name == "ROW_START" && end.Name == "ROW_END" && (strings.EqualFold(name, start.Name) || strings.EqualFold(name, end.Name))
+}
+
+func mariaDBIndex(c *cursor, table sc.Ref, name string, unique bool) (*sc.Index, error) {
+	method := "BTREE"
+	readMethod := func() error {
+		value, e := c.ident()
+		if e != nil {
+			return e
+		}
+		value = strings.ToUpper(value)
+		if value != "BTREE" && value != "HASH" {
+			return ErrUnsupported
+		}
+		method = value
+		return nil
+	}
+	if c.take("USING") {
+		if e := readMethod(); e != nil {
+			return nil, e
+		}
+	}
+	group, e := c.group()
+	if e != nil {
+		return nil, e
+	}
+	terms, e := commaTerms(group)
+	if e != nil || len(terms) == 0 {
+		return nil, ErrUnsupported
+	}
+	keys := []sc.IndexKey{}
+	columns := []sc.Ref{}
+	for _, term := range terms {
+		p := cursor{ts: term, engine: "mariadb"}
+		column, e := p.ident()
+		if e != nil {
+			return nil, e
+		}
+		prefix := sc.Absent[int64]()
+		if p.i < len(term) && term[p.i].value == "(" {
+			group, e := p.group()
+			if e != nil {
+				return nil, e
+			}
+			n, e := intLiteral(group)
+			if e != nil || n < 1 || n > 65535 {
+				return nil, ErrUnsupported
+			}
+			prefix = sc.Known(n)
+		}
+		descending := p.take("DESC")
+		if !descending {
+			p.take("ASC")
+		}
+		if p.i != len(term) {
+			return nil, ErrUnsupported
+		}
+		ref := sc.Ref{Kind: "column", Schema: table.Schema, Table: table.Name, Name: column}
+		columns = append(columns, ref)
+		keys = append(keys, sc.IndexKey{Column: sc.Known(ref), Expression: sc.Absent[sc.Expression](), Opclass: sc.Absent[sc.Ref](), Collation: sc.Absent[sc.Ref](), Descending: sc.Known(descending), NullsFirst: sc.Known(!descending), PrefixLength: prefix, Options: sc.Complete[sc.Option](nil)})
+	}
+	index := simpleIndex(table, name, columns, unique)
+	index.Keys = sc.Complete(keys)
+	seen := map[string]bool{}
+	for c.i < len(c.ts) {
+		key := ""
+		switch {
+		case c.take("USING"):
+			key = "method"
+			if e := readMethod(); e != nil {
+				return nil, e
+			}
+		case c.take("IGNORED"):
+			key = "visible"
+			index.Visible = sc.Known(false)
+		case c.take("NOT"):
+			key = "visible"
+			if !c.take("IGNORED") {
+				return nil, ErrUnsupported
+			}
+			index.Visible = sc.Known(true)
+		case c.take("COMMENT"):
+			key = "comment"
+			if c.i >= len(c.ts) || c.ts[c.i].kind != 's' {
+				return nil, ErrUnsupported
+			}
+			index.Options.Items = append(index.Options.Items, sc.Option{Name: "comment", Value: c.ts[c.i].value})
+			c.i++
+		default:
+			return nil, ErrUnsupported
+		}
+		if seen[key] {
+			return nil, ErrUnsupported
+		}
+		seen[key] = true
+	}
+	if name == "PRIMARY" && index.Visible.Value != nil && !*index.Visible.Value {
+		return nil, ErrUnsupported
+	}
+	index.Method = sc.Known(method)
+	return &index, nil
 }

@@ -168,7 +168,10 @@ func (s ExplainSupport) Valid() bool {
 	if s.DML != nil && (!s.DML.Valid(s.Engine) || len(s.Modes) == 0 || len(s.DML.Analyze) > 0 && !containsExplainString(s.Modes, "analyze")) {
 		return false
 	}
-	if s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "sqlite" && s.Engine != "mongodb" && s.Engine != "cassandra" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
+	if s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "mariadb" && s.Engine != "sqlite" && s.Engine != "mongodb" && s.Engine != "cassandra" || len(s.ServerVersion) > 256 || len(s.Modes) > 2 {
+		return false
+	}
+	if s.Engine == "mariadb" && s.Format != "json" {
 		return false
 	}
 	if s.Engine == "sqlite" && (s.Format != "queryPlan" || len(s.Modes) != 1 || s.Modes[0] != "plan") || s.Engine == "postgresql" && s.Format != "json" || s.Engine == "mysql" && s.Format != "tree" && s.Format != "json" {
@@ -185,7 +188,7 @@ func (s ExplainSupport) Valid() bool {
 	} else if s.DiagnosticModel != "" {
 		return false
 	}
-	if len(s.Notices) > 8 || len(s.Notices) != 0 && s.Engine != "postgresql" && s.Engine != "mysql" {
+	if len(s.Notices) > 8 || len(s.Notices) != 0 && s.Engine != "postgresql" && s.Engine != "mysql" && s.Engine != "mariadb" {
 		return false
 	}
 	for _, notice := range s.Notices {
@@ -193,7 +196,7 @@ func (s ExplainSupport) Valid() bool {
 			return false
 		}
 	}
-	if s.Options != nil && !s.Options.Valid(s.Engine) || len(s.AnalyzeUnavailableReason) > 4096 || s.AnalyzeUnavailableReason != "" && (s.Engine != "mysql" || containsExplainString(s.Modes, "analyze")) {
+	if s.Options != nil && !s.Options.Valid(s.Engine) || len(s.AnalyzeUnavailableReason) > 4096 || s.AnalyzeUnavailableReason != "" && (s.Engine != "mysql" && s.Engine != "mariadb" || containsExplainString(s.Modes, "analyze")) {
 		return false
 	}
 	if len(s.PlanKinds) > 2 || s.Engine != "postgresql" && len(s.PlanKinds) != 0 {
@@ -217,6 +220,9 @@ func (s ExplainSupport) Valid() bool {
 }
 func (r ExplainResult) Valid() bool {
 	if r.DML != nil && (!r.DML.Valid(r.Support.Engine, r.Mode) || r.Support.DML == nil || r.Mode == "analyze" && (r.DML.Execution != "completed" || !containsExplainString(r.Support.DML.Analyze, explainDMLForm(r.DML.Target)))) {
+		return false
+	}
+	if r.DML != nil && r.Mode == "plan" && !r.Support.DML.AllowsEstimated(explainDMLForm(r.DML.Target)) {
 		return false
 	}
 	if r.AdvancedMetrics != nil && (r.Status != "tree" || !r.AdvancedMetrics.Valid(r.Support.Engine)) {

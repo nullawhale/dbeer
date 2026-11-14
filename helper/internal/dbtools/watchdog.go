@@ -37,7 +37,7 @@ func RunUtility(args []string) (bool, error) {
 		return true, errors.New("Invalid database utility supervision request.")
 	}
 	switch filepath.Base(args[1]) {
-	case "pg_dump", "pg_restore", "psql", "mysqldump", "mysql":
+	case "pg_dump", "pg_restore", "psql", "mysqldump", "mysql", "mariadb-dump", "mariadb":
 	default:
 		return true, errors.New("Invalid database utility.")
 	}

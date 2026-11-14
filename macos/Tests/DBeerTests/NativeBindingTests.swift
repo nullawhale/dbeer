@@ -40,6 +40,63 @@ struct NativeBindingTests {
         }
     }
 
+    @Test func mariaDBStoredChoicesRequireRowWitnessWithoutBecomingFlatBindings() throws {
+        let token = "mariadb.storage.v1:" + String(repeating: "a", count: 64)
+        let enumIdentity = #"unresolved:{"engine":"mariadb","type":254,"charset":45,"flags":256}"#
+        let setIdentity = #"unresolved:{"engine":"mariadb","type":254,"charset":45,"flags":2048}"#
+        let binaryIdentity = #"unresolved:{"engine":"mariadb","type":254,"charset":63,"flags":256}"#
+        let columns = [ResultColumn(index: 0, name: "id", engine: .mariadb, nativeType: "BIGINT"),
+            ResultColumn(index: 1, name: "e", engine: .mariadb, nativeType: "ENUM", typeIdentity: enumIdentity),
+            ResultColumn(index: 2, name: "s", engine: .mariadb, nativeType: "SET", typeIdentity: setIdentity),
+            ResultColumn(index: 3, name: "b", engine: .mariadb, nativeType: "ENUM", encoding: "base64", typeIdentity: binaryIdentity)]
+        let native: [[NativeValue]] = [[.init(kind: "integer", value: "1", engine: "mariadb", nativeType: "BIGINT"),
+            .init(kind: "native", value: "", engine: "mariadb", nativeType: "ENUM", typeIdentity: enumIdentity),
+            .init(kind: "null", engine: "mariadb", nativeType: "SET", typeIdentity: setIdentity),
+            .init(kind: "binary", value: "AP8=", engine: "mariadb", nativeType: "ENUM", typeIdentity: binaryIdentity)]]
+        let metadata = [["name":"id", "primaryKey":"1", "editable":"true"], ["name":"e", "editable":"true"],
+            ["name":"s", "editable":"true"], ["name":"b", "editable":"true"]]
+        let reply = BackendMessage(type: "query.result", requestId: "r", columns: columns,
+            rows: [["1", "", nil, "AP8="]], nativeValues: native, storageTokens: [token])
+        let grid = GridDraft(reference: .init(schema: "fixture", name: "choices", kind: "table"), result: reply, metadata: metadata)
+        #expect(grid.canEditRow(0) && grid.nativeValues == native)
+        let view = GridDraft(reference: .init(schema: "fixture", name: "choices", kind: "view"), result: reply, metadata: metadata)
+        #expect(!view.canEditRow(0) && view.rows[0].nativeBindingUnavailable)
+        grid.set(.init(kind: "text", value: "2"), row: 0, column: 0)
+        let change = try #require(grid.request().changes.first)
+        #expect(change.storageToken == token && change.original == [.init(kind: "text", value: "1"),
+            .init(kind: "text", value: ""), .null, .init(kind: "binary", value: "AP8=")])
+        grid.discard()
+        #expect(grid.canEditRow(0) && grid.nativeValues == native && grid.rows[0].originalStorageToken == token)
+        for invalid in [Optional<String>.none, "mysql.storage.v1:" + String(repeating: "a", count: 64),
+                        "mariadb.storage.v1:", "mariadb.storage.v1:" + String(repeating: "A", count: 64)] {
+            var missing = reply; missing.storageTokens = invalid.map { [$0] }
+            let fenced = GridDraft(reference: grid.reference, result: missing, metadata: metadata)
+            #expect(!fenced.canEditRow(0) && fenced.nativeValues == native)
+        }
+        for index in 1..<columns.count {
+            let cell = native[0][index], column = columns[index]
+            #expect(cell.flatChangeValue(for: column) == nil)
+            var mismatched = cell; mismatched.engine = "mysql"
+            #expect(mismatched.mariaDBStoredChoiceOriginal(for: column, storageToken: token) == nil)
+            mismatched = cell; mismatched.typeIdentity = "unresolved:{}"
+            #expect(mismatched.mariaDBStoredChoiceOriginal(for: column, storageToken: token) == nil)
+        }
+        let selectedSet = NativeValue(kind: "native", value: "a,b", engine: "mariadb", nativeType: "SET", typeIdentity: setIdentity)
+        #expect(selectedSet.mariaDBStoredChoiceOriginal(for: columns[2], storageToken: token) == .init(kind: "text", value: "a,b"))
+        for identity in [#"unresolved:{"engine":"mysql","type":254,"flags":256}"#,
+                         #"unresolved:{"engine":"mariadb","type":254,"flags":0}"#,
+                         #"unresolved:{"engine":"mariadb","type":255,"flags":256}"#] {
+            var cell = native[0][1]; cell.typeIdentity = identity
+            let column = ResultColumn(index: 1, name: "e", engine: .mariadb, nativeType: "ENUM", typeIdentity: identity)
+            #expect(cell.mariaDBStoredChoiceOriginal(for: column, storageToken: token) == nil)
+        }
+        var unrelated = native[0][1]; unrelated.nativeType = "GEOMETRY"
+        let geometry = ResultColumn(index: 0, name: "g", engine: .mariadb, nativeType: "GEOMETRY", typeIdentity: enumIdentity)
+        #expect(unrelated.mariaDBStoredChoiceOriginal(for: geometry, storageToken: token) == nil)
+        unrelated = native[0][1]; unrelated.kind = "opaque"; unrelated.value = "AP8="
+        #expect(unrelated.mariaDBStoredChoiceOriginal(for: columns[1], storageToken: token) == nil)
+    }
+
     @Test func sqliteStorageAndNativeTreesMustAgreeBeforeTheyAreTransported() throws {
         let columns = [ResultColumn(index: 0, name: "value", engine: .sqlite)]
         let storage = [[SQLiteValue(type: "integer", value: "1")]]

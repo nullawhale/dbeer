@@ -119,10 +119,10 @@ struct SchemaCaptureContext: Codable, Equatable, Sendable {
     var consistency: String
     var visibility: String
     var valid: Bool {
-        ["postgresql", "mysql", "cassandra", "sqlite"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
+        ["postgresql", "mysql", "mariadb", "cassandra", "sqlite"].contains(engine) && version.utf8.count <= 4_096 && database.utf8.count <= 256 &&
         ["repeatableRead", "bestEffort"].contains(consistency) && ["complete", "partial", "unknown"].contains(visibility) &&
         startedAt.utf8.count <= 64 && finishedAt.utf8.count <= 64 &&
-        (origin.map { $0.valid && ["postgresql", "mysql", "sqlite"].contains(engine) && version.isEmpty && database.isEmpty && startedAt.isEmpty && finishedAt.isEmpty } ?? (!startedAt.isEmpty && !finishedAt.isEmpty))
+        (origin.map { $0.valid && ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine) && version.isEmpty && database.isEmpty && startedAt.isEmpty && finishedAt.isEmpty } ?? (!startedAt.isEmpty && !finishedAt.isEmpty))
     }
 }
 struct SchemaComparisonScope: Codable, Equatable, Sendable { var kind: String; var excludedObjectKinds: [String] }

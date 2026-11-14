@@ -65,7 +65,7 @@ func lex(ctx context.Context, sql, engine string, noBackslash bool) ([]token, er
 			i += n
 			continue
 		}
-		if strings.HasPrefix(sql[i:], "--") && (engine != "mysql" || i+2 == len(sql) || sql[i+2] <= ' ') || engine == "mysql" && sql[i] == '#' {
+		if strings.HasPrefix(sql[i:], "--") && ((engine != "mysql" && engine != "mariadb") || i+2 == len(sql) || sql[i+2] <= ' ') || (engine == "mysql" || engine == "mariadb") && sql[i] == '#' {
 			for i < len(sql) && sql[i] != '\n' {
 				i++
 			}
@@ -74,7 +74,7 @@ func lex(ctx context.Context, sql, engine string, noBackslash bool) ([]token, er
 		if strings.HasPrefix(sql[i:], "/*") {
 			// MySQL executable comments may carry statements and cannot be
 			// treated as harmless whitespace by a portable source importer.
-			if engine == "mysql" && i+2 < len(sql) && (sql[i+2] == '!' || sql[i+2] == '+') {
+			if (engine == "mysql" || engine == "mariadb") && i+2 < len(sql) && (sql[i+2] == '!' || sql[i+2] == '+' || engine == "mariadb" && i+3 < len(sql) && sql[i+2] == 'M' && sql[i+3] == '!') {
 				return nil, ErrUnsupported
 			}
 			i += 2
@@ -106,7 +106,7 @@ func lex(ctx context.Context, sql, engine string, noBackslash bool) ([]token, er
 			escape = true
 			i++
 		}
-		if sql[i] == '\'' || sql[i] == '"' || (engine == "mysql" || engine == "sqlite") && sql[i] == '`' || engine == "sqlite" && sql[i] == '[' {
+		if sql[i] == '\'' || sql[i] == '"' || ((engine == "mysql" || engine == "mariadb") || engine == "sqlite") && sql[i] == '`' || engine == "sqlite" && sql[i] == '[' {
 			q := sql[i]
 			end := q
 			if q == '[' {
@@ -131,7 +131,7 @@ func lex(ctx context.Context, sql, engine string, noBackslash bool) ([]token, er
 					closed = true
 					break
 				}
-				if c == '\\' && kind == 's' && (escape || engine == "mysql" && !noBackslash) {
+				if c == '\\' && kind == 's' && (escape || (engine == "mysql" || engine == "mariadb") && !noBackslash) {
 					i++
 					if i == len(sql) {
 						return nil, ErrInvalid

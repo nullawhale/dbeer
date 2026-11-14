@@ -87,7 +87,7 @@ type SchemaObservation struct {
 }
 
 func (r SchemaObservation) Valid() bool {
-	if r.Engine != "postgresql" && r.Engine != "mysql" || !(SchemaObservationRequest{Action: r.Action, Tables: r.Tables}).Valid() || len(r.Notices) > 16 || r.Notices == nil {
+	if r.Engine != "postgresql" && r.Engine != "mysql" && r.Engine != "mariadb" || !(SchemaObservationRequest{Action: r.Action, Tables: r.Tables}).Valid() || len(r.Notices) > 16 || r.Notices == nil {
 		return false
 	}
 	if _, err := time.Parse(time.RFC3339Nano, r.ObservedAt); err != nil || !monitorTimestamp.MatchString(r.ObservedAt) {

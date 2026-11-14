@@ -8,7 +8,7 @@ extension ApplicationWorkspace {
 
     private func relationshipContext(profileID: UUID) -> ERDiagramLoadContext? {
         guard let profile = library.savedConnections.first(where: { $0.id == profileID }),
-              [.postgresql, .mysql, .sqlite].contains(profile.engine) else { return nil }
+              [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine) else { return nil }
         return erConnectedProfileContext(profile.id)
     }
 

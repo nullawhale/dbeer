@@ -234,7 +234,7 @@ struct TableStructureIndexDefinitionSummary: View {
             if let includes = definition.includes { StructureOrderedNamesSummary(title: "INCLUDE columns", names: includes) }
             if let predicate = definition.predicate { Text("Predicate: " + predicate) }
             if let distinct = definition.nullsDistinct { Text(distinct ? "NULLS DISTINCT" : "NULLS NOT DISTINCT") }
-            if let visible = definition.visible { Text(visible ? "Visible" : "Invisible") }
+            if let visible = definition.visible { Text(visible ? "Available to optimizer" : "Excluded from optimizer use") }
             optionSummary(definition.options, title: "Index option")
         }.font(.system(.caption, design: .monospaced)).textSelection(.enabled)
     }

@@ -555,7 +555,7 @@ struct SchemaComparisonView: View {
                 Button("Compare") { Task { await model.start() } }.keyboardShortcut(.defaultAction)
                     .disabled(!model.canStart).accessibilityIdentifier("schemaCompareStart")
             } else {
-                if model.comparisonEngine.map({ [.postgresql, .mysql, .sqlite].contains($0) }) == true {
+                if model.comparisonEngine.map({ [.postgresql, .mysql, .mariadb, .sqlite].contains($0) }) == true {
                     Button(model.isGeneratingPlan ? "Generating SQL…" : "Generate SQL Plan") { Task { await model.generatePlan() } }
                         .disabled(!model.canGeneratePlan).controlHover().accessibilityIdentifier("schemaComparePlan")
                 }

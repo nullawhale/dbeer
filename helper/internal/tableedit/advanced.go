@@ -55,14 +55,14 @@ func (a *AdvancedKindSupport) Valid(engine string) bool {
 	if a == nil {
 		return true
 	}
-	if engine != "postgresql" && engine != "mysql" {
+	if engine != "postgresql" && engine != "mysql" && engine != "mariadb" {
 		return false
 	}
 	if a.Scope != "table" && a.Scope != "only" && a.Scope != "operation" || a.FamilyCount < 1 || a.FamilyCount > 64 || len(a.Kinds) < 1 || len(a.Kinds) > 6 || len(a.Operations) != len(AdvancedOperationKinds) {
 		return false
 	}
 	allowed := map[string]bool{}
-	for _, k := range []string{"inheritanceParent", "inheritanceChild", "partitionParent", "partitionMember", "rowSecurity", "typed", "unlogged", "mySQLPartitions", "myISAM"} {
+	for _, k := range []string{"inheritanceParent", "inheritanceChild", "partitionParent", "partitionMember", "rowSecurity", "typed", "unlogged", "mySQLPartitions", "myISAM", "mariaDBPartitions", "mariaDBMyISAM", "mariaDBAria", "mariaDBSystemVersioned"} {
 		allowed[k] = true
 	}
 	if engine == "postgresql" && a.Nontransactional {
@@ -77,9 +77,18 @@ func (a *AdvancedKindSupport) Valid(engine string) bool {
 			return false
 		}
 	}
+	if engine == "mariadb" {
+		nontransactional := false
+		for _, kind := range a.Kinds {
+			nontransactional = nontransactional || kind == "mariaDBMyISAM" || kind == "mariaDBAria"
+		}
+		if nontransactional != a.Nontransactional {
+			return false
+		}
+	}
 	seen := map[string]bool{}
 	for _, k := range a.Kinds {
-		if !allowed[k] || seen[k] || strings.HasPrefix(k, "my") != (engine == "mysql") {
+		if !allowed[k] || seen[k] || strings.HasPrefix(k, "my") != (engine == "mysql") || strings.HasPrefix(k, "mariaDB") != (engine == "mariadb") {
 			return false
 		}
 		seen[k] = true
@@ -110,6 +119,9 @@ func (a *AdvancedKindSupport) Valid(engine string) bool {
 				}
 			}
 			if engine == "postgresql" && r.StorageEngine != "" {
+				return false
+			}
+			if engine == "mariadb" && (r.StorageEngine != "InnoDB" && r.StorageEngine != "MyISAM" && r.StorageEngine != "Aria" || r.RowSecurity || r.ForceRowSecurity || r.TypeBinding != nil || len(r.Policies) > 0 || len(r.Parents) > 0 || r.PartitionMember || r.Persistence != "permanent") {
 				return false
 			}
 			if engine == "mysql" && (r.StorageEngine != "InnoDB" && r.StorageEngine != "MyISAM" || r.RowSecurity || r.ForceRowSecurity || r.TypeBinding != nil || len(r.Policies) > 0 || r.Persistence != "permanent") {

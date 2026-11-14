@@ -61,7 +61,7 @@ final class PhysicalStructureModel: ObservableObject, Identifiable {
     var canOpenIntent: Bool { editable && sessionID == nil }
     var portableIntent: PhysicalStructureIntentDocument { .init(engine: profile.engine, draft: draft) }
     var canInspect: Bool { editable && operationsAllowed() && !sessionUnavailable }
-    var canPreview: Bool { canInspect && draft.valid && (inspection == nil || operationKinds.contains(intent.kind)) }
+    var canPreview: Bool { canInspect && draft.valid(for: profile.engine) && (inspection == nil || operationKinds.contains(intent.kind)) }
     var canApply: Bool { editable && operationsAllowed() && preview != nil && !profile.policy.readOnly && !sessionUnavailable }
     var canCheckStatus: Bool { !checkingStatus && !closing && executionID != nil && sessionID != nil }
     var canReconcile: Bool { !isBusy && !closing && executionID != nil && !sessionUnavailable && bindingIsCurrent() && operationsAllowed() }
@@ -76,7 +76,7 @@ final class PhysicalStructureModel: ObservableObject, Identifiable {
     }
     static func emptyIntent(_ kind: String, engine: DatabaseEngine, schema: String) -> StructurePhysicalIntent {
         var value = StructurePhysicalIntent(kind: kind)
-        if engine == .mysql { value.algorithm = "INPLACE"; value.lock = "NONE" }
+        if engine.usesMySQLSyntax { value.algorithm = "INPLACE"; value.lock = "NONE" }
         switch kind {
         case "concurrentIndex", "onlineIndex": value.index = .init(action: "add", name: "", columns: [""])
         case "createPartition", "attachPartition": value.child = .init(schema: schema, table: "", create: false); value.bound = .init(kind: "range", from: [.init(kind: "integer", value: "0")], to: [.init(kind: "integer", value: "1")])
@@ -358,7 +358,7 @@ enum PhysicalOperationLabels {
     static func label(_ kind: String) -> String {
         switch kind {
         case "concurrentIndex": "PostgreSQL concurrent index"
-        case "onlineIndex": "MySQL index with explicit ALGORITHM / LOCK"
+        case "onlineIndex": "MySQL/MariaDB index with explicit ALGORITHM / LOCK"
         case "partitionTable": "Partition an ordinary MySQL table"
         case "removePartitioning": "Remove MySQL partitioning"
         case "exchangePartition": "Exchange a MySQL partition with a table"

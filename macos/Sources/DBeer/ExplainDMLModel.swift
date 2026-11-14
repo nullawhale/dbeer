@@ -4,7 +4,7 @@ import Foundation
 /// must obtain that classification before constructing a write intent.
 enum ExplainDMLAdmission {
     static func possibleDML(_ sql: String, engine: DatabaseEngine) -> Bool {
-        guard [.postgresql, .mysql, .sqlite].contains(engine) else { return false }
+        guard [.postgresql, .mysql, .mariadb, .sqlite].contains(engine) else { return false }
         let source = sql as NSString
         let words = SQLScriptParser.parse(sql, engine: engine).tokens.filter { $0.kind == .keyword }
             .map { source.substring(with: $0.range).uppercased() }
@@ -20,7 +20,7 @@ enum ExplainDMLAdmission {
 
     static func accepts(_ target: ExplainDMLTarget, support: ExplainSupport, mode: ExplainMode) -> Bool {
         support.valid && support.modes.contains(mode) && target.valid(engine: support.engine) && support.dml?.valid(engine: support.engine) == true &&
-            (mode == .plan ? support.dml?.estimated == true : support.dml?.analyze.contains(target.analyzeForm) == true)
+            (mode == .plan ? support.dml?.permitsEstimated(target.analyzeForm, engine: support.engine) == true : support.dml?.analyze.contains(target.analyzeForm) == true)
     }
 
     /// Called while the physical owner's capabilities still exist. A typed

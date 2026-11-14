@@ -264,7 +264,7 @@ private struct DataTransferColumnRow: View {
                 model.columns[index].scale = type == "decimal" ? (model.columns[index].scale ?? 0) : nil
             })) {
                 ForEach(DataTransferColumn.types, id: \.self) { type in
-                    Text(type == "json" && model.targetProfile?.engine == .mysql ? "JSON (validated text)" : type).tag(type)
+                    Text(type == "json" && model.targetProfile?.engine.usesMySQLSyntax == true ? "JSON (validated text)" : type).tag(type)
                 }
             }.labelsHidden().frame(width: 130)
             if column.type == "decimal" {

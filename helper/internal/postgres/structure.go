@@ -197,7 +197,7 @@ func readStructure(ctx context.Context, q structureReader, t tableedit.Target) (
 var structureNumeric = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
 
 func structureColumn(c tableedit.Column) (string, error) {
-	if !c.Valid() {
+	if !c.Valid() || !c.Type.ValidForEngine("postgresql") {
 		return "", tableedit.ErrInvalid
 	}
 	typ := map[string]string{"integer": "pg_catalog.int4", "bigint": "pg_catalog.int8", "boolean": "pg_catalog.bool", "text": "pg_catalog.text"}[c.Type.Kind]

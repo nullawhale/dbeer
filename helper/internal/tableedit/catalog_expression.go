@@ -12,7 +12,7 @@ func SameCatalogExpression(engine, actual, authored string, facts *Facts) bool {
 	if _, err := ExpressionSlot(engine, authored); err != nil {
 		return false
 	}
-	if engine != "mysql" {
+	if engine != "mysql" && engine != "mariadb" {
 		return sameExpressionIdentifiers(engine, actual, authored, expressionIdentifiers(facts), false)
 	}
 	actualTokens, ok := mysqlCatalogExpressionTokens(actual, facts)

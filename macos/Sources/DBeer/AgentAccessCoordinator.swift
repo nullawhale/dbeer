@@ -164,7 +164,7 @@ final class AgentAccessCoordinator: ObservableObject {
             return AgentConnection(id: $0.id.uuidString, name: $0.name, engine: $0.engine.rawValue,
                 readOnly: readOnly,
                 queryLanguage: $0.engine == .mongodb ? "mongodb-json" : $0.engine == .cassandra ? "cql" : "sql",
-                readOnlyEnforcement: readOnly ? ([.postgresql, .mysql, .sqlite].contains($0.engine) ? "localAndServer" : "local") : "off")
+                readOnlyEnforcement: readOnly ? ([.postgresql, .mysql, .mariadb, .sqlite].contains($0.engine) ? "localAndServer" : "local") : "off")
         }
         return AgentResponse(id: request.id, ok: true, connections: entries)
     }

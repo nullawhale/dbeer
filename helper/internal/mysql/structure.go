@@ -202,6 +202,12 @@ func (s *Session) readStructurePhysical(t tableedit.Target, physical bool) (tabl
 var structureNumeric = regexp.MustCompile(`^[+-]?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$`)
 
 func structureColumn(c tableedit.Column) (string, error) {
+	if !c.Type.ValidForEngine("mysql") {
+		return "", tableedit.ErrUnsupported
+	}
+	return sharedColumnDefinitionSQL(c)
+}
+func sharedColumnDefinitionSQL(c tableedit.Column) (string, error) {
 	if c.Type.Reference != nil {
 		return "", tableedit.ErrUnsupported
 	}

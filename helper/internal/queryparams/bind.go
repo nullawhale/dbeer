@@ -11,7 +11,7 @@ import (
 )
 
 var ErrInvalid = errors.New("Invalid query parameters or ambiguous parameter syntax.")
-var ErrUnsupported = errors.New("Query parameters are available only for PostgreSQL, MySQL and SQLite.")
+var ErrUnsupported = errors.New("Query parameters are available only for PostgreSQL, MySQL, MariaDB and SQLite.")
 
 type Bound struct {
 	SQL string
@@ -39,7 +39,7 @@ func bind(engine, sql string, parameters []protocol.QueryParameter, generic bool
 	if engine == "" {
 		engine = "postgresql"
 	}
-	if engine != "postgresql" && engine != "mysql" && engine != "sqlite" {
+	if engine != "postgresql" && engine != "mysql" && engine != "mariadb" && engine != "sqlite" {
 		if parameters != nil {
 			return Bound{}, ErrUnsupported
 		}
@@ -50,11 +50,15 @@ func bind(engine, sql string, parameters []protocol.QueryParameter, generic bool
 	if len(parameters) == 0 {
 		return Bound{SQL: sql, AssessmentSQL: sql}, nil
 	}
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
+		maximumScale := 30
+		if engine == "mariadb" {
+			maximumScale = 38
+		}
 		for _, p := range parameters {
 			if p.Type == "decimal" && p.Value != nil {
 				integer, fraction, _ := strings.Cut(strings.TrimLeft(*p.Value, "+-"), ".")
-				if len(integer)+len(fraction) > 65 || len(fraction) > 30 {
+				if len(integer)+len(fraction) > 65 || len(fraction) > maximumScale {
 					return Bound{}, ErrInvalid
 				}
 			}
@@ -95,7 +99,7 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes, gen
 			i += end + 2
 			continue
 		}
-		if c == '\'' || c == '"' || c == '`' && (engine == "mysql" || engine == "sqlite") {
+		if c == '\'' || c == '"' || c == '`' && (engine == "mysql" || engine == "mariadb" || engine == "sqlite") {
 			quote, escape := c, escapes && c != '`'
 			if engine == "postgresql" && c == '\'' && i > 0 && (sql[i-1] == 'e' || sql[i-1] == 'E') && (i == 1 || !identifier(sql[i-2])) {
 				escape = true
@@ -123,14 +127,14 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes, gen
 			}
 			continue
 		}
-		if strings.HasPrefix(sql[i:], "--") && (engine == "postgresql" || engine == "sqlite" || i+2 == len(sql) || sql[i+2] <= ' ') || c == '#' && engine == "mysql" {
+		if strings.HasPrefix(sql[i:], "--") && (engine == "postgresql" || engine == "sqlite" || i+2 == len(sql) || sql[i+2] <= ' ') || c == '#' && (engine == "mysql" || engine == "mariadb") {
 			for i < len(sql) && sql[i] != '\n' && sql[i] != '\r' {
 				i++
 			}
 			continue
 		}
 		if strings.HasPrefix(sql[i:], "/*") {
-			if engine == "mysql" && len(parameters) > 0 && (strings.HasPrefix(sql[i:], "/*!") || strings.HasPrefix(sql[i:], "/*M!")) {
+			if (engine == "mysql" || engine == "mariadb") && len(parameters) > 0 && (strings.HasPrefix(sql[i:], "/*!") || strings.HasPrefix(sql[i:], "/*M!")) {
 				return Bound{}, ErrInvalid
 			}
 			depth := 1
@@ -173,7 +177,7 @@ func scan(engine, sql string, parameters []protocol.QueryParameter, escapes, gen
 				continue
 			}
 		}
-		if c == '?' && (engine == "mysql" || engine == "sqlite") && len(parameters) > 0 {
+		if c == '?' && (engine == "mysql" || engine == "mariadb" || engine == "sqlite") && len(parameters) > 0 {
 			return Bound{}, ErrInvalid
 		}
 		// SQLite also accepts $name and @name variables. They must not be

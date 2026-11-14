@@ -11,16 +11,17 @@ struct ExplainNodeMetrics: Codable, Sendable, Equatable {
     var jit: ExplainJITMetrics? = nil
 
     func valid(engine: DatabaseEngine, node: ExplainNode, mode: ExplainMode) -> Bool {
-        guard version == 1, [.postgresql, .mysql].contains(engine),
-              Self.validCounters(counters, worker: false), workers.count <= 256,
+        guard version == 1, [.postgresql, .mysql, .mariadb].contains(engine),
+              (engine == .mariadb ? Self.validMariaDBCounters(counters) : Self.validCounters(counters, worker: false)), workers.count <= 256,
               ["serial", "parallel", "unknown", "logical"].contains(executionScope),
               ["comparable", "partialInput", "parallel", "logical", "notExecuted", "notCollected", "notReported", "unknownScope"].contains(rowComparison),
               jit == nil || engine == .postgresql && jit?.valid(scope: "queryAggregate") == true,
               exclusiveTime.unit == "ms", exclusiveTime.basis == "exclusivePerInvocation", exclusiveTime.valid else { return false }
-        if executionScope == "logical" && (engine != .mysql || rowComparison != "logical" || !counters.isEmpty || !workers.isEmpty) ||
+        if executionScope == "logical" && (![DatabaseEngine.mysql, .mariadb].contains(engine) || rowComparison != "logical" || !counters.isEmpty || !workers.isEmpty) ||
             rowComparison == "logical" && executionScope != "logical" || rowComparison == "parallel" && executionScope != "parallel" ||
             rowComparison == "unknownScope" && executionScope != "unknown" { return false }
         if engine == .mysql && !counters.isEmpty { return false }
+        if engine == .mariadb && !workers.isEmpty { return false }
         if (!workers.isEmpty || counters["workersPlanned"] != nil || counters["workersLaunched"] != nil) && executionScope != "parallel" { return false }
         if rowComparison == "comparable" {
             guard mode == .analyze, node.execution == "executed", executionScope == "serial",
@@ -69,6 +70,13 @@ struct ExplainNodeMetrics: Codable, Sendable, Equatable {
             default: return false
             }
             return metric.valid && metric.unit == unit && metric.basis == basis
+        }
+    }
+    static func validMariaDBCounters(_ metrics: [String: ExplainMetric]) -> Bool {
+        let units = ["mariaDBPagesAccessed": "count", "mariaDBPagesUpdated": "count", "mariaDBPagesRead": "count",
+                     "mariaDBPagesPrefetched": "count", "mariaDBPagesReadTime": "ms", "mariaDBOldRowsRead": "rows"]
+        return metrics.count <= units.count && metrics.allSatisfy { key, metric in
+            units[key] == metric.unit && metric.basis == "total" && metric.valid
         }
     }
     init(version: Int = 1, executionScope: String, rowComparison: String, exclusiveTime: ExplainMetric, counters: [String: ExplainMetric] = [:], workers: [ExplainWorkerMetrics] = [], jit: ExplainJITMetrics? = nil) {
@@ -122,7 +130,7 @@ struct ExplainJITMetrics: Codable, Sendable, Equatable {
 }
 struct ExplainPlanMetrics: Codable, Sendable, Equatable {
     var version: Int
-    func valid(engine: DatabaseEngine) -> Bool { version == 1 && [.postgresql, .mysql].contains(engine) }
+    func valid(engine: DatabaseEngine) -> Bool { version == 1 && [.postgresql, .mysql, .mariadb].contains(engine) }
     init(version: Int = 1) { self.version = version }
     private enum CodingKeys: String, CodingKey { case version }
     init(from decoder: Decoder) throws {

@@ -50,7 +50,7 @@ extension ApplicationWorkspace {
               insertCopySelection == nil else { return }
         let sourceEngine = payload.columns.first?.engine ?? .postgresql
         insertCopySelection = InsertCopySelection(payload: payload,
-            engine: sourceEngine == .sqlite ? .sqlite : sourceEngine == .mysql ? .mysql : .postgresql,
+            engine: [.postgresql, .mysql, .mariadb, .sqlite].contains(sourceEngine) ? sourceEngine : .postgresql,
             schema: document.table?.schema ?? "", table: document.table?.name ?? "", pasteboard: pasteboard)
     }
 

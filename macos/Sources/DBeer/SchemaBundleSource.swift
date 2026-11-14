@@ -16,7 +16,7 @@ struct SchemaBundleSourceDescriptor: Codable, Equatable, Sendable {
         guard !path.isEmpty, path.utf8.count <= 4_096, !path.contains("\0"), (path as NSString).isAbsolutePath,
               !path.hasPrefix("file:") else { return false }
         if inspecting { return engine == nil && manifestSha256 == nil && contentSha256 == nil }
-        guard let engine, ["postgresql", "mysql", "sqlite"].contains(engine) else { return false }
+        guard let engine, ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine) else { return false }
         return manifestSha256.map(DataComparisonRequest.digestValid) == true && contentSha256.map(DataComparisonRequest.digestValid) == true
     }
 }

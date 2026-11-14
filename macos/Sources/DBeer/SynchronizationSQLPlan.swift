@@ -23,7 +23,7 @@ struct SynchronizationSQLPlan: Codable, Equatable, Sendable {
     var steps: [SynchronizationSQLStep]
 
     var valid: Bool {
-        guard formatVersion == 1, ["schema", "data"].contains(kind), ["postgresql", "mysql", "sqlite"].contains(engine),
+        guard formatVersion == 1, ["schema", "data"].contains(kind), ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine),
               DataComparisonRequest.digestValid(modelDigest), steps.count <= 2_000, warnings.count <= 64,
               warnings.allSatisfy({ Self.textValid($0, limit: 4_096) }),
               let data = try? JSONEncoder().encode(self), data.count <= Self.maximumBytes else { return false }

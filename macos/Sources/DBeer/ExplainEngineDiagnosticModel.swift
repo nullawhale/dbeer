@@ -18,7 +18,7 @@ extension DatabaseEngine {
     var hasEngineDiagnostics: Bool { self == .mongodb || self == .cassandra }
     func supportsExplain(_ mode: ExplainMode) -> Bool {
         switch self {
-        case .postgresql, .mysql, .sqlite, .mongodb: true
+        case .postgresql, .mysql, .mariadb, .sqlite, .mongodb: true
         case .cassandra: mode == .analyze
         }
     }

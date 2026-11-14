@@ -2,6 +2,8 @@ package schemaimport
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"regexp"
 	"strconv"
 
@@ -72,7 +74,7 @@ func parseDefinition(ctx context.Context, sql, engine, defaultSchema string, noB
 					if len(term) == 0 {
 						return result, ErrUnsupported
 					}
-					if term[0].is("CONSTRAINT") || term[0].is("PRIMARY") || term[0].is("UNIQUE") || term[0].is("FOREIGN") || term[0].is("CHECK") || term[0].is("KEY") || term[0].is("INDEX") || term[0].is("FULLTEXT") || term[0].is("SPATIAL") {
+					if term[0].is("CONSTRAINT") || term[0].is("PRIMARY") || term[0].is("UNIQUE") || term[0].is("FOREIGN") || term[0].is("CHECK") || term[0].is("KEY") || term[0].is("INDEX") || term[0].is("FULLTEXT") || term[0].is("SPATIAL") || engine == "mariadb" && term[0].is("PERIOD") {
 						table.members = append(table.members, term)
 						continue
 					}
@@ -138,7 +140,7 @@ func parseColumn(ts []token, engine string) (columnAST, error) {
 	depth := 0
 	for c.i < len(ts) {
 		t := ts[c.i]
-		if depth == 0 && attrStart(ts, c.i) {
+		if depth == 0 && (attrStart(ts, c.i) || engine == "mariadb" && (t.is("WITH") || t.is("WITHOUT"))) {
 			break
 		}
 		if t.kind == 'p' && t.value == "(" {
@@ -175,7 +177,7 @@ func parseColumn(ts []token, engine string) (columnAST, error) {
 			depth = 0
 			for c.i < len(ts) {
 				t := ts[c.i]
-				if depth == 0 && c.i > valueStart && attrStart(ts, c.i) {
+				if depth == 0 && c.i > valueStart && (attrStart(ts, c.i) || engine == "mariadb" && (t.is("WITH") || t.is("WITHOUT"))) {
 					break
 				}
 				if t.kind == 'p' && t.value == "(" {
@@ -217,6 +219,24 @@ func parseColumn(ts []token, engine string) (columnAST, error) {
 		case c.take("AUTO_INCREMENT"):
 			key = "identity"
 			result.attrs[key] = ts[start:c.i]
+		case engine == "mariadb" && (c.take("WITH") || c.take("WITHOUT")):
+			key = "versioning"
+			if !c.take("SYSTEM") || !c.take("VERSIONING") {
+				return result, ErrUnsupported
+			}
+			result.attrs[key] = ts[start:c.i]
+		case engine == "mariadb" && c.take("GENERATED"):
+			if !c.take("ALWAYS") || !c.take("AS") {
+				return result, ErrUnsupported
+			}
+			if c.take("ROW") && (c.take("START") || c.take("END")) {
+				key = "systemPeriod"
+				result.attrs[key] = ts[start:c.i]
+			} else {
+				result.supported = false
+				result.attrs["opaque"] = ts[start:]
+				c.i = len(ts)
+			}
 		case c.take("VISIBLE"), c.take("INVISIBLE"):
 			key = "visible"
 			result.attrs[key] = ts[start:c.i]
@@ -243,6 +263,24 @@ func pureDefault(ts []token, engine string) (sc.Default, error) {
 	if len(ts) == 0 {
 		return sc.Default{Kind: "none"}, nil
 	}
+	if engine == "mariadb" && len(ts) == 2 && ts[1].kind == 's' {
+		if ts[0].is("X") {
+			decoded, e := hex.DecodeString(ts[1].value)
+			if e != nil {
+				return sc.Default{}, ErrUnsupported
+			}
+			value := base64.StdEncoding.EncodeToString(decoded)
+			return sc.Default{Kind: "literal", Encoding: "base64", Value: &value}, nil
+		}
+		if ts[0].is("B") {
+			decoded, e := strconv.ParseUint(ts[1].value, 2, 64)
+			if e != nil {
+				return sc.Default{}, ErrUnsupported
+			}
+			value := strconv.FormatUint(decoded, 10)
+			return sc.Default{Kind: "literal", Encoding: "text", Value: &value}, nil
+		}
+	}
 	if len(ts) == 1 && ts[0].is("NULL") {
 		return sc.Default{Kind: "sqlNull"}, nil
 	}
@@ -268,7 +306,7 @@ func pureDefault(ts []token, engine string) (sc.Default, error) {
 		if !numeric {
 			text = asciiUpper(ts[0].value)
 		}
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			return sc.Default{Kind: "literal", Encoding: "text", Value: &text}, nil
 		}
 		return sc.Default{Kind: "expression", Expression: &sc.Expression{Text: text, Dependencies: sc.Complete[sc.Ref](nil)}}, nil
@@ -314,7 +352,7 @@ func builtinType(ts []token, engine string) (sc.TypeUse, error) {
 	}
 	quoted := ts[c.i-1].kind == 'q'
 	keyword := schema == "" && !quoted
-	if engine == "mysql" && quoted {
+	if (engine == "mysql" || engine == "mariadb") && quoted {
 		return sc.TypeUse{}, ErrUnsupported
 	}
 	if !quoted {
@@ -421,6 +459,9 @@ func builtinType(ts []token, engine string) (sc.TypeUse, error) {
 		name = "double"
 	}
 	allowed := map[string]bool{"tinyint": true, "smallint": true, "mediumint": true, "int": true, "bigint": true, "float": true, "double": true, "decimal": true, "char": true, "varchar": true, "binary": true, "varbinary": true, "text": true, "tinytext": true, "mediumtext": true, "longtext": true, "blob": true, "tinyblob": true, "mediumblob": true, "longblob": true, "json": true, "date": true, "time": true, "datetime": true, "timestamp": true, "year": true, "bit": true}
+	if engine == "mariadb" && (name == "uuid" || name == "inet4" || name == "inet6") {
+		allowed[name] = true
+	}
 	if !allowed[name] {
 		return sc.TypeUse{}, ErrUnsupported
 	}
@@ -459,6 +500,49 @@ func builtinType(ts []token, engine string) (sc.TypeUse, error) {
 	if c.i != len(ts) {
 		return sc.TypeUse{}, ErrUnsupported
 	}
+	if engine == "mariadb" {
+		if (name == "uuid" || name == "inet4" || name == "inet6") && len(args) > 0 {
+			return sc.TypeUse{}, ErrUnsupported
+		}
+		if (name == "float" || name == "double") && (m.Precision != nil && *m.Precision > 255 || m.Scale != nil && (*m.Scale < 0 || *m.Scale > 30) || m.Precision != nil && m.Scale != nil && *m.Scale > *m.Precision) {
+			return sc.TypeUse{}, ErrUnsupported
+		}
+		if name == "bit" && m.Length != nil && (*m.Length < 1 || *m.Length > 64) {
+			return sc.TypeUse{}, ErrUnsupported
+		}
+		if (name == "char" || name == "binary") && m.Length != nil && *m.Length > 255 {
+			return sc.TypeUse{}, ErrUnsupported
+		}
+		if (name == "varchar" || name == "varbinary") && m.Length != nil && *m.Length > 65535 {
+			return sc.TypeUse{}, ErrUnsupported
+		}
+		if name == "decimal" && (m.Precision != nil && *m.Precision > 65 || m.Scale != nil && (*m.Scale < 0 || *m.Scale > 38) || m.Precision != nil && m.Scale != nil && *m.Scale > *m.Precision) {
+			return sc.TypeUse{}, ErrUnsupported
+		}
+		zero := int64(0)
+		switch name {
+		case "tinyint", "smallint", "mediumint", "int", "bigint", "year":
+			precision := map[string]int64{"tinyint": 3, "smallint": 5, "mediumint": 7, "int": 10, "bigint": 19, "year": 4}[name]
+			if m.Unsigned && name == "mediumint" {
+				precision = 8
+			}
+			if m.Unsigned && name == "bigint" {
+				precision = 20
+			}
+			m.Precision = &precision
+			m.Scale = &zero
+		case "bit":
+			if m.Length != nil {
+				precision := *m.Length
+				m.Precision = &precision
+				m.Scale = &zero
+			}
+		case "time", "datetime", "timestamp":
+			if m.DatetimePrecision == nil {
+				m.DatetimePrecision = &zero
+			}
+		}
+	}
 	return sc.TypeUse{Ref: sc.Ref{Kind: "type", Name: name}, Kind: "builtin", Modifiers: sc.Known(m), Labels: sc.Complete[string](nil)}, nil
 }
 
@@ -472,4 +556,18 @@ func namedType(ts []token, engine string) (sc.TypeUse, error) {
 		return sc.TypeUse{}, ErrUnsupported
 	}
 	return sc.TypeUse{Ref: sc.Ref{Kind: "type", Schema: schema, Name: name}, Kind: "offlineNamed", Modifiers: sc.Known(sc.TypeModifiers{}), Labels: sc.Complete[string](nil)}, nil
+}
+
+func mariaDBPeriodRole(column columnAST) string {
+	tokens := column.attrs["systemPeriod"]
+	if len(tokens) != 5 || !tokens[0].is("GENERATED") || !tokens[1].is("ALWAYS") || !tokens[2].is("AS") || !tokens[3].is("ROW") {
+		return ""
+	}
+	if tokens[4].is("START") {
+		return "systemRowStart"
+	}
+	if tokens[4].is("END") {
+		return "systemRowEnd"
+	}
+	return ""
 }

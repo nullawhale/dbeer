@@ -117,7 +117,9 @@ struct ExplainRanking {
             candidates.compactMap { node in
                 let score: Decimal?
                 if measured {
-                    if let time = node.metrics["totalTime"]?.decimal, let loops = node.metrics["loops"]?.decimal {
+                    if let metric = node.metrics["totalTime"], metric.unit == "ms", let time = metric.decimal, metric.basis == "inclusiveTotal" {
+                        score = time
+                    } else if let metric = node.metrics["totalTime"], metric.unit == "ms", metric.basis == "perInvocation", let time = metric.decimal, let loops = node.metrics["loops"]?.decimal {
                         var left = time, right = loops, product = Decimal()
                         score = NSDecimalMultiply(&product, &left, &right, .plain) == .noError && !product.isNaN ? product : nil
                     } else { score = nil }
@@ -129,6 +131,6 @@ struct ExplainRanking {
         let ranked = measured.isEmpty ? scores(measured: false) : measured
         entries = Array(ranked.prefix(3))
         basis = ranked.isEmpty ? "Ranking unavailable: no comparable reported metrics" :
-            measured.isEmpty ? "Inclusive estimated cost (planner units)" : "Inclusive time × loops (ms of work, not wall time)"
+            measured.isEmpty ? "Inclusive estimated cost (planner units)" : result.nodes.contains(where: { $0.metrics["totalTime"]?.basis == "inclusiveTotal" }) ? "Inclusive total time (ms across loops, not wall time)" : "Inclusive time × loops (ms of work, not wall time)"
     }
 }

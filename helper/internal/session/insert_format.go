@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"dbeer/helper/internal/insertformat"
+	"dbeer/helper/internal/mariadb"
 	"dbeer/helper/internal/mysql"
 	"dbeer/helper/internal/postgres"
 	"dbeer/helper/internal/protocol"
@@ -23,6 +24,8 @@ func formatInserts(command protocol.Command) protocol.Response {
 		sql, err = sqlitedb.FormatInserts(*command.Insert)
 	case "postgresql":
 		sql, err = postgres.FormatInserts(*command.Insert)
+	case "mariadb":
+		sql, err = mariadb.FormatInserts(*command.Insert)
 	case "mysql":
 		sql, err = mysql.FormatInserts(*command.Insert)
 	}

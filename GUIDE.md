@@ -20,6 +20,84 @@ Homebrew installation is not available.
 
 Multiple profiles can run simultaneously. Each SQL tab gets its own connection on first execution and retains its transaction, SET state, and temporary tables until disconnected. The catalog and data tabs use separate sessions. Stop cancels the selected execution; Disconnect closes one profile's sessions.
 
+## MariaDB partial support
+
+MariaDB is available in the unreleased native macOS build as its own engine and
+Go adapter. The supported native server lines are 10.11.9+ and 11.4.3+; the live
+checks used 10.11.19 and 11.4.13. This increment is intentionally partial and does
+not claim complete MariaDB parity.
+
+Create a MariaDB profile with the native engine identity and default port 3306.
+Passwords remain in Keychain and are excluded from profile transfers; exported
+profiles exclude private keys. Restored documents remain disconnected. Use
+`verify-full` with your CA for database certificate/hostname verification. The
+existing verified-host SSH transport also supports MariaDB, including separate
+SQL/control owners and native TLS to the database beyond the bastion.
+
+The implemented subset includes independent SQL-tab sessions and transactions,
+parameterized queries, streaming and cancellation, native catalog and table browse,
+typed filters, explicit table-grid Preview/Apply, and frozen CSV import. SQL NULL,
+empty values, text `NULL`, exact numeric strings and binary values stay distinct.
+MariaDB JSON is text-backed: original whitespace and duplicate keys are retained.
+Native DECIMAL supports precision 65 and scale 38. ENUM/SET storage ordinals,
+TIMESTAMP instants and other storage-sensitive edits require their captured native
+witness. Historical system-versioned row contexts and coercing `ORACLE` or
+`EMPTY_STRING_IS_NULL` editing contexts refuse without changing session settings.
+SQL-result grids remain read-only; open the table from Connections to edit rows.
+
+Explain uses native JSON. Estimate does not execute the outer DML; Analyze is a
+separately reviewed execution and reports committed, transaction-pending or unknown
+outcome. Native timing/counters retain their MariaDB meanings. Monitoring uses a
+separate owner. Tuning keeps the ordinary-table complete-visibility guard and can
+review a SELECT-only `SET STATEMENT optimizer_switch` trial with exact original
+context and restoration checks. It does not become a generic settings editor.
+
+Ordinary permanent InnoDB V1/V2/V3 table authoring includes create/append,
+defaults, nullability, guarded lossless widening, and supported keys/indexes.
+Existing generated columns and AUTO_INCREMENT values remain captured and supported
+by the separate table-grid workflow. Structure Preview reads metadata and never
+evaluates authored expressions or scans existing rows. Apply may scan/rebuild rows
+and run reviewed expressions; MariaDB DDL commits implicitly. A later error or Stop
+cannot undo earlier acknowledged work. Lost acknowledgements require reconciliation,
+without automatic retry or replay. Bounded metadata observations cannot close every
+concurrent DDL/DML race.
+
+Generated-column/AUTO_INCREMENT authoring and V5 required-value backfill and
+physical reordering/reconstruction remain deferred until their complete
+native-client review contract is ready. Destructive column/table removal, general type/encoding
+conversion, multi-table FK repair migrations, advanced partition/MyISAM/Aria/history
+structure authoring, and physical partition/storage/online operations are also
+deferred. Their capabilities are not advertised and the partial structure workflow
+refuses these requests before DDL. Use separately reviewed native SQL when needed.
+These are client scope boundaries, not blanket MariaDB engine limitations.
+
+Schema comparison, guarded synchronization drafts, selected metadata observation,
+offline schema bundles and data comparison/transfer use captured facts and dedicated
+owners. Drafts never execute themselves. Unknown properties and unsupported
+transformations remain explicit manual steps; database options/schema roots are
+not fully captured, so a whole schema bundle can be marked incomplete while its
+supported table roots remain usable. Transfer of current system-versioned values
+explicitly omits history. Portable transfer can disclose omitted domains, indexes,
+defaults and native geometry representation rather than promising a complete clone.
+
+Backup/restore uses the actual `mariadb-dump` and `mariadb` utilities, SQL format
+only. Encrypted operations require native clients 11.4.3+ and a fingerprint bound
+to the reviewed peer, including encryption-only `require`; older 10.11 encrypted
+clients refuse. Current 11.4 clients were tested against both server lines. Native
+`--dump-history` preserves timestamp history; transaction-precise BIGINT history
+refuses because the utility does not port its transaction registry. Durable native
+sequence high-water/configuration can be backed up; unused CACHE reservations and
+session PREVIOUS VALUE state are not logical backup state. Empirically lossy
+binary/wide ENUM/SET labels and supplementary-text defaults refuse before export.
+Exact VARBINARY defaults remain supported. Backup/restore retains the usual review,
+path, overwrite, cancellation, credential and acknowledgement safeguards.
+
+This work reuses the already bundled MIT-licensed `go-mysql-org/go-mysql` transport;
+no additional driver or native client library is bundled. Database command-line
+utilities are separately installed user tools. No UI/window or installed-archive
+acceptance was run for this increment; completed native checks are explicitly
+headless. The packaged 0.4.0/build 13 release and its archives are unchanged.
+
 ## Using the application
 
 - The narrow strip on the left opens **Connections** (**⌘1**), **Files** (**⌘2**),

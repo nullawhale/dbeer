@@ -188,7 +188,7 @@ final class DatabaseValueSearchModel: ObservableObject, Identifiable {
 
     var unavailableReason: String? {
         switch profile.engine {
-        case .postgresql, .mysql, .sqlite: nil
+        case .postgresql, .mysql, .mariadb, .sqlite: nil
         case .mongodb: "This client currently searches relational table values. MongoDB collection fields can be sampled; use its JSON query editor for collection searches."
         case .cassandra: "This client currently searches relational table values. Use Cassandra's key/index filters or CQL to choose valid partition predicates."
         }

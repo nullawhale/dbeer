@@ -13,7 +13,7 @@ extension ApplicationWorkspace {
         guard canManageWorkspace, canStartTableStructure(node.profileID), physicalStructure == nil,
               structureEditor == nil, migrationComposer == nil, tableImporter == nil, queryParameterPrompt == nil,
               node.kind == .object, node.objectKind == "table", let service = services[node.profileID],
-              service.connectionState == .connected, [.postgresql, .mysql].contains(service.engine),
+              service.connectionState == .connected, [.postgresql, .mysql, .mariadb].contains(service.engine),
               service.capabilities.contains(structurePhysicalCapability) else { return false }
         return service.permitsOperation("structure.physical.preview", legacyAllowed: true)
     }

@@ -7,7 +7,9 @@ struct DatabaseEngineIcon: View {
     var contentInset: CGFloat = 0
 
     static func resourceURL(for engine: DatabaseEngine) -> URL? {
-        Bundle.module.url(forResource: "\(engine.rawValue)-logo", withExtension: "svg")
+        // MariaDB uses the existing neutral native database-symbol fallback.
+        if engine == .mariadb { return nil }
+        return Bundle.module.url(forResource: "\(engine.rawValue)-logo", withExtension: "svg")
     }
 
     private static let images: [DatabaseEngine: NSImage] = Dictionary(uniqueKeysWithValues:

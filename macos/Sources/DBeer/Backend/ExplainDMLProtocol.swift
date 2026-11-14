@@ -21,20 +21,34 @@ struct ExplainWriteIntent: Codable, Sendable, Equatable {
 struct ExplainDMLSupport: Codable, Sendable, Equatable {
     static let capability = "explainDMLV1"
     var estimated: Bool
+    var estimatedForms: [String]? = nil
     var analyze: [String]
     var analyzeTargetExecution: String
-    private enum CodingKeys: String, CodingKey { case estimated, analyze, analyzeTargetExecution }
+    private enum CodingKeys: String, CodingKey { case estimated, estimatedForms, analyze, analyzeTargetExecution }
     func valid(engine: DatabaseEngine) -> Bool {
-        let allowed: Set<String> = engine == .postgresql ? ["insert", "update", "delete", "dataModifyingCTE"] : engine == .mysql ? ["mysqlMultiTableUpdate", "mysqlMultiTableDelete"] : []
-        let expected = analyze.isEmpty ? "unavailable" : engine == .postgresql ? "executes" : "suppresses"
-        return analyzeTargetExecution == expected && [.postgresql, .mysql, .sqlite].contains(engine) && estimated && analyze.count <= 4 &&
-            Set(analyze).count == analyze.count && Set(analyze).isSubset(of: allowed)
+        let allowed: Set<String> = engine == .postgresql ? ["insert", "update", "delete", "dataModifyingCTE"] : engine == .mysql ? ["mysqlMultiTableUpdate", "mysqlMultiTableDelete"] : engine == .mariadb ? ["update", "delete", "mysqlMultiTableUpdate", "mysqlMultiTableDelete"] : []
+        let expected = analyze.isEmpty ? "unavailable" : [.postgresql, .mariadb].contains(engine) ? "executes" : "suppresses"
+        guard analyzeTargetExecution == expected, [.postgresql, .mysql, .mariadb, .sqlite].contains(engine), estimated, analyze.count <= 4,
+              Set(analyze).count == analyze.count, Set(analyze).isSubset(of: allowed) else { return false }
+        if engine == .mariadb {
+            guard let estimatedForms, !estimatedForms.isEmpty, estimatedForms.count <= 4,
+                  Set(estimatedForms).count == estimatedForms.count,
+                  Set(estimatedForms).isSubset(of: ["update", "delete", "mysqlMultiTableUpdate", "mysqlMultiTableDelete"]),
+                  Set(analyze).isSubset(of: Set(estimatedForms)) else { return false }
+        } else if estimatedForms != nil { return false }
+        return true
     }
-    init(estimated: Bool = true, analyze: [String], analyzeTargetExecution: String) { self.estimated = estimated; self.analyze = analyze; self.analyzeTargetExecution = analyzeTargetExecution }
+    func permitsEstimated(_ form: String, engine: DatabaseEngine) -> Bool {
+        valid(engine: engine) && (estimatedForms.map { $0.contains(form) } ?? true)
+    }
+    init(estimated: Bool = true, estimatedForms: [String]? = nil, analyze: [String], analyzeTargetExecution: String) {
+        self.estimated = estimated; self.estimatedForms = estimatedForms; self.analyze = analyze; self.analyzeTargetExecution = analyzeTargetExecution
+    }
     init(from decoder: Decoder) throws {
-        try requireExplainKeys(decoder, required: ["estimated", "analyze", "analyzeTargetExecution"])
+        try requireExplainKeys(decoder, required: ["estimated", "analyze", "analyzeTargetExecution"], optional: ["estimatedForms"])
         let fields = try decoder.container(keyedBy: CodingKeys.self)
         estimated = try fields.decode(Bool.self, forKey: .estimated)
+        estimatedForms = fields.contains(.estimatedForms) ? try fields.decode([String].self, forKey: .estimatedForms) : nil
         analyze = try fields.decode([String].self, forKey: .analyze)
         analyzeTargetExecution = try fields.decode(String.self, forKey: .analyzeTargetExecution)
     }
@@ -50,10 +64,10 @@ struct ExplainDMLTarget: Codable, Sendable, Equatable {
         return statement
     }
     func valid(engine: DatabaseEngine) -> Bool {
-        [.postgresql, .mysql, .sqlite].contains(engine) &&
+        [.postgresql, .mysql, .mariadb, .sqlite].contains(engine) &&
         (["insert", "update", "delete"].contains(statement) || statement == "select" && dataModifyingCTE) &&
         (!dataModifyingCTE || engine == .postgresql) &&
-        (!mysqlMultiTable || engine == .mysql && ["update", "delete"].contains(statement))
+        (!mysqlMultiTable || [.mysql, .mariadb].contains(engine) && ["update", "delete"].contains(statement))
     }
     init(statement: String, dataModifyingCTE: Bool = false, mysqlMultiTable: Bool = false) {
         self.statement = statement; self.dataModifyingCTE = dataModifyingCTE; self.mysqlMultiTable = mysqlMultiTable

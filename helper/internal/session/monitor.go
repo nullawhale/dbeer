@@ -21,7 +21,7 @@ func runMonitor(ctx context.Context, physical adapter.Session, command protocol.
 		return failure("cancelled", "Session monitoring was cancelled before it started.")
 	}
 	monitor, ok := physical.(adapter.SessionMonitor)
-	if !ok || engine != "postgresql" && engine != "mysql" {
+	if !ok || engine != "postgresql" && engine != "mysql" && engine != "mariadb" {
 		return failure("capability", "Session monitoring is unavailable for this adapter.")
 	}
 	if physical.TransactionStatus() != "idle" {

@@ -137,6 +137,9 @@ func (owner *owner) tuningOperationValid(op protocol.OperationRequest, physical 
 	if op.TuningValidation == nil || !op.TuningValidation.Valid() || !owner.tuningContext(op.TuningValidation.Original.Context, physical) || !owner.tuningContext(op.TuningValidation.Variant.Context, physical) {
 		return false
 	}
+	if op.TuningValidation.MariaDBOptimizer != nil && s.Engine != "mariadb" {
+		return false
+	}
 	_, a := parseTuningQuery(s.Engine, op.TuningValidation.Original, op.TuningValidation.Target)
 	_, b := parseTuningQuery(s.Engine, op.TuningValidation.Variant, op.TuningValidation.Target)
 	return a && b
@@ -219,6 +222,7 @@ func tuningInspection(r protocol.TuningInspectRequest, b tableedit.Baseline) pro
 	for i, n := range r.Capture.Nodes {
 		match := b.Engine == "postgresql" && n.Operation == "Seq Scan" && n.Details["Schema"] == b.Target.Schema && n.Details["Relation Name"] == b.Target.Table
 		match = match || b.Engine == "mysql" && (n.Operation == "Table access ALL on "+b.Target.Table || n.Operation == "Table scan on "+b.Target.Table)
+		match = match || b.Engine == "mariadb" && n.Operation == "Table access ALL on "+b.Target.Table
 		if match {
 			if scan != nil {
 				out.Limitations = append(out.Limitations, "Multiple matching scans are ambiguous; no index candidate is emitted.")
@@ -279,7 +283,7 @@ func (owner *owner) runTuning(ctx context.Context, physical adapter.Session, c p
 		return reject("policy", "Tuning requires an ordinary query-tab owner.")
 	}
 	if !tuningAvailable(physical) {
-		return reject("capability", "Tuning requires recognized PostgreSQL 14+ or Oracle MySQL 8.0.30+ with complete relational metadata and native values. MongoDB/Cassandra diagnostics and SQLite are not tuning models.")
+		return reject("capability", "Tuning requires recognized PostgreSQL 14+, Oracle MySQL 8.0.30+ or MariaDB 10.11.9+/11.4.3+ with complete relational metadata and native values. MongoDB/Cassandra diagnostics and SQLite are not tuning models.")
 	}
 	support := physical.(adapter.ExplainSession).ExplainSupport()
 	response := protocol.Response{Type: c.Type + ".result", Connected: true, TransactionStatus: physical.TransactionStatus()}
@@ -327,6 +331,16 @@ func (owner *owner) runTuning(ctx context.Context, physical adapter.Session, c p
 				out.WorkMemKiB = &n
 			} else {
 				out.Limitations = append(out.Limitations, "Current work_mem is unavailable; setting actions require an exact supported current value.")
+			}
+		}
+		if engine == "mariadb" {
+			q, ok := parseTuningQuery(engine, r.Source, r.Target)
+			if ok && tuningCatalogSafe(b, q) {
+				if observed, err := adapter.ReadMariaDBOptimizerState(child, physical, c); err == nil && owner.tuningContext(r.Source.Context, physical) {
+					out.MariaDBOptimizer = &observed
+				} else {
+					out.Limitations = append(out.Limitations, "Current native optimizer state is unavailable; no statement-scoped optimizer trial was prepared.")
+				}
 			}
 		}
 		response.TuningInspection = &out
@@ -454,15 +468,26 @@ func (s *tuningBag) End(index int, _ protocol.ResultSet) error {
 func runTuningValidation(ctx context.Context, physical adapter.Session, c protocol.Command, r protocol.TuningValidationRequest) *protocol.TuningValidation {
 	out := &protocol.TuningValidation{Version: 1, State: "inconclusive", Comparison: "multiset", Scope: "sequentialCurrentSession", Limitations: []string{"This compares two sequential observations in the current idle physical session. E2 metadata uses its own read-only observation transaction; the compared SELECTs are not wrapped in a transaction or shared snapshot, reconnected or retried.", "Observed equality is not logical equivalence or a performance measurement. Concurrent writes and session state may change results; open user transactions and temporary-table context are refused.", "Exact native scalar types, SQL NULL, numeric spelling, binary bytes and duplicate multiplicity are compared; row order is ignored. No result rows are retained in the reply."}}
 	bags := []*tuningBag{}
+	completed := 0
 	for i, request := range []protocol.ExplainRequest{r.Original, r.Variant} {
 		if ctx.Err() != nil || physical.TransactionStatus() != request.Context.TransactionStatus {
 			out.Limitations = append(out.Limitations, "Validation stopped before the next observation because its deadline or transaction context changed.")
 			break
 		}
+		if setting := r.MariaDBOptimizer; setting != nil {
+			observed, err := adapter.ReadMariaDBOptimizerState(ctx, physical, c)
+			if err != nil || observed.NativeSwitch != setting.ExpectedNativeSwitch {
+				out.Limitations = append(out.Limitations, "The exact native optimizer state or idle owner changed before an observation. No trial or automatic restore was issued.")
+				break
+			}
+		}
 		child, cancel := context.WithCancel(ctx)
 		bag := &tuningBag{counts: map[string]int{}, maxRows: r.MaxRows, maxBytes: r.MaxBytes - out.ComparedBytes, cancel: cancel}
 		bags = append(bags, bag)
 		cmd := protocol.Command{Type: "execute", RequestID: c.RequestID, SessionID: c.SessionID, QueryID: c.QueryID, SQL: request.SQL, Parameters: request.Parameters, ResultValues: protocol.NativeResultValuesFormat}
+		if i == 1 && r.MariaDBOptimizer != nil {
+			cmd.SQL = adapter.MariaDBTuningOptimizerSQL(*r.MariaDBOptimizer, request.SQL)
+		}
 		result := physical.(adapter.StreamingSession).ExecuteWithSink(child, cmd, bag)
 		cancel()
 		out.ComparedBytes += bag.bytes
@@ -475,18 +500,26 @@ func runTuningValidation(ctx context.Context, physical adapter.Session, c protoc
 			out.Limitations = append(out.Limitations, "A row/byte/deadline bound, unsupported native value, error or incomplete acknowledgement stopped validation. No partial equality is claimed.")
 			break
 		}
+		if setting := r.MariaDBOptimizer; setting != nil {
+			observed, err := adapter.ReadMariaDBOptimizerState(ctx, physical, c)
+			if err != nil || observed.NativeSwitch != setting.ExpectedNativeSwitch {
+				out.Limitations = append(out.Limitations, "The acknowledged statement did not retain the exact optimizer state and idle owner. No restore or retry was issued.")
+				break
+			}
+		}
+		completed++
 	}
-	if len(bags) == 2 && !bags[0].limited && !bags[1].limited && !bags[0].invalid && !bags[1].invalid && bags[0].ended && bags[1].ended && ctx.Err() == nil {
+	if completed == 2 && len(bags) == 2 && !bags[0].limited && !bags[1].limited && !bags[0].invalid && !bags[1].invalid && bags[0].ended && bags[1].ended && ctx.Err() == nil {
 		// Completion of each observation is tracked separately from stream End;
 		// End may precede the final transaction acknowledgement.
-		if len(out.Limitations) > 3 {
-			return out
-		}
 		out.Complete = true
 		out.State = "observedDifferent"
 		if reflect.DeepEqual(bags[0].columns, bags[1].columns) && reflect.DeepEqual(bags[0].counts, bags[1].counts) {
 			out.State = "observedEqual"
 		}
+	}
+	if r.MariaDBOptimizer != nil {
+		out.Limitations = append(out.Limitations, "The candidate uses only a statement-scoped index_condition_pushdown switch. Exact current native settings were checked before and after acknowledged observations; unknown outcomes never trigger automatic recovery.")
 	}
 	return out
 }

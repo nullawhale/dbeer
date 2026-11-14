@@ -18,7 +18,7 @@ struct ConnectionURL {
         var errorDescription: String? {
             switch self {
             case .invalid: "Enter a URL with one host, a port from 1 to 65535, and a database name. Percent-encode special characters."
-            case .unsupportedEngine: "Use a PostgreSQL or MySQL URL, optionally prefixed with jdbc:."
+            case .unsupportedEngine: "Use a PostgreSQL, MySQL or MariaDB URL, optionally prefixed with jdbc:."
             case .unsupportedOption: "This URL includes options DBeer cannot apply. Supported options are user, password, database name and database TLS mode or CA file."
             case .duplicateOption: "Remove duplicate or conflicting connection options from the URL."
             case .invalidTLS: "The URL specifies a TLS mode that this database engine does not support in DBeer."
@@ -39,6 +39,7 @@ struct ConnectionURL {
         switch scheme {
         case "postgres", "postgresql": engine = .postgresql
         case "mysql": engine = .mysql
+        case "mariadb": engine = .mariadb
         default: throw Failure.unsupportedEngine
         }
         guard text.lowercased().hasPrefix(scheme + "://"), components.fragment == nil,
@@ -85,8 +86,8 @@ struct ConnectionURL {
                 switch (engine, name) {
                 case (_, "user"), (_, "password"): key = name
                 case (.postgresql, "dbname"): key = "database"
-                case (.postgresql, "sslmode"), (.mysql, "ssl-mode"), (.mysql, "sslMode"): key = "sslMode"
-                case (.postgresql, "sslrootcert"), (.mysql, "ssl-ca"): key = "sslRootCert"
+                case (.postgresql, "sslmode"), (.mysql, "ssl-mode"), (.mysql, "sslMode"), (.mariadb, "sslMode"): key = "sslMode"
+                case (.postgresql, "sslrootcert"), (.mysql, "ssl-ca"), (.mariadb, "serverSslCert"): key = "sslRootCert"
                 default: throw Failure.unsupportedOption
                 }
                 guard options[key] == nil else { throw Failure.duplicateOption }
@@ -97,8 +98,15 @@ struct ConnectionURL {
               database.utf8.count <= 1_024, (options["user"]?.utf8.count ?? 0) <= 1_024 else { throw Failure.invalid }
         var sslMode: String?
         if let mode = options["sslMode"] {
-            sslMode = engine == .mysql ? mysqlTLSModes[mode.uppercased()] : mode
+            if engine == .mysql { sslMode = mysqlTLSModes[mode.uppercased()] }
+            else if engine == .mariadb { sslMode = mariaDBTLSModes[mode.lowercased()] }
+            else { sslMode = mode }
             guard let sslMode, engine.sslModes.contains(sslMode) else { throw Failure.invalidTLS }
+        }
+        if engine == .mariadb, let certificate = options["sslRootCert"], !certificate.hasPrefix("/") {
+            // Only the native profile's local CA-file subset is representable;
+            // Java classpath and inline-certificate options are not imported.
+            throw Failure.unsupportedOption
         }
         return Self(engine: engine, host: host, port: port, database: database, user: options["user"],
             password: options["password"], sslMode: sslMode, sslRootCert: options["sslRootCert"])
@@ -108,25 +116,30 @@ struct ConnectionURL {
     /// imported through query parameters. SSH and execution policy stay separate.
     static func format(engine: DatabaseEngine, host: String, port: String, database: String,
                        user: String, sslMode: String, sslRootCert: String) -> String? {
-        guard [.postgresql, .mysql].contains(engine), validHost(host), !database.isEmpty, !database.contains("\0"),
+        guard [.postgresql, .mysql, .mariadb].contains(engine), validHost(host), !database.isEmpty, !database.contains("\0"),
+              engine != .mariadb || sslRootCert.isEmpty || sslRootCert.hasPrefix("/"),
               let port = Int(port), (1...65_535).contains(port), engine.sslModes.contains(sslMode) else { return nil }
         var components = URLComponents()
-        components.scheme = engine == .postgresql ? "postgresql" : "mysql"
+        components.scheme = engine.rawValue
         components.host = host.contains(":") ? "[\(host)]" : host
         components.port = port
         components.percentEncodedPath = "/" + encode(database)
         if !user.isEmpty { components.percentEncodedUser = encode(user) }
-        let mode = engine == .postgresql ? sslMode : mysqlTLSModes.first(where: { $0.value == sslMode })?.key
+        let mode: String?
+        if engine == .postgresql { mode = sslMode }
+        else if engine == .mariadb { mode = ["disable": "disable", "require": "trust", "verify-ca": "verify-ca", "verify-full": "verify-full"][sslMode] }
+        else { mode = mysqlTLSModes.first(where: { $0.value == sslMode })?.key }
         guard let mode else { return nil }
-        var query = [URLQueryItem(name: engine == .postgresql ? "sslmode" : "ssl-mode", value: mode)]
+        var query = [URLQueryItem(name: engine == .postgresql ? "sslmode" : engine == .mariadb ? "sslMode" : "ssl-mode", value: mode)]
         if !sslRootCert.isEmpty {
-            query.append(URLQueryItem(name: engine == .postgresql ? "sslrootcert" : "ssl-ca", value: sslRootCert))
+            query.append(URLQueryItem(name: engine == .postgresql ? "sslrootcert" : engine == .mariadb ? "serverSslCert" : "ssl-ca", value: sslRootCert))
         }
         components.queryItems = query
         guard let result = components.string, result.utf8.count <= 16_384 else { return nil }
         return result
     }
 
+    private static let mariaDBTLSModes = ["disable": "disable", "trust": "require", "verify-ca": "verify-ca", "verify_ca": "verify-ca", "verify-full": "verify-full", "verify_identity": "verify-full", "true": "verify-full", "1": "verify-full"]
     private static let mysqlTLSModes = ["DISABLED": "disable", "REQUIRED": "require", "VERIFY_CA": "verify-ca", "VERIFY_IDENTITY": "verify-full"]
 
     private static func validHost(_ host: String) -> Bool {

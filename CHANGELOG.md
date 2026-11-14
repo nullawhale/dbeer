@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add a separate, partial MariaDB adapter for native 10.11.9+ and 11.4.3+:
+  independent SQL/transaction/TLS/SSH owners, exact values, table-grid edits and
+  frozen imports, native JSON Explain/Analyze, monitoring and reviewed tuning,
+  guarded schema/data comparisons, drafts and transfer, native SQL tools, and
+  ordinary V1/V2/V3 structure authoring. Preserve JSON text/duplicate
+  keys and DECIMAL(65,38), explicit review and uncertain acknowledgements. Keep
+  SQL-result editing, generation/AUTO_INCREMENT authoring, V5 backfill/rebuild,
+  destructive conversion, multi-table migrations, advanced table authoring and
+  physical operations disabled/manual. Full MariaDB parity
+  remains deferred; existing release archives are unchanged.
+
 - Add operation-specific structure authoring for PostgreSQL inheritance,
   declarative partitions, RLS/FORCE, typed and unlogged tables and MySQL
   partitioned InnoDB and MyISAM tables. Review complete hierarchy, security,

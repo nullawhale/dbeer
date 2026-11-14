@@ -1,0 +1,330 @@
+package mariadb
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unicode/utf8"
+
+	"dbeer/helper/internal/adapter"
+	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
+	wire "github.com/go-mysql-org/go-mysql/mysql"
+)
+
+type Session struct {
+	adapter.TransportBinding
+	mu                       sync.Mutex
+	work                     *connection
+	serverIdentity           string
+	serverVersion            string
+	explainVendor            string
+	connectionID             uint32
+	openControl              func(context.Context) (*connection, error)
+	closed                   atomic.Bool
+	transaction              atomic.Value
+	commitOverride           func(func() error) error
+	afterRowLock             func(int)
+	afterStructureStep       func(int)
+	structureExecuteOverride func(func() error) error
+}
+
+func Open(ctx context.Context, settings protocol.Connection) (adapter.Session, error) {
+	if _, err := tlsConfiguration(settings); err != nil {
+		return nil, err
+	}
+	work, err := dial(ctx, settings)
+	if err != nil {
+		return nil, safeConnectionError(err)
+	}
+	tunnel := adapter.TransportFromContext(ctx)
+	session := &Session{work: work, connectionID: work.client.GetConnectionID(), TransportBinding: adapter.TransportBinding{Transport: tunnel}}
+	session.transaction.Store("idle")
+	session.openControl = func(ctx context.Context) (*connection, error) { return dialWithTransport(ctx, settings, tunnel) }
+	observation, err := observeNativeServer(work)
+	if err != nil || session.connectionID == 0 {
+		session.Close()
+		return nil, &adapter.ConnectionError{Category: "connection", Message: "MariaDB 10.11.9+ or 11.4.3+ with verifiable native server identity is required."}
+	}
+	session.serverIdentity = observation.identity
+	session.serverVersion = observation.version
+	session.explainVendor = observation.comment
+	_ = work.transport.SetDeadline(time.Time{})
+	session.updateTransaction()
+	return session, nil
+}
+
+func safeConnectionError(err error) error {
+	var validation *adapter.ConnectionError
+	if errors.As(err, &validation) {
+		return validation
+	}
+	var server *wire.MyError
+	if errors.As(err, &server) && (server.Code == 1045 || server.Code == 1698) {
+		return &adapter.ConnectionError{Category: "authentication", Message: "MariaDB authentication failed.", SQLState: "28000"}
+	}
+	return &adapter.ConnectionError{Category: "connection", Message: "Cannot connect to MariaDB. Check server availability, credentials and TLS settings."}
+}
+
+func (session *Session) Close() {
+	if session.closed.CompareAndSwap(false, true) {
+		session.transaction.Store("unknown")
+		_ = session.work.transport.Close()
+		session.CloseTransport()
+	}
+}
+
+func (session *Session) TransactionStatus() string { return session.transaction.Load().(string) }
+
+func (session *Session) updateTransaction() {
+	status := "idle"
+	if session.work.client.IsInTransaction() {
+		status = "transaction"
+	}
+	session.transaction.Store(status)
+}
+
+type cancellation struct {
+	attempted bool
+	err       error
+	deadline  time.Time
+}
+
+// Execute owns this session until both the query and cancellation worker finish.
+// In particular no subsequent query or recovery probe can race a late KILL.
+func (session *Session) Execute(ctx context.Context, command protocol.Command) protocol.Response {
+	return session.ExecuteWithSink(ctx, command, nil)
+}
+
+func (session *Session) ExecuteWithSink(ctx context.Context, command protocol.Command, sink adapter.ResultSink) protocol.Response {
+	if strings.HasPrefix(command.Type, "import.") {
+		return session.executeTableImport(ctx, command)
+	}
+	if command.Changes != nil {
+		return session.ExecuteChanges(ctx, command)
+	}
+	if command.Catalog != nil {
+		return session.catalog(ctx, command, sink)
+	}
+	if unsupportedStatement(command.SQL) {
+		response := protocol.ErrorResponse(command, "validation", "MariaDB client commands, COPY and LOAD DATA LOCAL are not supported. Submit SQL statements directly.")
+		response.Connected, response.TransactionStatus = !session.closed.Load(), session.TransactionStatus()
+		response.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
+		return response
+	}
+	bound, err := queryparams.Bind("mariadb", command.SQL, command.Parameters)
+	if err != nil {
+		response := protocol.ErrorResponse(command, "validation", err.Error())
+		response.Connected, response.TransactionStatus, response.SQLNotExecuted = !session.closed.Load(), session.TransactionStatus(), true
+		return response
+	}
+	return session.executeWith(ctx, command, func(collector *collector, result *wire.Result) error {
+		if len(bound.Parameters) > 0 {
+			return session.executeBoundResults(bound, collector, result)
+		}
+		if err := session.executeResults(command.SQL, collector, result); err != nil {
+			return err
+		}
+		// The user statement has been drained before metadata is read. Never
+		// re-execute it to reconstruct an original row or infer its source.
+		return session.attachResultSource(ctx, command.SQL, collector)
+	}, sink)
+}
+
+func (session *Session) executeWith(ctx context.Context, command protocol.Command, operation func(*collector, *wire.Result) error, sinks ...adapter.ResultSink) protocol.Response {
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed.Load() {
+		response := protocol.ErrorResponse(command, "connection", "The MariaDB session is closed. SQL was not executed.")
+		response.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
+		return response
+	}
+	ctx, cancel := context.WithTimeout(ctx, ExecuteTimeout)
+	defer cancel()
+	if ctx.Err() != nil {
+		response := session.queryError(command, ctx, ctx.Err())
+		response.SQLNotExecuted = (command.Type == "execute" || command.Type == "explain.run")
+		return response
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = session.work.transport.SetDeadline(deadline.Add(RecoveryTimeout))
+	}
+	started := time.Now()
+	var gate sync.Mutex
+	active := true
+	done := make(chan struct{})
+	watcher := make(chan cancellation, 1)
+	go func() {
+		select {
+		case <-done:
+			watcher <- cancellation{}
+			return
+		case <-ctx.Done():
+		}
+		result := cancellation{deadline: time.Now().Add(RecoveryTimeout)}
+		_ = session.work.transport.SetDeadline(result.deadline)
+		controlCtx, stop := context.WithDeadline(context.Background(), result.deadline)
+		defer stop()
+		control, err := session.openControl(controlCtx)
+		if err == nil {
+			defer control.transport.Close()
+			var identity string
+			identity, err = serverIdentity(control)
+			if err == nil && (identity != session.serverIdentity || control.client.GetConnectionID() == session.connectionID ||
+				session.work.client.GetConnectionID() != session.connectionID) {
+				err = errors.New("cancellation server identity mismatch")
+			}
+		}
+		gate.Lock()
+		defer gate.Unlock()
+		if !active {
+			watcher <- result
+			return
+		}
+		if err == nil {
+			// The target ID belongs to this still-open physical connection. The
+			// native identity check keeps cancellation on the observed server.
+			var target *wire.Result
+			target, err = control.client.Execute(fmt.Sprintf("SELECT ID FROM information_schema.PROCESSLIST WHERE ID = %d", session.connectionID))
+			if err == nil {
+				var id int64
+				if target.RowNumber() == 1 {
+					id, err = target.GetInt(0, 0)
+				}
+				if id != int64(session.connectionID) {
+					err = errors.New("cancellation target is missing")
+				}
+				target.Close()
+			}
+		}
+		if err == nil {
+			result.attempted = true
+			var killed *wire.Result
+			killed, err = control.client.Execute(fmt.Sprintf("KILL SOFT QUERY %d", session.connectionID))
+			if killed != nil {
+				killed.Close()
+			}
+		}
+		result.err = err
+		if err != nil {
+			session.Close()
+		}
+		watcher <- result
+	}()
+	collector := newCollector(command)
+	// Explain uses the bounded plan sink while draining the same SQL lifecycle.
+	if command.Type == "explain.run" {
+		collector.stopped = true
+	}
+	if len(sinks) > 0 && sinks[0] != nil {
+		collector.delivery = &sinkDelivery{sink: sinks[0]}
+	}
+	result := wire.NewResult(nil)
+	defer result.Close()
+	err := operation(collector, result)
+	gate.Lock()
+	active = false
+	gate.Unlock()
+	close(done)
+	cancelled := <-watcher
+	if collector.statementCleanupFailed && err == nil {
+		session.updateTransaction()
+		completed := collector.finish(result, time.Since(started), session.TransactionStatus())
+		session.Close()
+		failure := protocol.ErrorResponse(command, "connection", "SQL completed, but the connection closed while releasing its prepared statement. Do not rerun the SQL to reconnect.")
+		failure.SQLCompleted, failure.Connected, failure.TransactionStatus = true, false, "unknown"
+		failure.AcknowledgedTransactionStatus = completed.TransactionStatus
+		failure.ResultSets = completed.ResultSets
+		if len(failure.ResultSets) == 0 {
+			failure.ResultSets = []protocol.ResultSet{{Columns: completed.Columns, Rows: completed.Rows, NativeValues: completed.NativeValues, CommandTag: completed.CommandTag, RowCount: completed.RowCount, DisplayedRowCount: completed.DisplayedRowCount, Truncated: completed.Truncated, DisplayNotice: completed.DisplayNotice, StorageTokens: completed.StorageTokens, Source: completed.Source}}
+		}
+		if command.Export != nil {
+			failure.ExportPublication = "notPublished"
+			failure.Message += " No final export file was saved."
+		}
+		return failure
+	}
+	if session.closed.Load() || cancelled.err != nil {
+		return collector.attachResults(session.unknown(command))
+	}
+	if err != nil || cancelled.attempted || collector.needsStatusProbe {
+		// ERR packets have no status flags. COM_PING returns a new OK packet
+		// without running SQL or changing the user's transaction/session state.
+		deadline := time.Now().Add(RecoveryTimeout)
+		if !cancelled.deadline.IsZero() && cancelled.deadline.Before(deadline) {
+			deadline = cancelled.deadline
+		}
+		_ = session.work.transport.SetDeadline(deadline)
+		var sqlError *wire.MyError
+		var validation *adapter.ConnectionError
+		if err != nil && !errors.As(err, &sqlError) && !errors.As(err, &validation) {
+			session.Close()
+			return collector.attachResults(session.unknown(command))
+		}
+		if session.work.client.Ping() != nil {
+			session.Close()
+			return collector.attachResults(session.unknown(command))
+		}
+	}
+	_ = session.work.transport.SetDeadline(time.Time{})
+	session.updateTransaction()
+	if err != nil {
+		response := session.queryError(command, ctx, err)
+		var validation *adapter.ConnectionError
+		if errors.As(err, &validation) {
+			response = protocol.ErrorResponse(command, validation.Category, validation.Message)
+			response.Connected = true
+			response.TransactionStatus = session.TransactionStatus()
+		}
+		if len(collector.resultSets) > 0 {
+			response.ResultSets = collector.resultSets
+			response = boundResultSets(response)
+		}
+		return collector.attachResults(response)
+	}
+	response := collector.finish(result, time.Since(started), session.TransactionStatus())
+	if cancelled.attempted {
+		if response.DisplayNotice != "" {
+			response.DisplayNotice += " "
+		}
+		response.DisplayNotice += "Cancellation was requested; the server completed the statement. The returned result and transaction state are authoritative."
+	}
+	return response
+}
+
+func (session *Session) unknown(command protocol.Command) protocol.Response {
+	response := protocol.ErrorResponse(command, "connection", "MariaDB session could not be recovered. The command outcome is unknown.")
+	response.OutcomeUnknown = true
+	return response
+}
+
+func (session *Session) queryError(command protocol.Command, ctx context.Context, err error) protocol.Response {
+	response := protocol.ErrorResponse(command, "sql", "MariaDB rejected the SQL command.")
+	response.Connected, response.TransactionStatus = !session.closed.Load(), session.TransactionStatus()
+	var server *wire.MyError
+	interrupted := errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	if errors.As(err, &server) {
+		interrupted = server.Code == 1317 || server.Code == 3024
+		if len(server.State) == 5 {
+			response.SQLState = server.State
+		}
+		message := server.Message
+		if len(message) > 4096 {
+			message = message[:4096]
+			for !utf8.ValidString(message) {
+				message = message[:len(message)-1]
+			}
+		}
+		response.Message = strings.ToValidUTF8(message, "�")
+	}
+	if interrupted && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		response.Category, response.Message = "timeout", "Query execution timed out."
+	} else if interrupted && errors.Is(ctx.Err(), context.Canceled) {
+		response.Category, response.Message = "cancelled", "Query was cancelled."
+	}
+	return response
+}

@@ -242,7 +242,7 @@ enum GridDataProfiler {
         let exact = ["integer", "int", "int2", "int4", "int8", "smallint", "bigint", "tinyint", "mediumint",
                      "decimal", "numeric", "varint", "counter", "decimal128"]
         if exact.contains(type.trimmingCharacters(in: .whitespaces)) ||
-            (column.engine == .mysql && exact.contains(type.split(separator: " ").first.map(String.init) ?? "")) { return text }
+            (column.engine.usesMySQLSyntax && exact.contains(type.split(separator: " ").first.map(String.init) ?? "")) { return text }
         return nil
     }
 }

@@ -53,10 +53,10 @@ func (r DatabaseToolsRequest) Valid(kind string) bool {
 	switch kind {
 	case "dbtools.preview":
 		if r.Connection == nil || !r.Connection.Valid() || r.Connection.SessionPurpose != "" ||
-			r.Connection.DatabaseEngine() != "postgresql" && r.Connection.DatabaseEngine() != "mysql" ||
+			r.Connection.DatabaseEngine() != "postgresql" && r.Connection.DatabaseEngine() != "mysql" && r.Connection.DatabaseEngine() != "mariadb" ||
 			r.Operation != "dump" && r.Operation != "restore" ||
 			r.Format != "sql" && r.Format != "custom" && r.Format != "tar" ||
-			r.Connection.DatabaseEngine() == "mysql" && r.Format != "sql" ||
+			(r.Connection.DatabaseEngine() == "mysql" || r.Connection.DatabaseEngine() == "mariadb") && r.Format != "sql" ||
 			!filepath.IsAbs(r.Path) || !filepath.IsAbs(r.ToolPath) ||
 			!databaseToolsText(r.Path, 4096) || !databaseToolsText(r.ToolPath, 4096) ||
 			r.PlanID != "" || r.ApprovalToken != "" || r.JobID != "" || r.Confirmed {
@@ -160,14 +160,19 @@ func (r DatabaseToolsReply) Valid(kind string) bool {
 }
 
 func (r DatabaseToolsReply) validSummary() bool {
-	if r.Engine != "postgresql" && r.Engine != "mysql" || r.Operation != "dump" && r.Operation != "restore" ||
-		r.Format != "sql" && r.Format != "custom" && r.Format != "tar" || r.Engine == "mysql" && r.Format != "sql" ||
+	if r.Engine != "postgresql" && r.Engine != "mysql" && r.Engine != "mariadb" || r.Operation != "dump" && r.Operation != "restore" ||
+		r.Format != "sql" && r.Format != "custom" && r.Format != "tar" || (r.Engine == "mysql" || r.Engine == "mariadb") && r.Format != "sql" ||
 		r.Database == "" || !filepath.IsAbs(r.Path) || r.ToolName == "" || r.ToolVersion == "" || r.ServerVersion == "" ||
 		r.RequiresConfirmation != (r.Operation == "restore") {
 		return false
 	}
 	name := "pg_dump"
-	if r.Engine == "mysql" {
+	if r.Engine == "mariadb" {
+		name = "mariadb-dump"
+		if r.Operation == "restore" {
+			name = "mariadb"
+		}
+	} else if r.Engine == "mysql" {
 		name = "mysqldump"
 		if r.Operation == "restore" {
 			name = "mysql"

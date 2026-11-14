@@ -5,7 +5,7 @@ struct DataTransferEndpoint: Codable, Equatable, Sendable {
     var schema: String
     var table: String
     var valid: Bool {
-        [.postgresql, .mysql].contains(connection.engine) && connection.sessionPurpose == nil &&
+        [.postgresql, .mysql, .mariadb].contains(connection.engine) && connection.sessionPurpose == nil &&
         DataTransferColumn.validName(schema) && DataTransferColumn.validName(table)
     }
 }

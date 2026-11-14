@@ -336,7 +336,7 @@ func (r *request) unqualified() {
 			r.add(src.name.value, quoteIdentifier(identifierName(src.name, r.context.Engine), r.context.Engine), "Alias · "+sourceDetail(src), 6, 1)
 		}
 	}
-	if r.clause == orderClause || r.clause == groupClause || r.clause == havingClause && r.context.Engine == "mysql" {
+	if r.clause == orderClause || r.clause == groupClause || r.clause == havingClause && mysqlLexicalEngine(r.context.Engine) {
 		for _, alias := range r.scope.aliases {
 			r.add(alias, quoteIdentifier(alias, r.context.Engine), "SELECT alias", 5, 0)
 		}

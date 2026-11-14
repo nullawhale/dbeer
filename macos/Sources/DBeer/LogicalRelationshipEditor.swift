@@ -56,7 +56,7 @@ final class LogicalRelationshipEditorModel: ObservableObject, Identifiable {
         origin = relationship?.origin ?? .manual
         self.profiles = profiles; self.reader = reader; self.isCurrent = isCurrent; self.mayStart = mayStart; self.cancel = cancel
     }
-    var availableProfiles: [SavedConnection] { profiles().filter { [.postgresql, .mysql, .sqlite].contains($0.engine) } }
+    var availableProfiles: [SavedConnection] { profiles().filter { [.postgresql, .mysql, .mariadb, .sqlite].contains($0.engine) } }
     var isBusy: Bool { isReading || isSaving }
     var endpoints: (LogicalRelationshipEndpoint, LogicalRelationshipEndpoint)? {
         guard let sourceProfile = profiles().first(where: { $0.id == sourceProfileID }),

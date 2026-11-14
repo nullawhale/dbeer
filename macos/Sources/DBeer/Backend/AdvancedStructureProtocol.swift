@@ -30,9 +30,20 @@ final class StructureAdvancedKindSupport: Codable, Equatable, Sendable {
         lhs.kinds == rhs.kinds && lhs.scope == rhs.scope && lhs.familyCount == rhs.familyCount && lhs.nontransactional == rhs.nontransactional && lhs.operations == rhs.operations && lhs.relations == rhs.relations
     }
     func valid(engine: String) -> Bool {
-        let allowed: Set<String> = ["inheritanceParent", "inheritanceChild", "partitionParent", "partitionMember", "rowSecurity", "typed", "unlogged", "mySQLPartitions", "myISAM"]
-        guard engine != "postgresql" || !nontransactional, engine != "mysql" || kinds.contains("myISAM") == nontransactional else { return false }
-        return validRelations(engine: engine) && ["postgresql", "mysql"].contains(engine) && ["only", "table", "operation"].contains(scope) && (1...64).contains(familyCount) && (1...6).contains(kinds.count) && Set(kinds).count == kinds.count && kinds.allSatisfy { allowed.contains($0) && $0.hasPrefix("my") == (engine == "mysql") } && operations.map(\.kind) == Self.operationKinds && operations.allSatisfy { !$0.reason.isEmpty && $0.reason.utf8.count <= 4096 && !$0.reason.contains("\0") }
+        let allowed: Set<String>
+        switch engine {
+        case "postgresql":
+            allowed = ["inheritanceParent", "inheritanceChild", "partitionParent", "partitionMember", "rowSecurity", "typed", "unlogged"]
+            guard !nontransactional else { return false }
+        case "mysql":
+            allowed = ["mySQLPartitions", "myISAM"]
+            guard kinds.contains("myISAM") == nontransactional else { return false }
+        case "mariadb":
+            allowed = ["mariaDBPartitions", "mariaDBMyISAM", "mariaDBAria", "mariaDBSystemVersioned"]
+            guard (kinds.contains("mariaDBMyISAM") || kinds.contains("mariaDBAria")) == nontransactional else { return false }
+        default: return false
+        }
+        return validRelations(engine: engine) && ["only", "table", "operation"].contains(scope) && (1...64).contains(familyCount) && (1...6).contains(kinds.count) && Set(kinds).count == kinds.count && kinds.allSatisfy { allowed.contains($0) } && operations.map(\.kind) == Self.operationKinds && operations.allSatisfy { !$0.reason.isEmpty && $0.reason.utf8.count <= 4096 && !$0.reason.contains("\0") }
     }
     private func validRelations(engine: String) -> Bool {
         guard let relations else { return true }
@@ -108,7 +119,7 @@ struct StructureAdvancedRelationFact: Codable, Equatable, Sendable {
     }
     func valid(engine: String) -> Bool {
         guard target.valid, !target.create, target.reconcile != true, ["table", "partitionedTable"].contains(kind), ["permanent", "unlogged"].contains(persistence), parents.count <= 64, parents.allSatisfy({ $0.valid && !$0.create && $0.reconcile != true }), typeBinding?.valid ?? true, policies.count <= 128, policies.allSatisfy(\.valid) else { return false }
-        if engine == "mysql" { return ["InnoDB", "MyISAM"].contains(storageEngine ?? "") && !rowSecurity && !forceRowSecurity && typeBinding == nil && policies.isEmpty && persistence == "permanent" }
+        if ["mysql", "mariadb"].contains(engine) { return (engine == "mariadb" ? ["InnoDB", "MyISAM", "Aria"] : ["InnoDB", "MyISAM"]).contains(storageEngine ?? "") && !rowSecurity && !forceRowSecurity && typeBinding == nil && policies.isEmpty && persistence == "permanent" }
         return storageEngine == nil
     }
 }

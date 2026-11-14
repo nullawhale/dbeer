@@ -21,7 +21,7 @@ func (connection Connection) Valid() bool {
 	if connection.SQLite != nil {
 		return false
 	}
-	if connection.SessionPurpose != "" && (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" && connection.SessionPurpose != "monitor" || connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql") {
+	if connection.SessionPurpose != "" && (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" && connection.SessionPurpose != "monitor" || connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && connection.DatabaseEngine() != "mariadb") {
 		return false
 	}
 	if connection.PasswordCommand != nil && (!connection.PasswordCommand.Valid() || connection.Password != "" || connection.User == "") {
@@ -41,7 +41,7 @@ func (connection Connection) Valid() bool {
 		return false
 	}
 	if engine != "cassandra" {
-		return (engine == "postgresql" || engine == "mysql") && connection.Host != "" && connection.Database != "" && connection.User != "" &&
+		return (engine == "postgresql" || engine == "mysql" || engine == "mariadb") && connection.Host != "" && connection.Database != "" && connection.User != "" &&
 			len(connection.ContactPoints) == 0 && connection.LocalDatacenter == "" && connection.Consistency == ""
 	}
 	if len(connection.ContactPoints) > 32 || (connection.Host == "" && len(connection.ContactPoints) == 0) ||

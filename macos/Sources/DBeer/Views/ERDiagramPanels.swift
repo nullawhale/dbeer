@@ -21,7 +21,7 @@ struct ERDiagramAreaPanel: View {
     init(model: ERDiagramModel, workspace: ApplicationWorkspace, document: SQLDocument, focus: @escaping () -> Void) {
         self.model = model; self.workspace = workspace; self.document = document; self.focus = focus
         schemaState = SwiftUI.State(initialValue: model.initialSchema ?? model.stored.tables.first?.schema ??
-            (model.stored.engine == .mysql ? model.stored.database : model.stored.engine == .sqlite ? "main" : "public"))
+            (model.stored.engine.usesMySQLSyntax ? model.stored.database : model.stored.engine == .sqlite ? "main" : "public"))
         addExpandedState = SwiftUI.State(initialValue: model.stored.tables.isEmpty)
     }
 
@@ -81,7 +81,7 @@ struct ERDiagramAreaPanel: View {
             .onChange(of: model.activeSourceID) { _, id in
                 let source = model.source(id)
                 schemaState.wrappedValue = model.stored.tables.first(where: { $0.profileID == id })?.schema ??
-                    (source?.engine == .mysql ? source?.database ?? "" : source?.engine == .sqlite ? "main" : "public")
+                    (source?.engine.usesMySQLSyntax == true ? source?.database ?? "" : source?.engine == .sqlite ? "main" : "public")
                 searchState.wrappedValue = ""; exactNameState.wrappedValue = ""
             }
     }
@@ -94,7 +94,7 @@ struct ERDiagramAreaPanel: View {
                 }
             }.accessibilityLabel("Active diagram source profile")
             Menu("Add Profile") {
-                ForEach(workspace.library.savedConnections.filter { [.postgresql, .mysql, .sqlite].contains($0.engine) && !model.ownsSource($0.id) }) { profile in
+                ForEach(workspace.library.savedConnections.filter { [.postgresql, .mysql, .mariadb, .sqlite].contains($0.engine) && !model.ownsSource($0.id) }) { profile in
                     Button(profile.name) { workspace.confirmERDiagramSource(document, profileID: profile.id) }
                 }
             }.controlHover().disabled(model.stored.sourceProfileIDs.count >= ERDiagramLimits.sources)

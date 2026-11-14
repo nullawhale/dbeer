@@ -59,8 +59,8 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 			i += size
 			continue
 		}
-		dashComment := strings.HasPrefix(text[i:], "--") && (engine != "mysql" || i+2 == len(text) || text[i+2] <= ' ')
-		if dashComment || engine == "cassandra" && strings.HasPrefix(text[i:], "//") || engine == "mysql" && text[i] == '#' {
+		dashComment := strings.HasPrefix(text[i:], "--") && (!mysqlLexicalEngine(engine) || i+2 == len(text) || text[i+2] <= ' ')
+		if dashComment || engine == "cassandra" && strings.HasPrefix(text[i:], "//") || mysqlLexicalEngine(engine) && text[i] == '#' {
 			if end := strings.IndexAny(text[i:], "\r\n"); end >= 0 {
 				i += end
 			} else {
@@ -73,7 +73,7 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 			i += 2
 			depth := 1
 			for i < len(text) && depth > 0 {
-				if strings.HasPrefix(text[i:], "/*") && engine != "mysql" && engine != "cassandra" && engine != "sqlite" {
+				if strings.HasPrefix(text[i:], "/*") && !mysqlLexicalEngine(engine) && engine != "cassandra" && engine != "sqlite" {
 					depth++
 					i += 2
 				} else if strings.HasPrefix(text[i:], "*/") {
@@ -112,13 +112,13 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 				continue
 			}
 		}
-		if text[i] == '\'' || text[i] == '"' || (engine == "mysql" || engine == "sqlite") && text[i] == '`' || engine == "sqlite" && text[i] == '[' {
+		if text[i] == '\'' || text[i] == '"' || (mysqlLexicalEngine(engine) || engine == "sqlite") && text[i] == '`' || engine == "sqlite" && text[i] == '[' {
 			quote := text[i]
 			closing := quote
 			if quote == '[' {
 				closing = ']'
 			}
-			backslashEscapes := engine == "mysql" || engine != "cassandra" && engine != "sqlite" && quote == '\'' && start > 0 && (text[start-1] == 'e' || text[start-1] == 'E') && (start < 2 || !identifierRune(rune(text[start-2])))
+			backslashEscapes := mysqlLexicalEngine(engine) || engine != "cassandra" && engine != "sqlite" && quote == '\'' && start > 0 && (text[start-1] == 'e' || text[start-1] == 'E') && (start < 2 || !identifierRune(rune(text[start-2])))
 			i++
 			terminated := false
 			var value strings.Builder
@@ -141,7 +141,7 @@ func lex(text, engine string) ([]token, []Diagnostic) {
 				i++
 			}
 			kind := quotedToken
-			if quote == '\'' || quote == '"' && engine == "mysql" {
+			if quote == '\'' || quote == '"' && mysqlLexicalEngine(engine) {
 				kind = stringToken
 			}
 			if !terminated {

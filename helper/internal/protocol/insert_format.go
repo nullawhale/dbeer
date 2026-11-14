@@ -27,7 +27,7 @@ type InsertFormatColumn struct {
 }
 
 func (request InsertFormatRequest) Valid() bool {
-	if (request.Engine != "postgresql" && request.Engine != "mysql" && request.Engine != "sqlite") || (request.Schema != "" && !changeNameValid(request.Schema)) || !changeNameValid(request.Table) ||
+	if (request.Engine != "postgresql" && request.Engine != "mysql" && request.Engine != "mariadb" && request.Engine != "sqlite") || (request.Schema != "" && !changeNameValid(request.Schema)) || !changeNameValid(request.Table) ||
 		len(request.Columns) == 0 || len(request.Columns) > MaxInsertColumns || len(request.Rows) == 0 || len(request.Rows) > MaxInsertRows ||
 		len(request.Columns)*len(request.Rows) > MaxInsertCells {
 		return false

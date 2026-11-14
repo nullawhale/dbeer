@@ -100,7 +100,7 @@ struct NativeValue: Codable, Equatable, Sendable {
         }
         guard depth <= Self.maximumDepth, budget.nodes <= Self.maximumNodes,
               budget.bytes <= Self.maximumBytes,
-              engine == nil || ["postgresql", "mysql", "sqlite", "mongodb", "cassandra"].contains(engine!) else { return false }
+              engine == nil || ["postgresql", "mysql", "mariadb", "sqlite", "mongodb", "cassandra"].contains(engine!) else { return false }
         if let value {
             budget.bytes += 9 + Self.stringWireBytes(value)
             guard budget.bytes <= Self.maximumBytes else { return false }

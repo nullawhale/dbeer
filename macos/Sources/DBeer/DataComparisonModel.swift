@@ -250,7 +250,7 @@ final class DataComparisonModel: ObservableObject, Identifiable {
     func close() async { await stop(); clearOutput(); phase = .closed }
     func reset() async { await close(); operation = ""; phase = .closed }
     private func clearOutput() { dismissPlan(); clearDiff(); summary = nil; page = nil; selectedRow = nil; selectedValue = nil; valueChunk = nil; error = nil; pageOffsets = [0]; cellOffsets = [0]; valueOffsets = [0] }
-    var canGeneratePlan: Bool { phase == .completed && summary != nil && !isGeneratingPlan && targetProfile.map { [.postgresql, .mysql, .sqlite].contains($0.engine) } == true }
+    var canGeneratePlan: Bool { phase == .completed && summary != nil && !isGeneratingPlan && targetProfile.map { [.postgresql, .mysql, .mariadb, .sqlite].contains($0.engine) } == true }
     func dismissPlan() { planGeneration = UUID(); planDraft?.invalidate(); planDraft = nil; isGeneratingPlan = false }
     func generatePlan() async {
         guard canGeneratePlan, let backend, let jobID, let summary, let sourceProfile, let targetProfile else { return }

@@ -22,7 +22,7 @@ enum LogicalRelationshipNavigation {
             }
             var value = values[index]
             if value.kind == "nativeText" {
-                guard [.postgresql, .mysql].contains(sourceColumns[index].engine) else { throw LogicalRelationshipError.invalid }
+                guard [.postgresql, .mysql, .mariadb].contains(sourceColumns[index].engine) else { throw LogicalRelationshipError.invalid }
                 value = .init(kind: "text", value: value.value)
             }
             guard value.kind != "null", value.kind != "default" else {
@@ -46,8 +46,8 @@ enum LogicalRelationshipNavigation {
             if ["smallint", "integer", "bigint", "int2", "int4", "int8", "numeric", "decimal", "tinyint", "mediumint", "int"].contains(value) { return "exact" }
             if engine == .postgresql, ["real", "float4"].contains(value) { return "float32" }
             if engine == .postgresql, ["double precision", "float8"].contains(value) { return "float64" }
-            if engine == .mysql, value == "float" { return "float32" }
-            if engine == .mysql, value == "double" { return "float64" }
+            if engine.usesMySQLSyntax, value == "float" { return "float32" }
+            if engine.usesMySQLSyntax, value == "double" { return "float64" }
             return nil
         }
         if column.engine == .sqlite { return true }

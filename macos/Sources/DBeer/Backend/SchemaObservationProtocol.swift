@@ -42,7 +42,7 @@ struct SchemaObservation: Codable, Sendable, Equatable {
     var sql: String?
 
     var valid: Bool {
-        guard [.postgresql, .mysql].contains(engine), SchemaObservationRequest(action: action, tables: tables).valid,
+        guard [.postgresql, .mysql, .mariadb].contains(engine), SchemaObservationRequest(action: action, tables: tables).valid,
               observedAt.utf8.count <= 40, observedAt.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})$"#, options: .regularExpression) != nil,
               SessionMonitorSnapshot.date(observedAt) != nil,
               notices.count <= 16, notices.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 1_024 && !$0.contains("\0") }),

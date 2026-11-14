@@ -142,6 +142,7 @@ actor BackendClient {
     private var physicalStructureSupported = false
     // One admission bit per logical owner, independent of preview count or plan IDs.
     private var reconstructionSessions: [String: Bool] = [:]
+    private var sessionEngines: [String: DatabaseEngine] = [:]
     private var sessionCapabilities: [String: Set<String>] = [:]
     // Physical loss retires active admission; retained status stays on its logical helper owner.
     private var retainedStructureCapabilities: [String: Set<String>] = [:]
@@ -523,7 +524,11 @@ actor BackendClient {
             }
             if command.structure?.draft?.requiresDestructiveAuthoring == true || command.structure?.draft?.authoringVersion == 4 || command.type == "structure.validate",
                !supportsDestructiveStructure(sessionId: command.sessionId) { throw BackendRequestError.invalidCommand }
+            // Only a live MariaDB owner admits its extensions; unknown owners retain legacy syntax.
+            let engine = command.sessionId.flatMap { sessionEngines[$0] }
             guard command.structure?.valid(for: command.type) == true,
+                  command.structure?.draft.map({ $0.valid(for: engine) }) ?? true,
+                  command.structure?.physical?.draft.map({ $0.valid(for: engine) }) ?? true,
                   command.sessionId.map(BackendMessage.validID) == true, command.queryId.map(BackendMessage.validID) == true,
                   command.sql == nil, command.catalog == nil, command.connection == nil, command.stream == nil,
                   command.changes == nil, command.export == nil, command.operations == nil,
@@ -572,7 +577,7 @@ actor BackendClient {
         } else if command.comparison != nil { throw BackendRequestError.invalidCommand }
         if let purpose = command.connection?.sessionPurpose {
             guard ["structure", "import", "monitor"].contains(purpose), ["connect", "ssh.probe", "ssh.trust"].contains(command.type),
-                  command.connection.map({ (purpose == "monitor" ? [.postgresql, .mysql] : [.postgresql, .mysql, .sqlite]).contains($0.engine) }) == true else {
+                  command.connection.map({ (purpose == "monitor" ? [.postgresql, .mysql, .mariadb] : [.postgresql, .mysql, .mariadb, .sqlite]).contains($0.engine) }) == true else {
                 throw BackendRequestError.invalidCommand
             }
             if purpose == "import", !tableImportSupported { throw BackendRequestError.unsupportedTableImport }
@@ -781,11 +786,15 @@ actor BackendClient {
         }
         // Validate against the live physical owner before a terminal frame can
         // retire its capabilities or disconnect the tab.
-        if reply.explain?.support.dml != nil {
-            guard let session = command.sessionId, let owner = sessionExplainDMLSupport[session], reply.explain?.support == owner,
-                  ExplainDMLAdmission.validOwner(support: owner, engine: owner.engine,
-                    capabilities: sessionCapabilities[session] ?? [], helperSupports: explainDMLSupported) else {
-                fail(BackendTransportError(.invalidMessage)); return
+        // A frame cannot choose its validation policy by reporting another engine.
+        if let result = reply.explain {
+            guard let session = command.sessionId, let engine = sessionEngines[session] else { fail(BackendTransportError(.invalidMessage)); return }
+            if engine == .mariadb || result.support.dml != nil || result.support.engine == .mariadb {
+                guard let owner = sessionExplainDMLSupport[session], result.support == owner,
+                      ExplainDMLAdmission.validOwner(support: owner, engine: engine,
+                        capabilities: sessionCapabilities[session] ?? [], helperSupports: explainDMLSupported) else {
+                    fail(BackendTransportError(.invalidMessage)); return
+                }
             }
         }
         // A correlated refusal before execution has no collected DML facts.
@@ -811,7 +820,7 @@ actor BackendClient {
             guard request.started, let result = reply.explain, result.mode == command.explain?.mode else {
                 fail(BackendTransportError(.invalidMessage)); return
             }
-            if command.explain?.options != nil || result.options != nil || result.format != nil || result.support.notices != nil {
+            if command.explain?.options != nil || result.options != nil || (result.format != nil && result.support.engine != .mariadb) || result.support.notices != nil {
                 guard let session = command.sessionId, let owner = sessionExplainOptionSupport[session], result.support == owner,
                       ExplainOptionsAdmission.validOwner(support: owner, engine: result.support.engine,
                         capabilities: sessionCapabilities[session] ?? [], helperSupports: explainOptionsSupported),
@@ -839,13 +848,14 @@ actor BackendClient {
             guard zip(operations, assessment.operations).allSatisfy({ $0.0.tuningSetting != nil || $0.1.tuningSetting == nil }) else { fail(BackendTransportError(.invalidMessage)); return }
             for (operation, assessed) in zip(operations, assessment.operations) {
                 guard let requested = operation.explain, let preview = assessed.explain else { continue }
-                if requested.writeIntent != nil || preview.dml != nil || preview.support.dml != nil {
-                    guard let session = command.sessionId, let owner = sessionExplainDMLSupport[session], preview.support == owner,
-                          ExplainDMLAdmission.validOwner(support: owner, engine: owner.engine,
+                guard let session = command.sessionId, let engine = sessionEngines[session] else { fail(BackendTransportError(.invalidMessage)); return }
+                if engine == .mariadb || requested.writeIntent != nil || preview.dml != nil || preview.support.dml != nil || preview.support.engine == .mariadb {
+                    guard let owner = sessionExplainDMLSupport[session], preview.support == owner,
+                          ExplainDMLAdmission.validOwner(support: owner, engine: engine,
                             capabilities: sessionCapabilities[session] ?? [], helperSupports: explainDMLSupported),
                           requested.writeIntent == nil || preview.dml != nil else { fail(BackendTransportError(.invalidMessage)); return }
                 }
-                if requested.options != nil || preview.options != nil || preview.format != nil || preview.support.notices != nil {
+                if requested.options != nil || preview.options != nil || (preview.format != nil && preview.support.engine != .mariadb) || preview.support.notices != nil {
                     guard let session = command.sessionId, let owner = sessionExplainOptionSupport[session], preview.support == owner,
                           ExplainOptionsAdmission.validOwner(support: owner, engine: preview.support.engine,
                             capabilities: sessionCapabilities[session] ?? [], helperSupports: explainOptionsSupported),
@@ -900,6 +910,7 @@ actor BackendClient {
             physicalStructureSupported = reply.capabilities?.contains(structurePhysicalCapability) == true
         }
         if reply.type == "connect.result", let session = reply.sessionId {
+            sessionEngines[session] = command.connection?.engine
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
             if command.connection?.sessionPurpose == nil,
                TuningTransportAdmission.validOwner(support: reply.explainSupport, engine: reply.engine,
@@ -939,6 +950,7 @@ actor BackendClient {
             sessionTuningTransaction.removeValue(forKey: session)
             currentAssessmentRequests.removeValue(forKey: session)
             tuningGrants.retire(session)
+            sessionEngines.removeValue(forKey: session)
             sessionCapabilities.removeValue(forKey: session)
             sessionExplainDMLSupport.removeValue(forKey: session)
             explainDMLGrants = explainDMLGrants.filter { $0.value.session != session }
@@ -1230,6 +1242,7 @@ actor BackendClient {
     private func outputEnded() {
         retainedStructureCapabilities.removeAll()
         reconstructionSessions.removeAll()
+        sessionEngines.removeAll()
         sessionExplainDMLSupport.removeAll()
         explainDMLGrants.removeAll()
         if shuttingDown {
@@ -1257,6 +1270,7 @@ actor BackendClient {
         ready = false
         retainedStructureCapabilities.removeAll()
         reconstructionSessions.removeAll()
+        sessionEngines.removeAll()
         sessionExplainDMLSupport.removeAll()
         explainDMLGrants.removeAll()
         failPending(error)

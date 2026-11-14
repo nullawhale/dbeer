@@ -80,7 +80,7 @@ struct StructureDraftDocument: Codable, Equatable, Sendable {
     }
 
     var valid: Bool {
-        guard [.postgresql, .mysql, .sqlite].contains(engine),
+        guard [.postgresql, .mysql, .mariadb, .sqlite].contains(engine), draft.numericScalePermitted(for: engine),
               StructureTarget.identifier(target.schema),
               StructureTarget.identifier(target.table) || target.create && target.table.isEmpty,
               draft.columns.count <= 128,

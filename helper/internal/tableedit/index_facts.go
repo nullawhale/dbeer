@@ -10,7 +10,7 @@ import (
 
 func CanonicalIndexMethod(engine, method string) string {
 	lower := strings.ToLower(method)
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
 		if lower == "rtree" {
 			return "spatial"
 		}
@@ -25,7 +25,7 @@ func CanonicalIndexMethod(engine, method string) string {
 func IndexFacts(engine string, target Target, name string, unique bool, d IndexDefinition) sc.Index {
 	method := CanonicalIndexMethod(engine, d.Method)
 	nativeMethod := method
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
 		nativeMethod = strings.ToUpper(method)
 	}
 	x := sc.Index{Ref: sc.Ref{Kind: "index", Schema: target.Schema, Table: target.Table, Name: name}, Method: sc.Known(nativeMethod), Unique: sc.Known(unique), NullsDistinct: sc.Known(true), Keys: sc.Complete[sc.IndexKey](nil), Includes: sc.Complete[sc.Ref](nil), Predicate: sc.Absent[sc.Expression](), Options: sc.Complete[sc.Option](nil), Visible: sc.Known(true), Valid: sc.Known(true), Ready: sc.Known(true), Constraint: sc.Absent[sc.Ref]()}
@@ -77,7 +77,7 @@ func IndexFacts(engine string, target Target, name string, unique bool, d IndexD
 	return x
 }
 func ObservedIndexDefinition(engine string, x sc.Index) (*IndexDefinition, bool) {
-	if engine != "postgresql" && engine != "mysql" || x.Method.Value == nil || x.Unique.Value == nil || x.NullsDistinct.Value == nil || !x.Keys.Complete || !x.Includes.Complete || !x.Options.Complete || x.Predicate.State != "known" || x.Constraint.State != "known" || x.Visible.Value == nil || x.Valid.Value == nil || !*x.Valid.Value || x.Ready.Value == nil || !*x.Ready.Value {
+	if engine != "postgresql" && engine != "mysql" && engine != "mariadb" || x.Method.Value == nil || x.Unique.Value == nil || x.NullsDistinct.Value == nil || !x.Keys.Complete || !x.Includes.Complete || !x.Options.Complete || x.Predicate.State != "known" || x.Constraint.State != "known" || x.Visible.Value == nil || x.Valid.Value == nil || !*x.Valid.Value || x.Ready.Value == nil || !*x.Ready.Value {
 		return nil, false
 	}
 	d := &IndexDefinition{Method: CanonicalIndexMethod(engine, *x.Method.Value), Terms: []IndexTerm{}, NullsDistinct: x.NullsDistinct.Value, Visible: x.Visible.Value}

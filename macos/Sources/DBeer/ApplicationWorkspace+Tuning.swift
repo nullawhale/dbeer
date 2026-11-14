@@ -4,11 +4,11 @@ import Foundation
 extension ApplicationWorkspace {
     func tuningUnavailableReason(_ document: SQLDocument, plan: ExplainPlanModel) -> String? {
         guard let result = plan.result else { return "Collect plan evidence explicitly before opening tuning." }
-        guard [.postgresql, .mysql].contains(result.support.engine) else { return "Tuning is available only for supported PostgreSQL and Oracle MySQL SQL owners." }
+        guard [.postgresql, .mysql, .mariadb].contains(result.support.engine) else { return "Tuning is available only for supported PostgreSQL, Oracle MySQL and MariaDB SQL owners." }
         guard let context = plan.request.context,
               let target = allOwnedSQLDocuments.first(where: { $0.id.uuidString == context.targetDocumentId }),
               target.runtime?.connectionState == .connected, target.runtime?.sessionId == context.sessionId else { return "The original physical SQL owner is disconnected or has changed. Collect a new plan explicitly." }
-        guard target.runtime?.capabilities.contains(TuningInspectRequest.capability) == true else { return "This helper or SQL owner does not advertise tuning support. PostgreSQL 14+ or recognized Oracle MySQL 8.0.30+ and paired helper support are required." }
+        guard target.runtime?.capabilities.contains(TuningInspectRequest.capability) == true else { return "This helper or SQL owner does not advertise tuning support. PostgreSQL 14+, recognized Oracle MySQL 8.0.30+, or a supported MariaDB session and paired helper support are required." }
         guard plan.request.writeIntent == nil else { return "DML Analyze evidence cannot authorize tuning or background collection." }
         if document.isRunning || target.isRunning { return "Wait for the active SQL operation to finish." }
         return nil

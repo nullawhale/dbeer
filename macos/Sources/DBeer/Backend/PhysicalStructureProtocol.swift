@@ -351,9 +351,9 @@ extension StructurePhysicalIntent {
         if partitions != nil { present.insert("partitions") }; if definitions != nil { present.insert("definitions") }; if count != nil { present.insert("count") }; if columnOrder != nil { present.insert("columnOrder") }; if method != nil { present.insert("method") }; if columns != nil { present.insert("columns") }
         guard present.isSubset(of: allowed), required.isSubset(of: present) else { return false }
         if let index, !index.valid || !["add", "drop"].contains(index.action) { return false }
-        if let algorithm, !["INPLACE", "COPY", "INSTANT"].contains(algorithm) { return false }
+        if let algorithm, !["INPLACE", "COPY", "INSTANT", "NOCOPY"].contains(algorithm) { return false }
         if let lock, !["NONE", "SHARED", "EXCLUSIVE"].contains(lock) { return false }
-        if let engine, !["InnoDB", "MyISAM"].contains(engine) { return false }
+        if let engine, !["InnoDB", "MyISAM", "Aria"].contains(engine) { return false }
         if let count, !(1...8192).contains(count) { return false }
         if let columnOrder, !physicalNames(columnOrder, limit: 128) { return false }
         if kind == "exchangePartition", partitions?.count != 1 { return false }
@@ -385,7 +385,7 @@ extension StructurePhysicalObject {
 }
 extension StructurePhysicalPlan {
     var valid: Bool {
-        BackendMessage.validID(id) && StructureBaseline.digest(digest) && draft.valid && ["postgresql", "mysql"].contains(engine) && serverVersion > 0 && !sql.isEmpty && sql.count <= 64 && sql.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576 && sql.allSatisfy { !$0.isEmpty && physicalText($0, limit: 1_048_576) } && !objects.isEmpty && objects.count <= 130 && objects.allSatisfy(\.valid) && prerequisites.count <= 64 && prerequisites.allSatisfy { physicalText($0) } && risks.count <= 64 && risks.allSatisfy { physicalText($0) } && consequences.count <= 512 && consequences.allSatisfy(\.valid) && ["transaction", "outsideTransaction", "implicitCommit"].contains(transactionMode) && physicalText(locking) && destructive
+        BackendMessage.validID(id) && StructureBaseline.digest(digest) && DatabaseEngine(rawValue: engine).map({ draft.valid(for: $0) }) == true && ["postgresql", "mysql", "mariadb"].contains(engine) && serverVersion > 0 && !sql.isEmpty && sql.count <= 64 && sql.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576 && sql.allSatisfy { !$0.isEmpty && physicalText($0, limit: 1_048_576) } && !objects.isEmpty && objects.count <= 130 && objects.allSatisfy(\.valid) && prerequisites.count <= 64 && prerequisites.allSatisfy { physicalText($0) } && risks.count <= 64 && risks.allSatisfy { physicalText($0) } && consequences.count <= 512 && consequences.allSatisfy(\.valid) && ["transaction", "outsideTransaction", "implicitCommit"].contains(transactionMode) && physicalText(locking) && destructive
     }
 }
 extension StructurePhysicalOutcome {
@@ -427,7 +427,7 @@ struct StructurePhysicalInspection: Codable, Equatable, Sendable {
     var serverVersion: Int
     var objects: [StructurePhysicalObject]
     var operations: [String]
-    var valid: Bool { version == 1 && ["postgresql", "mysql"].contains(engine) && serverVersion > 0 && !objects.isEmpty && objects.count <= 130 && objects.allSatisfy(\.valid) && operations.count <= 32 && Set(operations).count == operations.count && operations.allSatisfy { StructurePhysicalIntent.kinds.contains($0) } }
+    var valid: Bool { version == 1 && ["postgresql", "mysql", "mariadb"].contains(engine) && serverVersion > 0 && !objects.isEmpty && objects.count <= 130 && objects.allSatisfy(\.valid) && operations.count <= 32 && Set(operations).count == operations.count && operations.allSatisfy { StructurePhysicalIntent.kinds.contains($0) } }
     private enum CodingKeys: String, CodingKey { case version, engine, serverVersion, objects, operations }
     init(from decoder: any Decoder) throws {
         let c = try physicalKeys(decoder, CodingKeys.self, allowed: ["version", "engine", "serverVersion", "objects", "operations"])
@@ -437,3 +437,9 @@ struct StructurePhysicalInspection: Codable, Equatable, Sendable {
     }
 }
 extension StructurePhysicalIntent { static let kinds = ["concurrentIndex", "onlineIndex", "storageEngine", "reorderColumns", "createPartition", "attachPartition", "detachPartition", "finalizePartition", "dropPartition", "truncatePartition", "addPartition", "reorganizePartition", "addHashPartitions", "coalescePartitions", "exchangePartition", "partitionTable", "removePartitioning"] }
+
+extension StructurePhysicalDraft {
+    func valid(for engine: DatabaseEngine?) -> Bool {
+        valid && (engine == .mariadb || intent.algorithm != "NOCOPY" && intent.engine != "Aria")
+    }
+}

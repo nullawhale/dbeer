@@ -15,6 +15,7 @@ import (
 	"dbeer/helper/internal/comparisonjob"
 	"dbeer/helper/internal/datacomparisonjob"
 	"dbeer/helper/internal/dbtools"
+	"dbeer/helper/internal/mariadb"
 	"dbeer/helper/internal/mcpbridge"
 	"dbeer/helper/internal/mongodb"
 	"dbeer/helper/internal/mysql"
@@ -57,6 +58,8 @@ func renderSchemaDefinition(ctx context.Context, capture schemacompare.Capture, 
 		return postgres.RenderSchemaDefinition(ctx, capture, ref)
 	case "mysql":
 		return mysql.RenderSchemaDefinition(ctx, capture, ref)
+	case "mariadb":
+		return mariadb.RenderSchemaDefinition(ctx, capture, ref)
 	case "cassandra":
 		return cassandra.RenderSchemaDefinition(ctx, capture, ref)
 	default:
@@ -72,6 +75,8 @@ func renderSynchronizationSchema(ctx context.Context, report schemacompare.Repor
 		return syncplan.Schema(ctx, report, postgres.RenderSynchronizationSchema)
 	case "mysql":
 		return syncplan.Schema(ctx, report, mysql.RenderSynchronizationSchema)
+	case "mariadb":
+		return syncplan.Schema(ctx, report, mariadb.RenderSynchronizationSchema)
 	default:
 		return syncplan.Plan{}, syncplan.ErrInvalid
 	}
@@ -85,6 +90,8 @@ func renderSynchronizationData(op syncplan.DataOperation) (string, error) {
 		return postgres.RenderDataSynchronization(op)
 	case "mysql":
 		return mysql.RenderDataSynchronization(op)
+	case "mariadb":
+		return mariadb.RenderDataSynchronization(op)
 	default:
 		return "", syncplan.ErrInvalid
 	}
@@ -100,6 +107,8 @@ func openDatabase(ctx context.Context, connection protocol.Connection) (adapter.
 		return postgres.Open(ctx, connection)
 	case "mysql":
 		return mysql.Open(ctx, connection)
+	case "mariadb":
+		return mariadb.Open(ctx, connection)
 	case "cassandra":
 		return cassandra.Open(ctx, connection)
 	default:

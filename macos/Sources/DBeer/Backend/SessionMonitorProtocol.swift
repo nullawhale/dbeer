@@ -96,7 +96,7 @@ struct SessionMonitorSnapshot: Codable, Sendable, Equatable {
         return (days * 86_400 + hour * 3_600 + minute * 60 + second - offset, nanos)
     }
     var valid: Bool {
-        guard [.postgresql, .mysql].contains(engine),
+        guard [.postgresql, .mysql, .mariadb].contains(engine),
               let start = Self.date(collectionStartedAt), let end = Self.date(collectedAt), end >= start,
               sessions.count <= 500, waits.count <= 2_000, notices.count <= 16,
               sessions.allSatisfy(\.valid), waits.allSatisfy(\.valid),

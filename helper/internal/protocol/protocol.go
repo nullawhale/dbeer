@@ -268,7 +268,7 @@ func (request CatalogRequest) Valid() bool {
 	if request.Kind != "search" && request.Search != "" {
 		return false
 	}
-	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum"
+	objectKindValid := objectKind == "table" || objectKind == "view" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum" || objectKind == "sequence"
 	switch request.Kind {
 	case "completion":
 		return request.Object == "" && objectKind == "" && request.Identity == ""
@@ -290,7 +290,7 @@ func (request CatalogRequest) Valid() bool {
 			(objectKind != "type" || request.Identity == "" || validTypeHandle(request))
 	case "name":
 		return request.Schema != "" && request.Object != "" && objectKindValid &&
-			(request.Identity == "" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum") &&
+			(request.Identity == "" || objectKind == "function" || objectKind == "procedure" || objectKind == "trigger" || objectKind == "type" || objectKind == "enum" || objectKind == "sequence") &&
 			(objectKind != "enum" || validTypeHandle(request)) &&
 			(objectKind != "type" || request.Identity == "" || validTypeHandle(request))
 	case "typeDetails", "enumValues", "typeDependencies", "typeDDL":
@@ -744,7 +744,7 @@ func parseConnection(raw json.RawMessage) (Connection, bool) {
 		return connection, false
 	}
 	if _, exists := fields["sessionPurpose"]; exists {
-		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" && connection.SessionPurpose != "monitor") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && (connection.DatabaseEngine() != "sqlite" || connection.SessionPurpose == "monitor")) {
+		if !stringField(fields, "sessionPurpose", &connection.SessionPurpose) || (connection.SessionPurpose != "structure" && connection.SessionPurpose != "import" && connection.SessionPurpose != "monitor") || (connection.DatabaseEngine() != "postgresql" && connection.DatabaseEngine() != "mysql" && connection.DatabaseEngine() != "mariadb" && (connection.DatabaseEngine() != "sqlite" || connection.SessionPurpose == "monitor")) {
 			return connection, false
 		}
 	}

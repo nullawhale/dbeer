@@ -74,7 +74,7 @@ func validMonitorText(value *string, limit int) bool {
 }
 
 func (snapshot SessionMonitorSnapshot) Valid() bool {
-	if snapshot.Engine != "postgresql" && snapshot.Engine != "mysql" ||
+	if snapshot.Engine != "postgresql" && snapshot.Engine != "mysql" && snapshot.Engine != "mariadb" ||
 		snapshot.Sessions == nil || snapshot.Waits == nil || snapshot.Notices == nil ||
 		len(snapshot.Sessions) > MaxMonitoredSessions || len(snapshot.Waits) > MaxMonitorWaits || len(snapshot.Notices) > MaxMonitorNotices ||
 		(!snapshot.SessionsComplete || !snapshot.WaitsComplete) && len(snapshot.Notices) == 0 ||

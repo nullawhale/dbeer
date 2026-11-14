@@ -24,7 +24,7 @@ struct DataGridView: View {
     }
     private var supportsForeignKeys: Bool {
         guard let engine = grid.columns.first?.engine else { return false }
-        return [.postgresql, .mysql, .sqlite].contains(engine)
+        return [.postgresql, .mysql, .mariadb, .sqlite].contains(engine)
     }
     private var selectedRelationshipRowID: UUID? {
         guard grid.selectedRows.count == 1, let row = grid.selectedRows.first,

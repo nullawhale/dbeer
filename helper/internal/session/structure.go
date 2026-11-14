@@ -78,7 +78,11 @@ func (owner *owner) runStructure(ctx context.Context, physical adapter.Session, 
 	r.TransactionStatus = physical.TransactionStatus()
 	r.Connected = r.TransactionStatus != "unknown"
 	if err == nil {
-		r.Structure = &result
+		if result.Baseline != nil && result.Baseline.Engine == "mariadb" && result.Baseline.Advanced != nil {
+			return reject("unsupported", "This MariaDB storage, partition or history table requires a separately reviewed native SQL workflow; advanced structure authoring is deferred.")
+		}
+		wireReply := structureWireReply(result)
+		r.Structure = &wireReply
 	}
 	encoded, encodeErr := json.Marshal(r)
 	if encodeErr != nil || len(encoded) > 8<<20 {

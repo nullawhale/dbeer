@@ -284,7 +284,7 @@ private struct StructureIndexIntentEditor: View {
                 if edit.action != "add", available.isEmpty {
                     Text("There are no supported standalone indexes to select. Indexes owned by a key must be changed through that key.").font(.caption).appSecondaryText()
                 }
-                if engine == .mysql { Text("Use a Unique key operation for MySQL uniqueness.").font(.caption).appSecondaryText() }
+                if engine.usesMySQLSyntax { Text("Use a Unique key operation for this engine’s uniqueness.").font(.caption).appSecondaryText() }
             }
         }
     }
@@ -319,7 +319,7 @@ private struct StructureKeyIntentEditor: View {
                 }
                 if edit.action == "add" {
                     TextField("Exact constraint name", text: $edit.name).textFieldStyle(.roundedBorder)
-                        .disabled(engine == .mysql && edit.kind == "primary")
+                        .disabled(engine.usesMySQLSyntax && edit.kind == "primary")
                 } else {
                     StructureExactNamePicker(title: "Key", placeholder: "Choose key", names: available.map(\.name),
                         selection: Binding(get: { edit.name }, set: selectExisting))
@@ -341,7 +341,7 @@ private struct StructureKeyIntentEditor: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 TextField("Referenced schema/database", text: Binding(get: { edit.reference?.schema ?? schema }, set: { ensureReference(); edit.reference?.schema = $0 }))
-                    .textFieldStyle(.roundedBorder).disabled(engine == .mysql && !allowCrossDatabase)
+                    .textFieldStyle(.roundedBorder).disabled(engine.usesMySQLSyntax && !allowCrossDatabase)
                 TextField("Exact referenced table name", text: Binding(get: { edit.reference?.table ?? "" }, set: { ensureReference(); edit.reference?.table = $0 }))
                     .textFieldStyle(.roundedBorder)
             }
@@ -357,13 +357,13 @@ private struct StructureKeyIntentEditor: View {
             }
             Text("Source and referenced columns must have the same count and matching order. Enter each identifier as one name, including any dots or commas. Preview verifies the referenced key, types and collation; SET NULL requires nullable source columns.")
                 .font(.caption).appSecondaryText()
-            if engine == .mysql { Text(allowCrossDatabase ? "Preview proves references within this connected server; another profile cannot become an executable target." : "The referenced table must be in this database.").font(.caption).appSecondaryText() }
+            if engine.usesMySQLSyntax { Text(allowCrossDatabase ? "Preview proves references within this connected server; another profile cannot become an executable target." : "The referenced table must be in this database.").font(.caption).appSecondaryText() }
         }
     }
     private func reset(action: String, kind: String) {
         guard action != edit.action || kind != edit.kind else { return }
         let foreign = action != "drop" && kind == "foreign"
-        edit = .init(action: action, kind: kind, name: action == "add" && kind == "primary" && engine == .mysql ? "PRIMARY" : "",
+        edit = .init(action: action, kind: kind, name: action == "add" && kind == "primary" && engine.usesMySQLSyntax ? "PRIMARY" : "",
             columns: action == "drop" ? nil : [], reference: foreign ? .init(schema: schema, table: "", create: false) : nil,
             referenceColumns: foreign ? [] : nil, onUpdate: foreign ? "NO ACTION" : nil, onDelete: foreign ? "NO ACTION" : nil)
     }

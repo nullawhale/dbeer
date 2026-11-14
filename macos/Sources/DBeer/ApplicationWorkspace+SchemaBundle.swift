@@ -2,7 +2,7 @@ import Foundation
 
 extension ApplicationWorkspace {
     func showSchemaBundle(_ profile: SavedConnection) {
-        guard canManageWorkspace, schemaBundle == nil, [.postgresql, .mysql, .sqlite].contains(profile.engine),
+        guard canManageWorkspace, schemaBundle == nil, [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine),
               let binding = SessionMonitorProfileBinding(profile), binding.matches(in: library.savedConnections) else { return }
         schemaBundle = SchemaBundleModel(profile: profile, resolve: { [weak self] profile, attempt in
             guard let self, self.canManageWorkspace, binding.matches(in: self.library.savedConnections) else { throw CancellationError() }

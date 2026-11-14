@@ -1,0 +1,313 @@
+package mariadb
+
+import (
+	"dbeer/helper/internal/protocol"
+	"dbeer/helper/internal/queryparams"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"strconv"
+	"strings"
+
+	wire "github.com/go-mysql-org/go-mysql/mysql"
+)
+
+const maxResultSets = 1024
+const maxResultColumns = 4096
+
+func (session *Session) executeResults(sql string, parent *collector, target *wire.Result) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = wire.ErrMalformPacket
+		}
+	}()
+	if parent.nativeRequested {
+		// The packet reader retains EOF flags; reuse the existing COM_PING status recovery.
+		parent.needsStatusProbe = true
+		if err = session.sendTextQuery(sql); err == nil {
+			err = session.readNextResult(parent, target, false)
+		}
+	} else {
+		err = session.work.client.ExecuteSelectStreaming(sql, target, parent.row, parent.columns)
+	}
+	if err != nil {
+		return err
+	}
+	return session.drainResults(parent, target, false)
+}
+
+func (session *Session) executeBoundResults(bound queryparams.Bound, parent *collector, target *wire.Result) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = wire.ErrMalformPacket
+		}
+	}()
+	statement, err := session.work.client.Prepare(bound.SQL)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if statement.Close() != nil {
+			// COM_STMT_CLOSE is cleanup after the terminal SQL response. Its
+			// transport failure must not erase an acknowledged SQL outcome.
+			parent.statementCleanupFailed = true
+		}
+	}()
+	arguments := make([]any, len(bound.Parameters))
+	for index, p := range bound.Parameters {
+		if p.Value == nil {
+			continue
+		}
+		switch p.Type {
+		case "integer":
+			arguments[index], _ = strconv.ParseInt(*p.Value, 10, 64)
+		case "boolean":
+			if *p.Value == "true" {
+				arguments[index] = int64(1)
+			} else {
+				arguments[index] = int64(0)
+			}
+		default:
+			arguments[index] = *p.Value
+		}
+	}
+	if err = statement.ExecuteSelectStreaming(target, parent.row, parent.columns, arguments...); err != nil {
+		return err
+	}
+	return session.drainResults(parent, target, true)
+}
+
+func (session *Session) drainResults(parent *collector, target *wire.Result, binaryRows bool) error {
+	if target.Status&wire.SERVER_MORE_RESULTS_EXISTS == 0 {
+		return nil
+	}
+	parent.needsStatusProbe = true
+	remainingRows, remainingBytes := MaxResultRows, MaxResultBytes
+	capture := func(current *collector, result *wire.Result) {
+		response := current.finishSingle(result, 0, "")
+		set := protocol.ResultSet{Columns: response.Columns, Rows: response.Rows, NativeValues: response.NativeValues, CommandTag: response.CommandTag, RowCount: response.RowCount, DisplayedRowCount: response.DisplayedRowCount, Truncated: response.Truncated, DisplayNotice: response.DisplayNotice, StorageTokens: response.StorageTokens, Source: response.Source}
+		if set.Columns == nil {
+			set.Columns = []protocol.Column{}
+		}
+		if set.Rows == nil {
+			set.Rows = [][]*string{}
+		}
+		if len(parent.resultSets) < maxResultSets {
+			parent.resultSets = append(parent.resultSets, set)
+			encoded, _ := json.Marshal(set)
+			remainingRows -= len(set.Rows)
+			remainingBytes -= len(encoded)
+		} else {
+			parent.omittedResults = true
+		}
+	}
+	capture(parent, target)
+	status := target.Status
+	index := 1
+	for status&wire.SERVER_MORE_RESULTS_EXISTS != 0 {
+		command := protocol.Command{RequestID: parent.response.RequestID, SessionID: parent.response.SessionID, QueryID: parent.response.QueryID}
+		if parent.nativeRequested {
+			command.ResultValues = protocol.NativeResultValuesFormat
+		}
+		current := newCollector(command)
+		current.maxRows, current.maxBytes = remainingRows, remainingBytes
+		current.delivery, current.resultIndex = parent.delivery, index
+		index++
+		if len(parent.resultSets) >= maxResultSets {
+			current.maxRows, current.maxBytes = 0, 0
+		}
+		next := wire.NewResult(nil)
+		err := session.readNextResult(current, next, binaryRows)
+		status = next.Status
+		if err == nil {
+			capture(current, next)
+		}
+		next.Close()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Subsequent CALL results have no public streaming reader in go-mysql v1.16.
+// Read them through its exported packet API, retaining one row at a time.
+// DEPRECATE_EOF is disabled during handshake so EOF is exactly five bytes.
+func (session *Session) readNextResult(collector *collector, target *wire.Result, binaryRows bool) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = wire.ErrMalformPacket
+		}
+	}()
+	packet, err := session.work.client.ReadPacket()
+	if err != nil {
+		return err
+	}
+	if len(packet) == 0 {
+		return wire.ErrMalformPacket
+	}
+	switch packet[0] {
+	case wire.OK_HEADER:
+		if !validOKPacket(packet) {
+			return wire.ErrMalformPacket
+		}
+		loaded := session.work.client.HandleOKPacket(packet)
+		if loaded == nil {
+			return wire.ErrMalformPacket
+		}
+		target.Status, target.AffectedRows, target.InsertId, target.Warnings = loaded.Status, loaded.AffectedRows, loaded.InsertId, loaded.Warnings
+		status := target.Status
+		collector.actualTerminalStatus = &status
+		loaded.Close()
+		return nil
+	case wire.ERR_HEADER:
+		if len(packet) < 9 {
+			return wire.ErrMalformPacket
+		}
+		return session.work.client.HandleErrorPacket(packet)
+	case wire.LocalInFile_HEADER:
+		// LOCAL_FILES is never negotiated and no API opens server-named files.
+		return errors.New("local file transfer is unsupported")
+	}
+	count, size, ok := lengthEncoded(packet)
+	if !ok || size != len(packet) || count == 0 || count > maxResultColumns {
+		return wire.ErrMalformPacket
+	}
+	fields := make([]*wire.Field, int(count))
+	for index := range fields {
+		data, err := session.work.client.ReadPacket()
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return wire.ErrMalformPacket
+		}
+		if data[0] == wire.ERR_HEADER {
+			if len(data) < 9 {
+				return wire.ErrMalformPacket
+			}
+			return session.work.client.HandleErrorPacket(data)
+		}
+		field, err := wire.FieldData(data).Parse()
+		if err != nil {
+			return err
+		}
+		fields[index] = field
+	}
+	eof, err := session.work.client.ReadPacket()
+	if err != nil {
+		return err
+	}
+	if len(eof) != 5 || eof[0] != wire.EOF_HEADER {
+		return wire.ErrMalformPacket
+	}
+	target.Resultset = wire.NewResultset(int(count))
+	target.Fields = fields
+	if err := collector.columns(target); err != nil {
+		return err
+	}
+	var values []wire.FieldValue
+	var data []byte
+	for {
+		data, err = session.work.client.ReadPacketReuseMem(data[:0])
+		if err != nil {
+			return err
+		}
+		if len(data) == 0 {
+			return wire.ErrMalformPacket
+		}
+		if data[0] == wire.EOF_HEADER && len(data) == 5 {
+			target.Warnings = binary.LittleEndian.Uint16(data[1:3])
+			target.Status = binary.LittleEndian.Uint16(data[3:5])
+			status := target.Status
+			collector.actualTerminalStatus = &status
+			return nil
+		}
+		if data[0] == wire.ERR_HEADER {
+			if len(data) < 9 {
+				return wire.ErrMalformPacket
+			}
+			return session.work.client.HandleErrorPacket(data)
+		}
+		values, err = wire.RowData(data).Parse(fields, binaryRows, values)
+		if err != nil {
+			return err
+		}
+		var rawText [][]byte
+		if collector.nativeRequested && !binaryRows {
+			rawText, err = nativeTextFields(data, len(fields))
+			if err != nil {
+				return err
+			}
+		}
+		if err := collector.rowWithRawText(values, rawText); err != nil {
+			return err
+		}
+	}
+}
+
+func lengthEncoded(data []byte) (uint64, int, bool) {
+	if len(data) == 0 {
+		return 0, 0, false
+	}
+	size := 1
+	switch data[0] {
+	case 0xfb, 0xff:
+		return 0, 0, false
+	case 0xfc:
+		size = 3
+	case 0xfd:
+		size = 4
+	case 0xfe:
+		size = 9
+	}
+	if len(data) < size {
+		return 0, 0, false
+	}
+	value, _, read := wire.LengthEncodedInt(data)
+	return value, read, true
+}
+
+func validOKPacket(data []byte) bool {
+	if len(data) < 1 || data[0] != wire.OK_HEADER {
+		return false
+	}
+	_, first, ok := lengthEncoded(data[1:])
+	if !ok {
+		return false
+	}
+	_, second, ok := lengthEncoded(data[1+first:])
+	return ok && len(data) >= 1+first+second+4
+}
+
+// The existing owner sends one COM_QUERY and drains its original response.
+func (session *Session) sendTextQuery(sql string) error {
+	session.work.client.ResetSequence()
+	payload := []byte{wire.COM_QUERY}
+	if strings.Contains("|"+session.work.client.CapabilityString()+"|", "|CLIENT_QUERY_ATTRIBUTES|") {
+		payload = append(payload, 0, 1)
+	}
+	payload = append(payload, []byte(sql)...)
+	packet := make([]byte, 4+len(payload))
+	copy(packet[4:], payload)
+	return session.work.client.WritePacket(packet)
+}
+
+func nativeTextFields(data []byte, count int) ([][]byte, error) {
+	values := make([][]byte, count)
+	for index := range values {
+		if len(data) == 0 {
+			return nil, wire.ErrMalformPacket
+		}
+		value, _, used, err := wire.LengthEncodedString(data)
+		if err != nil || used <= 0 || used > len(data) {
+			return nil, wire.ErrMalformPacket
+		}
+		values[index] = value
+		data = data[used:]
+	}
+	if len(data) != 0 {
+		return nil, wire.ErrMalformPacket
+	}
+	return values, nil
+}

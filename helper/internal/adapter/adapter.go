@@ -76,6 +76,8 @@ func (err *ConnectionError) Error() string { return err.Message }
 func Capabilities(engine string) []string {
 	common := []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.NativeResultValuesCapability, protocol.BrowseFilterTreeCapability}
 	switch engine {
+	case "mariadb":
+		return []string{"execute", "cancel", "catalog", "quoteIdentifiers", "executionPolicy", "operationAssessment", protocol.NativeResultValuesCapability, "transactions", "serverReadOnly", protocol.QueryParametersCapability, protocol.SessionMonitorCapability, "gridEditing", protocol.TableImportCapability, protocol.CatalogColumnTypesCapability, "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureIndexAuthoringCapability, protocol.BrowseFilterTreeCapability, protocol.NativeCellFilterCapability}
 	case "sqlite":
 		return append(common, "transactions", "gridEditing", "serverReadOnly", "tableStructureEditorV1", protocol.StructureAuthoringCapability, protocol.StructureDestructiveCapability, protocol.StructureReconstructionCapability, protocol.StructureMigrationsCapability, protocol.QueryParametersCapability, protocol.TableImportCapability, protocol.SQLiteCellFilterCapability, protocol.NativeCellFilterCapability, protocol.CatalogColumnTypesCapability, protocol.SQLiteRelationshipBrowseCapability, protocol.IncomingRelationsCapability)
 	case "mongodb":

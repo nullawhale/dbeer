@@ -80,7 +80,7 @@ func (column TransferColumn) Valid() bool {
 }
 func (endpoint TransferEndpoint) Valid() bool {
 	engine := endpoint.Connection.DatabaseEngine()
-	return (engine == "postgresql" || engine == "mysql") && endpoint.Connection.Valid() &&
+	return (engine == "postgresql" || engine == "mysql" || engine == "mariadb") && endpoint.Connection.Valid() &&
 		endpoint.Connection.SessionPurpose == "" && changeNameValid(endpoint.Schema) && changeNameValid(endpoint.Table)
 }
 func transferDigest(value string) bool {

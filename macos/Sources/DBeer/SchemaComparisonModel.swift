@@ -309,7 +309,7 @@ final class SchemaComparisonModel: ObservableObject, Identifiable {
         }
     }
     func reset() async { await close(); hasStarted = false; summary = nil; error = nil; offsets = [0]; exportComplete = false; sourceProfile = nil; targetProfile = nil; activeSourceBundle = nil; activeTargetBundle = nil }
-    var canGeneratePlan: Bool { phase == .completed && current([sourceProfile, targetProfile].compactMap { $0 }) && summary != nil && !isGeneratingPlan && comparisonEngine.map { [.postgresql, .mysql, .sqlite].contains($0) } == true }
+    var canGeneratePlan: Bool { phase == .completed && current([sourceProfile, targetProfile].compactMap { $0 }) && summary != nil && !isGeneratingPlan && comparisonEngine.map { [.postgresql, .mysql, .mariadb, .sqlite].contains($0) } == true }
     func dismissPlan() { planGeneration = UUID(); planDraft?.invalidate(); planDraft = nil; isGeneratingPlan = false }
     func generatePlan() async {
         guard canGeneratePlan, let backend, let jobID, let summary else { return }

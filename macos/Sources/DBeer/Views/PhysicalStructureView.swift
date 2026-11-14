@@ -142,7 +142,7 @@ private struct PhysicalIntentEditor: View {
                 Text("Candidate families come from the current inspector. Every concrete intent must still pass server-version, object, privilege, locking and metadata checks at Preview and Apply.")
                     .font(.caption).appSecondaryText()
                 fields
-                if engine == .mysql { onlineChoices }
+                if engine.usesMySQLSyntax { onlineChoices }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -185,6 +185,7 @@ private struct PhysicalIntentEditor: View {
         if intent.kind == "storageEngine" {
             Picker("Destination storage engine", selection: Binding(get: { intent.engine ?? "InnoDB" }, set: { intent.engine = $0 })) {
                 Text("InnoDB").tag("InnoDB"); Text("MyISAM").tag("MyISAM")
+                    if engine == .mariadb { Text("Aria").tag("Aria") }
             }.controlHover()
         }
         if intent.kind == "reorderColumns" {
@@ -220,6 +221,7 @@ private struct PhysicalIntentEditor: View {
         HStack {
             Picker("Required ALGORITHM", selection: Binding(get: { intent.algorithm ?? "INPLACE" }, set: { intent.algorithm = $0 })) {
                 Text("INPLACE").tag("INPLACE"); Text("COPY").tag("COPY"); Text("INSTANT").tag("INSTANT")
+                if engine == .mariadb { Text("NOCOPY").tag("NOCOPY") }
             }.controlHover()
             Picker("Required LOCK", selection: Binding(get: { intent.lock ?? "NONE" }, set: { intent.lock = $0 })) {
                 Text("NONE").tag("NONE"); Text("SHARED").tag("SHARED"); Text("EXCLUSIVE").tag("EXCLUSIVE")

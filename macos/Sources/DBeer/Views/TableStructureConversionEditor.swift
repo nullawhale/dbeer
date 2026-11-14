@@ -17,19 +17,19 @@ struct TableStructureConversionEditor: View {
                         .font(.caption).foregroundStyle(.orange)
                 }
             }
-            if engine == .mysql || change.unsigned != nil || change.charset != nil {
+            if engine.usesMySQLSyntax || change.unsigned != nil || change.charset != nil {
                 Picker("Signedness", selection: Binding(get: { change.unsigned.map { $0 ? "unsigned" : "signed" } ?? "keep" }, set: {
                     change.unsigned = $0 == "keep" ? nil : $0 == "unsigned"
                 })) {
                     Text("Keep signedness").tag("keep")
                     Text("Signed").tag("signed")
                     Text("Unsigned").tag("unsigned")
-                }.controlHover().disabled(engine != .mysql)
+                }.controlHover().disabled(!engine.usesMySQLSyntax)
                 Toggle("Change MySQL character set", isOn: Binding(get: { change.charset != nil }, set: { change.charset = $0 ? "" : nil }))
-                    .controlHover().disabled(engine != .mysql)
+                    .controlHover().disabled(!engine.usesMySQLSyntax)
                 if change.charset != nil {
                     TextField("Exact character set name", text: Binding(get: { change.charset ?? "" }, set: { change.charset = $0 }))
-                        .textFieldStyle(.roundedBorder).disabled(engine != .mysql)
+                        .textFieldStyle(.roundedBorder).disabled(!engine.usesMySQLSyntax)
                 }
             }
             Toggle("Change collation", isOn: Binding(get: { change.collation != nil }, set: {

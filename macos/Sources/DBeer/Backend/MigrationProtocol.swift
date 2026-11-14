@@ -298,7 +298,7 @@ extension StructureMigrationStep {
 }
 extension StructureMigrationPlan {
     var valid: Bool {
-        guard migrationID(id), StructureBaseline.digest(digest), ["postgresql", "mysql", "sqlite"].contains(engine), draft.valid, !baselines.isEmpty, baselines.count <= 32, baselines.allSatisfy(\.valid), baselines.allSatisfy({ $0.engine == engine }), !steps.isEmpty, steps.count <= 96, steps.allSatisfy(\.valid), Set(steps.map(\.id)).count == steps.count, risks.count <= 64, risks.allSatisfy({ migrationText($0) }) else { return false }
+        guard migrationID(id), StructureBaseline.digest(digest), ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine), draft.valid, !baselines.isEmpty, baselines.count <= 32, baselines.allSatisfy(\.valid), baselines.allSatisfy({ $0.engine == engine }), !steps.isEmpty, steps.count <= 96, steps.allSatisfy(\.valid), Set(steps.map(\.id)).count == steps.count, risks.count <= 64, risks.allSatisfy({ migrationText($0) }) else { return false }
         guard (StructureTarget.intentBytes(self)?.count ?? Int.max) <= 6 * 1_048_576 else { return false }
         let ids = Set(draft.objects.map(\.id) + draft.repairs.map(\.id))
         let targets = baselines.map { migrationTargetKey($0.target) }

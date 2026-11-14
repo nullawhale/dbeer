@@ -567,7 +567,7 @@ extension StructureDataType {
         return switch kind {
         case "integer", "bigint", "boolean", "text", "real", "blob", "any", "sqliteNumeric": (length ?? 0) == 0 && (precision ?? 0) == 0 && (scale ?? 0) == 0
         case "varchar": (1...16_383).contains(length ?? 0) && (precision ?? 0) == 0 && (scale ?? 0) == 0
-        case "numeric": (length ?? 0) == 0 && (1...65).contains(precision ?? 0) && (0...30).contains(scale ?? 0) && (scale ?? 0) <= (precision ?? 0)
+        case "numeric": (length ?? 0) == 0 && (1...65).contains(precision ?? 0) && (0...38).contains(scale ?? 0) && (scale ?? 0) <= (precision ?? 0)
         default: false
         }
     }
@@ -637,8 +637,8 @@ extension StructureBaseline {
     var requiresIndexAuthoring: Bool { (indexes ?? []).contains { $0.definition != nil } }
     static func digest(_ s: String) -> Bool { s.utf8.count == 64 && s.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) } }
     var valid: Bool {
-        (advanced?.valid(engine: engine) ?? true) && BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql", "sqlite"].contains(engine) && (engine != "sqlite" || !requiresIndexAuthoring) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
-            StructureTarget.identifier($0.name) && $0.nativeType.utf8.count <= 4096 && ($0.defaultExpression?.utf8.count ?? 0) <= 65_536 && ($0.editableType?.valid ?? true) && ($0.charset.map(StructureTarget.identifier) ?? true) && ($0.collation.map { StructureTarget.identifier($0.name) && ($0.schema.isEmpty || StructureTarget.identifier($0.schema)) } ?? true)
+        (advanced?.valid(engine: engine) ?? true) && BackendMessage.validID(id) && target.valid && target.reconcile != true && ["postgresql", "mysql", "mariadb", "sqlite"].contains(engine) && (engine != "sqlite" || !requiresIndexAuthoring) && Self.digest(fingerprint) && columns.count <= 128 && limitations.count <= 64 && limitations.allSatisfy { $0.utf8.count <= 4096 } && columns.allSatisfy {
+            StructureTarget.identifier($0.name) && $0.nativeType.utf8.count <= 4096 && ($0.defaultExpression?.utf8.count ?? 0) <= 65_536 && ($0.editableType?.valid ?? true) && ($0.editableType?.scale ?? 0) <= (engine == "mariadb" ? 38 : 30) && ($0.charset.map(StructureTarget.identifier) ?? true) && ($0.collation.map { StructureTarget.identifier($0.name) && ($0.schema.isEmpty || StructureTarget.identifier($0.schema)) } ?? true)
         } && (keys?.count ?? 0) <= 256 && (indexes?.count ?? 0) <= 256 && (keys ?? []).allSatisfy {
             StructureTarget.identifier($0.name) && ["primary", "unique", "foreign", "unsupported"].contains($0.kind) && $0.columns.count <= 32 && $0.columns.allSatisfy(StructureTarget.identifier) && ($0.reference?.valid ?? true) && ($0.referenceColumns?.count ?? 0) <= 32
         } && (indexes ?? []).allSatisfy { StructureTarget.identifier($0.name) && $0.columns.count <= 32 && $0.columns.allSatisfy(StructureTarget.identifier) && ($0.owner.map(StructureTarget.identifier) ?? true) && ($0.definition?.valid ?? true) }
@@ -1104,5 +1104,18 @@ extension StructureDraft {
             !column.nullable && column.default.kind == "none" && column.type.reference == nil && column.generated == nil && column.identity == nil &&
             fills.contains { StructureTarget.sameIdentifier($0.column, column.name) }
         }
+    }
+}
+
+// Generic intent syntax admits MariaDB's native precision; the owning engine
+// retains its narrower bound before a typed preview can be requested.
+extension StructureDraft {
+    func valid(for engine: DatabaseEngine?) -> Bool {
+        valid && numericScalePermitted(for: engine)
+    }
+    func numericScalePermitted(for engine: DatabaseEngine?) -> Bool {
+        let maximum = engine == .mariadb ? 38 : 30
+        return columns.allSatisfy { ($0.type.scale ?? 0) <= maximum } &&
+            (changes ?? []).allSatisfy { ($0.type?.scale ?? 0) <= maximum }
     }
 }

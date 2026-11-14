@@ -5,6 +5,7 @@ import (
 	sc "dbeer/helper/internal/schemacompare"
 	"encoding/json"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -43,6 +44,9 @@ func validateColumnBaseline(old sc.Column, ast columnAST, engine string) (bool, 
 		}
 	}
 	nullable := len(ast.attrs["nullable"]) == 0 || !ast.attrs["nullable"][0].is("NOT")
+	if engine == "mariadb" && mariaDBPeriodRole(ast) != "" && len(ast.attrs["nullable"]) == 0 {
+		nullable = false
+	}
 	if old.Nullable.State != "known" || old.Nullable.Value == nil || *old.Nullable.Value != nullable {
 		return false, ErrInvalid
 	}
@@ -67,8 +71,11 @@ func validateColumnBaseline(old sc.Column, ast columnAST, engine string) (bool, 
 	if ts := ast.attrs["comment"]; len(ts) > 0 {
 		expected.Comment = sc.Known(ts[0].value)
 	}
+	if engine == "mariadb" && mariaDBPeriodRole(ast) != "" {
+		expected.Generated = sc.Known(sc.Generated{Kind: mariaDBPeriodRole(ast)})
+	}
 	if ts := ast.attrs["identity"]; len(ts) > 0 {
-		if engine != "mysql" {
+		if engine != "mysql" && engine != "mariadb" {
 			limited = true
 		} else {
 			expected.Identity = sc.Known(sc.Identity{Kind: "autoIncrement"})
@@ -92,7 +99,7 @@ func validateTableBaseline(old sc.Table, ast tableAST, engine string) (bool, err
 	if ast.unlogged {
 		expected.Storage = sc.Known("u")
 	}
-	if engine == "mysql" {
+	if engine == "mysql" || engine == "mariadb" {
 		expected.Kind = sc.Known("table")
 		expected.Storage = sc.Unknown[string]("offlineDefaultEngine")
 		expected.Charset = sc.Unknown[string]("offlineDefaultCharset")
@@ -101,7 +108,29 @@ func validateTableBaseline(old sc.Table, ast tableAST, engine string) (bool, err
 	if err := applyTableSuffix(&expected, ast.suffix, engine); err != nil {
 		return true, nil
 	}
-	return !reflect.DeepEqual(old.Kind, expected.Kind) || !reflect.DeepEqual(old.Storage, expected.Storage) || !reflect.DeepEqual(old.Charset, expected.Charset) || !reflect.DeepEqual(old.Collation, expected.Collation) || !reflect.DeepEqual(old.Options, expected.Options), nil
+	if engine == "mariadb" {
+		if e := mariaDBTableProperties(&expected, ast); e != nil {
+			return true, nil
+		}
+	}
+	optionsMatch := reflect.DeepEqual(old.Options, expected.Options)
+	if engine == "mariadb" {
+		a, b := old.Options, expected.Options
+		a.Items = append([]sc.Option(nil), a.Items...)
+		b.Items = append([]sc.Option(nil), b.Items...)
+		less := func(items []sc.Option) func(int, int) bool {
+			return func(i, j int) bool {
+				if items[i].Name != items[j].Name {
+					return items[i].Name < items[j].Name
+				}
+				return items[i].Value < items[j].Value
+			}
+		}
+		sort.Slice(a.Items, less(a.Items))
+		sort.Slice(b.Items, less(b.Items))
+		optionsMatch = sameJSON(a, b)
+	}
+	return !reflect.DeepEqual(old.Kind, expected.Kind) || !reflect.DeepEqual(old.Storage, expected.Storage) || !reflect.DeepEqual(old.Charset, expected.Charset) || !reflect.DeepEqual(old.Collation, expected.Collation) || !optionsMatch, nil
 }
 
 func collatable(t sc.TypeUse, engine string) bool {

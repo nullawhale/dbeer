@@ -39,6 +39,12 @@ enum ExplainMetricPresentation {
         case "walBuffersFull": "WAL buffers full"
         case "workersPlanned": "Workers planned"
         case "workersLaunched": "Workers launched"
+        case "mariaDBPagesAccessed": "InnoDB pages accessed"
+        case "mariaDBPagesUpdated": "InnoDB pages updated"
+        case "mariaDBPagesRead": "InnoDB pages read from disk"
+        case "mariaDBPagesPrefetched": "InnoDB pages prefetched"
+        case "mariaDBPagesReadTime": "InnoDB table read time"
+        case "mariaDBOldRowsRead": "InnoDB old row versions read"
         case "functions": "Functions"
         case "generationTime": "Generation (includes deform)"
         case "deformTime": "Deform (included in generation)"
@@ -110,7 +116,7 @@ enum ExplainFlameBasis: String, CaseIterable, Identifiable {
     }
     var explanation: String {
         switch self {
-        case .inclusiveTime: "Independent inclusive lanes · ms per invocation. Parent and child values overlap; parallel work can exceed wall time. This is not a timeline or a partition."
+        case .inclusiveTime: "Independent inclusive lanes · each metric states per-invocation or total-across-loops timing. Parent and child values overlap; this is not a timeline or a partition."
         case .estimatedCost: "Independent inclusive lanes · planner cost units. Parent and child costs overlap; costs are not elapsed time."
         case .exclusiveTime: "Independent lanes · exclusive ms per invocation, only where the helper proves a serial leaf. Unknown, parallel and inclusive-only values stay unavailable."
         }
@@ -124,7 +130,7 @@ enum ExplainFlameBasis: String, CaseIterable, Identifiable {
         }
         guard let metric else { return nil }
         let expected = self == .estimatedCost ? ("cost", "inclusive") : self == .exclusiveTime ? ("ms", "exclusivePerInvocation") : ("ms", "perInvocation")
-        return metric.unit == expected.0 && metric.basis == expected.1 && metric.valid ? metric : nil
+        return metric.unit == expected.0 && (metric.basis == expected.1 || self == .inclusiveTime && metric.basis == "inclusiveTotal") && metric.valid ? metric : nil
     }
 }
 
@@ -195,7 +201,7 @@ struct ExplainPlanLayout {
 enum ExplainMetricsAdmission {
     static func validOwner(support: ExplainSupport?, engine: DatabaseEngine?, capabilities: Set<String>, helperSupports: Bool) -> Bool {
         guard helperSupports, capabilities.contains(ExplainNodeMetrics.capability), let support, support.valid,
-              [.postgresql, .mysql].contains(support.engine), support.engine == engine else { return false }
+              [.postgresql, .mysql, .mariadb].contains(support.engine), support.engine == engine else { return false }
         return true
     }
 }

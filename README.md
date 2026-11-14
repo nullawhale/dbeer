@@ -73,9 +73,19 @@ Real captures of the native macOS development build with demo PostgreSQL data.
 | :--- | :--- | :--- |
 | **PostgreSQL** | 16 / 17 / 18 | SQL |
 | **MySQL** | 8.0 / 8.4 | SQL |
+| **MariaDB** | 10.11.9+ / 11.4.3+ · **unreleased, partial** | SQL |
 | **Apache Cassandra** | 4.1 / 5.0 | CQL |
 | **MongoDB** | 8.0 | JSON find / aggregation requests |
 | **SQLite** | Local files · **unreleased** | SQL |
+
+MariaDB is a separate adapter in the unreleased build, not a MySQL alias. It
+supports native SQL sessions, TLS/SSH, table-grid editing/import, Explain/Analyze,
+monitoring, reviewed tuning, guarded schema/data comparisons and transfer, native
+SQL backup/restore, and ordinary V1/V2/V3 table authoring. SQL-result
+editing, generated/AUTO_INCREMENT authoring, backfill/reconstruction, destructive
+conversion, multi-table migrations, advanced-table authoring and physical
+partition/storage operations remain disabled or manual. See
+[MariaDB scope and requirements](GUIDE.md#mariadb-partial-support).
 
 The packaged macOS release is **0.4.0 · build 13**. SQLite and other work in
 progress are documented in the [guide](GUIDE.md) and

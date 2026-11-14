@@ -229,7 +229,7 @@ struct DataComparisonView: View {
     private var footer: some View {
         HStack {
             if model.summary != nil {
-                if model.targetProfile.map({ [.postgresql, .mysql, .sqlite].contains($0.engine) }) == true {
+                if model.targetProfile.map({ [.postgresql, .mysql, .mariadb, .sqlite].contains($0.engine) }) == true {
                     Button(model.isGeneratingPlan ? "Generating SQL…" : "Generate SQL Plan") { Task { await model.generatePlan() } }
                         .disabled(!model.canGeneratePlan).controlHover().accessibilityIdentifier("dataComparePlan")
                 }

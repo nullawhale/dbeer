@@ -155,6 +155,7 @@ final class GridDraft: ObservableObject {
         let nativeValid = (result.rows ?? []).allSatisfy({ $0.count == loadedColumns.count }) && NativeValue.validMatrix(result.nativeValues, rows: result.rows?.count ?? 0, columns: loadedColumns.count) &&
             (!loadedColumns.contains(where: { $0.engine == .sqlite }) || NativeValue.matchesSQLite(result.nativeValues, storage: result.sqliteValues))
         let loadedRows = (result.rows ?? []).enumerated().map { rowIndex, row in
+            let storageToken = result.storageTokens.flatMap { $0.indices.contains(rowIndex) ? $0[rowIndex] : nil }
             var unboundOriginal = nativeRequested && !nativeValid
             let values = row.enumerated().map { index, value -> ChangeValue in
                 if let typed = result.sqliteValues, typed.indices.contains(rowIndex), typed[rowIndex].indices.contains(index) {
@@ -162,6 +163,8 @@ final class GridDraft: ObservableObject {
                 }
                 if nativeRequested {
                     if nativeValid, let native = result.nativeValues?[rowIndex][index], let bound = native.flatChangeValue(for: loadedColumns[index]) { return bound }
+                    if nativeValid, querySource == nil, reference.kind == "table", let native = result.nativeValues?[rowIndex][index],
+                       let bound = native.mariaDBStoredChoiceOriginal(for: loadedColumns[index], storageToken: storageToken) { return bound }
                     unboundOriginal = true
                     if nativeValid, let native = result.nativeValues?[rowIndex][index],
                        let captured = native.navigationChangeValue(for: loadedColumns[index]) { return captured }
@@ -171,7 +174,7 @@ final class GridDraft: ObservableObject {
                 return ChangeValue(kind: loadedColumns.indices.contains(index) && loadedColumns[index].encoding == "base64" ? "binary" : "text", value: value)
             }
             return GridRow(original: values, values: values,
-                originalStorageToken: result.storageTokens.flatMap { $0.indices.contains(rowIndex) ? $0[rowIndex] : nil },
+                originalStorageToken: storageToken,
                 nativeValues: nativeValid ? result.nativeValues?[rowIndex] : nil,
                 originalDisplay: nativeRequested ? row : nil, nativeBindingUnavailable: unboundOriginal)
         }

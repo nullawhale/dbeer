@@ -73,7 +73,7 @@ func expressionTokens(engine, raw string, identifiers map[string]bool, ansiQuote
 				i++
 			}
 			kind := "string:"
-			if quote == '`' || quote == '"' && (engine == "postgresql" || engine == "mysql" && ansiQuotes) {
+			if quote == '`' || quote == '"' && (engine == "postgresql" || (engine == "mysql" || engine == "mariadb") && ansiQuotes) {
 				kind = "identifier:"
 			}
 			v := value.String()

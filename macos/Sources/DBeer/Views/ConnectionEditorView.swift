@@ -211,7 +211,7 @@ struct ConnectionEditorView: View {
                 }
                 TextField(draft.engine == .cassandra ? "Keyspace (optional)" : draft.engine == .mongodb ? "Database (optional)" : "Database", text: binding(\.database))
                     .accessibilityIdentifier("Database")
-                if [.postgresql, .mysql].contains(draft.engine) {
+                if [.postgresql, .mysql, .mariadb].contains(draft.engine) {
                     LabeledContent("URL") {
                         HStack(spacing: 8) {
                             TextField("Connection URL", text: Binding(get: { urlInputState.wrappedValue }, set: { value in

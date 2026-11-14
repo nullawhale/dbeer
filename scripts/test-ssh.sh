@@ -7,10 +7,10 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 engines="postgresql mysql cassandra"
 if [[ "${1:-}" == --engine ]]; then
     engines="${2:?missing engine}"
-    [[ "$engines" == postgresql || "$engines" == mysql || "$engines" == cassandra ]] || exit 2
+    [[ "$engines" == postgresql || "$engines" == mysql || "$engines" == cassandra || "$engines" == mariadb ]] || exit 2
     shift 2
 fi
-if [[ "$#" != 0 ]]; then printf 'Usage: %s [--engine postgresql|mysql|cassandra]\n' "$0" >&2; exit 2; fi
+if [[ "$#" != 0 ]]; then printf 'Usage: %s [--engine postgresql|mysql|cassandra|mariadb]\n' "$0" >&2; exit 2; fi
 for dependency in docker openssl ssh-keygen ssh-agent ssh-add go python3; do
     command -v "$dependency" >/dev/null || { printf 'Required SSH checks need %s; no checks ran.\n' "$dependency" >&2; exit 1; }
 done
@@ -26,6 +26,15 @@ cleanup() {
     if [[ -n "$network_id" ]]; then docker network rm "$network_id" >/dev/null 2>&1 || true; fi
     if [[ -n "$agent_pid" ]]; then kill "$agent_pid" >/dev/null 2>&1 || true; fi
     rm -rf -- "$fixture_root"
+    if [[ -n "${DBEER_TEST_SSH_CLEANUP_RECEIPT:-}" ]]; then
+        local containers_removed=true network_removed=true directory_removed=true
+        for container_id in ${container_ids[@]+"${container_ids[@]}"}; do
+            if docker inspect "$container_id" >/dev/null 2>&1; then containers_removed=false; fi
+        done
+        if [[ -n "$network_id" ]] && docker network inspect "$network_id" >/dev/null 2>&1; then network_removed=false; fi
+        if [[ -e "$fixture_root" ]]; then directory_removed=false; fi
+        printf '{"ownedContainersRemoved":%s,"ownedNetworkRemoved":%s,"credentialDirectoryRemoved":%s}\n' "$containers_removed" "$network_removed" "$directory_removed" >"$DBEER_TEST_SSH_CLEANUP_RECEIPT"
+    fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -78,7 +87,7 @@ cat > "$fixture_root/server.ext" <<CERT
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth
-subjectAltName=DNS:postgres.ssh-fixture.invalid,DNS:mysql.ssh-fixture.invalid,IP:${cassandra_ips[0]},IP:${cassandra_ips[1]},IP:${cassandra_ips[2]}
+subjectAltName=DNS:postgres.ssh-fixture.invalid,DNS:mysql.ssh-fixture.invalid,DNS:mariadb.ssh-fixture.invalid,IP:${cassandra_ips[0]},IP:${cassandra_ips[1]},IP:${cassandra_ips[2]}
 CERT
 openssl x509 -req -sha256 -days 1 -in "$fixture_root/server.csr" -CA "$fixture_root/ca.crt" -CAkey "$fixture_root/ca.key" \
     -CAcreateserial -extfile "$fixture_root/server.ext" -out "$fixture_root/server.crt" >/dev/null 2>&1
@@ -129,6 +138,26 @@ for engine in $engines; do
             for ((attempt=0;attempt<120;attempt++)); do if docker exec "$database" sh -ec 'MYSQL_PWD="$(cat /fixtures/password)" mysql -h127.0.0.1 -udbeer -Ddbeer -Nse "SELECT 1"' >/dev/null 2>&1; then ready=1; break; fi; sleep 1; done
             [[ "$ready" == 1 ]] || { printf 'MySQL fixture did not become ready.\n' >&2; exit 1; }
             ;;
+        mariadb)
+            database="$(docker run --detach --rm --network "$network_id" --network-alias mariadb.ssh-fixture.invalid --network-alias wrong-tls.ssh-fixture.invalid \
+                --mount "type=bind,source=$fixture_root,target=/fixtures,readonly" --env MARIADB_DATABASE=dbeer --env MARIADB_USER=dbeer \
+                --env MARIADB_PASSWORD_FILE=/fixtures/password --env MARIADB_ROOT_PASSWORD_FILE=/fixtures/password \
+                --entrypoint sh "${DBEER_TEST_MARIADB_IMAGE:-mariadb:11.4}" -ec '
+                    mkdir /tmp/dbeer-tls
+                    cp /fixtures/ca.crt /fixtures/server.crt /fixtures/server.key /tmp/dbeer-tls/
+                    chown -R mysql:mysql /tmp/dbeer-tls
+                    chmod 600 /tmp/dbeer-tls/server.key
+                    exec docker-entrypoint.sh mariadbd --ssl-ca=/tmp/dbeer-tls/ca.crt --ssl-cert=/tmp/dbeer-tls/server.crt --ssl-key=/tmp/dbeer-tls/server.key
+                ')"
+            container_ids+=("$database")
+            ready=0
+            for ((attempt=0;attempt<120;attempt++)); do if docker exec "$database" sh -ec 'MYSQL_PWD="$(cat /fixtures/password)" mariadb --skip-ssl -h127.0.0.1 -udbeer -Ddbeer -Nse "SELECT 1"' >/dev/null 2>&1; then ready=1; break; fi; sleep 1; done
+            [[ "$ready" == 1 ]] || { printf 'MariaDB fixture did not become ready.\n' >&2; exit 1; }
+            docker exec "$database" mariadbd --version
+            if [[ -n "${DBEER_TEST_SSH_IMAGE_RECEIPT:-}" ]]; then
+                printf '{"databaseImageID":"%s","bastionImageID":"%s"}\n' "$(docker inspect --format '{{.Image}}' "$database")" "$(docker inspect --format '{{.Image}}' "$bastion")" >"$DBEER_TEST_SSH_IMAGE_RECEIPT"
+            fi
+            ;;
         cassandra)
             docker run --rm --entrypoint cat "${DBEER_TEST_CASSANDRA_SSH_IMAGE:-cassandra:5.0}" /etc/cassandra/cassandra.yaml > "$fixture_root/cassandra.base.yaml"
             python3 - "$fixture_root" <<'PY'
@@ -170,7 +199,11 @@ PY
             ;;
     esac
     export DBEER_TEST_SSH_ENGINE="$engine"
-    (cd "$repo_root/helper"; go test -race -count=1 -timeout 6m -run '^TestSSH' ./internal/sshtest ./cmd/dbeer-core)
+    if [[ "$engine" == mariadb ]]; then
+        (cd "$repo_root/helper"; go test -race -json -count=1 -timeout 6m -run '^TestSSHMariaDB' ./internal/sshtest)
+    else
+        (cd "$repo_root/helper"; go test -race -count=1 -timeout 6m -run '^TestSSH' ./internal/sshtest ./cmd/dbeer-core)
+    fi
     case "$engine" in
         cassandra) for node_id in "${cassandra_nodes[@]}"; do docker rm --force "$node_id" >/dev/null; done ;;
         *) docker rm --force "$database" >/dev/null ;;

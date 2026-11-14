@@ -58,9 +58,31 @@ func (t DataType) Valid() bool {
 	case "varchar":
 		return t.Length > 0 && t.Length <= 16383 && t.Precision == 0 && t.Scale == 0
 	case "numeric":
-		return t.Length == 0 && t.Precision > 0 && t.Precision <= 65 && t.Scale >= 0 && t.Scale <= t.Precision && t.Scale <= 30
+		return t.Length == 0 && t.Precision > 0 && t.Precision <= 65 && t.Scale >= 0 && t.Scale <= t.Precision && t.Scale <= 38
 	}
 	return false
+}
+
+// ValidForEngine retains existing engines' authoring bound; MariaDB has a
+// distinct native DECIMAL scale limit even though the portable shape is shared.
+func (t DataType) ValidForEngine(engine string) bool {
+	return t.Valid() && (engine == "mariadb" || t.Kind != "numeric" || t.Scale <= 30)
+}
+func (d Draft) ValidateForEngine(engine string) error {
+	if err := d.Validate(); err != nil {
+		return err
+	}
+	for _, c := range d.Columns {
+		if !c.Type.ValidForEngine(engine) {
+			return ErrUnsupported
+		}
+	}
+	for _, c := range d.Changes {
+		if c.Type != nil && !c.Type.ValidForEngine(engine) {
+			return ErrUnsupported
+		}
+	}
+	return nil
 }
 
 // Explicit kinds distinguish no DEFAULT, SQL NULL and the text "NULL".
@@ -312,7 +334,7 @@ func (s *Store) PreviewContext(ctx context.Context, a Adapter, id string, d Draf
 	if s.baseline == nil || s.baseline.ID != id {
 		return Reply{}, ErrStale
 	}
-	if err := d.Validate(); err != nil {
+	if err := d.ValidateForEngine(s.baseline.Engine); err != nil {
 		return Reply{}, err
 	}
 	var sql, risks []string

@@ -49,6 +49,8 @@ func Classify(engine, sql string) []Statement {
 	}
 	if engine == "postgresql" {
 		engine = "postgres"
+	} else if engine == "mariadb" {
+		engine = "mysql"
 	}
 	if engine != "postgres" && engine != "mysql" && engine != "sqlite" {
 		return []Statement{{0, len(sql), Unknown, "unsupported_dialect"}}

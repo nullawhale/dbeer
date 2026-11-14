@@ -118,7 +118,7 @@ func validExplainFormat(engine, format string, result bool) bool {
 	if engine == "mysql" {
 		return format == "tree" || format == "json" || result && (format == "jsonV1" || format == "jsonV2")
 	}
-	return engine == "postgresql" && format == "json"
+	return (engine == "postgresql" || engine == "mariadb") && format == "json"
 }
 
 func (o ExplainOptionSupport) Accepts(options ExplainOptions, engine, mode string) bool {

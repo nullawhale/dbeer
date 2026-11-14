@@ -56,9 +56,9 @@ final class GridProfileServerModel: ObservableObject, Identifiable {
         guard !closed, !isBusy else { return }
         guard canStart() else { notice = "Finish the pending workspace action before starting another sample."; return }
         guard isCurrent() else { notice = "The source context changed. Open a fresh profile from its table view."; return }
-        guard [.postgresql, .mysql, .sqlite].contains(engine), (1...GridProfileLimits.maximumSampleRows).contains(rowLimit),
+        guard [.postgresql, .mysql, .mariadb, .sqlite].contains(engine), (1...GridProfileLimits.maximumSampleRows).contains(rowLimit),
               (15...300).contains(timeoutSeconds) else {
-            notice = "Choose 1–10,000 sample rows and a deadline from 15 to 300 seconds on PostgreSQL, MySQL or SQLite."
+            notice = "Choose 1–10,000 sample rows and a deadline from 15 to 300 seconds on PostgreSQL, MySQL, MariaDB or SQLite."
             return
         }
         generation &+= 1

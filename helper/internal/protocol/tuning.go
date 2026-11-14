@@ -19,15 +19,16 @@ type TuningInspectRequest struct {
 	Target  tableedit.Target `json:"target"`
 }
 type TuningValidationRequest struct {
-	Version             int              `json:"version"`
-	Original            ExplainRequest   `json:"original"`
-	Variant             ExplainRequest   `json:"variant"`
-	Target              tableedit.Target `json:"target"`
-	MetadataFingerprint string           `json:"metadataFingerprint"`
-	MaxRows             int              `json:"maxRows"`
-	MaxBytes            int              `json:"maxBytes"`
-	TimeoutMS           int              `json:"timeoutMs"`
-	Comparison          string           `json:"comparison"`
+	Version             int                      `json:"version"`
+	Original            ExplainRequest           `json:"original"`
+	Variant             ExplainRequest           `json:"variant"`
+	Target              tableedit.Target         `json:"target"`
+	MetadataFingerprint string                   `json:"metadataFingerprint"`
+	MaxRows             int                      `json:"maxRows"`
+	MaxBytes            int                      `json:"maxBytes"`
+	TimeoutMS           int                      `json:"timeoutMs"`
+	Comparison          string                   `json:"comparison"`
+	MariaDBOptimizer    *MariaDBOptimizerVariant `json:"mariaDBOptimizer,omitempty"`
 }
 type TuningSettingObservationRequest struct {
 	Version int            `json:"version"`
@@ -65,7 +66,10 @@ func (r TuningInspectRequest) Valid() bool {
 	return r.Version == 1 && tuningSource(r.Source) && r.Source.Context.TransactionStatus == "idle" && r.Capture.Valid() && r.Capture.Mode == r.Source.Mode && reflect.DeepEqual(r.Capture.Options, r.Source.Options) && r.Target.Valid() && !r.Target.Create && !r.Target.Reconcile
 }
 func (r TuningValidationRequest) Valid() bool {
-	if r.Version != 1 || !tuningSource(r.Original) || !tuningSource(r.Variant) || r.Original.Context.TransactionStatus != "idle" || r.Variant.Context.TransactionStatus != "idle" || r.Original.Mode != "plan" || r.Variant.Mode != "plan" || r.Original.SQL == r.Variant.SQL || r.Original.PlanKind == "generic" || r.Variant.PlanKind == "generic" || !r.Target.Valid() || r.Target.Create || r.Target.Reconcile || !tableedit.IsDigest(r.MetadataFingerprint) || r.MaxRows < 1 || r.MaxRows > MaxTuningRows || r.MaxBytes < 1024 || r.MaxBytes > MaxTuningBytes || r.TimeoutMS < 100 || r.TimeoutMS > MaxTuningTimeoutMS || r.Comparison != "multiset" || !(len(r.Original.Parameters) == 0 && len(r.Variant.Parameters) == 0 || reflect.DeepEqual(r.Original.Parameters, r.Variant.Parameters)) || !reflect.DeepEqual(r.Original.Options, r.Variant.Options) || r.Original.PlanKind != r.Variant.PlanKind {
+	if r.Version != 1 || !tuningSource(r.Original) || !tuningSource(r.Variant) || r.Original.Context.TransactionStatus != "idle" || r.Variant.Context.TransactionStatus != "idle" || r.Original.Mode != "plan" || r.Variant.Mode != "plan" || r.Original.PlanKind == "generic" || r.Variant.PlanKind == "generic" || !r.Target.Valid() || r.Target.Create || r.Target.Reconcile || !tableedit.IsDigest(r.MetadataFingerprint) || r.MaxRows < 1 || r.MaxRows > MaxTuningRows || r.MaxBytes < 1024 || r.MaxBytes > MaxTuningBytes || r.TimeoutMS < 100 || r.TimeoutMS > MaxTuningTimeoutMS || r.Comparison != "multiset" || !(len(r.Original.Parameters) == 0 && len(r.Variant.Parameters) == 0 || reflect.DeepEqual(r.Original.Parameters, r.Variant.Parameters)) || !reflect.DeepEqual(r.Original.Options, r.Variant.Options) || r.Original.PlanKind != r.Variant.PlanKind {
+		return false
+	}
+	if r.MariaDBOptimizer == nil && r.Original.SQL == r.Variant.SQL || r.MariaDBOptimizer != nil && (!r.MariaDBOptimizer.Valid() || r.Original.SQL != r.Variant.SQL) {
 		return false
 	}
 	a, b := *r.Original.Context, *r.Variant.Context
@@ -92,16 +96,17 @@ type TuningVariant struct {
 	Request     ExplainRequest `json:"request"`
 }
 type TuningInspection struct {
-	Version             int                 `json:"version"`
-	Engine              string              `json:"engine"`
-	ServerVersion       string              `json:"serverVersion"`
-	EvidenceOrigin      string              `json:"evidenceOrigin"`
-	MetadataFingerprint string              `json:"metadataFingerprint"`
-	Target              tableedit.Target    `json:"target"`
-	Indexes             []TuningIndexAdvice `json:"indexes"`
-	Variants            []TuningVariant     `json:"variants"`
-	Limitations         []string            `json:"limitations"`
-	WorkMemKiB          *int                `json:"workMemKiB,omitempty"`
+	Version             int                          `json:"version"`
+	Engine              string                       `json:"engine"`
+	ServerVersion       string                       `json:"serverVersion"`
+	EvidenceOrigin      string                       `json:"evidenceOrigin"`
+	MetadataFingerprint string                       `json:"metadataFingerprint"`
+	Target              tableedit.Target             `json:"target"`
+	Indexes             []TuningIndexAdvice          `json:"indexes"`
+	Variants            []TuningVariant              `json:"variants"`
+	Limitations         []string                     `json:"limitations"`
+	WorkMemKiB          *int                         `json:"workMemKiB,omitempty"`
+	MariaDBOptimizer    *MariaDBOptimizerObservation `json:"mariaDBOptimizer,omitempty"`
 }
 type TuningValidation struct {
 	Version       int      `json:"version"`
@@ -145,7 +150,7 @@ func parseTuning(raw json.RawMessage, kind string) (any, bool) {
 		requiredKeys = []string{"version", "source", "capture", "target"}
 		dst = &TuningInspectRequest{}
 	case "tuning.validate":
-		allowed = "version|original|variant|target|metadataFingerprint|maxRows|maxBytes|timeoutMs|comparison"
+		allowed = "version|original|variant|target|metadataFingerprint|maxRows|maxBytes|timeoutMs|comparison|mariaDBOptimizer"
 		requiredKeys = []string{"version", "original", "variant", "target", "metadataFingerprint", "maxRows", "maxBytes", "timeoutMs", "comparison"}
 		dst = &TuningValidationRequest{}
 	case "tuning.setting":
@@ -163,6 +168,9 @@ func parseTuning(raw json.RawMessage, kind string) (any, bool) {
 		if bytes.Equal(bytes.TrimSpace(fields[k]), []byte("null")) {
 			return nil, false
 		}
+	}
+	if v, exists := fields["mariaDBOptimizer"]; exists && bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+		return nil, false
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
@@ -226,7 +234,10 @@ func tuningTexts(a []string) bool {
 	return true
 }
 func (r TuningInspection) Valid() bool {
-	if r.Version != 1 || (r.Engine != "postgresql" && r.Engine != "mysql") || len(r.ServerVersion) > 256 || r.EvidenceOrigin != "suppliedCapture" || !tableedit.IsDigest(r.MetadataFingerprint) || !r.Target.Valid() || r.Target.Create || r.Target.Reconcile || len(r.Indexes) > 1 || len(r.Variants) > 1 || !tuningTexts(r.Limitations) || r.WorkMemKiB != nil && (r.Engine != "postgresql" || *r.WorkMemKiB < 64 || *r.WorkMemKiB > 1048576) {
+	if r.Version != 1 || (r.Engine != "postgresql" && r.Engine != "mysql" && r.Engine != "mariadb") || len(r.ServerVersion) > 256 || r.EvidenceOrigin != "suppliedCapture" || !tableedit.IsDigest(r.MetadataFingerprint) || !r.Target.Valid() || r.Target.Create || r.Target.Reconcile || len(r.Indexes) > 1 || len(r.Variants) > 1 || !tuningTexts(r.Limitations) || r.WorkMemKiB != nil && (r.Engine != "postgresql" || *r.WorkMemKiB < 64 || *r.WorkMemKiB > 1048576) {
+		return false
+	}
+	if r.MariaDBOptimizer != nil && (r.Engine != "mariadb" || !r.MariaDBOptimizer.Valid()) {
 		return false
 	}
 	for _, x := range r.Indexes {

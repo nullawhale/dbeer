@@ -29,7 +29,7 @@ func CheckRename(b Baseline, column string) error {
 				return false
 			}
 			if !e.Dependencies.Complete {
-				if b.Engine == "mysql" && MySQLExpressionExcludesColumn(e.Text, column, b.Facts) {
+				if (b.Engine == "mysql" || b.Engine == "mariadb") && MySQLExpressionExcludesColumn(e.Text, column, b.Facts) {
 					return false
 				}
 				return true

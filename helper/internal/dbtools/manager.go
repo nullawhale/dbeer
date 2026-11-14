@@ -22,11 +22,12 @@ import (
 )
 
 type PreparedConnection struct {
-	Connection     protocol.Connection
-	Host, HostAddr string
-	Port           int
-	Close          func()
-	Done           <-chan struct{}
+	Connection      protocol.Connection
+	Host, HostAddr  string
+	Port            int
+	PeerFingerprint string
+	Close           func()
+	Done            <-chan struct{}
 }
 type PrepareConnection func(context.Context, protocol.Connection) (PreparedConnection, error)
 type Options struct {
@@ -317,12 +318,46 @@ func (m *Manager) prepare(ctx context.Context, r protocol.DatabaseToolsRequest) 
 	if e := compatible(engine, version, server); e != nil {
 		return nil, safe(e.Error())
 	}
+	if engine == "mariadb" && version.major == 10 && connection.SSLMode != "disable" {
+		return nil, safe("MariaDB 10.11 command-line tools do not expose the required certificate-pin option. Choose MariaDB 11.4.3 or later 11.4 tools; both reviewed server lines are supported.")
+	}
+	if engine == "mariadb" && (connection.SSLMode == "require" || connection.SSLMode == "verify-ca" || connection.SSLMode == "verify-full") {
+		proof, ok := physical.(interface{ DatabaseToolsPeerFingerprint() string })
+		if !ok {
+			return nil, safe("The database adapter cannot bind the utility TLS certificate.")
+		}
+		p.connection.PeerFingerprint = proof.DatabaseToolsPeerFingerprint()
+		if !mariaDBFingerprint(p.connection.PeerFingerprint) {
+			return nil, safe("The utility TLS certificate could not be bound.")
+		}
+	}
+	if r.Operation == "dump" && engine == "mariadb" {
+		scoped, ok := physical.(interface{ DatabaseToolsDumpPreflight(context.Context) error })
+		if !ok {
+			return nil, safe("The database adapter cannot verify the complete native history backup scope.")
+		}
+		{
+			checkCtx, stop := context.WithTimeout(ctx, 15*time.Second)
+			scopeError := scoped.DatabaseToolsDumpPreflight(checkCtx)
+			stop()
+			if scopeError != nil {
+				var known *adapter.ConnectionError
+				if errors.As(scopeError, &known) {
+					return nil, safe(known.Message)
+				}
+				return nil, safe("The complete native history backup scope could not be verified.")
+			}
+		}
+	}
 	if r.Operation == "restore" && engine == "postgresql" && r.Format == "sql" && !supportsRestrict(version) {
 		return nil, safe("Plain SQL restore requires psql 16.10, 17.6 or later with restricted client-command support.")
 	}
 	warnings := []string{}
 	if r.Operation == "restore" {
 		warnings = append(warnings, "Restore executes database code from the selected file. Use a trusted backup and verify the selected target.", "Existing objects represented in this backup will be replaced. No database is created or dropped automatically.", "A cancelled or failed restore may have changed database objects. Inspect the target before another restore.")
+		if engine == "mariadb" {
+			warnings = append(warnings, "Native object creation timestamps can change when the dump recreates those objects.")
+		}
 		p.input, err = freezeInput(ctx, r.Path, dir, engine == "postgresql" && r.Format == "sql")
 		if err != nil {
 			return nil, err
@@ -342,6 +377,10 @@ func (m *Manager) prepare(ctx context.Context, r protocol.DatabaseToolsRequest) 
 		}
 		if engine == "mysql" {
 			warnings = append(warnings, "MySQL single-transaction dumps are consistent for InnoDB; concurrent DDL and nontransactional tables require separate coordination.")
+		}
+		if engine == "mariadb" {
+			warnings = append(warnings, "MariaDB single-transaction dumps cover InnoDB consistent snapshots. Concurrent DDL and nontransactional tables require separately coordinated backup.")
+			warnings = append(warnings, "Timestamp-based system-versioned history is included. Transaction-precise history requires a registry-aware server-level backup.", "Sequences retain durable next-not-cached state. Unused cached values can be skipped, and session previous-value state is outside logical backup scope.")
 		}
 	}
 	// Validate TLS translation and credential representation before approval.

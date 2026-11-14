@@ -78,7 +78,7 @@ func digest(b []byte) string   { h := sha256.Sum256(b); return hex.EncodeToStrin
 func refKey(ref sc.Ref) string { b, _ := json.Marshal(ref); return string(b) }
 func id(ref sc.Ref) string     { return digest([]byte(refKey(ref))) }
 func Supported(engine string) bool {
-	return engine == "postgresql" || engine == "mysql" || engine == "sqlite"
+	return engine == "postgresql" || engine == "mysql" || engine == "mariadb" || engine == "sqlite"
 }
 func SchemasValid(engine string, schemas []string) bool {
 	if !Supported(engine) || len(schemas) < 1 || len(schemas) > 32 {
@@ -453,7 +453,7 @@ func builtin(engine string, ref sc.Ref) bool {
 	switch engine {
 	case "postgresql":
 		return ref.Schema == "pg_catalog" || ref.Schema == "information_schema"
-	case "mysql":
+	case "mysql", "mariadb":
 		return ref.Schema == "" && (ref.Kind == "type" || ref.Kind == "collation")
 	case "sqlite":
 		return ref.Schema == "sqlite" && ref.Kind == "type"

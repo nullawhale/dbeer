@@ -22,11 +22,11 @@ func PlanMigrationOperations(b Baseline, d Draft, engine string, load func(Targe
 	return planOperations(b, d, engine, load, true)
 }
 func planOperations(b Baseline, d Draft, engine string, load func(Target) (Baseline, error), migration bool) ([]Operation, []Baseline, error) {
-	if err := d.Validate(); err != nil {
+	if err := d.ValidateForEngine(engine); err != nil {
 		return nil, nil, err
 	}
-	if d.NeedsAuthoringV4() && engine != "postgresql" && engine != "mysql" {
-		return nil, nil, errors.New("Destructive authoring is supported for PostgreSQL and MySQL ordinary tables; SQLite DROP and type/encoding conversion require the separately reviewed reconstruction workflow.")
+	if d.NeedsAuthoringV4() && engine != "postgresql" && engine != "mysql" && engine != "mariadb" {
+		return nil, nil, errors.New("Destructive authoring is supported for the guarded PostgreSQL, MySQL and MariaDB table subsets; SQLite DROP and type/encoding conversion require the separately reviewed reconstruction workflow.")
 	}
 	if d.DropTable {
 		if b.Target.Create {
@@ -52,7 +52,7 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 				return nil, nil, ErrUnsupported
 			}
 			for _, old := range b.Columns {
-				if old.Name == c.Name || engine == "mysql" && strings.EqualFold(old.Name, c.Name) {
+				if old.Name == c.Name || (engine == "mysql" || engine == "mariadb") && strings.EqualFold(old.Name, c.Name) {
 					return nil, nil, ErrInvalid
 				}
 			}
@@ -76,7 +76,7 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 			continue
 		}
 		key := name
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			key = strings.ToLower(key)
 		}
 		if finalNames[key] {
@@ -86,7 +86,7 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 	}
 	for _, c := range d.Columns {
 		key := c.Name
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			key = strings.ToLower(key)
 		}
 		if finalNames[key] {
@@ -144,7 +144,7 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		}
 		if c.RenameTo != nil {
 			for _, old := range b.Columns {
-				if old.Name != c.Name && (old.Name == *c.RenameTo || engine == "mysql" && strings.EqualFold(old.Name, *c.RenameTo)) {
+				if old.Name != c.Name && (old.Name == *c.RenameTo || (engine == "mysql" || engine == "mariadb") && strings.EqualFold(old.Name, *c.RenameTo)) {
 					return nil, nil, errors.New("Rename destinations must be unoccupied; rename occupied columns in a separate reviewed operation.")
 				}
 			}
@@ -195,7 +195,7 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 			if err := CheckRemoval(b, d, x.Name, false); err != nil {
 				return nil, nil, err
 			}
-			if engine == "mysql" {
+			if engine == "mysql" || engine == "mariadb" {
 				for _, k := range b.Keys {
 					if k.Kind != "foreign" || dropKeys[k.Name] {
 						continue
@@ -281,8 +281,8 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		if k.Action == "drop" {
 			continue
 		}
-		if engine == "mysql" && k.Kind == "primary" && k.Name != "PRIMARY" {
-			return nil, nil, errors.New("MySQL primary keys use the name PRIMARY.")
+		if (engine == "mysql" || engine == "mariadb") && k.Kind == "primary" && k.Name != "PRIMARY" {
+			return nil, nil, errors.New("MySQL and MariaDB primary keys use the name PRIMARY.")
 		}
 		for _, old := range source.Keys {
 			if old.Name == k.Name || old.Kind == "primary" && k.Kind == "primary" {
@@ -309,14 +309,14 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 	}
 	for i := range d.Indexes {
 		x := &d.Indexes[i]
-		if engine == "mysql" && x.Unique {
-			return nil, nil, errors.New("Use a Unique Key operation for MySQL uniqueness so the constraint and backing index remain one unit.")
+		if (engine == "mysql" || engine == "mariadb") && x.Unique {
+			return nil, nil, errors.New("Use a Unique Key operation for native uniqueness so the constraint and backing index remain one unit.")
 		}
 		if x.Action == "drop" {
 			continue
 		}
 		if x.Definition != nil {
-			if engine != "postgresql" && engine != "mysql" {
+			if engine != "postgresql" && engine != "mysql" && engine != "mariadb" {
 				return nil, nil, errors.New("Advanced index definitions are not supported by this adapter.")
 			}
 			for _, term := range x.Definition.Terms {
@@ -348,8 +348,8 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		if k.Kind != "foreign" || k.Action == "drop" {
 			continue
 		}
-		if engine == "mysql" && k.Reference.Schema != b.Target.Schema && !migration {
-			return nil, nil, errors.New("Foreign-key authoring is limited to the selected MySQL database.")
+		if (engine == "mysql" || engine == "mariadb") && k.Reference.Schema != b.Target.Schema && !migration {
+			return nil, nil, errors.New("Foreign-key authoring is limited to the selected database.")
 		}
 		target := source
 		if k.Reference.Schema != b.Target.Schema || k.Reference.Table != b.Target.Table {
@@ -375,7 +375,7 @@ func planOperations(b Baseline, d Draft, engine string, load func(Target) (Basel
 		if err := ValidateForeign(source, *k, target); err != nil {
 			return nil, nil, err
 		}
-		if engine == "mysql" {
+		if engine == "mysql" || engine == "mariadb" {
 			support := false
 			for _, x := range source.Indexes {
 				if SupportingIndex(x, k.Columns) {

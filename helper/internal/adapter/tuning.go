@@ -61,5 +61,17 @@ func PostgresTuningSearchPathSafe(ctx context.Context, physical Session, c proto
 
 // Tuning metadata inherits E2's minimum version, not the older Explain floor.
 func TuningEngineSupported(s protocol.ExplainSupport) bool {
-	return s.Valid() && len(s.Modes) > 0 && (s.Engine == "postgresql" || s.Engine == "mysql" && oracleExplainVersion.MatchString(s.ServerVersion) && mysqlVersionAtLeast(s.ServerVersion, 8, 0, 30))
+	return s.Valid() && len(s.Modes) > 0 && (s.Engine == "postgresql" || s.Engine == "mariadb" && mariaDBTuningVersion(s.ServerVersion) || s.Engine == "mysql" && oracleExplainVersion.MatchString(s.ServerVersion) && mysqlVersionAtLeast(s.ServerVersion, 8, 0, 30))
+}
+
+func mariaDBTuningVersion(version string) bool {
+	match := regexp.MustCompile(`^(10\.11|11\.4)\.([0-9]+)-MariaDB(?:[-+].*)?$`).FindStringSubmatch(version)
+	if match == nil {
+		return false
+	}
+	patch, err := strconv.Atoi(match[2])
+	if err != nil {
+		return false
+	}
+	return match[1] == "10.11" && patch >= 9 || match[1] == "11.4" && patch >= 3
 }

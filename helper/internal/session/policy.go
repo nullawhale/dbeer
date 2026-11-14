@@ -34,6 +34,9 @@ func assessOperation(engine string, operation protocol.OperationRequest) protoco
 		return result
 	}
 	if operation.Type == "tuning.validate" {
+		if operation.TuningValidation != nil && operation.TuningValidation.MariaDBOptimizer != nil {
+			result.Kind = "write"
+		}
 		return result
 	}
 	if operation.Type == "structure.validate" {

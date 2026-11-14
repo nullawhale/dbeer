@@ -10,6 +10,11 @@ enum TuningTransportAdmission {
                   let major = Int(support.serverVersion.split(separator: ".").first ?? "") else { return false }
             return major >= 14
         }
+        if support.engine == .mariadb {
+            guard let range = support.serverVersion.range(of: #"^(?:5\.5\.5-)?(10\.11\.[0-9]+|11\.4\.[0-9]+)-MariaDB(?:[-+][A-Za-z0-9._+~:-]+)?$"#, options: .regularExpression) else { return false }
+            let version = String(support.serverVersion[range]).replacingOccurrences(of: "5.5.5-", with: "").split(separator: "-")[0].split(separator: ".").compactMap { Int($0) }
+            return version.count == 3 && (version[0] == 10 ? version[2] >= 9 : version[2] >= 3)
+        }
         guard support.engine == .mysql,
               support.serverVersion.range(of: #"^[1-9][0-9]*\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-(?:standard|commercial)(?:-debug)?|-debug)?$"#, options: .regularExpression) != nil else { return false }
         let components = support.serverVersion.split(separator: "-")[0].split(separator: ".").compactMap { Int($0) }
@@ -21,6 +26,9 @@ enum TuningTransportAdmission {
         return try? encoder.encode(value)
     }
     static func settingSQL(_ value: Int) -> String { "SET LOCAL work_mem = '\(value)kB'" }
+    static func optimizerSQL(_ setting: MariaDBOptimizerVariant, sql: String) -> String {
+        "SET STATEMENT optimizer_switch='index_condition_pushdown=\(setting.indexConditionPushdown ? "on" : "off")' FOR\n" + sql
+    }
 
     static func validateFrame(_ frame: Data) throws {
         guard let fields = try JSONSerialization.jsonObject(with: frame) as? [String: Any], let type = fields["type"] as? String else { return }
@@ -53,6 +61,7 @@ enum TuningTransportAdmission {
         case "tuning.validate":
             payload = "tuningValidation"
             guard let request = command.tuningValidation, request.valid, request.original.context?.sessionId == session,
+                  request.mariaDBOptimizer == nil || owner.engine == .mariadb,
                   transaction == .idle, request.original.context?.transactionStatus == transaction?.rawValue,
                   command.authorization.map(BackendMessage.validID) == true else { throw BackendRequestError.invalidCommand }
         case "tuning.setting.observe":
@@ -76,6 +85,7 @@ enum TuningTransportAdmission {
         let expected: Set<String>
         if let request = operation.tuningValidation {
             guard operation.type == "tuning.validate", request.valid, transaction == .idle,
+                  request.mariaDBOptimizer == nil || owner.engine == .mariadb,
                   request.original.context?.sessionId == session else { throw BackendRequestError.invalidCommand }
             expected = ["type", "tuningValidation"]
         } else if let request = operation.tuningSetting {

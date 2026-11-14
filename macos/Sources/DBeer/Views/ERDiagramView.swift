@@ -87,7 +87,7 @@ struct ERDiagramView: View {
                 .accessibilityIdentifier("erBuild")
             }
             Spacer(minLength: 4)
-            if [.postgresql, .mysql].contains(model.activeEngine) {
+            if [.postgresql, .mysql, .mariadb].contains(model.activeEngine) {
                 Menu {
                     Button(model.schemaObservation?.enabled == true ? "Stop Schema Observation" : "Observe Schema Changes") {
                         Task { await workspace.toggleERSchemaObservation(document) }

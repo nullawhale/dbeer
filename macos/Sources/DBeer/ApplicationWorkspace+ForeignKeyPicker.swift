@@ -86,7 +86,7 @@ extension ApplicationWorkspace {
               let row = grid.rows.first(where: { $0.id == rowID }), !row.isDeleted,
               let profileID = document.profileID,
               let profile = library.savedConnections.first(where: { $0.id == profileID }),
-              [.postgresql, .mysql, .sqlite].contains(profile.engine),
+              [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine),
               let service = services[profileID], service.connectionState == .connected,
               let sessionID = service.sessionId, service.activeConnectionId == profileID,
               let runtime = document.runtime, runtime.connectionState == .connected,

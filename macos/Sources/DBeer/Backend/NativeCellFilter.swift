@@ -9,7 +9,7 @@ struct NativeCellFilterValue: Codable, Equatable, Sendable {
     let sourceType: String
     let sqliteStorage: String
     var isValid: Bool {
-        guard [.postgresql, .mysql, .sqlite].contains(sourceEngine), !sourceType.isEmpty,
+        guard [.postgresql, .mysql, .mariadb, .sqlite].contains(sourceEngine), !sourceType.isEmpty,
               sourceType.utf8.count <= 16_384, !sourceType.contains("\0"),
               ["preserve", "text", "integer", "real", "blob"].contains(sqliteStorage),
               let value = cell.value, value.utf8.count <= 1_024 * 1_024 else { return false }

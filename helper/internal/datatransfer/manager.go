@@ -349,11 +349,28 @@ func (m *Manager) prepare(j *job, r protocol.TransferRequest, describe bool) {
 	j.reply.Columns = columns
 	j.reply.SourceDigest = description.Digest
 	j.reply.Notices = append(j.reply.Notices, description.Notices...)
+	if r.Target.Connection.DatabaseEngine() == "mariadb" {
+		j.reply.Notices = append(j.reply.Notices, "MariaDB commits CREATE TABLE separately from inserted rows. Cancellation or failure can leave the known created destination table; inspect uncertain outcomes before retrying.")
+	}
 	if r.Target.Connection.DatabaseEngine() == "mysql" {
 		j.reply.Notices = append(j.reply.Notices, "MySQL commits CREATE TABLE separately from inserted rows. A cancelled or failed transfer can leave an empty destination table; uncertain outcomes require inspecting that table before retrying.")
 	}
 	if r.Mode == "csv" {
 		j.reply.Notices = append(j.reply.Notices, "Numeric, boolean and temporal destination types use canonical value representations. Choose TEXT when the original CSV spelling is significant.")
+	}
+	if r.Target.Connection.DatabaseEngine() == "mariadb" {
+		for _, column := range columns {
+			if column.Type == "timestampTZ" {
+				j.reply.Notices = append(j.reply.Notices, "Zoned timestamps are transferred to native UTC DATETIME(6) values; source session-dependent TIMESTAMP behavior is not cloned.")
+				break
+			}
+		}
+		for _, column := range columns {
+			if column.Type == "json" {
+				j.reply.Notices = append(j.reply.Notices, "MariaDB JSON transfer destinations retain reviewed text bytes, duplicate keys and whitespace; future writes are not constrained by a cloned JSON property.")
+				break
+			}
+		}
 	}
 	for _, column := range columns {
 		if column.Type == "timestampTZ" && r.Target.Connection.DatabaseEngine() == "mysql" {

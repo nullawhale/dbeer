@@ -19,10 +19,10 @@ extension ApplicationWorkspace {
               grid.pendingCount == 0, !grid.hasInlineDraft, !grid.outcomeUnknown, !grid.resultIsStale,
               let profileID = document.profileID,
               let profile = library.savedConnections.first(where: { $0.id == profileID }),
-              [.postgresql, .mysql, .sqlite].contains(profile.engine),
+              [.postgresql, .mysql, .mariadb, .sqlite].contains(profile.engine),
               grid.columns.contains(where: { Data($0.name.utf8) == Data(column.name.utf8) }),
               let binding = SessionMonitorProfileBinding(profile) else {
-            throw GridProfileFailure("Open a current PostgreSQL, MySQL or SQLite table view and resolve local changes before capturing a fresh sample.")
+            throw GridProfileFailure("Open a current PostgreSQL, MySQL, MariaDB or SQLite table view and resolve local changes before capturing a fresh sample.")
         }
         let sourceRuntime = document.runtime
         let sourceSessionID = sourceRuntime?.sessionId
