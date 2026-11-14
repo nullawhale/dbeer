@@ -21,7 +21,7 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 		if !stringField(fields, "type", &operation.Type) {
 			return nil, false
 		}
-		if _, present := fields["structure"]; present && operation.Type != "structure.apply" && operation.Type != "structure.migration.apply" && operation.Type != "structure.validate" {
+		if _, present := fields["structure"]; present && operation.Type != "structure.apply" && operation.Type != "structure.migration.apply" && operation.Type != "structure.physical.apply" && operation.Type != "structure.validate" {
 			return nil, false
 		}
 		if _, present := fields["explain"]; present && operation.Type != "explain.run" {
@@ -62,7 +62,7 @@ func parseOperations(raw json.RawMessage) ([]OperationRequest, bool) {
 				return nil, false
 			}
 			operation.TableImport = request
-		case "structure.apply", "structure.migration.apply", "structure.validate":
+		case "structure.apply", "structure.physical.apply", "structure.migration.apply", "structure.validate":
 			if len(fields) != 2 {
 				return nil, false
 			}
@@ -173,7 +173,7 @@ func (operation OperationRequest) Valid() bool {
 	switch operation.Type {
 	case "explain.run":
 		return operation.Explain != nil && operation.Explain.Valid() && operation.Structure == nil && operation.SQL == "" && operation.Export == nil && operation.Changes == nil
-	case "structure.apply", "structure.migration.apply", "structure.validate":
+	case "structure.apply", "structure.physical.apply", "structure.migration.apply", "structure.validate":
 		return operation.Structure != nil && operation.Structure.Valid() && operation.Explain == nil && operation.SQL == "" && operation.Export == nil && operation.Changes == nil
 	case "execute":
 		return operation.Explain == nil && operation.Structure == nil && operation.SQL != "" && operation.Changes == nil && (operation.Export == nil || operation.Export.Valid())

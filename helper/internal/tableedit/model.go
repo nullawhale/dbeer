@@ -187,6 +187,7 @@ func IsDigest(s string) bool {
 }
 
 type Request struct {
+	Physical   *PhysicalRequest  `json:"physical,omitempty"`
 	Migration  *MigrationRequest `json:"migration,omitempty"`
 	Validation *Apply            `json:"validation,omitempty"`
 	Target     *Target           `json:"target,omitempty"`
@@ -196,6 +197,12 @@ type Request struct {
 }
 
 func (r Request) Valid(command string) bool {
+	if strings.HasPrefix(command, "structure.physical.") {
+		return r.Physical != nil && r.Migration == nil && r.Target == nil && r.BaselineID == "" && r.Draft == nil && r.Apply == nil && r.Validation == nil && r.Physical.Valid(command)
+	}
+	if r.Physical != nil {
+		return false
+	}
 	if strings.HasPrefix(command, "structure.migration.") {
 		return r.Migration != nil && r.Target == nil && r.BaselineID == "" && r.Draft == nil && r.Apply == nil && r.Validation == nil && r.Migration.Valid(command)
 	}
@@ -235,6 +242,7 @@ type Outcome struct {
 	RefreshError  string        `json:"refreshError,omitempty"`
 }
 type Reply struct {
+	Physical   *PhysicalReply     `json:"physical,omitempty"`
 	Migration  *MigrationReply    `json:"migration,omitempty"`
 	Validation *ValidationOutcome `json:"validation,omitempty"`
 	Baseline   *Baseline          `json:"baseline,omitempty"`

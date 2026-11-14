@@ -7,7 +7,7 @@ private final class TableImportSessionLease {
 
 extension ApplicationWorkspace {
     func canImportTableData(_ node: CatalogNode) -> Bool {
-        guard canManageWorkspace, canStartTableStructure(node.profileID), tableImporter == nil, structureEditor == nil, migrationComposer == nil, queryParameterPrompt == nil,
+        guard canManageWorkspace, canStartTableStructure(node.profileID), tableImporter == nil, structureEditor == nil, migrationComposer == nil, physicalStructure == nil, queryParameterPrompt == nil,
               node.kind == .object, node.objectKind == "table",
               let service = services[node.profileID], service.connectionState == .connected,
               [.postgresql, .mysql, .sqlite].contains(service.engine), service.capabilities.contains("tableImportV1") else { return false }

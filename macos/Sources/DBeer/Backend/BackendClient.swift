@@ -122,6 +122,7 @@ actor BackendClient {
     private var indexAuthoringSupported = false
     private var reconstructionSupported = false
     private var migrationsSupported = false
+    private var physicalStructureSupported = false
     // One admission bit per logical owner, independent of preview count or plan IDs.
     private var reconstructionSessions: [String: Bool] = [:]
     private var sessionCapabilities: [String: Set<String>] = [:]
@@ -229,6 +230,9 @@ actor BackendClient {
         nativeCommandsSupported && nativeResultValuesSupported &&
             sessionCapabilities[sessionId]?.contains(NativeCommand.capability) == true &&
             sessionCapabilities[sessionId]?.contains(NativeValue.capability) == true
+    }
+    private func supportsPhysicalStructure(sessionId: String?, retainedStatus: Bool = false) -> Bool {
+        physicalStructureSupported && sessionId.flatMap { retainedStatus ? retainedStructureCapabilities[$0] : sessionCapabilities[$0] }?.contains(structurePhysicalCapability) == true
     }
     private func supportsMigrations(sessionId: String?, retainedStatus: Bool = false) -> Bool {
         migrationsSupported && sessionId.flatMap { retainedStatus ? retainedStructureCapabilities[$0] : sessionCapabilities[$0] }?.contains(structureMigrationsCapability) == true
@@ -379,7 +383,12 @@ actor BackendClient {
             catch { throw BackendRequestError.invalidCommand }
         }
         for operation in command.operations ?? [] {
-            if operation.type == "structure.migration.apply" {
+            if operation.type == "structure.physical.apply" {
+                guard command.type == "operation.assess", supportsPhysicalStructure(sessionId: command.sessionId),
+                      operation.structure?.valid == true, operation.sql == nil, operation.export == nil,
+                      operation.changes == nil, operation.explain == nil, operation.parameters == nil,
+                      operation.tableImport == nil, operation.nativeCommand == nil, operation.queryId == nil else { throw BackendRequestError.invalidCommand }
+            } else if operation.type == "structure.migration.apply" {
                 guard command.type == "operation.assess", supportsMigrations(sessionId: command.sessionId),
                       operation.structure?.valid == true, operation.sql == nil, operation.export == nil,
                       operation.changes == nil, operation.explain == nil, operation.parameters == nil,
@@ -446,6 +455,9 @@ actor BackendClient {
                   command.insert == nil, command.sshTrust == nil else { throw BackendRequestError.invalidCommand }
         } else if command.explain != nil { throw BackendRequestError.invalidCommand }
         if command.type.hasPrefix("structure.") {
+            if command.type.hasPrefix("structure.physical.") {
+                guard supportsPhysicalStructure(sessionId: command.sessionId, retainedStatus: ["structure.physical.status", "structure.physical.close"].contains(command.type)) else { throw BackendRequestError.invalidCommand }
+            }
             if command.type.hasPrefix("structure.migration.") {
                 guard supportsMigrations(sessionId: command.sessionId, retainedStatus: ["structure.migration.status", "structure.migration.close"].contains(command.type)) else { throw BackendRequestError.invalidCommand }
             }
@@ -465,7 +477,7 @@ actor BackendClient {
                   command.changes == nil, command.export == nil, command.operations == nil,
                   command.comparison == nil, command.schemaComparison == nil, command.dataComparison == nil,
                   command.protocolVersion == nil, command.sequence == nil, command.insert == nil, command.sshTrust == nil, command.explain == nil,
-                  ["structure.apply", "structure.validate", "structure.migration.apply"].contains(command.type) || command.authorization == nil else { throw BackendRequestError.invalidCommand }
+                  ["structure.apply", "structure.validate", "structure.migration.apply", "structure.physical.apply"].contains(command.type) || command.authorization == nil else { throw BackendRequestError.invalidCommand }
         } else if command.structure != nil { throw BackendRequestError.invalidCommand }
         if command.type == "data.plan" || command.type == "schema.plan" {
             guard synchronizationPlanSupported else { throw BackendRequestError.invalidCommand }
@@ -628,6 +640,7 @@ actor BackendClient {
             return
         }
         let command = request.command
+        let physicalAdmitted = supportsPhysicalStructure(sessionId: command.sessionId, retainedStatus: ["structure.physical.status", "structure.physical.close"].contains(command.type))
         let migrationAdmitted = supportsMigrations(sessionId: command.sessionId, retainedStatus: ["structure.migration.status", "structure.migration.close"].contains(command.type))
         let destructiveStructureAdmitted = supportsDestructiveStructure(sessionId: command.sessionId, retainedStatus: command.type == "structure.status")
         let indexAuthoringAdmitted = supportsIndexAuthoring(sessionId: command.sessionId, retainedStatus: command.type == "structure.status")
@@ -784,6 +797,7 @@ actor BackendClient {
             indexAuthoringSupported = reply.capabilities?.contains("tableStructureIndexAuthoringV1") == true
             reconstructionSupported = reply.capabilities?.contains("tableStructureReconstructionV1") == true
             migrationsSupported = reply.capabilities?.contains(structureMigrationsCapability) == true
+            physicalStructureSupported = reply.capabilities?.contains(structurePhysicalCapability) == true
         }
         if reply.type == "connect.result", let session = reply.sessionId {
             sessionCapabilities[session] = Set(reply.capabilities ?? [])
@@ -803,7 +817,7 @@ actor BackendClient {
                  capabilities: Set(reply.capabilities ?? []), helperSupports: explainOptionsSupported) {
                 sessionExplainOptionSupport[session] = support
             } else { sessionExplainOptionSupport.removeValue(forKey: session) }
-            let structureCapabilities = Set(reply.capabilities ?? []).intersection(["tableStructureIndexAuthoringV1", "tableStructureDestructiveV1", "tableStructureReconstructionV1", structureMigrationsCapability])
+            let structureCapabilities = Set(reply.capabilities ?? []).intersection(["tableStructureIndexAuthoringV1", "tableStructureDestructiveV1", "tableStructureReconstructionV1", structureMigrationsCapability, structurePhysicalCapability])
             if !structureCapabilities.isEmpty { retainedStructureCapabilities[session] = structureCapabilities }
             else { retainedStructureCapabilities.removeValue(forKey: session) }
             if reply.transactionStatus == .unsupported, let support = reply.explainSupport, support.engine.hasEngineDiagnostics {
@@ -869,7 +883,11 @@ actor BackendClient {
                 if reply.type == "import.apply.result", imported.rowCount != command.tableImport?.rows?.count { throw BackendTransportError(.invalidMessage) }
                 if let row = imported.row, row > (command.tableImport?.rows?.count ?? 0) { throw BackendTransportError(.invalidMessage) }
             }
-            if reply.type != "error", command.type.hasPrefix("structure.migration.") {
+            if reply.type != "error", command.type.hasPrefix("structure.physical.") {
+                guard (request.started || command.type == "structure.physical.status"), physicalAdmitted, reply.type == command.terminalType,
+                      reply.structure?.valid(for: reply.type) == true else { throw BackendTransportError(.invalidMessage) }
+                try PhysicalTransportAdmission.validate(reply.structure?.physical, command: command)
+            } else if reply.type != "error", command.type.hasPrefix("structure.migration.") {
                 guard request.started, migrationAdmitted,
                       reply.structure?.valid(for: reply.type) == true, reply.type == command.terminalType else { throw BackendTransportError(.invalidMessage) }
                 try MigrationTransportAdmission.validate(reply.structure?.migration, command: command)
@@ -1115,7 +1133,7 @@ actor BackendClient {
         pending.removeAll()
         for request in requests {
             var contextualError = error
-            contextualError.outcomeUnknown = ["execute", "command.execute", "explain.run", "catalog", "changes.apply", "structure.apply", "structure.migration.apply", "import.apply", "transfer.apply", "dbtools.start"].contains(request.command.type)
+            contextualError.outcomeUnknown = ["execute", "command.execute", "explain.run", "catalog", "changes.apply", "structure.apply", "structure.migration.apply", "structure.physical.apply", "import.apply", "transfer.apply", "dbtools.start"].contains(request.command.type)
             request.continuation.resume(throwing: contextualError)
         }
     }

@@ -466,6 +466,8 @@ final class ApplicationWorkspace: ObservableObject {
     @Published private var completionCatalog = SQLCompletionCatalog()
     @Published var inspection: CatalogInspection?
     @Published var structureEditor: TableStructureEditorModel?
+    @Published var physicalStructure: PhysicalStructureModel?
+    @Published private(set) var physicalStructureReports: [PhysicalStructureOutcomeRecord] = []
     @Published var migrationComposer: MigrationComposerModel?
     @Published private(set) var migrationOutcomeReports: [MigrationOutcomeRecord] = []
     @Published var tableImporter: TableImportModel?
@@ -1022,7 +1024,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func showDataTransfer(_ profile: SavedConnection, mode: String = "csv", schema: String? = nil, table: String? = nil) {
         guard canManageWorkspace, dataTransfer == nil, databaseTools == nil, tableImporter == nil,
-              structureEditor == nil, migrationComposer == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
         let store = credentialStore
         let model = DataTransferModel(profiles: library.savedConnections, resolve: { profile, attempt in
             try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt)
@@ -1059,7 +1061,7 @@ final class ApplicationWorkspace: ObservableObject {
 
     func showDatabaseTools(_ profile: SavedConnection, restore: Bool = false) {
         guard canManageWorkspace, databaseTools == nil, dataTransfer == nil, tableImporter == nil,
-              structureEditor == nil, migrationComposer == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
+              structureEditor == nil, migrationComposer == nil, physicalStructure == nil, [.postgresql, .mysql].contains(profile.engine) else { return }
         let store = credentialStore
         let model = DatabaseToolsModel(profiles: library.savedConnections, initialProfileID: profile.id,
             resolve: { profile, attempt in try await DataComparisonCredentials.settings(profile, store: store, attempt: attempt) },
@@ -2608,7 +2610,7 @@ final class ApplicationWorkspace: ObservableObject {
         }
         let profileReviewID: UUID?
         if case .profile(let id) = scope { profileReviewID = id } else { profileReviewID = nil }
-        guard await prepareToClose(affected, profileReviewID: profileReviewID), await prepareMigrationToClose(scope), await prepareStructureToClose(scope), await prepareTableImportToClose(scope) else { return false }
+        guard await prepareToClose(affected, profileReviewID: profileReviewID), await preparePhysicalStructureToClose(scope), await prepareMigrationToClose(scope), await prepareStructureToClose(scope), await prepareTableImportToClose(scope) else { return false }
         if case .application = scope {
             isClosing = true
             defer { isClosing = false }
@@ -2653,6 +2655,33 @@ final class ApplicationWorkspace: ObservableObject {
         }
         guard tableImporter === model, await model.close() else { return false }
         tableImporter = nil
+        return true
+    }
+
+    private func preparePhysicalStructureToClose(_ scope: WorkspaceCloseScope) async -> Bool {
+        guard let model = physicalStructure else { return true }
+        switch scope {
+        case .document: return true
+        case .profile(let id): if model.profile.id != id { return true }
+        case .application: break
+        }
+        guard model.beginClosing() else { return false }
+        defer { if physicalStructure === model { model.cancelClosing() } }
+        let title = "Physical operation: " + model.target.schema + "." + model.target.table
+        if model.isBusy || model.checkingStatus {
+            guard await closeDecision(.runningQuery(title)) == .stop else { return false }
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while (model.isBusy || model.checkingStatus), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            guard !model.isBusy, !model.checkingStatus else { return false }
+        }
+        if model.outcomeUnknown {
+            guard await closeDecision(.unknownStructure(title)) == .discard else { return false }
+        } else if model.hasIntent {
+            guard await closeDecision(.structureDraft(title)) == .discard else { return false }
+        }
+        guard physicalStructure === model, await model.close() else { return false }
+        physicalStructure = nil
         return true
     }
 
@@ -3560,6 +3589,14 @@ final class ApplicationWorkspace: ObservableObject {
             (!isClosing || activeProfileCloseReview != nil)
     }
 
+    func recordPhysicalStructureOutcome(_ profileID: UUID, report: PhysicalStructureReport) {
+        if let index = physicalStructureReports.firstIndex(where: { $0.report.id == report.id }) { physicalStructureReports[index].report = report }
+        else { physicalStructureReports.append(.init(profileID: profileID, report: report)) }
+        for document in allOwnedRuntimeDocuments where document.profileID == profileID { document.markQueryResultStale() }
+        schemaComparison?.dismissPlan(); dataComparison?.dismissPlan()
+        invalidateStructureMetadata(profileID)
+    }
+
     func recordMigrationOutcome(_ profileID: UUID, report: MigrationExecutionDocument) {
         if let index = migrationOutcomeReports.firstIndex(where: { $0.report.id == report.id }) { migrationOutcomeReports[index].report = report }
         else { migrationOutcomeReports.append(.init(profileID: profileID, report: report)) }
@@ -3648,6 +3685,7 @@ final class ApplicationWorkspace: ObservableObject {
         if refresh {
             structureEditor?.invalidate()
             migrationComposer?.invalidate()
+            if physicalStructure?.profile.id == profileID { physicalStructure?.invalidate() }
             if tableImporter?.profile.id == profileID { tableImporter?.invalidate() }
             invalidatePostgresTypeInspection(profileID: profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.")
         }
@@ -3712,6 +3750,7 @@ final class ApplicationWorkspace: ObservableObject {
         if refresh {
             structureEditor?.invalidate()
             migrationComposer?.invalidate()
+            if physicalStructure?.profile.id == node.profileID { physicalStructure?.invalidate() }
             if tableImporter?.profile.id == node.profileID { tableImporter?.invalidate() }
             invalidatePostgresTypeInspection(profileID: node.profileID, reason: "The catalog was refreshed. Refresh this inspector before generating SQL.")
         }
@@ -4336,6 +4375,13 @@ final class ApplicationWorkspace: ObservableObject {
         await planArtifacts.waitForPendingWork()
         await savedEvidence.waitForPendingWork()
         cancelQueryParameterPrompt()
+        if let model = physicalStructure {
+            await model.stop()
+            let deadline = ContinuousClock.now.advanced(by: .seconds(6))
+            while (model.isBusy || model.checkingStatus), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(20)) }
+            _ = await model.close()
+            physicalStructure = nil
+        }
         if let model = migrationComposer {
             await model.stop()
             let deadline = ContinuousClock.now.advanced(by: .seconds(6))

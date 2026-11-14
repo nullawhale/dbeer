@@ -14,6 +14,9 @@ const StructureReconstructionCapability = tableedit.ReconstructionCapability
 
 func parseStructure(raw json.RawMessage, command string) (tableedit.Request, bool) {
 	var r tableedit.Request
+	if strings.HasPrefix(command, "structure.physical.") {
+		return parsePhysicalStructure(raw, command)
+	}
 	if strings.HasPrefix(command, "structure.migration.") {
 		return parseMigrationStructure(raw, command)
 	}

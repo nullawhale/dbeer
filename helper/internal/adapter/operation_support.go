@@ -36,6 +36,17 @@ func SessionOperationSupport(engine string, physical Session, policy protocol.Ex
 		}
 		support.Operations = append(support.Operations, protocol.OperationAvailability{Operation: operation, State: state, Reason: reason})
 	}
+	_, hasPhysical := physical.(tableedit.PhysicalAdapter)
+	for _, operation := range []string{"structure.physical.preview", "structure.physical.apply"} {
+		state, reason := "unavailable", "This physical session does not support guarded physical operations."
+		if hasPhysical {
+			state, reason = "requiresMetadata", "Prepare a version- and object-specific physical preview."
+			if policy.ReadOnly && operation == "structure.physical.apply" {
+				state, reason = "unavailable", "This connection is readonly."
+			}
+		}
+		support.Operations = append(support.Operations, protocol.OperationAvailability{Operation: operation, State: state, Reason: reason})
+	}
 	_, monitor := physical.(SessionMonitor)
 	state, reason := "unavailable", "This adapter does not support session monitoring."
 	if monitor {

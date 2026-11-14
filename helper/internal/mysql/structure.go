@@ -33,6 +33,9 @@ func (s *Session) StructureLoad(ctx context.Context, t tableedit.Target) (tablee
 	return b, nil
 }
 func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) {
+	return s.readStructurePhysical(t, false)
+}
+func (s *Session) readStructurePhysical(t tableedit.Target, physical bool) (tableedit.Baseline, error) {
 	observe := t.Reconcile
 	t.Reconcile = false
 	b := tableedit.Baseline{Target: t, Engine: "mysql", Columns: []tableedit.ObservedColumn{}, Keys: []tableedit.Key{}, Indexes: []tableedit.Index{}, Limitations: []string{"Only ordinary nonpartitioned InnoDB tables are supported. Appended columns are nullable; required-column backfills and physical reconstruction require a separate reviewed plan.", "MySQL DDL implicitly commits. Metadata rechecks are best effort and cannot close a concurrent DDL race or prove drop/recreate identity. Stop and Discard do not undo applied DDL.", "Text literal defaults containing backslashes/control characters and literal TEXT defaults are unsupported; expression defaults use an explicit bounded SQL expression."}}
@@ -145,7 +148,7 @@ func (s *Session) readStructure(t tableedit.Target) (tableedit.Baseline, error) 
 	options, _ := ownedStructureString(tables, 0, 2)
 	collation, _ := ownedStructureString(tables, 0, 3)
 	comment, _ := ownedStructureString(tables, 0, 4)
-	if kind != "BASE TABLE" || engine != "InnoDB" || strings.Contains(strings.ToLower(options), "partition") {
+	if kind != "BASE TABLE" || !physical && (engine != "InnoDB" || strings.Contains(strings.ToLower(options), "partition")) || physical && engine != "InnoDB" && engine != "MyISAM" {
 		return b, tableedit.ErrUnsupported
 	}
 	ddl, e := s.work.client.Execute("SHOW CREATE TABLE " + QuoteIdentifier(t.Schema) + "." + QuoteIdentifier(t.Table))

@@ -11,6 +11,12 @@ import (
 
 func isStructure(t string) bool { return strings.HasPrefix(t, "structure.") }
 func (owner *owner) runStructure(ctx context.Context, physical adapter.Session, c protocol.Command) protocol.Response {
+	if strings.HasPrefix(c.Type, "structure.physical.") {
+		return owner.runPhysical(ctx, physical, c)
+	}
+	if owner.physicalDDL.NeedsReconciliation() && c.Type != "structure.status" {
+		return rejectedCommand(c, "policy", "Reconcile retained physical execution before another structure operation.")
+	}
 	if strings.HasPrefix(c.Type, "structure.migration.") {
 		return owner.runMigration(ctx, physical, c)
 	}

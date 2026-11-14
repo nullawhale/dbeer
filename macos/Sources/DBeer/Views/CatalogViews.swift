@@ -185,6 +185,9 @@ struct CatalogBranchView: View {
                 menu.addCatalogAction("Edit Structure…") { Task { await workspace.openTableStructure(node, create: false) } }
             }
         }
+        if workspace.canManagePhysicalStructure(node) {
+            menu.addCatalogAction("Partitions, Storage & Online DDL…") { workspace.openPhysicalStructure(node) }
+        }
         if workspace.canComposeMigration(node) {
             menu.addCatalogAction("Compose Migration…") { workspace.openMigration(node) }
         }

@@ -85,6 +85,10 @@ struct ApplicationWorkspaceView: View {
                 saveEvidence: { workspace.saveStructureEvidence(model) }, evidenceModel: workspace.savedEvidence)
                 .applicationTheme(appearance: appearance)
         }
+        .sheet(item: $workspace.physicalStructure) { model in
+            PhysicalStructureView(model: model, close: { Task { await workspace.closePhysicalStructure() } })
+                .applicationTheme(appearance: appearance)
+        }
         .sheet(item: $workspace.migrationComposer) { model in
             MigrationComposerView(model: model, initialTarget: model.initialTarget, close: { Task { await workspace.closeMigration() } })
                 .applicationTheme(appearance: appearance)

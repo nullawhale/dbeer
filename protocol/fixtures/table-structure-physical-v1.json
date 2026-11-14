@@ -1,0 +1,1356 @@
+{
+  "valid": [
+    {
+      "type": "structure.physical.inspect",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "target": {
+            "schema": "app",
+            "table": "p",
+            "create": false
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "range",
+                "from": [
+                  {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                ],
+                "to": [
+                  {
+                    "kind": "integer",
+                    "value": "10"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "list",
+                "values": [
+                  [
+                    {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "text",
+                      "value": "NULL"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "text",
+                      "value": ""
+                    }
+                  ]
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "hash",
+                "modulus": 4,
+                "remainder": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "default"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "attachPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "range",
+                "from": [
+                  {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                ],
+                "to": [
+                  {
+                    "kind": "integer",
+                    "value": "10"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "attachPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "list",
+                "values": [
+                  [
+                    {
+                      "kind": "integer",
+                      "value": "1"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "null"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "text",
+                      "value": "NULL"
+                    }
+                  ],
+                  [
+                    {
+                      "kind": "text",
+                      "value": ""
+                    }
+                  ]
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "attachPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "hash",
+                "modulus": 4,
+                "remainder": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "attachPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "default"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "detachPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "finalizePartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "dropPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "truncatePartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "detachPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "concurrent": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "concurrentIndex",
+              "index": {
+                "action": "add",
+                "name": "idx",
+                "definition": {
+                  "method": "btree",
+                  "terms": [
+                    {
+                      "column": "v"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "onlineIndex",
+              "index": {
+                "action": "add",
+                "name": "idx",
+                "definition": {
+                  "method": "btree",
+                  "terms": [
+                    {
+                      "column": "v"
+                    }
+                  ]
+                }
+              },
+              "algorithm": "INPLACE",
+              "lock": "NONE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "concurrentIndex",
+              "index": {
+                "action": "drop",
+                "name": "invalid_idx"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "storageEngine",
+              "engine": "MyISAM",
+              "algorithm": "COPY",
+              "lock": "EXCLUSIVE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "reorderColumns",
+              "columnOrder": [
+                "v",
+                "id"
+              ],
+              "algorithm": "COPY",
+              "lock": "SHARED"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "exchangePartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "partitions": [
+                "p0"
+              ],
+              "algorithm": "INPLACE",
+              "lock": "NONE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "partitionTable",
+              "method": "hash",
+              "columns": [
+                "id"
+              ],
+              "count": 4,
+              "algorithm": "COPY",
+              "lock": "EXCLUSIVE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "removePartitioning",
+              "algorithm": "COPY",
+              "lock": "EXCLUSIVE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "addPartition",
+              "definitions": [
+                {
+                  "name": "new",
+                  "bound": {
+                    "kind": "range",
+                    "to": [
+                      {
+                        "kind": "integer",
+                        "value": "20"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "algorithm": "INPLACE",
+              "lock": "EXCLUSIVE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "reorganizePartition",
+              "definitions": [
+                {
+                  "name": "new",
+                  "bound": {
+                    "kind": "range",
+                    "to": [
+                      {
+                        "kind": "integer",
+                        "value": "20"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "algorithm": "INPLACE",
+              "lock": "EXCLUSIVE",
+              "partitions": [
+                "old"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "addHashPartitions",
+              "count": 1,
+              "algorithm": "INPLACE",
+              "lock": "SHARED"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "coalescePartitions",
+              "count": 1,
+              "algorithm": "INPLACE",
+              "lock": "SHARED"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "dropPartition",
+              "partitions": [
+                "old"
+              ],
+              "algorithm": "INPLACE",
+              "lock": "NONE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "truncatePartition",
+              "partitions": [
+                "old"
+              ],
+              "algorithm": "INPLACE",
+              "lock": "NONE"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.status",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {}
+      }
+    },
+    {
+      "type": "structure.physical.reconcile",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {}
+      }
+    },
+    {
+      "type": "structure.physical.close",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {}
+      }
+    },
+    {
+      "type": "structure.physical.apply",
+      "requestId": "r",
+      "sessionId": "s",
+      "queryId": "q",
+      "structure": {
+        "physical": {
+          "apply": {
+            "planId": "p",
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "executionId": "e"
+          }
+        }
+      }
+    }
+  ],
+  "invalid": [
+    "{\"type\":\"structure.physical.preview\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"structure\":{\"physical\":{\"draft\":{\"version\":2,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}}}}}",
+    "{\"type\":\"structure.physical.preview\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]},\"sql\":\"DROP TABLE hidden\"}}}}}",
+    "{\"type\":\"structure.physical.preview\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]},\"engine\":\"MyISAM\"}}}}}",
+    "{\"type\":\"structure.physical.preview\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":null}}}}}",
+    "{\"type\":\"structure.physical.preview\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"01\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}}}}}",
+    "{\"type\":\"structure.physical.preview\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}}},\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false}}}",
+    "{\"type\":\"structure.physical.preview\",\"requestId\":\"r\",\"sessionId\":\"s\",\"queryId\":\"q\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}}}},\"sql\":\"SELECT 1\"}"
+  ],
+  "validReplies": [
+    {
+      "type": "structure.physical.inspect.result",
+      "structure": {
+        "physical": {
+          "inspection": {
+            "version": 1,
+            "engine": "postgresql",
+            "serverVersion": 170000,
+            "objects": [
+              {
+                "target": {
+                  "schema": "app",
+                  "table": "p",
+                  "create": false
+                },
+                "identity": "42",
+                "kind": "p",
+                "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "columns": [
+                  {
+                    "name": "id",
+                    "nativeType": "pg_catalog.int4",
+                    "nullable": false,
+                    "canModify": false
+                  }
+                ],
+                "partitionMethod": "range",
+                "partitionColumns": [
+                  "id"
+                ],
+                "partitionKeyCount": 1,
+                "partitions": [],
+                "indexes": [],
+                "limitations": []
+              }
+            ],
+            "operations": [
+              "createPartition",
+              "attachPartition",
+              "detachPartition",
+              "finalizePartition",
+              "dropPartition",
+              "truncatePartition"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.preview.result",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "range",
+                "from": [
+                  {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                ],
+                "to": [
+                  {
+                    "kind": "integer",
+                    "value": "10"
+                  }
+                ]
+              }
+            }
+          },
+          "plan": {
+            "id": "p",
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "draft": {
+              "version": 1,
+              "target": {
+                "schema": "app",
+                "table": "p",
+                "create": false
+              },
+              "intent": {
+                "kind": "createPartition",
+                "child": {
+                  "schema": "app",
+                  "table": "child",
+                  "create": false
+                },
+                "bound": {
+                  "kind": "range",
+                  "from": [
+                    {
+                      "kind": "integer",
+                      "value": "0"
+                    }
+                  ],
+                  "to": [
+                    {
+                      "kind": "integer",
+                      "value": "10"
+                    }
+                  ]
+                }
+              }
+            },
+            "engine": "postgresql",
+            "serverVersion": 170000,
+            "sql": [
+              "reviewed operation;"
+            ],
+            "objects": [
+              {
+                "target": {
+                  "schema": "app",
+                  "table": "p",
+                  "create": false
+                },
+                "identity": "42",
+                "kind": "p",
+                "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "columns": [
+                  {
+                    "name": "id",
+                    "nativeType": "pg_catalog.int4",
+                    "nullable": false,
+                    "canModify": false
+                  }
+                ],
+                "partitionMethod": "range",
+                "partitionColumns": [
+                  "id"
+                ],
+                "partitionKeyCount": 1,
+                "partitions": [],
+                "indexes": [],
+                "limitations": []
+              }
+            ],
+            "prerequisites": [
+              "Idle owning session required."
+            ],
+            "risks": [
+              "No automatic replay."
+            ],
+            "consequences": [],
+            "transactionMode": "transaction",
+            "locking": "ACCESS EXCLUSIVE; lock_timeout=5s",
+            "destructive": true
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.status.result",
+      "structure": {
+        "physical": {}
+      }
+    },
+    {
+      "type": "structure.physical.close.result",
+      "structure": {
+        "physical": {}
+      }
+    },
+    {
+      "type": "structure.physical.status.result",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "range",
+                "from": [
+                  {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                ],
+                "to": [
+                  {
+                    "kind": "integer",
+                    "value": "10"
+                  }
+                ]
+              }
+            }
+          },
+          "outcome": {
+            "executionId": "e",
+            "planId": "p",
+            "state": "applying",
+            "phase": "running",
+            "steps": [
+              {
+                "state": "notStarted"
+              }
+            ],
+            "reconciled": false
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.apply.result",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "range",
+                "from": [
+                  {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                ],
+                "to": [
+                  {
+                    "kind": "integer",
+                    "value": "10"
+                  }
+                ]
+              }
+            }
+          },
+          "outcome": {
+            "executionId": "e",
+            "planId": "p",
+            "state": "applied",
+            "phase": "finished",
+            "steps": [
+              {
+                "state": "applied"
+              }
+            ],
+            "reconciled": true
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.apply.result",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "range",
+                "from": [
+                  {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                ],
+                "to": [
+                  {
+                    "kind": "integer",
+                    "value": "10"
+                  }
+                ]
+              }
+            }
+          },
+          "outcome": {
+            "executionId": "e",
+            "planId": "p",
+            "state": "failed",
+            "phase": "finished",
+            "steps": [
+              {
+                "state": "failed"
+              }
+            ],
+            "reconciled": true
+          }
+        }
+      }
+    },
+    {
+      "type": "structure.physical.apply.result",
+      "structure": {
+        "physical": {
+          "draft": {
+            "version": 1,
+            "target": {
+              "schema": "app",
+              "table": "p",
+              "create": false
+            },
+            "intent": {
+              "kind": "createPartition",
+              "child": {
+                "schema": "app",
+                "table": "child",
+                "create": false
+              },
+              "bound": {
+                "kind": "range",
+                "from": [
+                  {
+                    "kind": "integer",
+                    "value": "0"
+                  }
+                ],
+                "to": [
+                  {
+                    "kind": "integer",
+                    "value": "10"
+                  }
+                ]
+              }
+            }
+          },
+          "outcome": {
+            "executionId": "e",
+            "planId": "p",
+            "state": "outcomeUnknown",
+            "phase": "finished",
+            "steps": [
+              {
+                "state": "unknown"
+              }
+            ],
+            "reconciled": true,
+            "observed": [
+              {
+                "target": {
+                  "schema": "app",
+                  "table": "p",
+                  "create": false
+                },
+                "identity": "42",
+                "kind": "p",
+                "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "columns": [
+                  {
+                    "name": "id",
+                    "nativeType": "pg_catalog.int4",
+                    "nullable": false,
+                    "canModify": false
+                  }
+                ],
+                "partitionMethod": "range",
+                "partitionColumns": [
+                  "id"
+                ],
+                "partitionKeyCount": 1,
+                "partitions": [],
+                "indexes": [],
+                "limitations": []
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "invalidReplies": [
+    "{\"type\":\"structure.physical.preview.result\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}},\"plan\":{\"id\":\"p\",\"digest\":\"short\",\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}},\"engine\":\"postgresql\",\"serverVersion\":170000,\"sql\":[\"reviewed operation;\"],\"objects\":[{\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"identity\":\"42\",\"kind\":\"p\",\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"columns\":[{\"name\":\"id\",\"nativeType\":\"pg_catalog.int4\",\"nullable\":false,\"canModify\":false}],\"partitionMethod\":\"range\",\"partitionColumns\":[\"id\"],\"partitionKeyCount\":1,\"partitions\":[],\"indexes\":[],\"limitations\":[]}],\"prerequisites\":[\"Idle owning session required.\"],\"risks\":[\"No automatic replay.\"],\"consequences\":[],\"transactionMode\":\"transaction\",\"locking\":\"ACCESS EXCLUSIVE; lock_timeout=5s\",\"destructive\":true}}}}",
+    "{\"type\":\"structure.physical.preview.result\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}},\"plan\":{\"id\":\"p\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}},\"engine\":\"postgresql\",\"serverVersion\":170000,\"sql\":null,\"objects\":[{\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"identity\":\"42\",\"kind\":\"p\",\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"columns\":[{\"name\":\"id\",\"nativeType\":\"pg_catalog.int4\",\"nullable\":false,\"canModify\":false}],\"partitionMethod\":\"range\",\"partitionColumns\":[\"id\"],\"partitionKeyCount\":1,\"partitions\":[],\"indexes\":[],\"limitations\":[]}],\"prerequisites\":[\"Idle owning session required.\"],\"risks\":[\"No automatic replay.\"],\"consequences\":[],\"transactionMode\":\"transaction\",\"locking\":\"ACCESS EXCLUSIVE; lock_timeout=5s\",\"destructive\":true}}}}",
+    "{\"type\":\"structure.physical.preview.result\",\"structure\":{\"physical\":{\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}},\"plan\":{\"id\":\"p\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"draft\":{\"version\":1,\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"intent\":{\"kind\":\"createPartition\",\"child\":{\"schema\":\"app\",\"table\":\"child\",\"create\":false},\"bound\":{\"kind\":\"range\",\"from\":[{\"kind\":\"integer\",\"value\":\"0\"}],\"to\":[{\"kind\":\"integer\",\"value\":\"10\"}]}}},\"engine\":\"postgresql\",\"serverVersion\":170000,\"sql\":[\"reviewed operation;\"],\"objects\":[{\"target\":{\"schema\":\"app\",\"table\":\"p\",\"create\":false},\"identity\":\"42\",\"kind\":\"p\",\"fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"columns\":[{\"name\":\"id\",\"nativeType\":\"pg_catalog.int4\",\"nullable\":false,\"canModify\":false}],\"partitionMethod\":\"range\",\"partitionColumns\":[\"id\"],\"partitionKeyCount\":1,\"partitions\":[],\"indexes\":[],\"limitations\":[]}],\"prerequisites\":[\"Idle owning session required.\"],\"risks\":[\"No automatic replay.\"],\"consequences\":[],\"transactionMode\":\"transaction\",\"locking\":\"ACCESS EXCLUSIVE; lock_timeout=5s\",\"destructive\":true,\"authority\":\"hidden\"}}}}"
+  ],
+  "portable": {
+    "version": 1,
+    "target": {
+      "schema": "app",
+      "table": "p",
+      "create": false
+    },
+    "intent": {
+      "kind": "createPartition",
+      "child": {
+        "schema": "app",
+        "table": "child",
+        "create": false
+      },
+      "bound": {
+        "kind": "range",
+        "from": [
+          {
+            "kind": "integer",
+            "value": "0"
+          }
+        ],
+        "to": [
+          {
+            "kind": "integer",
+            "value": "10"
+          }
+        ]
+      }
+    }
+  }
+}

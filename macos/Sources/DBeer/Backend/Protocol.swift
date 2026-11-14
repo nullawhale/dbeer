@@ -485,7 +485,7 @@ struct BackendCommand: Codable, Sendable, Equatable {
         case "monitor.snapshot": "monitor.result"
         case "monitor.schema": "monitor.schema.result"
         case "structure.load", "structure.preview", "structure.validate", "structure.apply", "structure.status", "structure.close",
-             "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close": type + ".result"
+             "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.status", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close": type + ".result"
         case "import.describe", "import.preview", "import.apply": type + ".result"
         case "cancel": "cancel.ack"
         case "disconnect": "disconnect.ack"
@@ -671,7 +671,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
         case "import.describe.result", "import.preview.result", "import.apply.result":
             return validStructuralMessageShape()
         case "structure.load.result", "structure.preview.result", "structure.validate.result", "structure.apply.result", "structure.status.result", "structure.close.result",
-             "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
+             "structure.physical.inspect.result", "structure.physical.preview.result", "structure.physical.apply.result", "structure.physical.status.result", "structure.physical.reconcile.result", "structure.physical.close.result", "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
             return validStructuralMessageShape()
         case "query.progress":
             return validSQLMessageShape()
@@ -697,7 +697,7 @@ struct BackendMessage: Codable, Sendable, Equatable {
                 columns == nil && rows == nil && resultSets == nil && streamed == nil && source == nil &&
                 tableImport?.valid(for: type) == true && (durationMs.map { $0.isFinite && $0 >= 0 } ?? true)
         case "structure.load.result", "structure.preview.result", "structure.validate.result", "structure.apply.result", "structure.status.result", "structure.close.result",
-             "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
+             "structure.physical.inspect.result", "structure.physical.preview.result", "structure.physical.apply.result", "structure.physical.status.result", "structure.physical.reconcile.result", "structure.physical.close.result", "structure.migration.preview.result", "structure.migration.apply.result", "structure.migration.export.result", "structure.migration.status.result", "structure.migration.reconcile.result", "structure.migration.close.result":
             return sessionId != nil && queryId != nil && connected != nil &&
                 (transactionStatus != nil || connected == false) && columns == nil && rows == nil &&
                 resultSets == nil && streamed == nil && source == nil && structure?.valid(for: type) == true

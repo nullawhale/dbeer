@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Review PostgreSQL RANGE/LIST/HASH partition create, attach, detach, interrupted
+  detach finalization, drop and truncate, and concurrent index creation/removal.
+  Add MySQL partition creation/removal, RANGE/LIST reorganization and loss actions,
+  HASH/KEY resizing, validated exchange, explicit storage-engine conversion,
+  strict online index algorithms/locks and native COPY column reordering. Keep
+  portable intent separate from current catalog proof and exact single-use
+  execution authority; retain acknowledgement, intermediate server states,
+  cancellation and uncertain outcomes without automatic cleanup or replay. Open
+  the table catalog's Partitions, Storage & Online DDL… workspace; save portable
+  `.dbeerphysical` intent or historical `.dbeerphysicalreport` evidence. Reopened
+  files remain disconnected and carry no execution or replay authority.
+
 - Explain INSERT/UPDATE/DELETE and PostgreSQL data-changing CTEs without
   executing the outer DML, while retaining routine/side-effect policy during
   planning. Authorize actual DML Analyze separately with exact typed

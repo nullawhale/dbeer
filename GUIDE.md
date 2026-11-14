@@ -1739,6 +1739,81 @@ captures fail explicitly at bounded node/member/scalar/storage limits. Only a
 complete comparison can say **Selected table structure matches**. SQL planning is
 a separate explicit action; comparison never applies migration SQL.
 
+## Physical table operations (unreleased)
+
+Open **Partitions, Storage & Online DDL…** from a table's catalog menu.
+Physical operations use a dedicated idle connection and a fresh review of the
+selected table. Inspection and Preview read bounded catalogs only. They never
+scan table data, evaluate expressions, run user functions, or start background
+maintenance. Saved drafts contain typed intent; reopening a draft stays
+disconnected until you explicitly connect and inspect it. Catalog evidence,
+plan digests, execution grants, passwords and connection settings are not part
+of portable physical drafts. Save portable typed intent as `.dbeerphysical` and
+historical exact reviews/execution reports as `.dbeerphysicalreport`. Opening
+either file stays disconnected and supplies no connection, execution grant,
+status access or replay authority; future work requires explicit Inspect/Preview.
+
+PostgreSQL 14–18 supports reviewed RANGE, LIST and HASH partition creation and
+attachment, ordinary or concurrent detach, explicit finalization of an observed
+interrupted detach, and explicit partition DROP/TRUNCATE. New partitions use
+native parent inheritance. ATTACH can scan the candidate and default partition
+and create or attach inherited indexes or triggers. Ordinary operations use a
+transaction and bounded, ordered exclusive locks. Concurrent detach runs outside
+a user transaction, uses PostgreSQL's two internal transactions, and is unavailable
+when a default partition exists. Exact generated bound-CHECK proof additionally
+requires a root partitioned parent with direct built-in-type key columns; ordinary
+reviewed detach remains available for richer partition keys. Cancellation can
+leave `inhdetachpending`; only
+a fresh explicit FINALIZE review can complete it. DROP uses RESTRICT and deletes
+the partition and all its rows. TRUNCATE uses RESTRICT without restarting sequences.
+
+Concurrent PostgreSQL index creation/removal uses the existing typed index
+editor on ordinary tables or leaf partitions, outside a user transaction. A
+failed or cancelled CREATE can leave an INVALID index which can still impose
+write or uniqueness overhead. Validity, readiness and liveness are observations,
+separate from execution acknowledgement. The application never drops, replaces,
+retries or cleans up such an index automatically. Constraint-owned, inherited,
+replica-identity and clustered indexes require their own prerequisite changes.
+
+Oracle MySQL 8.0.30+ in the 8.0 series and 8.4 LTS supports explicit initial
+RANGE/LIST/HASH/KEY partitioning and removal, RANGE/LIST ADD/DROP/REORGANIZE,
+HASH/KEY ADD/COALESCE, partition TRUNCATE and validated EXCHANGE with an ordinary
+InnoDB table. COLUMNS bounds retain exact text, empty strings, SQL NULL and
+integer strings. Subpartitioned tables require a separate subpartition-aware
+migration so subordinate bounds and properties are not omitted. DROP/TRUNCATE
+permanently delete selected rows. EXCHANGE swaps row ownership and always uses
+WITH VALIDATION. Partition key, unique key, row-bound and engine restrictions are
+enforced by MySQL during Apply; catalog-only Preview cannot prove data acceptance.
+
+Every MySQL operation carries explicit ALGORITHM and LOCK choices. Unsupported
+combinations fail without server fallback. COPY requires SHARED or EXCLUSIVE;
+REORGANIZE/COALESCE use INPLACE with SHARED or EXCLUSIVE. LOCK=NONE still needs
+brief metadata locks. DDL implicitly commits and can rebuild or redistribute the
+entire table. Complete native column definitions are retained for reordering,
+including generated columns on the explicit COPY path. COPY or engine conversion
+on an AUTO_INCREMENT table requires NO_AUTO_VALUE_ON_ZERO already in the session;
+the helper never changes SQL mode or replaces stored zeros implicitly.
+
+Storage conversion explicitly selects active InnoDB or MyISAM on an ordinary
+nonpartitioned table with compatible retained properties. Foreign-key repairs
+must be reviewed first. MyISAM loses transactions, foreign-key enforcement,
+MVCC and InnoDB crash recovery and uses table locks. Unrecognized engine options,
+engine-specific row formats and unproven physical index properties require an
+explicit property migration; no column declaration, default, comment or index
+option is silently discarded. Strict SQL mode and NO_ENGINE_SUBSTITUTION are
+prerequisites. MariaDB, Percona and unproven MySQL version series are unavailable.
+
+Apply always requires confirmation of the exact current SQL and its loss,
+locking and dependency consequences, including in development. Retained progress
+reports metadata rechecking, running and acknowledged steps with elapsed time;
+it does not invent a server percentage. Stop uses the running operation's own
+cancellation handle. Acknowledged changes survive later Stop or observation
+failure; lost acknowledgement remains unknown even when a later catalog snapshot
+resembles the intended result. Explicit reconciliation reads current metadata and
+keeps that distinction. A preservation mismatch retains the report and requires
+reconciliation. There is no automatic reconnect, replay, cleanup, CASCADE,
+constraint disabling, or claim that several physical operations are atomic.
+
 ## Synchronization SQL plans
 
 After a PostgreSQL or MySQL schema or table-data comparison finishes, choose

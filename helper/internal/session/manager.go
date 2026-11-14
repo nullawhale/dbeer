@@ -116,7 +116,7 @@ func (manager *Manager) forgetPending(command protocol.Command) {
 // Keep them distinct from terminal failures of dispatched database commands.
 func rejectedCommand(command protocol.Command, category, message string) protocol.Response {
 	response := protocol.ErrorResponse(command, category, message)
-	response.SQLNotExecuted = command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "structure.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || isImport(command.Type)
+	response.SQLNotExecuted = command.Type == "execute" || command.Type == "command.execute" || command.Type == "explain.run" || command.Type == "structure.apply" || command.Type == "structure.physical.apply" || command.Type == "structure.migration.apply" || command.Type == "structure.validate" || isImport(command.Type)
 	return response
 }
 
@@ -269,6 +269,7 @@ type owner struct {
 	metadata           catalogmetadata.Store
 	structure          tableedit.Store
 	migration          tableedit.MigrationStore
+	physicalDDL        tableedit.PhysicalStore
 	structureOnly      bool
 	importOnly         bool
 	monitorOnly        bool
@@ -593,6 +594,9 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					outgoing = append(outgoing, protocol.ErrorResponse(pending, "cancelled", "Connection attempt was cancelled."))
 				} else {
 					response := protocol.Response{Type: "connect.result", RequestID: pending.RequestID, SessionID: owner.id, Engine: engine, Capabilities: adapter.Capabilities(engine), TransactionStatus: txStatus}
+					if _, ok := physical.(tableedit.PhysicalAdapter); !ok {
+						response.Capabilities = slices.DeleteFunc(response.Capabilities, func(c string) bool { return c == protocol.StructurePhysicalCapability })
+					}
 					support := adapter.SessionOperationSupport(engine, physical, policy)
 					response.OperationSupport = &support
 					if _, ok := physical.(adapter.NativeCommandSession); ok {
@@ -666,6 +670,11 @@ func (owner *owner) run(connectCommand protocol.Command) {
 			}
 			var response protocol.Response
 			switch command.Type {
+			case "structure.physical.status":
+				owner.manager.forgetPending(command)
+				response = owner.physicalStatus(command)
+				response.Connected = txStatus != "unknown"
+				response.TransactionStatus = txStatus
 			case "operation.assess":
 				if owner.monitorOnly {
 					response = protocol.ErrorResponse(command, "policy", "This session is reserved for readonly monitoring.")
@@ -674,7 +683,7 @@ func (owner *owner) run(connectCommand protocol.Command) {
 				} else {
 					response = owner.assess(command, engine, policy, physical)
 				}
-			case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
+			case "monitor.snapshot", "monitor.schema", "import.describe", "import.preview", "import.apply", "structure.physical.inspect", "structure.physical.preview", "structure.physical.apply", "structure.physical.reconcile", "structure.physical.close", "structure.migration.preview", "structure.migration.apply", "structure.migration.export", "structure.migration.status", "structure.migration.reconcile", "structure.migration.close", "structure.load", "structure.preview", "structure.apply", "structure.validate", "structure.status", "structure.close", "execute", "command.execute", "explain.run", "catalog", "catalog.page", "catalog.batch", "catalog.close", "changes.preview", "changes.apply":
 				if active != nil || len(outgoing) != 0 {
 					owner.manager.forgetPending(command)
 					response = rejectedCommand(command, "busy", "Another operation is in progress in this session.")
@@ -709,7 +718,11 @@ func (owner *owner) run(connectCommand protocol.Command) {
 					response = rejectedCommand(command, "policy", "Execution is blocked by readonly policy or requires a fresh confirmation of this exact operation.")
 				} else {
 					command.PreparedExplainSQL = owner.takeApprovedExplainSQL()
-					ctx, cancel = context.WithTimeout(context.Background(), owner.manager.timeout)
+					duration := owner.manager.timeout
+					if command.Type == "structure.physical.apply" {
+						duration = 30 * time.Minute
+					}
+					ctx, cancel = context.WithTimeout(context.Background(), duration)
 					pending = command
 					credit := newCreditState(owner, command)
 					owner.manager.controlMu.Lock()
