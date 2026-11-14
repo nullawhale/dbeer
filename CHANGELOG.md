@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.5.0 — build 14 — 2026-11-14
+
+This release targets the native macOS client and bundled Go helper. MariaDB
+support is partial; its deferred workflows remain disabled or require separately
+reviewed native SQL. Windows/Linux GPUI candidates are outside this release.
+Workspace storage advances to v15, profiles to v6, portable profiles to v4 and
+the native app/helper protocol to v6. Install the complete matching application.
+
 - Add a separate, partial MariaDB adapter for native 10.11.9+ and 11.4.3+:
   independent SQL/transaction/TLS/SSH owners, exact values, table-grid edits and
   frozen imports, native JSON Explain/Analyze, monitoring and reviewed tuning,

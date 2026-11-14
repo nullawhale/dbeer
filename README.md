@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>PostgreSQL. MySQL. Cassandra. MongoDB. One native macOS app.</strong><br>
+  <strong>PostgreSQL. MySQL. SQLite. Cassandra. MongoDB. MariaDB (partial). One native macOS app.</strong><br>
   Built with SwiftUI, AppKit and Go. Brewed for your daily database work.
 </p>
 
@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/nullawhale/dbeer/releases/tag/v0.4.0"><strong>Download for Mac ↗</strong></a>
+  <a href="https://github.com/nullawhale/dbeer/releases/tag/v0.5.0"><strong>Download for Mac ↗</strong></a>
   &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a>
   &nbsp;·&nbsp;
@@ -43,8 +43,8 @@ every day, with independent sessions for each SQL tab.
 | **An editor that gets you** | Contextual completion, multiple cursors, find/replace, offline formatting and code folding. |
 | **Tabs with their own space** | Each SQL tab keeps its connection, transaction, session settings and temporary tables until disconnected. |
 | **Edits you can review** | Stage cell changes, inspect **Preview SQL**, then **Apply**. Conflicts roll back the batch. |
-| **A workspace worth keeping** | Split panes, SQL files, a shared query library, result snapshots and investigation documents. Unreleased: saved structure and diagnostic evidence. |
-| **Unreleased schema maps** | PostgreSQL/MySQL/SQLite ER diagrams combine saved profiles with independent metadata loads, explicit rebinding, shared reviewed structure drafts and owned exports. |
+| **A workspace worth keeping** | Split panes, SQL files, a shared query library, result snapshots, investigation documents, and saved structure and diagnostic evidence. |
+| **Schema maps** | PostgreSQL/MySQL/SQLite ER diagrams combine saved profiles with independent metadata loads, explicit rebinding, shared reviewed structure drafts and owned exports. |
 | **Data on the move** | Copy cells and ranges, export loaded results, or use **Run to File** for a complete export. |
 | **A look that fits** | System appearance, light **Lager**, dark **Porter**, and importable editor color schemes. |
 
@@ -73,12 +73,12 @@ Real captures of the native macOS development build with demo PostgreSQL data.
 | :--- | :--- | :--- |
 | **PostgreSQL** | 16 / 17 / 18 | SQL |
 | **MySQL** | 8.0 / 8.4 | SQL |
-| **MariaDB** | 10.11.9+ / 11.4.3+ · **unreleased, partial** | SQL |
+| **MariaDB** | 10.11.9+ / 11.4.3+ · **partial** | SQL |
 | **Apache Cassandra** | 4.1 / 5.0 | CQL |
 | **MongoDB** | 8.0 | JSON find / aggregation requests |
-| **SQLite** | Local files · **unreleased** | SQL |
+| **SQLite** | Local files | SQL |
 
-MariaDB is a separate adapter in the unreleased build, not a MySQL alias. It
+MariaDB uses a separate, partial adapter. It
 supports native SQL sessions, TLS/SSH, table-grid editing/import, Explain/Analyze,
 monitoring, reviewed tuning, guarded schema/data comparisons and transfer, native
 SQL backup/restore, and ordinary V1/V2/V3 table authoring. SQL-result
@@ -87,14 +87,13 @@ conversion, multi-table migrations, advanced-table authoring and physical
 partition/storage operations remain disabled or manual. See
 [MariaDB scope and requirements](GUIDE.md#mariadb-partial-support).
 
-The packaged macOS release is **0.4.0 · build 13**. SQLite and other work in
-progress are documented in the [guide](GUIDE.md) and
-[Unreleased changelog](CHANGELOG.md#unreleased).
+The packaged macOS release is **0.5.0 · build 14**. See the [guide](GUIDE.md)
+and [changelog](CHANGELOG.md) for supported workflows and their limits.
 
 ## Quick start
 
 1. **Grab a fresh build.** Download the ZIP and SHA256 from
-   [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.4.0),
+   [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.5.0),
    verify the checksum, and move `DBeer.app` into **Applications**.
    See the [installation guide](INSTALL.md) for the exact steps.
 2. **Make a connection.** Press **⌘N**, choose your database and enter its details.
@@ -119,7 +118,7 @@ see [installation and macOS opening instructions](INSTALL.md).
 | **⌘Return** | Run the selection or current statement |
 | **⇧⌘Return** | Run the entire script |
 | **⌃Space** | Open completion suggestions |
-| **⌘F** | Find in the editor; loaded-grid search is unreleased |
+| **⌘F** | Find in the editor or search loaded grid cells |
 | **⌘O** / **⌘S** | Open / save a SQL file |
 | **⌘1** … **⌘4** | Toggle Connections, Files, SQL Library or Investigations |
 | **⌘,** | Open settings |
@@ -150,8 +149,8 @@ for read-only policies, production confirmations and their limits.
 | Connect securely | [SSH tunnels](GUIDE.md#ssh-tunnels) · [Dynamic passwords](GUIDE.md#dynamic-database-passwords) |
 | See what's new | [Changelog](CHANGELOG.md) · [Releases](https://github.com/nullawhale/dbeer/releases) |
 
-The [full guide](GUIDE.md) follows the current source tree and includes unreleased
-features; check the changelog for what ships in each release.
+The [full guide](GUIDE.md) describes the current release; check the changelog
+for changes in each version.
 
 ## Build it yourself
 

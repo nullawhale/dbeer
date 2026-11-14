@@ -2,19 +2,17 @@
 
 [← Back to README](README.md) · [Installation](INSTALL.md) · [Changelog](CHANGELOG.md)
 
-This guide describes the current source tree, including unreleased work.
-For packaged release contents, see the [changelog](CHANGELOG.md).
+This guide describes DBeer 0.5.0/build 14, including the limits of partial MariaDB
+support. For changes in each release, see the [changelog](CHANGELOG.md).
 
-A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, MongoDB 8.0, and local SQLite files (unreleased).
+A native database client for macOS 14+ on Apple Silicon, built with SwiftUI/AppKit and a bundled Go helper. Supports PostgreSQL 16/17/18, MySQL 8.0/8.4, Apache Cassandra 4.1/5.0, MongoDB 8.0, local SQLite files, and partial MariaDB 10.11.9+/11.4.3+ workflows.
 
-The current macOS release is **0.4.0, build 13**. Download the signed application
-ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.4.0)
-and follow [the installation instructions](INSTALL.md). This release includes
-MongoDB, SQL result editing, synchronization SQL plans, snapshots, investigations,
-the expanded workspace, local MCP agent access, expanded Cassandra CQL language
-assistance, grouped table filters, multi-column sorting and saved table views.
-The native editor adds local find/replace, multiple cursors, offline formatting,
-navigation, code folding and information from cached native type metadata.
+The current macOS release is **0.5.0, build 14**. Download the signed application
+ZIP and SHA256 from [GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.5.0)
+and follow [the installation instructions](INSTALL.md). This release adds SQLite,
+partial MariaDB support, multi-profile ER diagrams, reviewed structure and
+migration workflows, Explain/Analyze and tuning, schema bundles, table transfers,
+backup/restore, data search and profiling, and exact native-value artifacts.
 Earlier release and prerelease archives remain unchanged.
 Homebrew installation is not available.
 
@@ -22,7 +20,7 @@ Multiple profiles can run simultaneously. Each SQL tab gets its own connection o
 
 ## MariaDB partial support
 
-MariaDB is available in the unreleased native macOS build as its own engine and
+MariaDB is available in the native macOS release as its own engine and
 Go adapter. The supported native server lines are 10.11.9+ and 11.4.3+; the live
 checks used 10.11.19 and 11.4.13. This increment is intentionally partial and does
 not claim complete MariaDB parity.
@@ -96,7 +94,7 @@ This work reuses the already bundled MIT-licensed `go-mysql-org/go-mysql` transp
 no additional driver or native client library is bundled. Database command-line
 utilities are separately installed user tools. No UI/window or installed-archive
 acceptance was run for this increment; completed native checks are explicitly
-headless. The packaged 0.4.0/build 13 release and its archives are unchanged.
+headless. Earlier release archives, including 0.4.0/build 13, are unchanged.
 
 ## Using the application
 
@@ -123,7 +121,7 @@ SQL NULL, empty strings, the text NULL, and DEFAULT remain distinct. Column orde
 
 The script splitter handles strings, comments, PostgreSQL dollar quoting/BEGIN ATOMIC, MySQL DELIMITER, and CQL batches and `$$` function bodies. SSH tunneling and local MCP agent access are supported. psql/mysql/cqlsh client commands, COPY streams, LOAD DATA LOCAL, and arbitrary application plugins are unsupported.
 
-## Catalog metadata (unreleased)
+## Catalog metadata
 
 PostgreSQL, MySQL and SQLite catalog browsing, object search, structure inspection
 and ER loading collect metadata beyond the ordinary result display limit. Each
@@ -139,7 +137,7 @@ finishes by releasing its temporary observation; expiry and disconnect also clea
 it up. Existing ER selection and layout limits still apply. Workspace restoration
 keeps metadata unloaded until an explicit action.
 
-## Choosing referenced records (unreleased)
+## Choosing referenced records
 
 Open an editable foreign-key cell and choose **Choose Related Record…** in its
 editor or context menu. Declared PostgreSQL, MySQL and SQLite foreign keys support
@@ -164,7 +162,7 @@ result, profile and session, and rejects protected columns. Search reads remain
 separate from SQL-tab transactions; opening restored documents never connects
 or starts a picker search.
 
-## Finding data across tables (unreleased)
+## Finding data across tables
 
 Choose **Find Data…** in a connection's context menu to search PostgreSQL, MySQL
 or SQLite table and view values. Explicitly load schemas, select objects and
@@ -196,7 +194,7 @@ decision or closing an unrelated profile preserves the search. Restoration does
 not reconnect or replay a search; after helper failure, a fresh load or search
 requires an explicit action.
 
-## Data profiles (unreleased)
+## Data profiles
 
 Select loaded grid cells to see their count, SQL NULL count and exact numeric
 sum. **Profile Selection…** opens the frozen capture; the grid context menu's
@@ -233,7 +231,7 @@ Investigation…** saves that frozen report in a new, saved or unsaved Investiga
 a failed save can retry the same block. Reopening a report never connects to a
 database or repeats sampling.
 
-## Repeatable data transfers (unreleased)
+## Repeatable data transfers
 
 Choose **Create Table from CSV…** or **Copy Table to Connection…** in a
 PostgreSQL/MySQL connection's context menu. CSV creation reads UTF-8 CSV/TSV,
@@ -278,7 +276,7 @@ independently: an import failure can leave a newly created empty table, and the
 result reports this explicitly. Stop only cancels this transfer's connections.
 An uncertain commit blocks replay and requires inspecting the destination.
 
-## Database dump and restore (unreleased)
+## Database dump and restore
 
 Choose **Backup Database…** or **Restore Database…** in a PostgreSQL/MySQL
 connection's context menu. Select the database, format, file and absolute path
@@ -314,7 +312,7 @@ the local SSH endpoint and requires a direct verified connection; verification
 is never downgraded. Closing the operation cleans its private workspace and
 terminates only its own child process group.
 
-## Sessions and blocking (unreleased)
+## Sessions and blocking
 
 Open **Session Monitor…** from a PostgreSQL or MySQL connection's context menu.
 Its separate window leaves SQL tabs available. Use **Refresh** to collect a new
@@ -359,7 +357,7 @@ visibility appear as notices. See the [PostgreSQL monitoring documentation](http
 and [MySQL process information documentation](https://dev.mysql.com/doc/refman/8.4/en/processlist-access.html)
 for server-side visibility rules.
 
-## SQLite (unreleased)
+## SQLite
 
 Choose **SQLite** in the connection editor, then **Choose File…** for an existing
 local database or **Create Database…** for a new file. Creation is explicit and
@@ -655,7 +653,7 @@ private migration backups. Live metadata and session identifiers are not saved;
 restored diagrams require an explicit rebuild. Diagrams do not edit structure or
 relationships and cannot run SQL, edit result grids or export query results.
 
-## Visual execution plans (unreleased)
+## Visual execution plans
 
 In a PostgreSQL or Oracle MySQL SQL tab, choose **Query → Explain** for the
 selection or current statement. **Explain Analyze…** is a separate action that
@@ -937,7 +935,7 @@ investigation. The library also lists snapshot attachments with **Remove Link**.
 deletion until it can be checked. A confirmed file publication remains saved
 when a later library refresh fails, and the library displays the refresh warning.
 
-## Saved operation evidence (unreleased)
+## Saved operation evidence
 
 Use **Save Outcome Evidence** in a retained structure report or **Save Evidence**
 in Session Monitor to copy the current observation into the local library.
@@ -1473,11 +1471,13 @@ buffers adopt external changes, while changed drafts retain both versions for
 review. Missing or unreadable files keep their editable drafts. Bindings without
 a known fingerprint require **Save As**. No file operation connects to a database.
 
-Workspace storage is v11, with exact private backups before migrating
-v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10. Formats before v8 start with their tabs in the left
+Workspace storage is v15, with exact private backups before migrating
+v0 through v14. Formats before v8 start with their tabs in the left
 pane; v8/v9 retain their saved pane layout. Nested horizontal and vertical splits
 and each divider's position are preserved. V11 stores grouped applied filters and
 migrates legacy filters as AND groups; unapplied browsing drafts are not restored.
+V12 adds ER presentation, v13 relationship scopes, v14 native-value filter operands
+and v15 multi-profile ER sources. Restored ER sources require explicit load.
 Folder attachments and shared file identities are saved alongside
 the views; each view retains its own connection binding. Existing history,
 favorites and retention preferences are preserved.
@@ -1664,7 +1664,7 @@ view. Workspace restoration keeps the index, groups and view bindings disconnect
 with an exact private backup before migrating v5. Restoring or editing library
 metadata does not connect or execute SQL.
 
-### Saved query parameters (unreleased)
+### Saved query parameters
 
 In **SQL Library → Edit Library Details…**, add names and types under
 **Parameters**. Use `:name` placeholders for values in the SQL file, for example:
@@ -1733,7 +1733,7 @@ successfully. Navigation history stays in memory; workspace restoration saves th
 current location and remains disconnected until explicit Load Data. Cassandra
 supports independent views but has no foreign keys.
 
-## CSV/TSV table import (unreleased)
+## CSV/TSV table import
 
 On a connected PostgreSQL or MySQL table, choose **Import CSV/TSV…** in the catalog
 context menu, or **Import…** in its table toolbar. Choose a UTF-8 CSV/TSV file
@@ -1926,7 +1926,7 @@ captures fail explicitly at bounded node/member/scalar/storage limits. Only a
 complete comparison can say **Selected table structure matches**. SQL planning is
 a separate explicit action; comparison never applies migration SQL.
 
-## Physical table operations (unreleased)
+## Physical table operations
 
 Open **Partitions, Storage & Online DDL…** from a table's catalog menu.
 Physical operations use a dedicated idle connection and a fresh review of the
@@ -2108,7 +2108,7 @@ Generated columns, missing keys and permissions retain their existing limits.
 Cassandra conditional grid editing retains its scalar, single-partition limits;
 complex values, counters and durations remain available through explicit CQL.
 
-## Find in loaded results (unreleased)
+## Find in loaded results
 
 Focus a table, SQL-result or snapshot grid and press **⌘F**. Search is
 case-insensitive and covers **All columns** or the columns selected when choosing
@@ -2144,7 +2144,7 @@ source text. Search highlights up to 10,000 matches. Inspection never executes
 SQL, connects to a server or changes pending grid edits; use the existing cell
 editor and Preview/Apply workflow to make changes.
 
-## Captured native values (unreleased)
+## Captured native values
 
 Results retain typed evidence separately from their displayed text. Exact
 integer/decimal strings, SQL NULL, binary bytes and floating-point width/bits
@@ -2234,7 +2234,7 @@ favorites are preserved unless explicitly included. The selection is captured
 when the confirmation opens, so new executions are kept. Disabling recording
 stops new history entries and keeps existing history and favorites.
 
-History uses versioned workspace storage, currently v11. Existing v0/v1/v2/v3/v4/v5/v6/v7/v8/v9/v10 files
+History uses versioned workspace storage, currently v15. Existing v0 through v14 files
 receive exact backups before migration; older entries retain their original
 outcome text and show unavailable execution details rather than inferred values.
 
@@ -2405,7 +2405,7 @@ Profile export omits the local configuration path and all configuration contents
 an imported alias uses the receiving Mac's local configuration only after an
 explicit connection. Saving, importing and restoring do not evaluate that config.
 
-The native app uses its matching protocol v5 helper (`sshConfigV1` is required
+The native app uses its matching protocol v6 helper (`sshConfigV1` is required
 for configuration mode); Windows/Linux GPUI SSH support is deferred.
 
 ## Execution commands and safety
@@ -2816,7 +2816,8 @@ requires fresh approval; restored documents never establish an agent grant.
 
 The tools are `dbeer_connections` (approved profile identifiers, engine, query
 language and readonly enforcement), `dbeer_catalog`, `dbeer_query`,
-`dbeer_cancel` and the separate `dbeer_command` foundation (unreleased).
+`dbeer_cancel` and the separate `dbeer_command` foundation. All current engines
+reject native commands; a Redis implementation remains future work.
 PostgreSQL/MySQL/SQLite accept SQL, Cassandra accepts CQL, and MongoDB
 accepts the same single JSON find/aggregation request as the editor, all through
 the query tool's `sql` string argument. MongoDB writes are limited to supported
@@ -2884,8 +2885,8 @@ only its own test windows and requires the usual persistent signing identity.
 
 ## Releases
 
-The current release is **0.4.0, build 13**, available with its checksum from
-[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.4.0).
+The current release is **0.5.0, build 14**, available with its checksum from
+[GitHub Releases](https://github.com/nullawhale/dbeer/releases/tag/v0.5.0).
 It contains the native macOS SwiftUI/AppKit client and bundled Go helper.
 Windows/Linux GPUI candidates are outside this release. Earlier prereleases,
 including [0.2.0/build 8](https://github.com/nullawhale/dbeer/releases/tag/v0.2.0-build.8),
@@ -2901,7 +2902,7 @@ Existing archives are never overwritten and temporary CI signatures are rejected
 The previous **0.1.0** internal release passed installation and update acceptance
 from build 5 to build 6 on the current Mac. On October 18, 2026, the owner waived
 that release's required second-Mac check. These historical results do not certify
-the new build 13 archive. No new installed-archive acceptance was run for 0.4.0.
+the new build 14 archive. No new installed-archive acceptance was run for 0.5.0.
 Finder/Gatekeeper and installation on a clean second
 device have not been verified. An Apple Development signature is not notarization.
 
